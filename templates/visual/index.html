@@ -1,0 +1,18 @@
+<header>
+  <h1>{{name}}</h1>
+  <p class="bio">{{bio}}</p>
+  <div id="owner-badges"></div>
+</header>
+
+<div id="portfolio-highlights">
+  {{highlights}}
+</div>
+
+<div id="portfolio-cv">
+  {{cv}}
+</div>
+
+<div id="feed" style="display:none" data-blog="{{blogRegistry}}" data-owner="{{wallet}}">
+  <p id="feed-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
+  <div id="feed-posts"></div>
+</div>

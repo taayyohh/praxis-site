@@ -1,0 +1,234 @@
+/* musician template — record collection aesthetic, album art as hero */
+
+/* wider canvas for album grids */
+body {
+  max-width: 1000px;
+}
+
+/* artist header — big name, understated bio */
+.artist-header {
+  margin-bottom: 2em;
+  padding-bottom: 2em;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.artist-name {
+  color: var(--accent);
+  font-weight: normal;
+  font-size: 2.8em;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 0.2em;
+}
+
+.artist-bio {
+  color: var(--muted);
+  font-size: 1em;
+  max-width: 80ch;
+  margin-bottom: 0;
+}
+
+/* alias as discography header */
+.alias {
+  margin-bottom: 3.5em;
+}
+
+.alias-name {
+  color: var(--accent);
+  font-size: 1.1em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 1.5em;
+  padding-bottom: 0.5em;
+  border-bottom: 1px solid var(--border);
+}
+
+/* album grid — large cover art, two columns on desktop */
+.album {
+  display: flex;
+  align-items: flex-start;
+  gap: 2ch;
+  margin-bottom: 2em;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.album:hover {
+  opacity: 0.85;
+}
+
+.album img {
+  width: 160px;
+  height: 160px;
+  image-rendering: auto;
+  flex-shrink: 0;
+}
+
+.album-info {
+  flex: 1;
+  padding-top: 0.25em;
+}
+
+.album-title {
+  color: var(--accent);
+  font-size: 1.15em;
+  display: block;
+  margin-bottom: 0.2em;
+}
+
+.album-year {
+  color: var(--dim);
+  font-size: 0.85em;
+}
+
+/* track list styling */
+.album-detail {
+  margin: -0.5em 0 2em 0;
+  padding-left: calc(160px + 2ch);
+}
+
+.album-tracks {
+  margin-bottom: 1em;
+}
+
+.album-track {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+.track-title {
+  flex: 1;
+  color: var(--fg);
+}
+
+.track-duration {
+  color: var(--dim);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-play-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 0.15em 0.8ch;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.track-play-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* streaming links row */
+.album-links {
+  display: flex;
+  gap: 1.5ch;
+  margin-top: 0.75em;
+}
+
+.album-link {
+  color: var(--muted);
+  font-size: 0.8em;
+  text-decoration: none;
+}
+
+.album-link:hover {
+  color: var(--accent);
+}
+
+/* highlights section */
+.highlights-section {
+  margin-bottom: 3.5em;
+}
+
+.highlights-section h3 {
+  color: var(--dim);
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 1em;
+}
+
+/* label credit at bottom */
+.label-credit {
+  color: var(--dim);
+  font-size: 0.85em;
+  margin-top: 2em;
+}
+
+/* CV section — clean discography list */
+.cv-section h3 {
+  color: var(--dim);
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.75em;
+}
+
+.cv-item {
+  padding: 0.3em 0;
+  font-size: 0.9em;
+}
+
+.cv-title {
+  color: var(--accent);
+}
+
+.cv-detail {
+  color: var(--muted);
+}
+
+/* two-column album grid on wide screens */
+@media (min-width: 700px) {
+  .alias .album,
+  section > .album {
+    display: inline-flex;
+    width: calc(50% - 1em);
+    vertical-align: top;
+    margin-right: 1em;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 4em 1.5em 6em;
+  }
+  .track-play-btn {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .artist-name {
+    font-size: 2em;
+  }
+
+  .album img {
+    width: 100px;
+    height: 100px;
+  }
+
+  .album-detail {
+    padding-left: 0;
+  }
+
+  .alias .album {
+    width: 100%;
+    margin-right: 0;
+  }
+}

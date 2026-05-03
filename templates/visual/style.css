@@ -1,0 +1,176 @@
+/* visual template — gallery-first, images as hero, minimal chrome */
+
+body {
+  max-width: 1200px;
+  padding: 4em 2em 6em;
+}
+
+/* subtle artist name — the work speaks */
+h1 {
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-bottom: 0.3em;
+}
+
+.bio {
+  max-width: 80ch;
+  font-size: 0.85em;
+  color: var(--muted);
+  margin-bottom: 2em;
+}
+
+/* masonry-style gallery grid — override base display:grid */
+.gallery-grid {
+  display: block;
+  columns: 3;
+  column-gap: 0.75em;
+}
+
+.gallery-item {
+  break-inside: avoid;
+  margin-bottom: 0.75em;
+}
+
+.gallery-item img {
+  width: 100%;
+  display: block;
+  transition: opacity 0.2s ease;
+}
+
+.gallery-item:hover img {
+  opacity: 0.88;
+}
+
+.gallery-caption {
+  color: var(--dim);
+  font-size: 0.75em;
+  padding: 0.4em 0 0.2em;
+  letter-spacing: 0.02em;
+}
+
+.gallery-caption a {
+  color: var(--dim);
+}
+
+.gallery-caption a:hover {
+  color: var(--fg);
+}
+
+/* exhibition list — minimal */
+main h3 {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  margin-top: 3em;
+  margin-bottom: 1em;
+}
+
+/* highlights — larger grid for featured images */
+.highlights-section {
+  margin-bottom: 3em;
+}
+
+.highlights-section h3 {
+  color: var(--dim);
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 1em;
+}
+
+.highlights-section .gallery-item {
+  margin-bottom: 1em;
+}
+
+.highlights-section .gallery-item img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* portfolio items */
+.project, .credit, .store-item {
+  display: inline-block;
+  width: calc(50% - 1em);
+  vertical-align: top;
+  margin-right: 1em;
+  margin-bottom: 1em;
+}
+
+/* album art gets big when visual artists show music */
+.album {
+  margin-bottom: 2em;
+}
+
+.album img {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+}
+
+.album-info {
+  margin-top: 0.5em;
+}
+
+.alias {
+  margin-bottom: 3em;
+}
+
+/* CV section */
+.cv-section h3, .cv h3 {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+}
+
+.cv-item {
+  padding: 0.25em 0;
+  font-size: 0.85em;
+}
+
+/* credits stay minimal */
+.credit {
+  font-size: 0.85em;
+  margin-bottom: 0.5em;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 4em 1.5em 6em;
+  }
+  .project, .credit, .store-item {
+    width: 100%;
+    margin-right: 0;
+  }
+}
+
+/* two columns on tablet, three on desktop */
+@media (min-width: 900px) {
+  .gallery-grid {
+    columns: 3;
+  }
+}
+
+@media (max-width: 899px) and (min-width: 500px) {
+  .gallery-grid {
+    columns: 2;
+  }
+}
+
+@media (max-width: 499px) {
+  .gallery-grid {
+    columns: 1;
+  }
+
+  body {
+    padding: 4em 1em 6em;
+  }
+
+  .project, .credit, .store-item {
+    width: 100%;
+    margin-right: 0;
+  }
+}

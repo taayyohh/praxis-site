@@ -1,0 +1,65 @@
+/* organization template — roster-forward, institutional layout */
+
+body {
+  max-width: 900px;
+}
+
+header h1 {
+  font-size: 2.4em;
+  letter-spacing: -0.02em;
+}
+
+/* roster grid */
+#org-roster {
+  margin: 2em 0 3em;
+  padding-bottom: 2em;
+  border-bottom: 1px solid var(--border);
+}
+
+.roster-title {
+  color: var(--dim);
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 1em;
+}
+
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.5em;
+}
+
+.roster-card {
+  text-decoration: none;
+  color: var(--fg);
+  padding: 1em;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+.roster-card:hover {
+  border-color: var(--accent);
+}
+
+.roster-name {
+  color: var(--accent);
+  font-size: 1em;
+  margin-bottom: 0.25em;
+}
+
+.roster-domain {
+  color: var(--dim);
+  font-size: 0.8em;
+}
+
+@media (max-width: 600px) {
+  header h1 {
+    font-size: 1.8em;
+  }
+
+  .roster-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1em;
+  }
+}

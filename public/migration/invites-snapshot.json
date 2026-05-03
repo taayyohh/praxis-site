@@ -1,0 +1,39 @@
+{
+  "block": "33234405",
+  "v1Address": "0x3c6f5eb9ea074578bda4fc323bb7d1c3c0c5e4c3",
+  "registry": "0x44756a311231d5c9fa92df7819f18df2545d9d1a",
+  "leafFormat": "keccak256(abi.encode(address artist, uint256 amount))",
+  "root": "0x9f436ff73581e45f13f831b78aec110b5fd222559dcc9e1dead6a2d816759f8d",
+  "entries": [
+    {
+      "artist": "0x46db55AD42dA6bA3c29a3C1522EBBF8e16960725",
+      "domain": "milesxb.bio",
+      "amount": "100",
+      "leaf": "0x095156c2d22cdec75a7ee7d55f0006319005285913e92821ce0df91e19ba1045",
+      "proof": [
+        "0x895fd6987cda0046e2c35c0fb9c661bdf1ebaf95e400af039f6fcb14d3ecd305",
+        "0x934e5d616c3524e42a1dbdeca023baa545b77e6d2ec2cdba6f6ff2dcb0180d16"
+      ]
+    },
+    {
+      "artist": "0x2bdf27dEEbf9Fb4A515E90f45496B695a67F45eA",
+      "domain": "fiction.bio",
+      "amount": "100",
+      "leaf": "0x895fd6987cda0046e2c35c0fb9c661bdf1ebaf95e400af039f6fcb14d3ecd305",
+      "proof": [
+        "0x095156c2d22cdec75a7ee7d55f0006319005285913e92821ce0df91e19ba1045",
+        "0x934e5d616c3524e42a1dbdeca023baa545b77e6d2ec2cdba6f6ff2dcb0180d16"
+      ]
+    },
+    {
+      "artist": "0xb4CA5085C485E9392FbF29e0A9F7d2321F12376C",
+      "domain": "nappynina.com",
+      "amount": "100",
+      "leaf": "0xd5c3a16658f9fcc183e770770d76e52030c2590dd0ba63abc3bf6b7dacacbce3",
+      "proof": [
+        "0xd5c3a16658f9fcc183e770770d76e52030c2590dd0ba63abc3bf6b7dacacbce3",
+        "0x7f45c97b78859e8cf7ce174e22712a5bd868d91a230d7d3bc0db4fb203457966"
+      ]
+    }
+  ]
+}

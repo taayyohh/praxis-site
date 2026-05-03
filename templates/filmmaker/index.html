@@ -1,0 +1,23 @@
+<header class="artist-header">
+  <h1 class="artist-name">{{name}}</h1>
+  <p class="artist-tagline">{{tagline}}</p>
+  <p class="artist-bio">{{bio}}</p>
+  <div id="owner-badges"></div>
+</header>
+
+<div class="reel-showcase">
+  {{reel}}
+</div>
+
+<div id="portfolio-highlights" class="filmography-section">
+  {{highlights}}
+</div>
+
+<div id="portfolio-cv" class="cv-section">
+  {{cv}}
+</div>
+
+<div id="feed" style="display:none" data-blog="{{blogRegistry}}" data-owner="{{wallet}}">
+  <p id="feed-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
+  <div id="feed-posts"></div>
+</div>

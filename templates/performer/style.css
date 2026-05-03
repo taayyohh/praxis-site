@@ -1,0 +1,228 @@
+/* performer template — credits-first, event-focused, resume/CV aesthetic */
+
+body {
+  max-width: 780px;
+}
+
+/* artist header — stacked name + bio */
+.artist-header {
+  margin-bottom: 3em;
+  padding-bottom: 2em;
+  border-bottom: 2px solid var(--fg);
+}
+
+.artist-name {
+  font-size: 2em;
+  font-weight: normal;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 0.15em;
+  line-height: 1.1;
+}
+
+.artist-bio {
+  color: var(--fg);
+  font-size: 0.95em;
+  max-width: 80ch;
+  margin-bottom: 0.4em;
+  line-height: 1.6;
+}
+
+.artist-rep {
+  color: var(--dim);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+/* headshot */
+.headshot {
+  width: 140px;
+  height: 170px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+
+/* credits section — the hero of the portfolio */
+.credits-section {
+  margin-bottom: 3em;
+}
+
+/* individual credits — acting resume 3-column: title | role | director/company */
+.credit {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 2ch;
+  padding: 0.35em 0 0.35em 2ch;
+  align-items: baseline;
+}
+
+.credit:last-child {
+  border-bottom: none;
+}
+
+.credit-title {
+  color: var(--fg);
+  font-style: italic;
+}
+
+.credit-title .credit-year {
+  font-style: normal;
+  color: var(--dim);
+  font-size: 0.85em;
+}
+
+.credit-role {
+  color: var(--fg);
+}
+
+.credit-dir {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.credit-detail {
+  color: var(--fg);
+}
+
+/* category badges — subtle type labels */
+.category-badge {
+  display: inline-block;
+  font-size: 0.65em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.15em 0.6em;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  margin-right: 0.5ch;
+  vertical-align: middle;
+}
+
+/* category headings within credits */
+main h3 {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  margin-top: 2.5em;
+  margin-bottom: 0.75em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+/* highlights section */
+.highlights-section {
+  margin-bottom: 2.5em;
+}
+
+.highlights-section h3 {
+  margin-top: 0;
+}
+
+/* CV section — clean chronological organization */
+.cv-section {
+  margin-bottom: 3em;
+}
+
+.section {
+  margin-bottom: 3em;
+}
+
+.section h2 {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4em;
+  margin-bottom: 1em;
+  text-align: right;
+}
+
+/* CV items */
+.cv-item {
+  padding: 0.35em 0;
+  font-size: 0.9em;
+}
+
+.cv-title {
+  color: var(--accent);
+}
+
+.cv-detail {
+  color: var(--muted);
+}
+
+/* skills listing */
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+.skill-tag {
+  font-size: 0.8em;
+  color: var(--muted);
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--border);
+}
+
+/* training/education */
+.training-entry {
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+/* store items — merch, etc. */
+.store-item {
+  padding: 1em 0;
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 4em 1.5em 6em;
+  }
+  .skill-tag {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .artist-header {
+    grid-template-columns: 1fr;
+  }
+
+  .artist-name {
+    font-size: 1.6em;
+  }
+
+  .credit {
+    flex-wrap: wrap;
+    gap: 0.2em;
+  }
+
+  .credit-venue {
+    text-align: left;
+    width: 100%;
+  }
+
+  .credit-role {
+    min-width: auto;
+    width: 100%;
+  }
+}
+
+/* two-column album grid on wide screens */
+@media (min-width: 700px) {
+  .alias .album,
+  section > .album {
+    display: inline-flex;
+    width: calc(50% - 1em);
+    vertical-align: top;
+    margin-right: 1em;
+  }
+}

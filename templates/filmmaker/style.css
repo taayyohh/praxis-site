@@ -1,0 +1,295 @@
+/* filmmaker template — video-forward, cinematic aesthetic, festival program feel */
+
+body {
+  max-width: 1100px;
+}
+
+/* artist header — clean, cinematic */
+.artist-header {
+  margin-bottom: 2.5em;
+  padding-bottom: 1.5em;
+  border-bottom: 1px solid var(--border);
+}
+
+.artist-name {
+  font-size: 1.8em;
+  font-weight: normal;
+  color: var(--fg);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.1em;
+  line-height: 1.1;
+}
+
+.artist-tagline {
+  color: var(--accent);
+  font-size: 1em;
+  font-style: italic;
+  margin-bottom: 0.5em;
+}
+
+.artist-bio {
+  color: var(--muted);
+  font-size: 0.9em;
+  max-width: 55ch;
+  line-height: 1.6;
+}
+
+/* video reel showcase — 16:9 cinematic, zero chrome */
+.reel-showcase {
+  margin-bottom: 4em;
+}
+
+.reel-showcase:empty {
+  display: none;
+}
+
+.reel-embed {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 */
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.reel-embed iframe,
+.reel-embed video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.reel-caption {
+  color: var(--dim);
+  font-size: 0.75em;
+  margin-top: 0.5em;
+  text-align: right;
+  letter-spacing: 0.03em;
+}
+
+/* video items — cinematic 16:9 containers */
+.video-item {
+  margin-bottom: 3em;
+}
+
+.video-title {
+  color: var(--accent);
+  font-size: 1.1em;
+  font-weight: normal;
+  margin-bottom: 0.3em;
+}
+
+.video-desc {
+  color: var(--muted);
+  font-size: 0.9em;
+  max-width: 55ch;
+  margin-bottom: 0.75em;
+  line-height: 1.5;
+}
+
+.video-player {
+  position: relative;
+}
+
+.video-lazy {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.video-lazy img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-lazy video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--bg);
+}
+
+.video-meta {
+  display: flex;
+  gap: 2ch;
+  margin-top: 0.4em;
+  font-size: 0.8em;
+  color: var(--dim);
+}
+
+/* video-pip-btn removed — mini-player.js handles floating video */
+
+/* filmography / credits — festival program layout */
+.filmography-section {
+  margin-bottom: 3.5em;
+}
+
+.filmography-section h3 {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-bottom: 1em;
+}
+
+/* project cards — film entries */
+.project-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1ch;
+  padding: 0.75em 0;
+  border-bottom: 1px solid var(--border);
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  margin-bottom: 0;
+}
+
+.project-title {
+  color: var(--fg);
+  font-size: 1.05em;
+}
+
+.project-role {
+  color: var(--accent);
+  font-size: 0.9em;
+}
+
+.project-detail {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.project-year {
+  color: var(--dim);
+  font-size: 0.85em;
+  text-align: right;
+  align-self: start;
+  font-variant-numeric: tabular-nums;
+}
+
+/* festival laurels — the badge of honor */
+.laurels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1em;
+  margin: 2em 0;
+}
+
+.laurel {
+  text-align: center;
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding: 0.6em 1.2em;
+  border: 1px solid var(--border);
+}
+
+.laurel-award {
+  display: block;
+  color: var(--accent);
+  font-weight: bold;
+  margin-bottom: 0.2em;
+}
+
+/* credits section (film works) */
+.credit {
+  margin-bottom: 0.75em;
+}
+
+main h3 {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-top: 2.5em;
+  margin-bottom: 1em;
+}
+
+/* CV and sections */
+.cv-section {
+  margin-bottom: 3em;
+}
+
+.section {
+  margin-bottom: 3em;
+}
+
+.section h2 {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-bottom: 1em;
+}
+
+.cv-item {
+  padding: 0.3em 0;
+  font-size: 0.9em;
+}
+
+.cv-title {
+  color: var(--accent);
+}
+
+.cv-detail {
+  color: var(--muted);
+}
+
+/* highlights */
+.highlights-section {
+  margin-bottom: 3em;
+}
+
+.highlights-section h3 {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-bottom: 1em;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 4em 1.5em 6em;
+  }
+  /* video-pip-btn removed — mini-player.js handles floating video */
+}
+
+@media (max-width: 600px) {
+  .artist-name {
+    font-size: 1.3em;
+    letter-spacing: 0.05em;
+  }
+
+  .video-item {
+    margin-bottom: 2em;
+  }
+
+  .project-card {
+    grid-template-columns: 1fr;
+  }
+
+  .project-year {
+    text-align: left;
+  }
+
+  .laurels {
+    gap: 0.5em;
+  }
+
+  .laurel {
+    font-size: 0.6em;
+    padding: 0.4em 0.8em;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
