@@ -3,7 +3,7 @@
 
 // --- Contract Addresses (Optimism L2, chain 10) ---
 // All 9 contracts redeployed to Optimism 2026-04-10.
-export const PRAXIS_ADDR = '0xA34f1d26Ff9D6fd1E36DD317987DffE2a557DDA0'
+export const PRAXIS_ADDR = '0xF6BffdfB24101577b6697fC73811086135a52133'
 export const INVITES_ADDR = '0xbC74c3D815beC49507826A6b9e07E7f086FB744D'
 export const TICKET_MARKET_ADDR = '0x0ea62A91acE3D77Bc96d77f1B05Ff3C1C60aF74c'
 export const ARTIST_SPONSOR_ADDR = '0x15F5f22F130ecEF5eee15d9BA90bB73B287a4F6A'
