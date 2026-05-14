@@ -13,7 +13,32 @@ let _domainMap = {}
 let _mediaDetails = {}
 let _observer = null
 
-registerPage('supporter-collection-section', init)
+// Init when feed exists (supporter page) — sets up toggle + eager-loads collection
+registerPage('feed', () => {
+  initSupporterToggle()
+  // Eager-init collection even though it's hidden
+  const section = document.getElementById('supporter-collection-section')
+  if (section && !_loading) init()
+})
+
+function initSupporterToggle() {
+  const feed = document.getElementById('feed')
+  const collection = document.getElementById('supporter-collection-section')
+  if (!feed || !collection) return
+  // Wire dock nav: first icon = feed (home), second icon = collection
+  const navLinks = document.querySelectorAll('.portfolio-nav a, #mobile-portfolio-nav a')
+  if (navLinks.length >= 1) {
+    // On supporter pages, first nav link = collection toggle
+    navLinks[0]?.addEventListener('click', (e) => {
+      e.preventDefault()
+      const showingCollection = collection.style.display !== 'none'
+      feed.style.display = showingCollection ? '' : 'none'
+      collection.style.display = showingCollection ? 'none' : ''
+    })
+  }
+  // Also trigger collection init when shown
+  if (collection.style.display !== 'none') init()
+}
 
 function init() {
   const section = document.getElementById('supporter-collection-section')
@@ -178,11 +203,12 @@ function renderMasonryTile(purchase) {
         <div style="font-size:0.8em;color:var(--muted);margin-top:0.5em">${escapeHtml(artistName)}</div>
       </div>`
   } else {
-    // fallback: generic card
+    // fallback: try video-thumb first (for unknown contentType), then image proxy
+    const thumbSrc = media.ipfsCid ? `/api/video-thumb?cid=${media.ipfsCid}&w=400` : ''
     const imgSrc = media.ipfsCid ? `/api/img?url=${encodeURIComponent(ipfsUrl(media.ipfsCid))}&w=400` : ''
-    if (imgSrc) {
+    if (thumbSrc || imgSrc) {
       inner = `
-        <img src="${imgSrc}" loading="lazy" alt="${title}">
+        <img src="${thumbSrc || imgSrc}" loading="lazy" alt="${title}" onerror="if(this.src.includes('video-thumb')){this.src='${imgSrc}'}else{this.style.display='none'}">
         <div class="masonry-tile-overlay">
           <div style="font-size:0.9em;color:#fff">${title}</div>
         </div>`

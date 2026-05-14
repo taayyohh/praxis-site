@@ -271,10 +271,17 @@ function showAddress(address) {
     const openWalletMenu = () => {
       // show disconnect dropdown
       const existing = document.getElementById('disconnect-dropdown')
-      if (existing) { existing.remove(); return }
+      if (existing) { existing.remove(); document.getElementById('wallet-menu-overlay')?.remove(); return }
+      // overlay backdrop for mobile bottom sheet
+      const overlay = document.createElement('div')
+      overlay.id = 'wallet-menu-overlay'
+      overlay.className = 'wallet-menu-overlay'
+      document.body.appendChild(overlay)
+
       const dd = document.createElement('div')
       dd.id = 'disconnect-dropdown'
-      dd.style.cssText = 'position:absolute;top:3em;right:0;background:var(--bg);border:1px solid var(--border);padding:0.5em;z-index:300;min-width:12ch'
+      dd.className = 'wallet-menu-sheet'
+      dd.style.cssText = 'position:absolute;top:3em;right:0;background:var(--bg);border:1px solid var(--border);padding:0.5em;z-index:10000;min-width:12ch'
       const walletLabel = ''
 
       const _siteOwner = document.body.dataset.owner?.toLowerCase() || ''
@@ -287,19 +294,21 @@ function showAddress(address) {
         ${_isOwner ? `<button class="wallet-dd-btn" id="dd-settings">${t('dock.settings')}</button>` : ''}
         <button class="wallet-dd-btn" id="dd-disconnect" style="color:var(--dim)">sign out</button>
       `
-      dd.querySelector('#dd-disconnect').addEventListener('click', () => { dd.remove(); disconnect() })
+      const closeMenu = () => { dd.remove(); overlay.remove() }
+
+      dd.querySelector('#dd-disconnect').addEventListener('click', () => { closeMenu(); disconnect() })
 
       dd.querySelector('#dd-fund').addEventListener('click', async () => {
-        dd.remove()
+        closeMenu()
         try {
           const { showFundingSheet } = await import('./pay.js')
           await showFundingSheet(address, 0n)
           loadTopBarBalance(address)
         } catch (e) { console.warn('fund sheet error:', e) }
       })
-      dd.querySelector('#dd-cashout').addEventListener('click', async () => {
-        dd.remove()
-        try { await window.peerOfframpOptimism?.(address, '0.01') } catch {}
+      dd.querySelector('#dd-cashout').addEventListener('click', () => {
+        closeMenu()
+        window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
       })
       dd.querySelector('#dd-copy').addEventListener('click', async () => {
         try {
@@ -309,16 +318,19 @@ function showAddress(address) {
         } catch { /* fallback: already shows address */ }
       })
       dd.querySelector('#dd-settings')?.addEventListener('click', () => {
-        dd.remove()
+        closeMenu()
         window.dispatchEvent(new CustomEvent('open-settings'))
       })
+      overlay.addEventListener('click', closeMenu)
       topBarWallet.style.position = 'relative'
       topBarWallet.appendChild(dd)
+      // trigger slide-up animation on next frame (used by mobile bottom sheet)
+      requestAnimationFrame(() => { dd.classList.add('open'); overlay.classList.add('open') })
       // delay close listener so the opening click doesn't immediately close it
       setTimeout(() => {
         document.addEventListener('click', function close(e) {
-          if (!dd.contains(e.target) && !e.target.closest('#top-bar-wallet')) {
-            dd.remove()
+          if (!dd.contains(e.target) && !e.target.closest('#top-bar-wallet') && e.target !== overlay) {
+            closeMenu()
             document.removeEventListener('click', close)
           }
         })
@@ -327,9 +339,10 @@ function showAddress(address) {
     topBarWallet.querySelector('.top-bar-balance')?.addEventListener('click', openWalletMenu)
   }
 
-  // show floating dock on any page if owner
+  // show floating dock only for site owner
   const owner = document.body.dataset.owner
-  if (owner && address.toLowerCase() === owner.toLowerCase()) {
+  const isOwner = owner && address.toLowerCase() === owner.toLowerCase()
+  if (isOwner) {
     showDock()
     checkDomainRenewal(address)
   }
@@ -338,7 +351,7 @@ function showAddress(address) {
   loadTopBarBalance(address)
 
   // check audience registration (only on artist sites, not if owner)
-  if (!owner || address.toLowerCase() !== owner.toLowerCase()) {
+  if (!isOwner) {
     checkAudienceRegistration(address)
   }
 
@@ -363,10 +376,10 @@ function showDock() {
   dock.innerHTML = `
     <div class="dock-tools">
       <button class="dock-btn" id="dock-portfolio" title="${t('dock.portfolio')}"><i class="ph ${document.body.classList.contains('feed-mode') ? 'ph-pulse' : 'ph-squares-four'}"></i></button>
-      <a href="/collection" class="dock-btn" title="${t('dock.collection')}"><i class="ph ph-treasure-chest"></i></a>
+      <a href="/collection" class="dock-btn" title="${t('dock.collection')}"><i class="ph ph-cards-three"></i></a>
+      <button class="dock-btn" id="dock-write" title="${t('dock.write')}"><i class="ph ph-pencil-simple"></i></button>
       <a href="/messages" class="dock-btn" id="dock-chat" title="${t('dock.messages')}" style="position:relative"><i class="ph ph-chat-circle"></i><span id="dock-msg-dot" class="dock-msg-dot" style="display:none"></span></a>
-      <button class="dock-btn" id="dock-write" title="${t('dock.write')}"><i class="ph ph-pen-nib"></i></button>
-      <a href="/journal" class="dock-btn" title="${t('dock.journal')}"><i class="ph ph-notebook"></i></a>
+      <a href="/journal" class="dock-btn" title="${t('dock.journal')}"><i class="ph ph-file-dashed"></i></a>
       <button class="dock-btn" id="dock-sections-toggle" title="sections"><i class="ph ph-dots-three"></i></button>
     </div>
     ${sectionLinks ? `<div class="dock-sections">${sectionLinks}</div>` : ''}
@@ -385,10 +398,8 @@ function showDock() {
   updateDockActive()
   window.addEventListener('spa-navigate', updateDockActive)
 
-  document.getElementById('dock-write')?.addEventListener('click', async () => {
-    // ensure feed.js is loaded (has the compose modal listener)
-    await import('./feed.js').catch(() => {})
-    window.dispatchEvent(new CustomEvent('open-compose'))
+  document.getElementById('dock-write')?.addEventListener('click', () => {
+    window.location.href = '/write'
   })
   // restore unread dot from session (persists across pages)
   if (sessionStorage.getItem('praxis-unread-msgs')) {
@@ -941,6 +952,7 @@ async function connect(forceChoice = false) {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-choice-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10002'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -950,17 +962,17 @@ async function connect(forceChoice = false) {
     html += '<div style="display:flex;flex-direction:column;gap:0.75em">'
 
     if (hasEmbedded) {
-      html += `<button id="choice-embedded" style="background:none;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">unlock account<br><span style="color:#666;font-size:0.8em">enter your password to continue</span></button>`
+      html += `<button id="choice-embedded" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">unlock account<br><span style="color:var(--dim, #666);font-size:0.8em">enter your password to continue</span></button>`
     }
 
-    html += `<button id="choice-signin" style="background:none;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">sign in to praxis<br><span style="color:#666;font-size:0.8em">${hasEmbedded ? 'switch to a different account' : 'enter your handle + password'}</span></button>`
+    html += `<button id="choice-signin" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">sign in to praxis<br><span style="color:var(--dim, #666);font-size:0.8em">${hasEmbedded ? 'switch to a different account' : 'enter your handle + password'}</span></button>`
 
     if (!hasEmbedded) {
-      html += `<button id="choice-create" style="background:none;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">create account<br><span style="color:#666;font-size:0.8em">instant. secured with your password.</span></button>`
+      html += `<button id="choice-create" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.9em;padding:0.7em 1.5ch;cursor:pointer;text-align:left">create account<br><span style="color:var(--dim, #666);font-size:0.8em">instant. secured with your password.</span></button>`
     }
 
-    html += `<button id="choice-recover" style="background:none;border:none;color:#555;font-family:inherit;font-size:0.8em;padding:0.3em 0;cursor:pointer;text-align:left;text-decoration:underline">recover account with phrase</button>`
-    html += `<button id="choice-cancel" style="background:none;border:none;color:#444;font-family:inherit;font-size:0.8em;padding:0.3em 0;cursor:pointer;text-align:left">cancel</button>`
+    html += `<button id="choice-recover" style="background:none;border:none;color:var(--dim, #555);font-family:inherit;font-size:0.8em;padding:0.3em 0;cursor:pointer;text-align:left;text-decoration:underline">recover account with phrase</button>`
+    html += `<button id="choice-cancel" style="background:none;border:none;color:var(--dim, #444);font-family:inherit;font-size:0.8em;padding:0.3em 0;cursor:pointer;text-align:left">cancel</button>`
     html += '</div>'
 
     dialog.innerHTML = html

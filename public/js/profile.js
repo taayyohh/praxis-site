@@ -174,7 +174,7 @@ async function showProfile(addr) {
     const producerCredits = allCredentials.filter(c => c.tokenType === 2)
     const contributorCredits = allCredentials.filter(c => c.tokenType === 3)
 
-    const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
+    // projectType is now a string directly from the contract
 
     // use follow check result from parallel query
     let isFollowing = false
@@ -242,8 +242,10 @@ async function showProfile(addr) {
       for (const p of allPosts.slice(0, 4)) {
         html += renderPostCard(p)
       }
-      // Media as cards
-      for (const m of mediaItems.slice(0, 4)) {
+      // Media as cards (skip delisted items with sentinel price >= 2^128)
+      const DELIST_SENTINEL = BigInt(2) ** BigInt(128)
+      const visibleMedia = mediaItems.filter(m => { try { return BigInt(m.price || 0) < DELIST_SENTINEL } catch { return true } })
+      for (const m of visibleMedia.slice(0, 4)) {
         const thumb = m.metadataCid ? `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + m.metadataCid)}&w=400` : ''
         const priceEth = m.price ? (Number(m.price) / 1e18) : 0
         html += `<a href="/art?media=${m.id}" style="display:flex;align-items:center;gap:1ch;padding:0.75em;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--fg);transition:border-color 0.15s">
@@ -264,7 +266,7 @@ async function showProfile(addr) {
     // Credentials (compact)
     if (producerCredits.length > 0 || contributorCredits.length > 0) {
       html += `<div class="profile-section" id="profile-credentials"><h3>credentials</h3>`
-      html += renderCredentials(contributorCredits, producerCredits, PROJECT_TYPES)
+      html += renderCredentials(contributorCredits, producerCredits)
       if (_credsHasMore) {
         html += `<button id="profile-load-more-creds" class="profile-btn profile-btn-load">load more</button>`
       }
@@ -368,7 +370,18 @@ async function showProfile(addr) {
           }
         }
       } catch (e) {
-        if (e.code !== 4001) console.error('follow error:', e)
+        if (e.code !== 4001) {
+          console.error('follow error:', e)
+          const msg = e?.shortMessage || e?.message || ''
+          const errDisplay = msg.includes('underpriced') ? 'transaction stuck — try again in a moment'
+            : msg.includes('rejected') || msg.includes('denied') ? 'cancelled'
+            : msg.includes('insufficient') ? 'insufficient funds for gas'
+            : 'follow failed — try again'
+          import('./toast.js').then(({ toast }) => toast.error(errDisplay)).catch(() => {})
+        }
+        // revert button on error
+        btn.textContent = isFollowing ? 'following' : 'follow'
+        btn.classList.toggle('profile-btn-active', isFollowing)
       }
     })
 
@@ -402,7 +415,7 @@ async function showProfile(addr) {
     })
 
     // wire up "load more" buttons
-    wireLoadMore(container, addr, artist, PROJECT_TYPES, resolve)
+    wireLoadMore(container, addr, artist, resolve)
 
   } catch (e) {
     statusEl.textContent = 'could not load profile'
@@ -484,24 +497,24 @@ function renderPostCard(p) {
   </a>`
 }
 
-function renderCredentials(contributorCredits, producerCredits, PROJECT_TYPES) {
+function renderCredentials(contributorCredits, producerCredits) {
   let html = ''
   for (const c of contributorCredits) {
     const proj = _projectMap[c.projectId]
     const title = proj ? proj.title : `project #${c.projectId}`
-    const type = proj ? PROJECT_TYPES[proj.projectType] : ''
-    html += `<div class="credential-item"><span class="credential-role">contributor</span> <span class="credential-project">${escapeHtml(title)}</span> ${type ? `<span class="credential-type">${type}</span>` : ''}</div>`
+    const type = proj ? (proj.projectType || '') : ''
+    html += `<div class="credential-item"><span class="credential-role">contributor</span> <span class="credential-project">${escapeHtml(title)}</span> ${type ? `<span class="credential-type">${escapeHtml(type)}</span>` : ''}</div>`
   }
   for (const c of producerCredits) {
     const proj = _projectMap[c.projectId]
     const title = proj ? proj.title : `project #${c.projectId}`
-    const type = proj ? PROJECT_TYPES[proj.projectType] : ''
-    html += `<div class="credential-item"><span class="credential-role">producer</span> <span class="credential-project">${escapeHtml(title)}</span> ${type ? `<span class="credential-type">${type}</span>` : ''}</div>`
+    const type = proj ? (proj.projectType || '') : ''
+    html += `<div class="credential-item"><span class="credential-role">producer</span> <span class="credential-project">${escapeHtml(title)}</span> ${type ? `<span class="credential-type">${escapeHtml(type)}</span>` : ''}</div>`
   }
   return html
 }
 
-function wireLoadMore(container, addr, artist, PROJECT_TYPES, resolve) {
+function wireLoadMore(container, addr, artist, resolve) {
   // credentials
   const credsBtn = container.querySelector('#profile-load-more-creds')
   if (credsBtn) {
@@ -529,7 +542,7 @@ function wireLoadMore(container, addr, artist, PROJECT_TYPES, resolve) {
         const section = container.querySelector('#profile-credentials')
         const contributorCredits = result.items.filter(c => c.tokenType === 3)
         const producerCredits = result.items.filter(c => c.tokenType === 2)
-        const html = renderCredentials(contributorCredits, producerCredits, PROJECT_TYPES)
+        const html = renderCredentials(contributorCredits, producerCredits)
         credsBtn.insertAdjacentHTML('beforebegin', html)
 
         if (_credsHasMore) {

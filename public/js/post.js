@@ -136,7 +136,7 @@ async function initPost() {
     // edited indicator
     let editedHtml = ''
     if (latestAmendment) {
-      editedHtml = `<span style="color:var(--dim);font-size:0.8em;margin-left:0.5ch">(${t('post.edited')} <a href="/post?id=${postId}&history=1" style="color:var(--dim)">${t('post.viewHistory')}</a>)</span>`
+      editedHtml = ` <a href="/post?id=${postId}&history=1" style="color:var(--dim);font-size:0.55em;font-weight:700;text-decoration:none;vertical-align:middle">${t('post.edited')}</a>`
     }
 
     // reply-in-context: fetch parent post for replies (refType 3 = reply)
@@ -325,13 +325,11 @@ function addEditButton(postId, displayPost) {
   editBtn.className = 'buy-btn'
   editBtn.style.cssText = 'font-size:0.75em;padding:0.2em 0.7ch;border-radius:6px;font-weight:normal'
   editBtn.addEventListener('click', () => {
-    window.dispatchEvent(new CustomEvent('open-compose', {
-      detail: {
-        amendPostId: postId,
-        title: displayPost.title,
-        content: displayPost.content,
-      }
-    }))
+    const params = new URLSearchParams()
+    params.set('amend', postId)
+    if (displayPost.title) params.set('prefillTitle', displayPost.title)
+    if (displayPost.content) params.set('prefillContent', displayPost.content)
+    window.location.href = '/write?' + params.toString()
   })
   actionsEl.insertBefore(editBtn, actionsEl.firstChild)
 }

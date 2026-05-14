@@ -47,7 +47,7 @@ export default {
 
   renderSection(data) {
     if (!data) return ''
-    let html = ''
+    let html = `<style>.album-art-play-overlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:48px; height:48px; border-radius:50%; background:rgba(0,0,0,0.6); border:none; color:#fff; font-size:1.2em; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s; z-index:2; } div:hover > .album-art-play-overlay, .album-art-play-overlay:focus { opacity:1; } @media (hover:none) { .album-art-play-overlay { opacity:0.85; } } .album img, .album-highlight img { border-radius:4px; }</style>`
     const aliases = data.aliases || []
 
     // Play-all button — flattens every playable track across every alias
@@ -61,7 +61,7 @@ export default {
     )
     if (allTracks.length > 1) {
       const allQueueData = encodeURIComponent(JSON.stringify(allTracks))
-      html += `<div class="music-play-all" style="margin-bottom:1em;display:flex;gap:0.5ch;align-items:center"><button class="album-play-btn" data-queue="${esc(allQueueData)}" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.85em;padding:0.3em 1.2ch;cursor:pointer"><i class="ph ph-play"></i> play all (${allTracks.length} tracks)</button><button class="album-queue-btn" data-queue="${esc(allQueueData)}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add all to queue"><i class="ph ph-plus"></i></button></div>`
+      html += `<div class="music-play-all" style="margin-bottom:1em;display:flex;gap:0.5ch;align-items:center"><button class="album-queue-btn" data-queue="${esc(allQueueData)}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add all to queue"><i class="ph ph-plus"></i></button><button class="album-play-btn" data-queue="${esc(allQueueData)}" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.85em;padding:0.3em 1.2ch;cursor:pointer"><i class="ph ph-play"></i> play all (${allTracks.length} tracks)</button></div>`
     }
 
     // Flatten all albums across all aliases, preserving alias info
@@ -92,11 +92,16 @@ export default {
       const artDetailUrl = `/art?type=music&amp;alias=${ai}&amp;album=${ali}`
       out += `<div class="album${hasTracksOrLinks ? ' album-clickable' : ''}" data-album-id="${esc(albumId)}">`
       const artThumb = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=800` : ''
+      const albumPlayable = (album.tracks || []).filter(t => t.src)
+      const albumQueueData = albumPlayable.length > 0 ? encodeURIComponent(JSON.stringify(albumPlayable.map(t => ({ src: t.src, title: t.title, artist: album.artist || aliasName, art: album.art || '' })))) : ''
+      const albumPlayOverlay = albumQueueData ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(albumQueueData)}"><i class="ph ph-play"></i></button>` : ''
+      out += `<div style="position:relative;flex-shrink:0;overflow:hidden;border-radius:4px">`
       out += album.art
         ? `<a href="${artDetailUrl}" style="display:block;cursor:pointer"><img src="${esc(artThumb)}" alt="${esc(album.title)}" loading="lazy" onerror="this.style.display='none'"></a>`
         : `<a href="${artDetailUrl}" style="display:block;cursor:pointer">${artPlaceholder(album.title, 300)}</a>`
+      out += albumPlayOverlay + `</div>`
       out += `<div class="album-info" style="cursor:${hasTracksOrLinks ? 'pointer' : 'default'}"><span class="album-title" style="color:var(--accent)">${esc(album.title)}</span> <span class="album-year">(${esc(album.year)})</span>`
-      if (aliasName !== '_collaborations') out += `<br><span style="color:var(--muted);font-size:0.8em">by ${esc(aliasName)}</span>`
+      if (aliasName !== '_collaborations') out += `<br><span style="color:var(--muted);font-size:0.8em">by ${esc(album.artist || aliasName)}</span>`
       if (album.collab) out += `<br><span style="color:var(--muted);font-size:0.8em">with <a href="https://${esc(album.collab.from)}" style="color:var(--accent);text-decoration:none">${esc(album.collab.from)}</a></span>`
       if (album.genre) out += `<br><span class="album-genre" style="color:var(--muted);font-size:0.8em">${esc(album.genre)}</span>`
       if (album.producer) out += `<span class="album-producer" style="color:var(--muted);font-size:0.8em">${album.genre ? ' · ' : '<br>'}produced by ${esc(album.producer)}</span>`
@@ -110,15 +115,14 @@ export default {
         const expandPlayable = (album.tracks || []).filter(t => t.src)
         if (expandPlayable.length > 0) {
           const expandQueue = encodeURIComponent(JSON.stringify(expandPlayable.map(t => ({ src: t.src, title: t.title, artist: album.artist || aliasName, art: album.art || '' }))))
-          out += `<div style="margin-bottom:0.75em;display:flex;gap:0.5ch;align-items:center;flex-wrap:wrap"><button class="album-play-btn" data-queue="${esc(expandQueue)}" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.25em 1.2ch;cursor:pointer"><i class="ph ph-play"></i> play album</button><button class="album-queue-btn" data-queue="${esc(expandQueue)}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add album to queue"><i class="ph ph-plus"></i></button>`
+          out += `<div style="margin-bottom:0.75em;display:flex;gap:0.5ch;align-items:center;flex-wrap:wrap"><button class="album-queue-btn" data-queue="${esc(expandQueue)}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add album to queue"><i class="ph ph-plus"></i></button><button class="album-play-btn" data-queue="${esc(expandQueue)}" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.25em 1.2ch;cursor:pointer"><i class="ph ph-play"></i> play album</button>`
           // Buy album button — shows when multiple tracks are listed
           const listedTracks = (album.tracks || []).filter(t => t.mediaId !== undefined && t.mediaId !== null)
           if (listedTracks.length >= 2) {
-            const totalWei = listedTracks.reduce((sum, t) => sum + BigInt(t.mediaPrice || '0'), 0n)
+            const totalWei = listedTracks.reduce((sum, t) => sum + BigInt(Math.round(Number(t.mediaPrice || '0'))), 0n)
             const totalEth = Number(totalWei) / 1e18
-            const priceLabel = totalEth > 0 ? `${totalEth} ETH` : 'free'
             const idsJson = esc(JSON.stringify(listedTracks.map(t => t.mediaId)))
-            out += `<button class="batch-buy-btn" data-media-ids="${idsJson}" data-total-price="${totalWei.toString()}" data-eth-wei="${totalWei.toString()}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.8em;padding:0.25em 1.2ch;cursor:pointer">buy album (${priceLabel})</button>`
+            out += `<button class="batch-buy-btn feed-card-btn green" data-media-ids="${idsJson}" data-total-price="${totalWei.toString()}" data-eth-wei="${totalWei.toString()}">buy album <span data-eth-wei="${totalWei.toString()}" data-fiat-primary="true"></span></button>`
           }
           out += `</div>`
         }
@@ -127,7 +131,10 @@ export default {
           out += `<div class="album-tracks">`
           for (const track of album.tracks.filter(t => t.title || t.src)) {
             out += `<div class="album-track">`
-            out += `<span class="track-title">${esc(track.title)}</span>`
+            const trackLink = track.mediaId != null ? `/art?media=${track.mediaId}` : (track.src ? '#' : '')
+            out += trackLink && track.mediaId != null
+              ? `<a href="${esc(trackLink)}" class="track-title" style="color:inherit;text-decoration:none">${esc(track.title)}</a>`
+              : `<span class="track-title">${esc(track.title)}</span>`
             if (track.duration) {
               const m = Math.floor(track.duration / 60)
               const s = String(track.duration % 60).padStart(2, '0')
@@ -136,13 +143,15 @@ export default {
               out += ` <span class="track-duration" data-duration-src="${esc(track.src)}">0:00</span>`
             }
             if (track.src) {
-              out += `<button class="track-play-btn" data-track-src="${esc(track.src)}" data-track-title="${esc(track.title)}" data-track-artist="${esc(album.artist || aliasName)}" data-album="${esc(albumId)}">play</button>`
               out += `<button class="track-queue-btn" data-src="${esc(track.src)}" data-title="${esc(track.title)}" data-artist="${esc(album.artist || aliasName)}" data-art="${esc(album.art || '')}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.1em 0.4ch" title="add to queue"><i class="ph ph-plus"></i></button>`
+              out += `<button class="track-play-btn feed-card-btn" data-track-src="${esc(track.src)}" data-track-title="${esc(track.title)}" data-track-artist="${esc(album.artist || aliasName)}" data-album="${esc(albumId)}"><i class="ph ph-play"></i></button>`
+              // Reference button — opens compose modal with this track as reference
+              if (track.mediaId != null) {
+                out += `<button class="track-ref-btn" data-ref-media="${track.mediaId}" data-ref-title="${esc(track.title)}" data-ref-artist="${esc(album.artist || aliasName)}" data-ref-art="${esc(album.art || '')}" data-ref-src="${esc(track.src || '')}" title="write about this track" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.75em;cursor:pointer;padding:0.15em 0.5ch;border-radius:3px;display:inline-flex;align-items:center"><i class="ph ph-note-pencil"></i></button>`
+              }
             }
             if (track.mediaId !== undefined && track.mediaId !== null) {
-              const priceEth = track.mediaPrice ? (Number(track.mediaPrice) / 1e18) : 0
-              const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'free'
-              out += `<button class="track-buy-btn" data-media-id="${esc(track.mediaId)}" data-price="${esc(track.mediaPrice || '0')}" data-eth-wei="${esc(track.mediaPrice || '0')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
+              out += `<button class="track-buy-btn feed-card-btn green" data-media-id="${esc(track.mediaId)}" data-price="${esc(track.mediaPrice || '0')}" style="font-size:0.7em">buy <span data-eth-wei="${esc(track.mediaPrice || '0')}" data-fiat-primary="true"></span></button>`
             }
             out += `</div>`
           }
@@ -233,8 +242,7 @@ export default {
           btn.textContent = err.code === 4001 ? 'cancelled' : 'error'
           btn.disabled = false
           setTimeout(() => {
-            const totalEth = Number(btn.dataset.totalPrice || '0') / 1e18
-            btn.textContent = 'buy album (' + (totalEth > 0 ? totalEth + ' ETH' : 'free') + ')'
+            btn.innerHTML = 'buy album <span data-eth-wei="' + (btn.dataset.totalPrice || '0') + '" data-fiat-primary="true"></span>'
           }, 2000)
         }
       })
@@ -260,6 +268,25 @@ export default {
       window.addEventListener('wallet-connected', checkBatchOwned)
       window.addEventListener('spa-navigate', () => setTimeout(checkBatchOwned, 100))
     }
+    // Reference button — opens compose modal with track as reference
+    if (!window._trackRefDelegated) {
+      window._trackRefDelegated = true
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.track-ref-btn')
+        if (!btn) return
+        e.stopPropagation()
+        const mediaRef = {
+          mediaId: btn.dataset.refMedia,
+          title: btn.dataset.refTitle || '',
+          artist: btn.dataset.refArtist || '',
+          art: btn.dataset.refArt || '',
+          src: btn.dataset.refSrc || ''
+        }
+        const params = new URLSearchParams({ ref: mediaRef.mediaId, refTitle: mediaRef.title, refArtist: mediaRef.artist, refArt: mediaRef.art, refSrc: mediaRef.src })
+        window.location.href = '/write?' + params.toString()
+      })
+    }
+
     // auto-expand album from URL hash (e.g., /audio#album-name)
     function expandFromHash() {
       const hash = window.location.hash.slice(1)
@@ -271,6 +298,28 @@ export default {
     expandFromHash()
     window.addEventListener('hashchange', expandFromHash)
     window.addEventListener('spa-navigate', () => setTimeout(expandFromHash, 100))
+
+    // Sync playing state — show pause icon on currently playing track
+    function syncPlayingState() {
+      const currentSrc = window._playerCurrentSrc?.() || ''
+      const playing = window.isPlaying?.() || false
+      document.querySelectorAll('.track-play-btn[data-track-src]').forEach(btn => {
+        const icon = btn.querySelector('i')
+        if (!icon) return
+        if (playing && currentSrc && btn.dataset.trackSrc === currentSrc) {
+          icon.className = 'ph ph-pause'
+        } else {
+          icon.className = 'ph ph-play'
+        }
+      })
+    }
+    syncPlayingState()
+    // Re-sync when page becomes visible or on SPA navigate
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPlayingState() })
+    window.addEventListener('spa-navigate', () => setTimeout(syncPlayingState, 200))
+    // Re-sync periodically (player state changes don't emit events to modules)
+    const _syncInterval = setInterval(syncPlayingState, 2000)
+    window.addEventListener('spa-navigate', () => clearInterval(_syncInterval), { once: true })
 
     // lazy-load track durations from audio metadata (throttled, visibility-aware)
     const _durationQueue = []
@@ -339,6 +388,8 @@ export default {
 
   renderHighlights(data) {
     if (!data) return ''
+    // Ensure overlay CSS is available on highlights page too
+    const overlayCss = `<style>.album-art-play-overlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:48px; height:48px; border-radius:50%; background:rgba(0,0,0,0.6); border:none; color:#fff; font-size:1.2em; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s; z-index:2; } div:hover > .album-art-play-overlay, .album-art-play-overlay:focus { opacity:1; } @media (hover:none) { .album-art-play-overlay { opacity:0.85; } } .album img, .album-highlight img { border-radius:4px; }</style>`
     const allAlbums = (data.aliases || [])
       .flatMap((a, ai) => (a.albums || []).map((al, ali) => ({ ...al, alias: a.name, aliasIdx: ai, albumIdx: ali, tracks: al.tracks || [] })))
 
@@ -347,15 +398,14 @@ export default {
 
     function renderCard(al) {
       const playableTracks = al.tracks.filter(t => t.src)
-      const firstTrack = playableTracks[0]
-      const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: al.alias, art: al.art || '' }))))
-      const playBtn = firstTrack
-        ? `<button class="album-play-btn" data-queue="${esc(queueData)}" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">play</button>`
+      const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: al.artist || al.alias, art: al.art || '' }))))
+      const playOverlay = playableTracks.length > 0
+        ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(queueData)}"><i class="ph ph-play"></i></button>`
         : ''
       const thumbUrl = al.art ? `/api/img?url=${encodeURIComponent(al.art)}&w=480` : ''
       const artUrl = `/art?type=music&amp;alias=${al.aliasIdx}&amp;album=${al.albumIdx}`
       const safeImg = thumbUrl || (al.art ? esc(al.art) : '')
-      return `<div class="album album-highlight"><a href="${artUrl}" style="display:block;cursor:pointer"><img src="${safeImg}" alt="${esc(al.title)}" loading="lazy" onerror="this.style.display='none'"></a><div class="album-info"><a href="${artUrl}" style="color:var(--accent);text-decoration:none"><span class="album-title">${esc(al.title)}</span></a> <span class="album-year">(${esc(al.year)})</span>${playBtn}<br><span style="color:var(--muted)">${esc(al.alias)}</span></div></div>`
+      return `<div class="album album-highlight"><div style="position:relative"><a href="${artUrl}" style="display:block;cursor:pointer"><img src="${safeImg}" alt="${esc(al.title)}" loading="lazy" onerror="this.style.display='none'"></a>${playOverlay}</div><div class="album-info"><a href="${artUrl}" style="color:var(--accent);text-decoration:none"><span class="album-title">${esc(al.title)}</span></a> <span class="album-year">(${esc(al.year)})</span><br><span style="color:var(--muted)">${esc(al.artist || al.alias)}</span></div></div>`
     }
 
     if (hasSections) {
@@ -382,12 +432,12 @@ export default {
           html += `<div class="album-highlight-grid">${unsectioned.map(renderCard).join('\n')}</div>`
         }
       }
-      return html
+      return overlayCss + html
     }
 
     // No sections: original behavior
     const recent = allAlbums.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 4)
     const cards = recent.map(renderCard).join('\n')
-    return `<div class="album-highlight-grid">${cards}</div>`
+    return overlayCss + `<div class="album-highlight-grid">${cards}</div>`
   },
 }

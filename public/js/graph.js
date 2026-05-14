@@ -495,6 +495,11 @@ async function initGraph() {
       if (e.type === 'follow') followEdgeKeys.add(`${e.source}-${e.target}`)
     }
 
+    // Theme-aware colors: detect light/dark background once per frame
+    const _bgHex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().replace('#', '')
+    const _lum = _bgHex.length >= 6 ? (0.299 * parseInt(_bgHex.slice(0,2),16) + 0.587 * parseInt(_bgHex.slice(2,4),16) + 0.114 * parseInt(_bgHex.slice(4,6),16)) / 255 : 0
+    const _light = _lum > 0.5
+
     // draw edges (skip if both endpoints off-screen)
     for (const e of edges) {
       const sn = nodes[e.source], tn = nodes[e.target]
@@ -506,7 +511,7 @@ async function initGraph() {
 
       if (e.type === 'follow') {
         const isMutual = followEdgeKeys.has(`${e.target}-${e.source}`)
-        ctx.strokeStyle = '#553388'
+        ctx.strokeStyle = _light ? '#9966cc' : '#553388'
         ctx.lineWidth = 0.8
         if (isMutual) {
           ctx.setLineDash([])
@@ -514,11 +519,11 @@ async function initGraph() {
           ctx.setLineDash([2, 6])
         }
       } else if (e.type === 'funded') {
-        ctx.strokeStyle = '#333'
+        ctx.strokeStyle = _light ? '#bbb' : '#333'
         ctx.lineWidth = 0.5
         ctx.setLineDash([4, 4])
       } else {
-        ctx.strokeStyle = '#444'
+        ctx.strokeStyle = _light ? '#aaa' : '#444'
         ctx.lineWidth = 1
         ctx.setLineDash([])
       }
@@ -539,13 +544,13 @@ async function initGraph() {
 
       ctx.beginPath()
       ctx.arc(n.x, n.y, radius, 0, Math.PI * 2)
-      ctx.fillStyle = isCenter ? '#ffffff' : (isAudience ? '#886644' : (isHovered ? '#c0c0c0' : '#666'))
+      ctx.fillStyle = isCenter ? (_light ? '#111' : '#fff') : (isAudience ? (_light ? '#886644' : '#886644') : (isHovered ? (_light ? '#222' : '#ddd') : (_light ? '#333' : '#ccc')))
       ctx.fill()
 
       // label
       const label = n.domain.length > 16 ? n.domain.slice(0, 14) + '...' : n.domain
       ctx.font = isHovered ? '12px -apple-system, sans-serif' : (isAudience ? '9px -apple-system, sans-serif' : '10px -apple-system, sans-serif')
-      ctx.fillStyle = isHovered ? '#ffffff' : (isAudience ? '#887766' : '#999')
+      ctx.fillStyle = isHovered ? (_light ? '#000' : '#fff') : (isAudience ? (_light ? '#665544' : '#887766') : (_light ? '#444' : '#999'))
       ctx.textAlign = 'center'
       ctx.fillText(label, n.x, n.y - radius - 4)
 
@@ -553,7 +558,7 @@ async function initGraph() {
       if (isHovered && centerIdx !== undefined && degrees.has(i) && i !== centerIdx) {
         const d = degrees.get(i)
         ctx.font = '10px -apple-system, sans-serif'
-        ctx.fillStyle = '#666'
+        ctx.fillStyle = _light ? '#555' : '#666'
         ctx.fillText(`${d} degree${d === 1 ? '' : 's'} from you`, n.x, n.y + radius + 14)
       }
     }

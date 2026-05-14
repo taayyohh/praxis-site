@@ -26,8 +26,21 @@ let _allMediaPurchases = []
 let _allCredentials = []
 let _allSavedItems = []
 let _searchQuery = ''
+let _viewMode = localStorage.getItem('praxis:collection-view') || 'grid'
 let _mediaObserver = null
 let _credsObserver = null
+const _artistSiteCache = new Map() // domain -> { modules, aliases }
+const _albumInfoCache = new Map() // coverCid -> { name, path, aliasName }
+const _CACHE_MAX = 200
+function _lruSet(map, key, value) {
+  if (map.has(key)) map.delete(key)
+  map.set(key, value)
+  if (map.size > _CACHE_MAX) { const oldest = map.keys().next().value; map.delete(oldest) }
+}
+function _lruGet(map, key) {
+  if (!map.has(key)) return undefined
+  const v = map.get(key); map.delete(key); map.set(key, v); return v
+}
 
 registerPage('collection-page', () => { _collectionInited = true; init() })
 
@@ -186,8 +199,20 @@ async function loadCollection(addr, statusEl, contentEl) {
     const artistAddresses = Object.values(_mediaDetails).map(m => m.artist).filter(Boolean)
     _domainMap = await resolveAddresses(query, artistAddresses)
 
-    // fetch cover art
+    // fetch cover art + resolve album names
     await fetchCoverArt(mediaPurchases, _domainMap)
+    // Pre-group to resolve album names from artist site.json
+    const preGroups = []
+    const tempAlbumMap = new Map()
+    for (const p of mediaPurchases) {
+      const cid = _coverArtMap[p.mediaId] || ''
+      if (cid) {
+        if (!tempAlbumMap.has(cid)) tempAlbumMap.set(cid, { items: [], coverCid: cid })
+        tempAlbumMap.get(cid).items.push(p)
+      }
+    }
+    for (const g of tempAlbumMap.values()) { if (g.items.length >= 2) preGroups.push(g) }
+    if (preGroups.length > 0) await resolveAlbumInfo(preGroups)
 
     // sort: active listings first, superseded at bottom
     mediaPurchases.sort((a, b) => {
@@ -230,22 +255,50 @@ async function loadCollection(addr, statusEl, contentEl) {
     }
 
     // search input
-    html += `<div id="collection-search" style="margin-bottom:1.5em">
+    html += `<div id="collection-search" style="margin-bottom:1em">
       <input type="text" id="collection-search-input" placeholder="${t('collection.searchPlaceholder') || 'search collection...'}" class="project-input" style="max-width:400px;width:100%">
     </div>`
+
+    // Passport stamps — circular, one per artist relationship
+    const artistStamps = buildArtistStamps(mediaPurchases, allCreds)
+    if (artistStamps.length > 0) {
+      html += `<div class="stamps-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5em">
+          <h3 style="margin:0;font-size:0.9em">soulbound</h3>
+          <span style="color:var(--dim);font-size:0.7em">${artistStamps.reduce((s, st) => s + st.count, 0)} tokens · ${artistStamps.length} artist${artistStamps.length !== 1 ? 's' : ''} · <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank" style="color:var(--dim)">what is this?</a></span>
+        </div>
+        <div class="stamps-row">`
+      for (const stamp of artistStamps) {
+        const ogImg = stamp.domain.includes('.') ? `https://${escapeHtml(stamp.domain)}/og/index.png` : ''
+        html += `<div class="stamp" data-artist="${escapeHtml(stamp.artistAddr)}" title="${escapeHtml(stamp.name)} · ${stamp.action}">
+          ${ogImg ? `<div class="stamp-bg" style="background-image:url(${ogImg})"></div>` : ''}
+          <div class="stamp-content">
+            <div class="stamp-artist">${escapeHtml(stamp.name.split(' ')[0])}</div>
+            <div class="stamp-action">${stamp.count || ''}</div>
+          </div>
+        </div>`
+      }
+      html += `</div></div>`
+    }
 
     // media section
     if (mediaPurchases.length > 0) {
       html += `<div class="collection-section" data-section="media">
         <h3>${t('collection.media')}</h3>
-        <div class="media-sub-filters" style="display:flex;gap:0.5ch;margin-bottom:1em;flex-wrap:wrap">
-          <button class="media-sub-filter active" data-media-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">all</button>
-          <button class="media-sub-filter" data-media-filter="audio" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">audio <span class="media-type-count" data-type-count="audio">(...)</span></button>
-          <button class="media-sub-filter" data-media-filter="video" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">video <span class="media-type-count" data-type-count="video">(...)</span></button>
-          <button class="media-sub-filter" data-media-filter="image" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">image <span class="media-type-count" data-type-count="image">(...)</span></button>
-          <button class="media-sub-filter" data-media-filter="other" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">other <span class="media-type-count" data-type-count="other">(...)</span></button>
+        <div class="collection-toolbar">
+          <div class="media-sub-filters" style="display:flex;gap:0.5ch;flex-wrap:wrap">
+            <button class="media-sub-filter active" data-media-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">all</button>
+            <button class="media-sub-filter" data-media-filter="audio" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">audio <span class="media-type-count" data-type-count="audio">(...)</span></button>
+            <button class="media-sub-filter" data-media-filter="video" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">video <span class="media-type-count" data-type-count="video">(...)</span></button>
+            <button class="media-sub-filter" data-media-filter="image" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">image <span class="media-type-count" data-type-count="image">(...)</span></button>
+            <button class="media-sub-filter" data-media-filter="other" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">other <span class="media-type-count" data-type-count="other">(...)</span></button>
+          </div>
+          <div class="collection-view-toggle">
+            <button class="view-toggle-btn ${_viewMode === 'grid' ? 'active' : ''}" data-view="grid"><i class="ph ph-grid-four"></i></button>
+            <button class="view-toggle-btn ${_viewMode === 'list' ? 'active' : ''}" data-view="list"><i class="ph ph-list"></i></button>
+          </div>
         </div>
-        <div class="collection-grid" id="collection-media-grid">`
+        <div class="collection-media ${_viewMode === 'grid' ? 'collection-grid-view' : 'collection-list-view'}" id="collection-media-grid">`
       html += renderMediaItems(mediaPurchases)
       html += `</div>`
       if (_mediaHasMore) {
@@ -324,6 +377,98 @@ async function loadCollection(addr, statusEl, contentEl) {
     // filter pill handlers
     attachFilterHandlers(contentEl)
     attachMediaSubFilterHandlers(contentEl)
+
+    // view toggle handler
+    contentEl.querySelectorAll('.view-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _viewMode = btn.dataset.view
+        localStorage.setItem('praxis:collection-view', _viewMode)
+        contentEl.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === _viewMode))
+        const grid = document.getElementById('collection-media-grid')
+        if (grid) {
+          grid.className = `collection-media ${_viewMode === 'grid' ? 'collection-grid-view' : 'collection-list-view'}`
+          grid.innerHTML = renderMediaItems(_allMediaPurchases)
+          detectMediaTypes(_allMediaPurchases, contentEl)
+        }
+      })
+    })
+
+    // Passport stamp click → open artist passport page
+    contentEl.querySelectorAll('.stamp').forEach(stamp => {
+      stamp.addEventListener('click', () => {
+        const artistAddr = stamp.dataset.artist
+        if (!artistAddr) return
+        const domain = _domainMap[artistAddr] || ''
+        const artistPurchases = _allMediaPurchases.filter(p => _mediaDetails[p.mediaId]?.artist?.toLowerCase() === artistAddr)
+        const artistCreds = _allCredentials.filter(c => _projectMap[c.projectId]?.proposer?.toLowerCase() === artistAddr)
+        const mediaAddr = document.body.dataset.media || '0xaF995dB3955419E9E2086FD02891580F8a025481'
+
+        const overlay = document.createElement('div')
+        overlay.className = 'wizard-overlay'
+        overlay.style.cssText = 'z-index:10001;align-items:center;justify-content:center'
+        const ogImg = domain.includes('.') ? `https://${escapeHtml(domain)}/og/index.png` : ''
+        // Find alias name (only entries matching this artist's domain)
+        let aliasName = domain
+        for (const info of _albumInfoCache.values()) {
+          if (info.domain === domain && info.aliasName && info.aliasName !== domain) { aliasName = info.aliasName; break }
+        }
+
+        let html = `<div style="max-width:500px;width:100%;padding:0;margin:0 auto">`
+        // Banner
+        if (ogImg) html += `<div style="height:120px;background:url(${ogImg}) center/cover;opacity:0.6"></div>`
+        html += `<div style="padding:1.5em 2em">`
+        html += `<h2 style="margin:0 0 0.15em;font-size:1.3em">${escapeHtml(aliasName)}</h2>`
+        if (domain.includes('.')) html += `<a href="https://${escapeHtml(domain)}" target="_blank" style="color:var(--muted);font-size:0.85em">${escapeHtml(domain)}</a>`
+
+        // Collected works
+        if (artistPurchases.length > 0) {
+          html += `<div style="margin-top:1.5em"><div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5em">collected · ${artistPurchases.length} work${artistPurchases.length !== 1 ? 's' : ''}</div>`
+          for (const p of artistPurchases) {
+            const m = _mediaDetails[p.mediaId]
+            const title = m ? escapeHtml(m.title) : `#${p.mediaId}`
+            const tokenId = BigInt(p.mediaId).toString(16).padStart(4, '0')
+            html += `<div style="display:flex;align-items:center;gap:0.75ch;padding:0.35em 0;border-bottom:1px solid var(--border);font-size:0.85em">
+              <span style="font-family:monospace;color:var(--dim);font-size:0.75em">0x${tokenId}</span>
+              <a href="/art?media=${p.mediaId}" style="color:var(--fg);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</a>
+            </div>`
+          }
+          html += `</div>`
+        }
+
+        // Project credentials
+        if (artistCreds.length > 0) {
+          html += `<div style="margin-top:1.5em"><div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5em">project credits</div>`
+          for (const c of artistCreds) {
+            const proj = _projectMap[c.projectId]
+            const title = proj ? escapeHtml(proj.title) : `project #${c.projectId}`
+            const role = c.tokenType === 3 ? 'contributor' : 'producer'
+            html += `<div style="display:flex;align-items:center;gap:0.75ch;padding:0.35em 0;border-bottom:1px solid var(--border);font-size:0.85em">
+              <span style="color:${c.tokenType === 2 ? 'var(--green,#4ade80)' : '#a78bfa'};font-size:0.75em">${role}</span>
+              <a href="/project?id=${c.projectId}" style="color:var(--fg);flex:1">${title}</a>
+            </div>`
+          }
+          html += `</div>`
+        }
+
+        // Footer
+        html += `<div style="margin-top:2em;padding-top:1em;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:monospace;font-size:0.65em;color:var(--dim)">contract <a href="https://optimistic.etherscan.io/address/${escapeHtml(mediaAddr)}" target="_blank" style="color:var(--dim)">${mediaAddr.slice(0, 10)}...</a></span>
+          <span style="font-size:0.65em;color:var(--dim)">permanent · non-transferable</span>
+        </div>`
+        html += `</div></div>`
+
+        const dialog = document.createElement('div')
+        dialog.innerHTML = html
+        overlay.appendChild(dialog)
+        const closeBtn = document.createElement('button')
+        closeBtn.className = 'wizard-close'
+        closeBtn.textContent = '\u00d7'
+        closeBtn.addEventListener('click', () => { overlay.classList.add('closing'); overlay.addEventListener('animationend', () => overlay.remove(), { once: true }) })
+        overlay.appendChild(closeBtn)
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.classList.add('closing'); overlay.addEventListener('animationend', () => overlay.remove(), { once: true }) } })
+        document.body.appendChild(overlay)
+      })
+    })
 
     // search filter (debounced)
     attachSearchHandler(contentEl)
@@ -418,7 +563,7 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
     }
   }
 
-  // tag each collection-item with data-media-type
+  // tag each collection-item with data-media-type + upgrade video cards
   const grid = contentEl.querySelector('#collection-media-grid')
   if (!grid) return
 
@@ -432,6 +577,19 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
     }
     const type = _mediaTypeCache[media.ipfsCid] || 'other'
     item.dataset.mediaType = type
+
+    // Upgrade video cards that were initially rendered as audio/placeholder
+    if (type === 'video' && !item.querySelector('.video-lazy')) {
+      const cardArt = item.querySelector('.card-art')
+      if (cardArt) {
+        const mediaUrl = ipfsUrl(media.ipfsCid)
+        const title = escapeHtml(media.title || '')
+        cardArt.innerHTML = `<div class="video-lazy" data-src="${mediaUrl}" data-poster="" data-title="${title}" style="aspect-ratio:16/9;background:#111;position:relative;cursor:pointer;overflow:hidden;border-radius:6px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center"><i class="ph ph-play" style="color:#fff;font-size:18px"></i></div><span style="position:absolute;bottom:0.5em;left:0.75em;color:#999;font-size:0.8em">${title}</span></div>`
+        // Remove audio play button if present
+        const audioBtn = item.querySelector('.track-play-btn')
+        if (audioBtn) audioBtn.remove()
+      }
+    }
   }
 
   // update sub-filter counts
@@ -738,60 +896,267 @@ async function fetchByIds(entityName, queryName, ids, fields) {
   return all
 }
 
+// Build passport stamps — one per artist relationship
+function buildArtistStamps(mediaPurchases, credentials) {
+  const artistMap = new Map() // artistAddr -> { count, domain, name, firstDate, mediaIds }
+  for (const p of mediaPurchases) {
+    const m = _mediaDetails[p.mediaId]
+    if (!m) continue
+    const addr = m.artist?.toLowerCase() || ''
+    if (!addr) continue
+    if (!artistMap.has(addr)) {
+      const domain = _domainMap[addr] || ''
+      // Try to get alias name from album cache (only entries matching this artist's domain)
+      let aliasName = domain
+      for (const info of _albumInfoCache.values()) {
+        if (info.domain === domain && info.aliasName && info.aliasName !== domain) {
+          aliasName = info.aliasName
+          break
+        }
+      }
+      artistMap.set(addr, { count: 0, domain, name: aliasName, firstDate: null, mediaIds: [], addr })
+    }
+    const entry = artistMap.get(addr)
+    entry.count++
+    entry.mediaIds.push(p.mediaId)
+    // Track earliest date from purchase timestamp
+    if (p.timestamp) {
+      const ts = Number(p.timestamp) * (Number(p.timestamp) < 1e12 ? 1000 : 1)
+      if (!entry.firstDate || ts < entry.firstDate) entry.firstDate = ts
+    }
+  }
+  // Add project credentials
+  for (const c of credentials) {
+    const proj = _projectMap[c.projectId]
+    const proposer = proj?.proposer?.toLowerCase() || ''
+    if (!proposer) continue
+    if (!artistMap.has(proposer)) {
+      const domain = _domainMap[proposer] || ''
+      artistMap.set(proposer, { count: 0, domain, name: domain, firstDate: null, mediaIds: [], addr: proposer, produced: 0, contributed: 0 })
+    }
+    const entry = artistMap.get(proposer)
+    if (c.tokenType === 2) entry.produced = (entry.produced || 0) + 1
+    if (c.tokenType === 3) entry.contributed = (entry.contributed || 0) + 1
+  }
+
+  const stamps = []
+  for (const [addr, entry] of artistMap) {
+    const parts = []
+    if (entry.count > 0) parts.push(`${entry.count} collected`)
+    if (entry.produced) parts.push(`${entry.produced} produced`)
+    if (entry.contributed) parts.push(`${entry.contributed} contributed`)
+    // Generate a token hash from first mediaId (simulates the ERC-6909 tokenId)
+    const firstId = entry.mediaIds[0] || '0'
+    const tokenHash = BigInt(firstId).toString(16).padStart(8, '0').slice(0, 8)
+    stamps.push({
+      artistAddr: addr,
+      domain: entry.domain,
+      name: entry.name || entry.domain || `${addr.slice(0, 6)}...`,
+      action: parts.join(' · '),
+      count: entry.count + (entry.produced || 0) + (entry.contributed || 0),
+      tokenHash,
+      date: entry.firstDate ? new Date(entry.firstDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '',
+    })
+  }
+  return stamps.sort((a, b) => b.count - a.count) // most active first
+}
+
+// Resolve album names + paths from artist site.json for grouped purchases
+async function resolveAlbumInfo(albums) {
+  const domainFetches = new Map() // domain -> promise
+  // First pass: resolve domains and kick off fetches
+  for (const album of albums) {
+    const first = album.items[0]
+    const media = _mediaDetails[first.mediaId]
+    const artistAddr = media?.artist?.toLowerCase() || ''
+    const domain = _domainMap[artistAddr] || ''
+    album._domain = domain // stash for matching
+    if (!domain || !domain.includes('.') || _artistSiteCache.has(domain)) continue
+    if (!domainFetches.has(domain)) {
+      // Proxy through our server to avoid CSP cross-origin restrictions
+      domainFetches.set(domain, fetch(`/api/artist-site?domain=${encodeURIComponent(domain)}`).then(r => r.ok ? r.json() : null).catch(() => null))
+    }
+  }
+  for (const [domain, promise] of domainFetches) {
+    const data = await promise
+    if (data) _lruSet(_artistSiteCache, domain, data)
+  }
+  // Match albums to site.json data
+  for (const album of albums) {
+    if (_albumInfoCache.has(album.coverCid)) continue
+    const domain = album._domain || ''
+    const siteData = _lruGet(_artistSiteCache, domain)
+    if (!siteData?.modules) continue
+    const trackTitles = new Set(album.items.map(p => (_mediaDetails[p.mediaId]?.title || '').toLowerCase()).filter(Boolean))
+    for (let mi = 0; mi < siteData.modules.length; mi++) {
+      const mod = siteData.modules[mi]
+      if (mod.type !== 'music') continue
+      for (let ai = 0; ai < (mod.data?.aliases || []).length; ai++) {
+        const alias = mod.data.aliases[ai]
+        for (let bi = 0; bi < (alias.albums || []).length; bi++) {
+          const alb = alias.albums[bi]
+          const albumTracks = (alb.tracks || []).map(t => (t.title || '').toLowerCase()).filter(Boolean)
+          const matches = albumTracks.filter(t => trackTitles.has(t)).length
+          if (matches >= Math.min(trackTitles.size, albumTracks.length) * 0.5 && matches >= 2) {
+            _lruSet(_albumInfoCache, album.coverCid, { name: alb.title || '', path: { alias: ai, album: bi }, aliasName: alias.name || domain, domain })
+          }
+        }
+      }
+    }
+  }
+}
+
 function renderMediaItems(mediaPurchases) {
-  let html = ''
+  // Group by shared cover art CID (album grouping)
+  const albumGroups = new Map() // coverCid -> { items, artistDomain, coverUrl }
+  const singles = []
   for (const purchase of mediaPurchases) {
+    const coverCid = _coverArtMap[purchase.mediaId] || ''
+    if (coverCid) {
+      if (!albumGroups.has(coverCid)) albumGroups.set(coverCid, { items: [], coverCid })
+      albumGroups.get(coverCid).items.push(purchase)
+    } else {
+      singles.push(purchase)
+    }
+  }
+  // Split: groups with 2+ items = albums, rest = singles
+  const albums = []
+  for (const [cid, group] of albumGroups) {
+    if (group.items.length >= 2) {
+      albums.push(group)
+    } else {
+      singles.push(...group.items)
+    }
+  }
+
+  let html = ''
+
+  // Render albums
+  for (const album of albums) {
+    const first = album.items[0]
+    const media = _mediaDetails[first.mediaId]
+    const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
+    const artistLink = `https://${escapeHtml(artistDomain)}`
+    const coverUrl = ipfsUrl(album.coverCid)
+    const sorted = [...album.items].sort((a, b) => { try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 } })
+    const trackCount = sorted.length
+
+    // Album name + path from site.json resolution
+    const info = _lruGet(_albumInfoCache, album.coverCid) || {}
+    const albumName = info.name || `${trackCount} tracks`
+    const aliasName = info.aliasName || artistDomain
+    const albumPath = info.path
+    const albumLink = albumPath ? `https://${escapeHtml(artistDomain)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?media=${first.mediaId}`
+
+    // Build play-all queue
+    const queueTracks = sorted.filter(p => _mediaDetails[p.mediaId]?.ipfsCid).map(p => {
+      const m = _mediaDetails[p.mediaId]
+      return { src: ipfsUrl(m.ipfsCid), title: m.title || '', artist: aliasName, art: `/api/img?url=${encodeURIComponent(coverUrl)}&w=200` }
+    })
+    const queueData = encodeURIComponent(JSON.stringify(queueTracks))
+
+    if (_viewMode === 'grid') {
+      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${first.mediaId}" data-media-type="audio">
+        <div class="card-art">
+          <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px"></a>
+          <span class="card-type-badge">${trackCount} tracks</span>
+        </div>
+        <div class="card-info">
+          <a href="${albumLink}" class="card-title">${escapeHtml(albumName)}</a>
+          <a href="${artistLink}" class="card-artist">${escapeHtml(aliasName)}</a>
+          <div class="card-actions">
+            <button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>
+            <a href="${queueTracks[0]?.src || '#'}" download="${escapeHtml(albumName)}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>
+          </div>
+        </div>
+      </div>`
+    } else {
+      // Album in list view — iTunes style
+      html += `<div class="collection-album-list collection-item" data-media-id="${first.mediaId}" data-media-type="audio">
+        <div class="album-list-header">
+          <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=200" class="album-list-art"></a>
+          <div class="album-list-info">
+            <a href="${albumLink}" style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${escapeHtml(albumName)}</a>
+            <a href="${artistLink}" class="card-artist">${escapeHtml(aliasName)}</a>
+            <div style="display:flex;gap:0.5ch;margin-top:0.4em;align-items:center">
+              <button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.75em;padding:0.25em 0.8ch;cursor:pointer;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-play"></i> play all</button>
+              <span style="color:var(--dim);font-size:0.75em">${trackCount} tracks</span>
+            </div>
+          </div>
+        </div>
+        <div class="album-tracklist">`
+      for (let i = 0; i < sorted.length; i++) {
+        const p = sorted[i]
+        const m = _mediaDetails[p.mediaId]
+        const trackTitle = m ? escapeHtml(m.title) : `#${p.mediaId}`
+        const trackUrl = m?.ipfsCid ? ipfsUrl(m.ipfsCid) : ''
+        html += `<div class="album-track">
+          <span class="track-num">${i + 1}</span>
+          ${trackUrl ? `<button class="track-play-btn" data-track-src="${trackUrl}" data-track-title="${trackTitle}" data-track-artist="${escapeHtml(aliasName)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : '<span style="width:22px"></span>'}
+          <span class="track-title">${trackTitle}</span>
+          <div style="display:flex;gap:0.5ch;align-items:center;flex-shrink:0;margin-left:auto;padding-right:0.5em">
+            ${trackUrl ? `<button class="track-queue-btn" data-src="${trackUrl}" data-title="${trackTitle}" data-artist="${escapeHtml(aliasName)}" data-art="${queueTracks[0]?.art || ''}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.15em" title="add to queue"><i class="ph ph-plus"></i></button>` : ''}
+            ${trackUrl ? `<a href="${trackUrl}" download="${trackTitle}" style="color:var(--dim);font-size:0.85em;padding:0.15em" title="download"><i class="ph ph-download-simple"></i></a>` : ''}
+          </div>
+        </div>`
+      }
+      html += `</div></div>`
+    }
+  }
+
+  // Render singles
+  for (const purchase of singles) {
     const media = _mediaDetails[purchase.mediaId]
     const title = media ? escapeHtml(media.title) : `#${purchase.mediaId}`
     const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
-    const artistLink = media ? `https://${artistDomain}` : '#'
-
+    const artistLink = `https://${escapeHtml(artistDomain)}`
     const mediaUrl = media?.ipfsCid ? ipfsUrl(media.ipfsCid) : ''
-    const priceEth = purchase.price ? formatEthAmount(purchase.price) : '0'
     const coverCid = _coverArtMap[purchase.mediaId] || ''
     const coverUrl = coverCid ? ipfsUrl(coverCid) : ''
-
-    // use cached type if available, otherwise 'pending' (will be updated by detectMediaTypes)
-    const cachedType = media?.ipfsCid ? (_mediaTypeCache[media.ipfsCid] || 'pending') : 'other'
+    const cachedType = media?.ipfsCid ? (_mediaTypeCache[media.ipfsCid] || (media.contentType?.startsWith('video/') ? 'video' : 'audio')) : 'other'
     const isSuperseded = media?.superseded === true
-    const supersededStyle = isSuperseded ? 'opacity:0.5;' : ''
-
     const artDetailUrl = isSuperseded ? `/art?media=${media.activeListingId}` : `/art?media=${purchase.mediaId}`
-    html += `<div class="collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}" style="display:flex;gap:1.5ch;padding:1em;border:1px solid var(--border);margin-bottom:0.75em;align-items:center;${supersededStyle}">
-      <div class="collection-art" id="art-${purchase.mediaId}" style="width:60px;height:60px;background:var(--surface);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden">
-        <a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=240" style="width:100%;height:100%;object-fit:cover">` : artPlaceholder(title, 60)}</a>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <a href="${artDetailUrl}" style="color:var(--accent);font-size:1em;text-decoration:none">${title}</a>
-          <span style="color:var(--dim);font-size:0.8em" data-eth-wei="${purchase.price || '0'}">${priceEth} ETH</span>
-        </div>`
+    const escapedArtist = escapeHtml(artistDomain || '')
 
-    if (isSuperseded) {
-      html += `<div style="margin-top:0.25em"><span style="font-size:0.75em;color:var(--muted)">superseded</span> <a href="/art?media=${media.activeListingId}" style="font-size:0.75em;color:var(--accent)">view current</a></div>`
-    } else if (artistDomain) {
-      html += `<div style="color:var(--muted);font-size:0.85em;margin-top:0.25em">by <a href="${artistLink}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a></div>`
-    }
-
-    if (mediaUrl && !isSuperseded) {
-      html += `<div style="margin-top:0.5em;display:flex;gap:1ch;align-items:center">
-        <button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapeHtml(artistDomain || '')}" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.8em;padding:0.2em 0.8ch;cursor:pointer">play</button>
-        <a href="${mediaUrl}" download="${title}" style="color:var(--dim);font-size:0.8em">download</a>
+    if (_viewMode === 'grid') {
+      const isVideo = cachedType === 'video'
+      const artHtml = isVideo && mediaUrl
+        ? `<div class="video-lazy" data-src="${mediaUrl}" data-poster="" data-title="${title}" style="aspect-ratio:16/9;background:#111;position:relative;cursor:pointer;overflow:hidden;border-radius:6px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center"><i class="ph ph-play" style="color:#fff;font-size:18px"></i></div><span style="position:absolute;bottom:0.5em;left:0.75em;color:#999;font-size:0.8em">${title}</span></div>`
+        : `<a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px">` : artPlaceholder(title, 180)}</a>`
+      html += `<div class="collection-card collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
+        <div class="card-art">${artHtml}</div>
+        <div class="card-info">
+          <a href="${artDetailUrl}" class="card-title">${title}</a>
+          <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
+          <div class="card-actions">
+            ${mediaUrl && !isSuperseded && !isVideo ? `<button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>` : ''}
+            ${mediaUrl && !isSuperseded ? `<a href="${mediaUrl}" download="${title}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>` : ''}
+          </div>
+        </div>
+      </div>`
+    } else {
+      html += `<div class="collection-row collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
+        <a href="${artDetailUrl}" class="row-art">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=120">` : artPlaceholder(title, 48)}</a>
+        <div class="row-info">
+          <a href="${artDetailUrl}" class="card-title">${title}</a>
+          <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
+        </div>
+        <div class="card-actions">
+          ${mediaUrl && !isSuperseded ? `<button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em"><i class="ph ph-play"></i></button><a href="${mediaUrl}" download="${title}" class="track-dl"><i class="ph ph-download-simple"></i></a>` : ''}
+        </div>
       </div>`
     }
-
-    html += `</div></div>`
   }
   return html
 }
 
 function renderCredentialItems(allCreds) {
-  const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
+  // projectType is now a string directly from the contract
   let html = ''
   for (const cred of allCreds) {
     const proj = _projectMap[cred.projectId]
     const title = proj ? escapeHtml(proj.title) : `project #${cred.projectId}`
-    const type = proj ? PROJECT_TYPES[proj.projectType] || '' : ''
+    const type = proj ? (proj.projectType || '') : ''
     const role = cred.tokenType === 3 ? 'contributor' : 'producer'
 
     html += `<div class="collection-item">
@@ -857,7 +1222,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
         const batch = siteEntries.slice(i, i + SITE_CONCURRENCY)
         const batchResults = await Promise.all(
           batch.map(([domain]) =>
-            fetch(`https://${domain}/api/site`).then(r => r.json()).catch(() => null)
+            fetch(`/api/proxy-site?domain=${encodeURIComponent(domain)}`).then(r => r.json()).catch(() => null)
           )
         )
         siteResults.push(...batchResults)

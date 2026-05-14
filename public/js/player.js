@@ -9,8 +9,8 @@ function _esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 const bar = document.createElement('div')
 bar.id = 'global-player'
 bar.style.cssText = `
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 500;
-  height: 40px; background: var(--bg); border-top: 1px solid var(--border);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+  height: 48px; background: var(--bg); border-top: 1px solid var(--border);
   display: none; align-items: center; gap: 1ch; padding: 0 2ch;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   font-size: 0.85em; color: var(--fg); font-family: inherit;
@@ -25,8 +25,9 @@ prevBtn.id = 'gp-prev'
 prevBtn.innerHTML = '<i class="ph ph-skip-back"></i>'
 prevBtn.setAttribute('aria-label', 'previous track')
 prevBtn.style.cssText = `
-  background: none; border: none; color: var(--border); font-size: 1em;
-  cursor: default; padding: 0.2em; min-width: 28px; min-height: 28px;
+  background: none; border: none; color: var(--border); font-size: 1.1em;
+  cursor: default; padding: 0.3em; min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
 `
 
 const playBtn = document.createElement('button')
@@ -34,9 +35,9 @@ playBtn.id = 'gp-play'
 playBtn.innerHTML = '<i class="ph ph-play"></i>'
 playBtn.setAttribute('aria-label', 'play')
 playBtn.style.cssText = `
-  background: none; border: 1px solid var(--dim); color: var(--fg);
-  font-size: 1em; padding: 0.3em; cursor: pointer;
-  min-width: 32px; min-height: 32px; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.1); border: none; border-radius: 50%; color: var(--fg);
+  font-size: 1.2em; padding: 0; cursor: pointer;
+  width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
 `
 
 const nextBtn = document.createElement('button')
@@ -44,8 +45,9 @@ nextBtn.id = 'gp-next'
 nextBtn.innerHTML = '<i class="ph ph-skip-forward"></i>'
 nextBtn.setAttribute('aria-label', 'next track')
 nextBtn.style.cssText = `
-  background: none; border: none; color: var(--border); font-size: 1em;
-  cursor: default; padding: 0.2em; min-width: 28px; min-height: 28px;
+  background: none; border: none; color: var(--border); font-size: 1.1em;
+  cursor: default; padding: 0.3em; min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
 `
 
 const repeatBtn = document.createElement('button')
@@ -54,8 +56,9 @@ repeatBtn.innerHTML = '<i class="ph ph-repeat"></i>'
 repeatBtn.setAttribute('aria-label', 'repeat off')
 repeatBtn.title = 'repeat off'
 repeatBtn.style.cssText = `
-  background: none; border: none; color: var(--border); font-size: 1em;
-  cursor: pointer; padding: 0.2em; min-width: 28px; min-height: 28px;
+  background: none; border: none; color: var(--border); font-size: 1.1em;
+  cursor: pointer; padding: 0.3em; min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
 `
 
 controlsWrap.appendChild(prevBtn)
@@ -121,8 +124,9 @@ queueBtn.innerHTML = '<i class="ph ph-playlist"></i>'
 queueBtn.setAttribute('aria-label', 'queue')
 queueBtn.title = 'queue'
 queueBtn.style.cssText = `
-  background: none; border: none; color: var(--dim); font-size: 1em;
-  cursor: pointer; padding: 0.2em; min-width: 28px; min-height: 28px; flex-shrink: 0;
+  background: none; border: none; color: var(--dim); font-size: 1.4em;
+  cursor: pointer; padding: 0.3em; min-width: 44px; min-height: 44px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 `
 
 bar.appendChild(controlsWrap)
@@ -179,7 +183,10 @@ function renderQueueList() {
     const isActive = i === _queueIdx
     const isVideo = item.type === 'video'
     const icon = isVideo ? 'ph-film-strip' : 'ph-music-note'
-    const artThumb = item.art ? `/api/img?url=${encodeURIComponent(item.art)}&w=80` : ''
+    // If art is already an absolute URL or /api/img, use directly; otherwise wrap
+    const artThumb = item.art
+      ? (item.art.startsWith('http') || item.art.startsWith('/api/img') ? item.art : `/api/img?url=${encodeURIComponent(item.art)}&w=80`)
+      : ''
     return `<div class="gp-queue-item" data-idx="${i}" style="display:flex;align-items:center;gap:0.75ch;padding:0.5em 1em;cursor:pointer;${isActive ? 'background:var(--surface,#111);border-left:2px solid var(--accent)' : 'border-left:2px solid transparent'}">
       ${artThumb ? `<img src="${artThumb}" style="width:36px;height:36px;object-fit:cover;flex-shrink:0;border-radius:2px" loading="lazy">` : `<i class="ph ${icon}" style="font-size:1.2em;color:var(--dim);width:36px;text-align:center;flex-shrink:0"></i>`}
       <div style="flex:1;min-width:0;overflow:hidden">
@@ -668,12 +675,17 @@ document.addEventListener('click', (e) => {
     const title = btn.dataset.trackTitle || ''
     const artist = btn.dataset.trackArtist || ''
     // Find album art from the nearest album container's img
-    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item')
-    const artImg = albumEl?.querySelector('img')
+    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item') || btn.closest('.art-cover')
+    const artImg = albumEl?.querySelector('img') || document.querySelector('.art-cover img, .album-art img')
     let art = artImg?.src || ''
     if (currentSrc === src && !audio.paused) {
       pauseTrack()
     } else {
+      // Add to queue if not already there, then play
+      const inQueue = _queue.some(q => q.src === src)
+      if (!inQueue) {
+        addToQueue({ src, title, artist, art, type: 'audio' }, btn)
+      }
       playTrack(src, title, artist, art)
     }
     return
@@ -683,15 +695,20 @@ document.addEventListener('click', (e) => {
   if (albumBtn) {
     e.stopPropagation()
     try {
-      const tracks = JSON.parse(decodeURIComponent(albumBtn.dataset.queue))
-      if (tracks.length > 0) {
-        if (currentSrc === tracks[0].src && !audio.paused) {
-          pauseTrack()
-        } else {
-          playQueue(tracks, 0)
-        }
+      const raw = albumBtn.dataset.queue
+      if (!raw) { console.error('album-play-btn: no queue data'); return }
+      const tracks = JSON.parse(decodeURIComponent(raw))
+      if (!Array.isArray(tracks) || tracks.length === 0) { console.error('album-play-btn: empty queue'); return }
+      if (currentSrc === tracks[0].src && !audio.paused) {
+        pauseTrack()
+        const icon = albumBtn.querySelector('i')
+        if (icon) { icon.className = 'ph ph-play' }
+      } else {
+        playQueue(tracks, 0)
+        const icon = albumBtn.querySelector('i')
+        if (icon) { icon.className = 'ph ph-pause' }
       }
-    } catch {}
+    } catch (err) { console.error('album-play-btn error:', err) }
   }
 })
 
@@ -719,6 +736,11 @@ try {
   }
 } catch {}
 
+// Reset all album-play overlay icons on pause/end
+audio.addEventListener('pause', () => {
+  document.querySelectorAll('.feed-collected-play-overlay i').forEach(i => { i.className = 'ph ph-play' })
+})
+
 // --- Expose API ---
 
 window.playTrack = playTrack
@@ -727,6 +749,7 @@ window.pauseTrack = pauseTrack
 window.isPlaying = isPlaying
 window.playVideo = playVideo
 window.addToQueue = addToQueue
+window._playerCurrentSrc = () => currentSrc
 
 // --- Video time tracking in bottom bar ---
 
@@ -814,7 +837,7 @@ document.addEventListener('click', (e) => {
   inlineVideo.playsInline = true
   inlineVideo.preload = 'none'
   if (poster) inlineVideo.poster = poster
-  inlineVideo.style.cssText = 'width:100%;aspect-ratio:16/9;background:#000;'
+  inlineVideo.style.cssText = 'width:100%;display:block;background:#000;'
   lazy.replaceWith(inlineVideo)
   inlineVideo.play().catch(() => {})
 

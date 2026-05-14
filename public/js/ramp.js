@@ -537,7 +537,7 @@ export async function initZkp2pClient(walletClient) {
     chainId: BASE_CHAIN_ID,
     runtimeEnv: 'production',
     baseApiUrl: 'https://api.zkp2p.xyz',
-    apiKey: window.PRAXIS_ZKP2P_KEY || 'fwRSnzmXz9BPWt6Dm-h1XdhglpoGV3XWwTjFDyswSso',
+    apiKey: window.PRAXIS_ZKP2P_KEY || '',
     escrowAddresses: [ESCROW_V2, '0x2f121cddca6d652f35e8b3e560f9760898888888'],
   }
   dbg('[ramp] initZkp2pClient config:', JSON.stringify({

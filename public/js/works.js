@@ -4,7 +4,7 @@ import { query } from './ponder.js'
 import { ipfsUrl, escapeHtml, formatEthAmount, registerPage, getWalletProvider } from './utils.js'
 import { t } from './i18n.js'
 import { getArtistMedia, purchaseMedia, annotateRelistings } from './media.js'
-import { formatPriceSync, getEthPrices } from './fiat.js'
+import { formatPriceFiatPrimary, getEthPrices } from './fiat.js'
 
 let _worksInited = false
 let _worksLoaded = false
@@ -59,17 +59,14 @@ async function probeContentTypes(listings) {
           item.contentType = ct
           item._type = classifyType(item)
           // Update the DOM for this item
-          const el = document.querySelector(`.works-item[data-media-id="${item.id}"]`)
+          const el = document.querySelector(`.works-card[data-media-id="${item.id}"]`)
           if (el) {
-            const badge = el.querySelector('span[style*="border"]')
-            if (badge) badge.textContent = item._type
             el.dataset.type = item._type
-            // Update thumbnail
-            const thumbContainer = el.querySelector('div[style*="60px"] a')
-            if (thumbContainer && item._type === 'video') {
-              thumbContainer.innerHTML = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" style="width:100%;height:100%;object-fit:cover" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
-            } else if (thumbContainer && item._type === 'image') {
-              thumbContainer.innerHTML = `<img loading="lazy" src="/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + item.ipfsCid)}&w=240" style="width:100%;height:100%;object-fit:cover">`
+            const artContainer = el.querySelector('.works-card-art')
+            if (artContainer && item._type === 'video') {
+              artContainer.innerHTML = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
+            } else if (artContainer && item._type === 'image') {
+              artContainer.innerHTML = `<img loading="lazy" src="/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + item.ipfsCid)}&w=400">`
             }
           }
         }
@@ -246,7 +243,7 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
       html += `</div>`
     }
 
-    html += '<div id="works-grid">'
+    html += '<div id="works-grid" class="works-grid">'
     html += renderListings(listings)
     html += '</div>'
 
@@ -374,7 +371,7 @@ function renderListings(listings) {
   let html = ''
   for (const item of listings) {
     const title = escapeHtml(item.title || `#${item.id}`)
-    const priceDisplay = formatPriceSync(item.price, _prices)
+    const priceDisplay = formatPriceFiatPrimary(item.price, _prices)
     const maxSupply = Number(item.maxSupply || 0)
     const totalMinted = Number(item.totalMinted || 0)
     const soldOut = maxSupply > 0 && totalMinted >= maxSupply
@@ -385,43 +382,39 @@ function renderListings(listings) {
     const type = item._type || classifyType(item)
     const artDetailUrl = `/art?media=${item.id}`
 
-    // thumbnail: use metadataCid for images, video-thumb for video, ipfs for audio cover
-    let thumbHtml = ''
+    // Cover art
+    let coverImgHtml = ''
     const ipfsCidUrl = item.ipfsCid ? ipfsUrl(item.ipfsCid) : ''
     if (type === 'video' && ipfsCidUrl) {
-      thumbHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" style="width:100%;height:100%;object-fit:cover" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
+      coverImgHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
     } else if (type === 'image' && ipfsCidUrl) {
-      thumbHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=240" style="width:100%;height:100%;object-fit:cover">`
+      coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=400">`
     } else if (item.metadataCid) {
-      const coverUrl = ipfsUrl(item.metadataCid)
-      thumbHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=240" style="width:100%;height:100%;object-fit:cover">`
+      coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsUrl(item.metadataCid))}&w=400">`
+    } else if (item.ipfsCid) {
+      // Unknown type: try video-thumb, fall back to image proxy
+      coverImgHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.src='/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=400';this.onerror=function(){this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'}">`
     } else {
-      thumbHtml = `<span style="color:var(--dim);font-size:0.7em">${type}</span>`
+      coverImgHtml = `<span style="color:var(--dim);font-size:0.8em">${type}</span>`
     }
 
-    html += `<div class="works-item" data-media-id="${item.id}" data-price="${item.price}" data-type="${type}" style="display:flex;gap:1.5ch;padding:1em;border:1px solid var(--border);margin-bottom:0.75em;align-items:center">`
+    // Play button for audio
+    const playBtn = (type === 'audio' && ipfsCidUrl) ? `<button class="track-play-btn feed-card-btn" data-track-src="${ipfsCidUrl}" data-track-title="${title}" data-track-artist=""><i class="ph ph-play"></i> play</button>` : ''
 
-    // thumbnail
-    html += `<div style="width:60px;height:60px;background:var(--surface);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden">
-      <a href="${artDetailUrl}">${thumbHtml}</a>
-    </div>`
-
-    // info
-    html += `<div style="flex:1;min-width:0">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5ch">
-        <span><a href="${artDetailUrl}" style="color:var(--accent);font-size:1em;text-decoration:none">${title}</a>${item._featuredOn ? '<span style="color:var(--muted);font-size:0.7em;border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:2px;margin-left:0.5ch">featured on</span>' : ''}${typeBadge(type)}</span>
-        <span style="color:var(--fg);font-size:0.85em">${priceDisplay}</span>
+    html += `<div class="works-card" data-media-id="${item.id}" data-price="${item.price}" data-type="${type}">
+      <a href="${artDetailUrl}" class="works-card-art">${coverImgHtml}</a>
+      <div class="works-card-info">
+        <a href="${artDetailUrl}" class="works-card-title">${title}</a>
+        <div class="works-card-meta">${priceDisplay}${supplyText !== t('works.unlimited') ? ` · ${supplyText}` : ''}</div>
+        <div class="works-card-actions" style="display:flex;gap:0.4em;align-items:center">
+          ${playBtn}
+          ${soldOut
+            ? `<span style="color:var(--muted);font-size:0.85em">${t('works.soldOut')}</span>`
+            : `<button class="works-buy-btn feed-card-btn green" data-media-id="${item.id}" data-price="${item.price}">${t('works.buy')}</button>`
+          }
+        </div>
       </div>
-      <div style="color:var(--muted);font-size:0.8em;margin-top:0.25em">${supplyText}</div>
-      <div style="margin-top:0.5em">`
-
-    if (soldOut) {
-      html += `<span style="color:var(--muted);font-size:0.85em">${t('works.soldOut')}</span>`
-    } else {
-      html += `<button class="buy-btn works-buy-btn" data-media-id="${item.id}" data-price="${item.price}" style="font-size:0.85em;padding:0.3em 1.5ch">${t('works.buy')}</button>`
-    }
-
-    html += `</div></div></div>`
+    </div>`
   }
   return html
 }
@@ -452,36 +445,15 @@ function attachFilterHandlers(container) {
 
 function attachBuyHandlers(container) {
   container.querySelectorAll('.works-buy-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
       const mediaId = btn.dataset.mediaId
       const price = btn.dataset.price
-      const origText = btn.textContent
-      btn.textContent = t('status.confirming')
-      btn.disabled = true
-
-      try {
-        await purchaseMedia(mediaId, price)
-        btn.textContent = t('works.purchased')
-        const item = btn.closest('.works-item')
-        if (item) {
-          setTimeout(() => {
-            const ownerAddr = document.body.dataset.owner
-            if (ownerAddr) {
-              const statusEl = document.getElementById('works-status')
-              const contentEl = document.getElementById('works-content')
-              if (statusEl && contentEl) loadWorks(ownerAddr, statusEl, contentEl)
-            }
-          }, 2000)
-        }
-      } catch (e) {
-        console.warn('purchase error:', e)
-        if (e.message?.includes('cancelled') || e.message?.includes('rejected') || e.message?.includes('denied')) {
-          btn.textContent = t('status.cancelled')
-        } else {
-          btn.textContent = origText
-        }
-        btn.disabled = false
-      }
+      const title = btn.closest('.works-card')?.querySelector('.works-card-title')?.textContent || 'untitled'
+      if (!mediaId || !price) return
+      const { showPurchaseConfirmation } = await import('./pay.js')
+      showPurchaseConfirmation(mediaId, price, title)
     })
   })
 }

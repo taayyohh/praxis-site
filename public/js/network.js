@@ -178,7 +178,15 @@ async function init() {
         followState[targetAddr.toLowerCase()] = isFollowing
         if (btn) { btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow'); btn.classList.toggle('nc-btn-filled', isFollowing) }
       }
-      if (e.code !== 4001 && !msg.includes('already following') && !msg.includes('not following')) console.error('follow error:', e)
+      if (e.code !== 4001 && !msg.includes('already following') && !msg.includes('not following')) {
+        console.error('follow error:', e)
+        // Show error toast — especially for stuck nonce / underpriced issues
+        const errDisplay = msg.includes('underpriced') ? 'transaction stuck — try again in a moment'
+          : msg.includes('rejected') || msg.includes('denied') ? 'cancelled'
+          : msg.includes('insufficient') ? 'insufficient funds for gas'
+          : 'follow failed — try again'
+        import('./toast.js').then(({ toast }) => toast.error(errDisplay)).catch(() => {})
+      }
     } finally {
       if (btn) btn.disabled = false
     }
@@ -386,7 +394,8 @@ async function init() {
           const dmBtn = !isMe && iFollowThem && theyFollowMe
             ? `<button class="buy-btn dm-btn nc-btn" data-dm-addr="${addr.toLowerCase()}" data-dm-domain="${escapeHtml(s.handle)}"><i class="ph ph-chat-circle"></i></button>`
             : ''
-          return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}</div></div></a></li>`
+          const ogUrl = `https://${escapeHtml(s.handle)}.ourpraxis.network/og/index.png`
+          return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><img src="${ogUrl}" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt=""><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}</div></div></a></li>`
         }).join('')
 
         // add sentinel for infinite scroll
@@ -992,6 +1001,206 @@ function appendSponsoredRow(container, code, redeemed = false, publicClient, myA
   container.appendChild(row)
 }
 
+// Invite card color palette (matches landing page swatches)
+const INVITE_CARD_COLORS = [
+  { bg: '#0a0a0a', fg: '#c0c0c0', label: 'black' },
+  { bg: '#ffffff', fg: '#1a1a1a', label: 'white' },
+  { bg: '#e63946', fg: '#1a1a1a', label: 'red' },
+  { bg: '#2563eb', fg: '#1a1a1a', label: 'blue' },
+  { bg: '#facc15', fg: '#1a1a1a', label: 'yellow' },
+  { bg: '#ec4899', fg: '#1a1a1a', label: 'pink' },
+]
+
+function generateInviteCard(bgColor, fgColor, domain, message) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 600
+  canvas.height = 400
+  const ctx = canvas.getContext('2d')
+
+  // Background
+  ctx.fillStyle = bgColor
+  ctx.fillRect(0, 0, 600, 400)
+
+  // Border
+  ctx.strokeStyle = fgColor
+  ctx.globalAlpha = 0.15
+  ctx.lineWidth = 2
+  ctx.strokeRect(16, 16, 568, 368)
+  ctx.globalAlpha = 1
+
+  // Domain name (large)
+  ctx.fillStyle = fgColor
+  ctx.font = 'bold 32px "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText(domain, 300, 140)
+
+  // "invites you to" line
+  ctx.globalAlpha = 0.6
+  ctx.font = '16px "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace'
+  ctx.fillText('invites you to', 300, 180)
+  ctx.globalAlpha = 1
+
+  // Personal message
+  if (message) {
+    ctx.font = 'italic 18px "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace'
+    ctx.globalAlpha = 0.8
+    // Wrap long messages
+    const words = message.split(' ')
+    let line = ''
+    let y = 230
+    for (const word of words) {
+      const test = line + (line ? ' ' : '') + word
+      if (ctx.measureText(test).width > 480 && line) {
+        ctx.fillText(line, 300, y)
+        line = word
+        y += 28
+        if (y > 290) break
+      } else {
+        line = test
+      }
+    }
+    if (line) ctx.fillText(line, 300, y)
+    ctx.globalAlpha = 1
+  }
+
+  // Bottom: "praxis" branding
+  ctx.font = 'bold 20px "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace'
+  ctx.fillText('praxis', 300, 340)
+
+  // Bottom: URL
+  ctx.globalAlpha = 0.4
+  ctx.font = '12px "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace'
+  ctx.fillText('ourpraxis.network', 300, 370)
+  ctx.globalAlpha = 1
+
+  return canvas
+}
+
+function openInviteCardModal(code) {
+  // Remove any existing card modal
+  document.getElementById('invite-card-modal')?.remove()
+
+  const siteDomain = document.body.dataset.domain || window.location.hostname
+
+  const overlay = document.createElement('div')
+  overlay.id = 'invite-card-modal'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center'
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+
+  const modal = document.createElement('div')
+  modal.style.cssText = 'background:var(--surface,#111);border:1px solid var(--border,#1a1a1a);border-radius:12px;padding:1.5em;max-width:420px;width:90%;max-height:90vh;overflow-y:auto'
+
+  // Title
+  const title = document.createElement('h3')
+  title.style.cssText = 'margin:0 0 1em;font-size:1.1em;color:var(--fg)'
+  title.textContent = 'create invite card'
+  modal.appendChild(title)
+
+  // Color picker
+  const colorLabel = document.createElement('p')
+  colorLabel.style.cssText = 'color:var(--dim);font-size:0.85em;margin:0 0 0.5em'
+  colorLabel.textContent = 'choose a color'
+  modal.appendChild(colorLabel)
+
+  const colorRow = document.createElement('div')
+  colorRow.style.cssText = 'display:flex;gap:10px;margin-bottom:1em;flex-wrap:wrap'
+  let selectedColor = INVITE_CARD_COLORS[5] // default pink
+  INVITE_CARD_COLORS.forEach((c, i) => {
+    const dot = document.createElement('button')
+    dot.style.cssText = `width:32px;height:32px;border-radius:50%;border:2px solid ${i === 5 ? 'var(--fg)' : 'transparent'};cursor:pointer;background:${c.bg};transition:border-color 0.2s`
+    dot.title = c.label
+    dot.addEventListener('click', () => {
+      selectedColor = c
+      colorRow.querySelectorAll('button').forEach(b => b.style.borderColor = 'transparent')
+      dot.style.borderColor = 'var(--fg)'
+    })
+    colorRow.appendChild(dot)
+  })
+  modal.appendChild(colorRow)
+
+  // Message input
+  const msgLabel = document.createElement('p')
+  msgLabel.style.cssText = 'color:var(--dim);font-size:0.85em;margin:0 0 0.5em'
+  msgLabel.textContent = 'personal message (optional)'
+  modal.appendChild(msgLabel)
+
+  const msgInput = document.createElement('input')
+  msgInput.type = 'text'
+  msgInput.placeholder = 'join the network!'
+  msgInput.maxLength = 100
+  msgInput.style.cssText = 'width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);color:var(--fg);border:1px solid var(--border,#1a1a1a);border-radius:6px;padding:0.6em 0.8em;font-family:inherit;font-size:0.9em;margin-bottom:1em'
+  modal.appendChild(msgInput)
+
+  // Create card button
+  const createBtn = document.createElement('button')
+  createBtn.className = 'buy-btn'
+  createBtn.textContent = 'create card'
+  createBtn.style.cssText = 'margin-bottom:1em;width:100%'
+  modal.appendChild(createBtn)
+
+  // Preview container (hidden until created)
+  const previewContainer = document.createElement('div')
+  previewContainer.style.cssText = 'display:none'
+  modal.appendChild(previewContainer)
+
+  createBtn.addEventListener('click', () => {
+    const canvas = generateInviteCard(selectedColor.bg, selectedColor.fg, siteDomain, msgInput.value.trim())
+    const dataUrl = canvas.toDataURL('image/png')
+
+    // Build the themed invite link
+    const themeHex = selectedColor.bg.replace('#', '')
+    const link = `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}&theme=${themeHex}`
+
+    previewContainer.innerHTML = ''
+    previewContainer.style.display = ''
+
+    // Card image
+    const img = document.createElement('img')
+    img.src = dataUrl
+    img.style.cssText = 'width:100%;border-radius:8px;margin-bottom:1em;display:block'
+    img.alt = 'invite card'
+    previewContainer.appendChild(img)
+
+    // Action buttons row
+    const actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;gap:0.5em'
+
+    const dlBtn = document.createElement('button')
+    dlBtn.className = 'buy-btn'
+    dlBtn.style.cssText = 'flex:1'
+    dlBtn.textContent = 'download'
+    dlBtn.addEventListener('click', () => {
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `praxis-invite-${code.slice(0, 8)}.png`
+      a.click()
+    })
+    actions.appendChild(dlBtn)
+
+    const copyBtn = document.createElement('button')
+    copyBtn.className = 'buy-btn'
+    copyBtn.style.cssText = 'flex:1'
+    copyBtn.textContent = 'copy link'
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(link)
+      copyBtn.textContent = 'copied!'
+      setTimeout(() => { copyBtn.textContent = 'copy link' }, 2000)
+    })
+    actions.appendChild(copyBtn)
+
+    previewContainer.appendChild(actions)
+
+    // Show the link below
+    const linkEl = document.createElement('p')
+    linkEl.style.cssText = 'color:var(--dim);font-size:0.75em;margin-top:0.75em;word-break:break-all;text-align:center'
+    linkEl.textContent = link
+    previewContainer.appendChild(linkEl)
+  })
+
+  overlay.appendChild(modal)
+  document.body.appendChild(overlay)
+}
+
 function appendInviteLinkRow(container, code, claimed = false) {
   const siteDomain = document.body.dataset.domain || window.location.hostname
   const link = `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}`
@@ -1007,11 +1216,15 @@ function appendInviteLinkRow(container, code, claimed = false) {
     row.innerHTML = `
       <span class="invite-code">${code.slice(0, 8)}...</span>
       <button class="invite-action copy-invite-btn">${t('invites.copyLink')}</button>
+      <button class="invite-action card-invite-btn" title="create invite card" style="margin-left:0.25em">card</button>
     `
     row.querySelector('.copy-invite-btn').addEventListener('click', (e) => {
       navigator.clipboard.writeText(link)
       e.target.textContent = t('invites.copied')
       setTimeout(() => { e.target.textContent = t('invites.copyLink') }, 2000)
+    })
+    row.querySelector('.card-invite-btn').addEventListener('click', () => {
+      openInviteCardModal(code)
     })
   }
   container.appendChild(row)
@@ -1170,6 +1383,50 @@ async function openInvitesModal(myAddr, publicClient) {
           countEl.textContent = t('invites.remaining', { count })
           initBtn.remove()
           initStatus.textContent = 'claimed 10 ✓'
+          // Dynamically add the generate invite section without reopening
+          if (!document.getElementById('invite-gen-section')) {
+            const genSection = document.createElement('div')
+            genSection.id = 'invite-gen-section'
+            genSection.style.cssText = 'margin-top:1em'
+            const hint = document.createElement('p')
+            hint.style.cssText = 'color:var(--dim);font-size:0.85em;margin-bottom:0.75em'
+            hint.textContent = t('invites.shareLink')
+            genSection.appendChild(hint)
+            const genBtn = document.createElement('button')
+            genBtn.className = 'buy-btn'
+            genBtn.textContent = t('invites.generate')
+            genBtn.addEventListener('click', async () => {
+              genBtn.disabled = true
+              genBtn.textContent = 'generating...'
+              try {
+                const code = crypto.randomUUID?.() || Math.random().toString(36).slice(2)
+                const { keccak256, toBytes } = await import('./vendor.js')
+                const codeHash = keccak256(toBytes(code))
+                const acct = await window.ensureAuthorized?.() || window.getWalletAddress()
+                const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+                const hash = await wc.writeContract({
+                  address: INVITES_ADDRESS,
+                  abi: [{ name: 'createInvite', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [], stateMutability: 'nonpayable' }],
+                  functionName: 'createInvite', args: [codeHash], account: acct,
+                })
+                await publicClient.waitForTransactionReceipt({ hash })
+                const siteDomain = document.body.dataset.domain || window.location.hostname
+                const link = `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}`
+                genBtn.textContent = t('invites.generate')
+                genBtn.disabled = false
+                // Show the link using shared row builder
+                appendInviteLinkRow(genSection, code)
+                count--
+                countEl.textContent = t('invites.remaining', { count })
+              } catch (e) {
+                genBtn.textContent = e.code === 4001 ? 'cancelled' : 'error'
+                genBtn.disabled = false
+                setTimeout(() => { genBtn.textContent = t('invites.generate') }, 2000)
+              }
+            })
+            genSection.appendChild(genBtn)
+            claimContainer.after(genSection)
+          }
         } catch (e) {
           initStatus.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || '').slice(0, 80)
           initBtn.disabled = false
@@ -1418,7 +1675,7 @@ async function openInvitesModal(myAddr, publicClient) {
     const budgetEnabled = maxDomainBudgetWei > 0n
     budgetRow.innerHTML = `
       <label style="display:flex;align-items:center;gap:0.5ch;cursor:${budgetEnabled ? 'pointer' : 'default'};color:${budgetEnabled ? 'var(--fg)' : 'var(--dim)'};font-size:0.9em">
-        <input type="checkbox" id="sponsor-include-domain" ${budgetEnabled ? 'checked' : ''} ${budgetEnabled ? '' : 'disabled'}>
+        <input type="checkbox" id="sponsor-include-domain" ${budgetEnabled ? '' : 'disabled'}>
         <span>also cover a domain</span>
       </label>
       <span id="sponsor-budget-hint" style="color:var(--muted);font-size:0.8em">

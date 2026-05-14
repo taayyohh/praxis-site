@@ -51,18 +51,23 @@ async function reauthJournal() {
 }
 
 function scriptPrintHtml(title, body, format) {
+  // Industry-standard screenplay margins (8.5"x11", 1.5" left page margin)
+  // Character: 3.7" from page left = 2.2" into 6" text area
+  // Dialogue:  2.5" from page left = 1.0" into text, right edge at 6.0"
+  // Paren:     3.1" from page left = 1.6" into text, right at 5.6"
   const screenplayCSS = `
 .fountain-blank { height: 12pt; }
 .fountain-scene { text-transform: uppercase; font-weight: bold; margin-top: 1em; text-align: left; }
 .fountain-action { margin-top: 0.5em; text-align: left; }
-.fountain-character { text-transform: uppercase; margin-left: 2.5in; margin-top: 1em; }
-.fountain-dialogue { margin-left: 1.5in; margin-right: 1.5in; }
-.fountain-paren { margin-left: 2in; margin-right: 2in; font-style: italic; }
+.fountain-character { text-transform: uppercase; margin-left: 2.2in; margin-top: 1em; }
+.fountain-dialogue { margin-left: 1.0in; margin-right: 1.5in; }
+.fountain-paren { margin-left: 1.6in; margin-right: 1.9in; font-style: italic; }
 .fountain-transition { text-align: right; text-transform: uppercase; margin-top: 1em; }`
 
+  // Stage play formatting (Samuel French style)
   const stageplayCSS = `
 .stageplay-blank { height: 12pt; }
-.stageplay-act { text-transform: uppercase; font-weight: bold; text-align: center; font-size: 14pt; margin-top: 2em; margin-bottom: 0.5em; }
+.stageplay-act { text-transform: uppercase; font-weight: bold; text-decoration: underline; text-align: center; font-size: 14pt; margin-top: 2em; margin-bottom: 0.5em; }
 .stageplay-scene { text-transform: uppercase; font-weight: bold; text-align: center; margin-top: 1.5em; margin-bottom: 0.5em; }
 .stageplay-direction { font-style: italic; margin-top: 0.5em; margin-left: 0.5in; margin-right: 0.5in; }
 .stageplay-character { text-transform: uppercase; font-weight: bold; margin-top: 1em; text-align: left; }
@@ -138,11 +143,17 @@ async function initJournal() {
   async function unlock() {
     const unlockStatus = document.getElementById('journal-unlock-status')
     const unlockBtn = document.getElementById('journal-unlock')
-    // Ensure embedded wallet is loaded before checking (lazy-loaded via SPA)
+    // Ensure embedded wallet is loaded and unlocked
     if (!getWalletProvider()) {
       try {
         await import('./embedded-wallet.js')
         await window._walletReady
+      } catch {}
+    }
+    if (!getWalletProvider()) {
+      // Try to trigger unlock prompt
+      try {
+        await window.ensureAuthorized?.()
       } catch {}
     }
     if (!getWalletProvider()) { if (unlockStatus) unlockStatus.textContent = t('journal.noWallet'); return }
@@ -418,9 +429,10 @@ async function initJournal() {
       if (!confirmed) return
 
       const title = document.getElementById('journal-filename')?.value.trim().replace(/[^a-z0-9-]/g, '') || ''
-      window.dispatchEvent(new CustomEvent('open-compose', {
-        detail: { title, content }
-      }))
+      const params = new URLSearchParams()
+      if (title) params.set('prefillTitle', title)
+      if (content) params.set('prefillContent', content)
+      window.location.href = '/write?' + params.toString()
     })
 
     const textarea = document.getElementById('journal-editor')
@@ -581,9 +593,10 @@ async function initJournal() {
       const htmlBody = fmt.toHtml(plainText)
       const marker = format === 'stageplay' ? '<!-- stageplay -->' : '<!-- screenplay -->'
       const content = `${marker}\n${htmlBody}`
-      window.dispatchEvent(new CustomEvent('open-compose', {
-        detail: { title, content }
-      }))
+      const params = new URLSearchParams()
+      if (title) params.set('prefillTitle', title)
+      if (content) params.set('prefillContent', content)
+      window.location.href = '/write?' + params.toString()
     })
 
     // export PDF via print

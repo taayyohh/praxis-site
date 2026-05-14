@@ -4,9 +4,14 @@
 import { t } from './i18n.js'
 import { contrastRatio, deriveFullPalette, hexToHsl } from './contrast.js'
 import { getWalletProvider, escapeHtml } from './utils.js'
+import { parseEther } from './vendor.js'
 
 let settingsToken = ''
 let siteData = null
+
+
+// --- Sub-page navigation state ---
+let _activeSubpage = null // { type: 'music', mod: <module obj> } or null
 
 // --- Collapsible editor state ---
 const _editorExpandedItems = new Set()
@@ -622,12 +627,24 @@ function renderIdentityTab(el) {
       </div>
       <div class="settings-field">
         <label class="settings-label">${t('settings.identity.template')}</label>
-        <select id="s-template" class="project-input">
-          ${['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker'].map(tp =>
-            `<option value="${tp}" ${siteData.template === tp ? 'selected' : ''}>${t('settings.template.' + tp)}</option>`
-          ).join('')}
-        </select>
-        <div id="s-template-preview" style="margin-top:0.75em;border:1px solid var(--border);overflow:hidden;height:200px;position:relative;background:#0a0a0a"></div>
+        <input type="hidden" id="s-template" value="${siteData.template || 'default'}">
+        <div id="s-template-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75em;margin-top:0.5em">
+          ${['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker'].map(tp => {
+            const info = {
+              default: { desc: 'minimal text-only layout', style: 'clean lines, text-forward' },
+              musician: { desc: 'album art, discography', style: 'cover art, track listings' },
+              visual: { desc: 'image grid, portfolio', style: 'masonry gallery, exhibitions' },
+              writer: { desc: 'large type, long-form', style: 'serif headings, reading-optimized' },
+              performer: { desc: 'stage + event-oriented', style: 'credits, headshot, resume' },
+              filmmaker: { desc: 'video-forward, cinematic', style: 'video hero, film credits' },
+            }[tp]
+            return `<div class="template-card ${siteData.template === tp ? 'active' : ''}" data-template="${tp}">
+              <span class="template-card-name">${t('settings.template.' + tp)}</span>
+              <span class="template-card-desc">${info.desc}</span>
+              <span class="template-card-style">${info.style}</span>
+            </div>`
+          }).join('')}
+        </div>
       </div>
       <div class="settings-field">
         <label class="settings-label">${t('settings.identity.domain')}</label>
@@ -863,7 +880,6 @@ function renderIdentityTab(el) {
       // function-style helper (N3) when available, with a legacy fallback.
       try {
         if (typeof window.suppressNextSignPrompt === 'function') window.suppressNextSignPrompt()
-        else window._suppressNextSignPrompt = true
       } catch {}
       const signature = await wc.signMessage({ account: currentAccount, message })
 
@@ -911,12 +927,17 @@ function renderIdentityTab(el) {
     }
   }
 
-  // template preview
-  const tplSelect = document.getElementById('s-template')
-  if (tplSelect) {
-    renderTemplatePreview(tplSelect.value)
-    tplSelect.addEventListener('change', () => renderTemplatePreview(tplSelect.value))
-  }
+  // template card selection
+  const tplInput = document.getElementById('s-template')
+  el.querySelectorAll('.template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      el.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'))
+      card.classList.add('active')
+      if (tplInput) tplInput.value = card.dataset.template
+      // Trigger autosave
+      tplInput?.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+  })
 
   // short bio character counter
   const shortBioEl = document.getElementById('s-short-bio')
@@ -1316,7 +1337,6 @@ function renderModulesTab(el) {
             placeholder="${escapeHtml(placeholderLabel)}"
             value="${escapeHtml(mod.customLabel || '')}">
         </div>
-        <div class="module-editor" id="editor-${safeType}" style="display:none"></div>
       </div>
     `
   }
@@ -1392,12 +1412,8 @@ function renderModulesTab(el) {
   // edit handlers
   el.querySelectorAll('.module-edit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const editorEl = document.getElementById(`editor-${btn.dataset.type}`)
-      if (!editorEl) return
-      if (editorEl.style.display !== 'none') { editorEl.style.display = 'none'; return }
       const mod = siteData.modules.find(m => m.type === btn.dataset.type)
-      if (mod) renderModuleEditor(editorEl, mod)
-      editorEl.style.display = 'block'
+      if (mod) _openModuleSubpage(mod)
     })
   })
 
@@ -1485,31 +1501,125 @@ function renderSellWidget(item, id) {
     </div>`
   }
 
-  return `<div class="sell-widget" id="${id}" style="margin-top:0.5em;padding:0.5em;border:1px solid var(--border);font-size:0.8em">
-    <label style="display:flex;align-items:center;gap:0.5ch;cursor:pointer;color:var(--muted)">
-      <input type="checkbox" class="sell-toggle" data-id="${id}" ${item._forSale ? 'checked' : ''}>
-      ${t('media.listForSale')}
+  return `<div class="sell-widget" id="${id}" style="margin-top:0.75em;padding:0.75em 1em;border:1px solid var(--border);border-radius:8px;font-size:0.85em">
+    <label style="display:flex;align-items:center;gap:0.6ch;cursor:pointer;color:var(--fg);font-weight:500">
+      <input type="checkbox" class="sell-toggle" data-id="${id}" ${item._forSale ? 'checked' : ''} style="accent-color:var(--accent)">
+      sell this work
     </label>
-    <div class="sell-options" style="display:${item._forSale ? 'block' : 'none'};margin-top:0.5em">
-      <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
-        <input type="text" class="project-input sell-price" data-id="${id}" value="${item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : ''}" placeholder="0.01" style="width:8ch;font-size:0.85em">
-        <span style="color:var(--dim)">ETH</span>
-        <span class="sell-price-fiat" data-id="${id}" style="color:var(--dim)"></span>
-        <input type="number" class="project-input sell-supply" data-id="${id}" value="${item.mediaMaxSupply || ''}" placeholder="unlimited" style="width:10ch;font-size:0.85em">
-        <span style="color:var(--dim)">supply</span>
+    <div class="sell-options" style="display:${item._forSale ? 'block' : 'none'};margin-top:0.75em;padding-top:0.75em;border-top:1px solid var(--border)">
+      <div style="display:flex;gap:0.75em;align-items:center;flex-wrap:wrap;margin-bottom:0.75em">
+        <div style="display:flex;align-items:center;gap:0.4ch">
+          <input type="text" class="project-input sell-price" data-id="${id}" value="${item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : ''}" placeholder="0.01" style="width:8ch;font-size:0.9em;padding:0.35em 0.5ch;border-radius:4px">
+          <span style="color:var(--dim)">ETH</span>
+          <span class="sell-price-fiat" data-id="${id}" style="color:var(--dim)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4ch">
+          <input type="number" class="project-input sell-supply" data-id="${id}" value="${item.mediaMaxSupply || ''}" placeholder="unlimited" style="width:10ch;font-size:0.9em;padding:0.35em 0.5ch;border-radius:4px">
+          <span style="color:var(--dim)">supply</span>
+        </div>
       </div>
-      <div class="sell-splits" data-id="${id}" style="margin-top:0.5em">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="color:var(--dim)">splits</span>
-          <button class="sell-add-split" data-id="${id}" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.1em 0.5ch;cursor:pointer">+ collaborator</button>
+      <div class="sell-splits" data-id="${id}" style="margin-bottom:0.75em">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
+          <span style="color:var(--dim);font-size:0.85em">revenue splits</span>
+          <button class="sell-add-split" data-id="${id}" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.2em 0.7ch;cursor:pointer;border-radius:4px">+ collaborator</button>
         </div>
         <div class="sell-split-list" data-id="${id}"></div>
-        <div style="color:var(--dim);font-size:0.8em;margin-top:0.25em">leave empty for 100% to you</div>
+        <div style="color:var(--dim);font-size:0.75em;margin-top:0.3em">leave empty for 100% to you</div>
       </div>
-      <button class="buy-btn sell-list-btn" data-id="${id}" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list on-chain</button>
+      <button class="buy-btn sell-list-btn" data-id="${id}" style="font-size:0.85em;padding:0.4em 1.5ch;border-radius:4px">publish listing</button>
       <span class="sell-status" data-id="${id}" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
     </div>
   </div>`
+}
+
+// Add a collaborator split row to a batch split list container
+function _addBatchSplitRow(list) {
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;gap:0.5em;align-items:center;margin-top:0.25em;position:relative'
+  row.innerHTML = `
+    <div style="flex:1;position:relative">
+      <input type="text" class="project-input batch-split-addr" placeholder="search artist..." autocomplete="off" style="width:100%;font-size:0.8em">
+      <div class="batch-split-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg,#111);border:1px solid var(--border);z-index:10;max-height:150px;overflow-y:auto"></div>
+    </div>
+    <input type="number" class="project-input batch-split-pct" placeholder="%" style="width:6ch;font-size:0.8em">
+    <span style="color:var(--dim);font-size:0.8em">%</span>
+    <button style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.8em" onclick="this.parentElement.remove()">x</button>
+  `
+  // Autocomplete from /api/network/search
+  const input = row.querySelector('.batch-split-addr')
+  const suggest = row.querySelector('.batch-split-suggest')
+  let debounce = null
+  input.addEventListener('input', () => {
+    clearTimeout(debounce)
+    const q = input.value.trim()
+    if (q.length < 2) { suggest.style.display = 'none'; return }
+    debounce = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/network/search?q=${encodeURIComponent(q)}&limit=5`)
+        const data = await resp.json()
+        const items = data.results || data.items || data.artists || []
+        if (items.length === 0) { suggest.style.display = 'none'; return }
+        suggest.innerHTML = items.map(a => `<div class="batch-suggest-item" data-domain="${escapeHtml(a.name || a.domain || '')}" style="padding:0.4em 0.6em;cursor:pointer;font-size:0.85em;border-bottom:1px solid var(--border)">${escapeHtml(a.name || a.domain || a.id || '')}</div>`).join('')
+        suggest.style.display = 'block'
+        suggest.querySelectorAll('.batch-suggest-item').forEach(item => {
+          item.addEventListener('click', () => {
+            input.value = item.dataset.domain
+            suggest.style.display = 'none'
+          })
+        })
+      } catch { suggest.style.display = 'none' }
+    }, 200)
+  })
+  input.addEventListener('blur', () => { setTimeout(() => { suggest.style.display = 'none' }, 200) })
+  list.appendChild(row)
+}
+
+// Collect collaborators and splits from a batch split list container
+// Returns { collaborators, splits } or { error } string
+async function _collectBatchSplits(splitList) {
+  // Only select direct child rows that have a batch-split-addr input
+  const rows = splitList?.querySelectorAll(':scope > div') || []
+  let collaborators = []
+  let splits = []
+  const myAddr = window.getWalletAddress()
+  const myDomain = window.location.hostname
+
+  for (const row of rows) {
+    const addrInput = row.querySelector('.batch-split-addr')
+    if (!addrInput) continue
+    const addr = addrInput.value.trim()
+    const pct = parseInt(row.querySelector('.batch-split-pct')?.value) || 0
+    if (!addr || !pct) continue
+
+    // Skip self-row (readonly) — we'll calculate our share as the remainder
+    if (addrInput.readOnly || addr === myDomain) {
+      continue
+    }
+
+    let resolved = addr
+    if (!addr.startsWith('0x')) {
+      try {
+        const resp = await fetch(`/api/network/search?q=${encodeURIComponent(addr)}&limit=1`)
+        const data = await resp.json()
+        const match = (data.results || []).find(r => r.name === addr || r.domain === addr)
+        if (!match?.id) return { error: `can't resolve ${addr}` }
+        resolved = match.id
+      } catch { return { error: `can't resolve ${addr}` } }
+    }
+    collaborators.push(resolved)
+    splits.push(pct * 100)
+  }
+
+  if (collaborators.length > 0) {
+    // Calculate artist's share as remainder
+    const collabTotal = splits.reduce((a, b) => a + b, 0)
+    const myShare = 10000 - collabTotal
+    if (myShare < 0) return { error: 'splits exceed 100%' }
+    collaborators.unshift(myAddr)
+    splits.unshift(myShare)
+  }
+
+  return { collaborators, splits }
 }
 
 // wire sell widget events after editor renders
@@ -1627,13 +1737,39 @@ function wireSellWidgets(el, getItemByWidgetId) {
       const list = el.querySelector(`.sell-split-list[data-id="${btn.dataset.id}"]`)
       if (!list) return
       const row = document.createElement('div')
-      row.style.cssText = 'display:flex;gap:0.5em;align-items:center;margin-top:0.25em'
+      row.style.cssText = 'display:flex;gap:0.5em;align-items:center;margin-top:0.25em;position:relative'
       row.innerHTML = `
-        <input type="text" class="project-input split-addr" placeholder="0x... or artist.bio" style="flex:1;font-size:0.8em">
+        <div style="flex:1;position:relative">
+          <input type="text" class="project-input split-addr" placeholder="search artist..." autocomplete="off" style="width:100%;font-size:0.8em">
+          <div class="split-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg,#111);border:1px solid var(--border);z-index:10;max-height:150px;overflow-y:auto"></div>
+        </div>
         <input type="number" class="project-input split-pct" placeholder="%" style="width:6ch;font-size:0.8em">
         <span style="color:var(--dim);font-size:0.8em">%</span>
         <button style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.8em" onclick="this.parentElement.remove()">x</button>
       `
+      // Autocomplete
+      const input = row.querySelector('.split-addr')
+      const suggest = row.querySelector('.split-suggest')
+      let debounce = null
+      input.addEventListener('input', () => {
+        clearTimeout(debounce)
+        const q = input.value.trim()
+        if (q.length < 2) { suggest.style.display = 'none'; return }
+        debounce = setTimeout(async () => {
+          try {
+            const resp = await fetch(`/api/network/search?q=${encodeURIComponent(q)}&limit=5`)
+            const data = await resp.json()
+            const items = data.results || data.items || data.artists || []
+            if (items.length === 0) { suggest.style.display = 'none'; return }
+            suggest.innerHTML = items.map(a => `<div class="suggest-item" data-domain="${escapeHtml(a.name || a.domain || '')}" style="padding:0.4em 0.6em;cursor:pointer;font-size:0.85em;border-bottom:1px solid var(--border)">${escapeHtml(a.name || a.domain || a.id || '')}</div>`).join('')
+            suggest.style.display = 'block'
+            suggest.querySelectorAll('.suggest-item').forEach(item => {
+              item.addEventListener('click', () => { input.value = item.dataset.domain; suggest.style.display = 'none' })
+            })
+          } catch { suggest.style.display = 'none' }
+        }, 200)
+      })
+      input.addEventListener('blur', () => setTimeout(() => { suggest.style.display = 'none' }, 200))
       list.appendChild(row)
     })
   })
@@ -1677,8 +1813,11 @@ function wireSellWidgets(el, getItemByWidgetId) {
           let resolved = addr
           if (!addr.startsWith('0x')) {
             try {
-              const { resolveDomain } = await import('./utils.js')
-              resolved = await resolveDomain(addr)
+              const resp = await fetch(`/api/network/search?q=${encodeURIComponent(addr)}&limit=1`)
+              const data = await resp.json()
+              const match = (data.results || []).find(r => r.name === addr || r.domain === addr)
+              if (!match?.id) { statusEl.textContent = `can't resolve ${addr}`; return }
+              resolved = match.id
             } catch { statusEl.textContent = `can't resolve ${addr}`; return }
           }
           collaborators.push(resolved)
@@ -1707,7 +1846,7 @@ function wireSellWidgets(el, getItemByWidgetId) {
           const existingId = existing?.mediaListings?.items?.[0]?.id
           if (existingId !== undefined) {
             item.mediaId = existingId.toString()
-            item.mediaPrice = (priceEth * 1e18).toString()
+            item.mediaPrice = parseEther(String(priceEth)).toString()
             statusEl.textContent = `already listed (id: ${existingId}) — linking...`
             btn.style.display = 'none'
             // Auto-save to persist the linked mediaId
@@ -1726,7 +1865,7 @@ function wireSellWidgets(el, getItemByWidgetId) {
         const metadataCid = artCidMatch ? artCidMatch[1] : ''
         const mediaId = await listMedia(title, cid, metadataCid, priceEth, maxSupply, collaborators, splits)
         item.mediaId = mediaId.toString()
-        item.mediaPrice = (priceEth * 1e18).toString()
+        item.mediaPrice = parseEther(String(priceEth)).toString()
         item.mediaMaxSupply = maxSupply
         statusEl.textContent = `listed (id: ${mediaId}) — saving...`
         btn.style.display = 'none'
@@ -1922,6 +2061,44 @@ async function _handleRemoveCollabTag(btn, collabItems, el, mod) {
   } catch { btn.textContent = 'error' }
 }
 
+function _openModuleSubpage(mod) {
+  const contentEl = document.getElementById('settings-content')
+  if (!contentEl) return
+  _activeSubpage = { type: mod.type, mod }
+
+  // Hide tabs
+  const tabs = document.querySelector('.settings-tabs')
+  if (tabs) tabs.style.display = 'none'
+
+  const label = mod.customLabel || t('settings.modules.' + mod.type) || mod.type
+  contentEl.innerHTML = `
+    <div class="settings-subpage">
+      <div class="settings-subpage-header">
+        <button class="settings-subpage-back" id="subpage-back">
+          <i class="ph ph-arrow-left"></i> modules
+        </button>
+        <span class="settings-subpage-title">${escapeHtml(label)}</span>
+        <span id="settings-status" style="font-size:0.75em;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div id="subpage-editor-content" data-module-type="${escapeHtml(mod.type)}"></div>
+    </div>
+  `
+
+  document.getElementById('subpage-back').addEventListener('click', () => {
+    _activeSubpage = null
+    if (tabs) tabs.style.display = ''
+    // Re-render modules tab
+    const tabContent = document.getElementById('settings-content')
+    if (tabContent) {
+      tabContent.innerHTML = ''
+      renderModulesTab(tabContent)
+    }
+  })
+
+  const editorEl = document.getElementById('subpage-editor-content')
+  renderModuleEditor(editorEl, mod)
+}
+
 function renderModuleEditor(el, mod) {
   _injectEditorCSS()
   const type = mod.type
@@ -1991,62 +2168,70 @@ function renderModuleEditor(el, mod) {
         const _albumKey = `album-${a}-${b}`
         const _albumExp = _editorExpandedItems.has(_albumKey)
         const _albumT = escapeHtml(album.title || 'untitled album')
-        html += `<div class="editor-item" data-drag-idx="${b}" data-album-drag="${b}" data-album-alias="${a}" style="border:1px solid var(--border);padding:0.75em;margin-bottom:0.5em">
+        html += `<div class="editor-card" data-drag-idx="${b}" data-album-drag="${b}" data-album-alias="${a}">
           <div class="editor-collapse-header" data-toggle-album="${a}-${b}">
             <span class="drag-handle">\u2261</span>
             <span class="collapse-title">${_albumT}${album.year ? ' (' + album.year + ')' : ''}</span>
             <span class="collapse-chevron ${_albumExp ? 'expanded' : ''}">\u25B8</span>
           </div>
           <div class="editor-collapse-body ${_albumExp ? 'expanded' : ''}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5em">
-            <div style="flex:1;display:flex;flex-direction:column;gap:0.5em">
-              <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-                <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="title" value="${album.title || ''}" placeholder="${t('settings.music.albumTitle')}">
-                <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="year" type="number" value="${album.year || ''}" placeholder="${t('settings.credits.year')}">
-                <select class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="collectionType" style="font-size:0.85em">
-                  ${['album', 'podcast', 'playlist', 'mixtape'].map(ct => `<option value="${ct}" ${(album.collectionType || 'album') === ct ? 'selected' : ''}>${ct}</option>`).join('')}
-                </select>
-                <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="genre" value="${album.genre || ''}" placeholder="genre (e.g. hip-hop, jazz)">
-                <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="artist" value="${album.artist || ''}" placeholder="artist (defaults to ${escapeHtml(alias.name || 'alias name')})">
-                <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="producer" value="${album.producer || ''}" placeholder="producer">
-              </div>
-              <textarea class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="description" placeholder="album notes / concept" style="font-size:0.85em;min-height:2.5em;resize:vertical;width:100%;box-sizing:border-box">${album.description || ''}</textarea>
+          <div style="display:flex;flex-direction:column;gap:0.75em">
+            <div style="display:grid;gap:0.75em;grid-template-columns:1fr 1fr">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="title" value="${album.title || ''}" placeholder="${t('settings.music.albumTitle')}" style="font-size:0.95em;padding:0.5em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="year" type="number" value="${album.year || ''}" placeholder="${t('settings.credits.year')}" style="font-size:0.95em;padding:0.5em 0.75ch">
+              <select class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="collectionType" style="font-size:0.9em;padding:0.45em 0.5ch">
+                ${['album', 'podcast', 'playlist', 'mixtape'].map(ct => `<option value="${ct}" ${(album.collectionType || 'album') === ct ? 'selected' : ''}>${ct}</option>`).join('')}
+              </select>
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="genre" value="${album.genre || ''}" placeholder="genre (e.g. hip-hop, jazz)" style="font-size:0.9em;padding:0.45em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="artist" value="${album.artist || ''}" placeholder="artist (defaults to ${escapeHtml(alias.name || 'alias name')})" style="font-size:0.9em;padding:0.45em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="producer" value="${album.producer || ''}" placeholder="producer" style="font-size:0.9em;padding:0.45em 0.75ch">
             </div>
+            <textarea class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="description" placeholder="album notes / concept" style="font-size:0.9em;min-height:3em;resize:vertical;width:100%;box-sizing:border-box;padding:0.5em 0.75ch">${album.description || ''}</textarea>
           </div>
-          <div style="display:flex;gap:0.5em;margin-top:0.5em;align-items:center">
-            <button class="buy-btn upload-art" data-alias="${a}" data-album="${b}" style="font-size:0.75em;padding:0.2em 0.8ch">${t('settings.music.uploadCover')}</button>
-            ${album.art ? `<img loading="lazy" src="${album.art}" style="width:40px;height:40px;object-fit:cover">` : ''}
+          <div style="display:flex;gap:1em;margin-top:1em;align-items:center">
+            ${album.art ? `<img loading="lazy" src="${album.art}" style="width:80px;height:80px;object-fit:cover;border:1px solid var(--border)">` : ''}
+            <button class="buy-btn upload-art" data-alias="${a}" data-album="${b}" style="font-size:0.85em;padding:0.4em 1.5ch">${album.art ? 'change cover' : t('settings.music.uploadCover')}</button>
           </div>
-          <div style="margin-top:0.5em">
-            <span style="color:var(--dim);font-size:0.75em">${t('settings.music.tracks')}</span>
+          <div style="margin-top:1.25em">
+            <span style="color:var(--dim);font-size:0.85em;text-transform:uppercase;letter-spacing:0.1em">${t('settings.music.tracks')}</span>
             ${(album.tracks || []).map((tr, ti) => {
               return `
-              <div class="editor-item" data-drag-idx="${ti}" data-track-drag="${ti}" data-track-alias="${a}" data-track-album="${b}" style="margin-top:0.25em;padding:0.25em 0;border-bottom:1px solid var(--border)">
-                <div style="display:flex;gap:0.5em;align-items:center">
-                  <span class="drag-handle" style="font-size:0.9em">\u2261</span>
-                  <input class="project-input track-field" data-alias="${a}" data-album="${b}" data-track="${ti}" data-f="title" value="${tr.title || ''}" placeholder="${t('settings.music.trackTitle')}" style="flex:1;font-size:0.85em">
-                  <button class="buy-btn upload-track" data-alias="${a}" data-album="${b}" data-track="${ti}" style="font-size:0.7em;padding:0.15em 0.5ch">${tr.src ? t('settings.music.uploaded') : t('settings.music.upload')}</button>
-                  <button class="ed-remove-track" data-alias="${a}" data-album="${b}" data-track="${ti}" title="remove track" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.5ch;cursor:pointer">x</button>
+              <div class="editor-card" data-drag-idx="${ti}" data-track-drag="${ti}" data-track-alias="${a}" data-track-album="${b}" style="padding:1em">
+                <div style="display:flex;gap:0.75em;align-items:center">
+                  <span class="drag-handle" style="font-size:1.1em;color:var(--dim)">\u2261</span>
+                  <span style="color:var(--dim);font-size:0.8em;min-width:2ch">${ti + 1}</span>
+                  ${tr.src ? `<button class="track-play-btn" data-track-src="${tr.src}" data-track-title="${escapeHtml(tr.title || '')}" data-track-artist="${escapeHtml(alias?.name || siteData?.name || '')}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>` : '<span style="width:28px;height:28px;flex-shrink:0"></span>'}
+                  <input class="project-input track-field" data-alias="${a}" data-album="${b}" data-track="${ti}" data-f="title" value="${tr.title || ''}" placeholder="${t('settings.music.trackTitle')}" style="flex:1;font-size:0.9em">
+                  <button class="buy-btn upload-track" data-alias="${a}" data-album="${b}" data-track="${ti}" style="font-size:0.8em;padding:0.3em 1ch">${tr.src ? t('settings.music.uploaded') : t('settings.music.upload')}</button>
+                  <button class="ed-remove-track" data-alias="${a}" data-album="${b}" data-track="${ti}" title="remove track" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.8em;padding:0.3em 0.6ch;cursor:pointer">\u00d7</button>
                 </div>
                 ${renderSellWidget(tr, `sell-track-${a}-${b}-${ti}`)}
               </div>`
             }).join('')}
-            <button class="buy-btn add-track" data-alias="${a}" data-album="${b}" style="font-size:0.7em;padding:0.15em 0.5ch;margin-top:0.25em">${t('settings.music.addTrack')}</button>
+            <button class="buy-btn add-track" data-alias="${a}" data-album="${b}" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0.75em">${t('settings.music.addTrack')}</button>
           </div>
           ${(() => {
             const tracks = album.tracks || []
             const tracksWithSrc = tracks.filter(t => t.src)
             const unlistedTracks = tracksWithSrc.filter(t => t.mediaId === undefined || t.mediaId === null || t.mediaId === '')
             if (tracksWithSrc.length >= 2 && unlistedTracks.length > 0) {
-              return `<div style="margin-top:0.5em;padding:0.5em;border:1px solid var(--accent);font-size:0.8em">
-                <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
-                  <span style="color:var(--accent)">batch list ${unlistedTracks.length} unlisted track${unlistedTracks.length === 1 ? '' : 's'}</span>
-                  <input type="text" class="project-input batch-album-price" data-alias="${a}" data-album="${b}" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
-                  <span style="color:var(--dim)">ETH per track</span>
-                  <input type="number" class="project-input batch-album-supply" data-alias="${a}" data-album="${b}" placeholder="unlimited" style="width:10ch;font-size:0.85em;padding:0.2em 0.5ch">
+              return `<div style="margin-top:1em;padding:1em 1.25em;border:1px solid var(--accent);font-size:0.9em">
+                <div style="display:flex;gap:0.75em;align-items:center;flex-wrap:wrap">
+                  <span style="color:var(--accent);font-weight:500">batch list ${unlistedTracks.length} unlisted track${unlistedTracks.length === 1 ? '' : 's'}</span>
+                  <input type="text" class="project-input batch-album-price eth-price-input" data-alias="${a}" data-album="${b}" placeholder="0.01" style="width:8ch;font-size:0.9em;padding:0.4em 0.5ch">
+                  <span style="color:var(--dim)">ETH per track</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.85em;margin-left:0.5ch"></span>
+                  <input type="number" class="project-input batch-album-supply" data-alias="${a}" data-album="${b}" placeholder="unlimited" style="width:10ch;font-size:0.9em;padding:0.4em 0.5ch">
                   <span style="color:var(--dim)">supply</span>
                 </div>
-                <button class="buy-btn batch-list-album-btn" data-alias="${a}" data-album="${b}" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list album on-chain</button>
+                <div class="batch-album-splits" data-alias="${a}" data-album="${b}" style="margin-top:0.5em">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="color:var(--dim);font-size:0.85em">splits</span>
+                    <button class="batch-album-add-split" data-alias="${a}" data-album="${b}" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.1em 0.5ch;cursor:pointer">+ collaborator</button>
+                  </div>
+                  <div class="batch-album-split-list" data-alias="${a}" data-album="${b}"></div>
+                  <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all tracks</div>
+                </div>
+                <button class="buy-btn batch-list-album-btn" data-alias="${a}" data-album="${b}" style="font-size:0.9em;padding:0.5em 1.5ch;margin-top:0.75em">list album for sale</button>
                 <span class="batch-album-status" data-alias="${a}" data-album="${b}" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
               </div>`
             }
@@ -2084,15 +2269,15 @@ function renderModuleEditor(el, mod) {
     })
     el.querySelectorAll('.editor-item[data-alias-drag]').forEach(aliasEl => {
       const a = parseInt(aliasEl.dataset.aliasDrag)
-      _wireDragDrop(aliasEl, '.editor-item[data-album-drag][data-album-alias="' + a + '"]', (from, to) => {
+      _wireDragDrop(aliasEl, '.editor-card[data-album-drag][data-album-alias="' + a + '"]', (from, to) => {
         _arrayMove(aliases[a].albums, from, to)
         renderModuleEditor(el, mod)
       })
     })
-    el.querySelectorAll('.editor-item[data-album-drag]').forEach(albumEl => {
+    el.querySelectorAll('.editor-card[data-album-drag]').forEach(albumEl => {
       const a = parseInt(albumEl.dataset.albumAlias)
       const b = parseInt(albumEl.dataset.albumDrag)
-      _wireDragDrop(albumEl, '.editor-item[data-track-drag][data-track-alias="' + a + '"][data-track-album="' + b + '"]', (from, to) => {
+      _wireDragDrop(albumEl, '.editor-card[data-track-drag][data-track-alias="' + a + '"][data-track-album="' + b + '"]', (from, to) => {
         _arrayMove(aliases[a].albums[b].tracks, from, to)
         renderModuleEditor(el, mod)
       })
@@ -2252,6 +2437,45 @@ function renderModuleEditor(el, mod) {
         try { await saveSettings() } catch {}
       })
     })
+    // Live fiat conversion on all ETH price inputs
+    {
+      let _fiatPrices = null
+      import('./fiat.js').then(m => m.getEthPrices().then(p => { _fiatPrices = p })).catch(() => {})
+      el.addEventListener('input', (e) => {
+        if (!e.target.classList.contains('eth-price-input') || !_fiatPrices) return
+        const eth = parseFloat(e.target.value) || 0
+        const label = e.target.parentElement?.querySelector('.eth-fiat-label')
+        if (!label) return
+        if (eth > 0) {
+          import('./fiat.js').then(m => {
+            const currency = m.getUserCurrency()
+            const rate = _fiatPrices[currency] || _fiatPrices.usd || 0
+            if (!rate) { label.textContent = ''; return }
+            const perItem = m.formatFiat(eth * rate, currency)
+            // Find track/item count from the batch label text nearby
+            const batchText = e.target.parentElement?.querySelector('[style*="color:var(--accent)"]')?.textContent || ''
+            const countMatch = batchText.match(/(\d+)\s+unlisted/)
+            const count = countMatch ? parseInt(countMatch[1]) : 0
+            if (count > 1) {
+              label.textContent = `(~${perItem} each, ~${m.formatFiat(eth * rate * count, currency)} total)`
+            } else {
+              label.textContent = `(~${perItem})`
+            }
+          }).catch(() => {})
+        } else {
+          label.textContent = ''
+        }
+      })
+    }
+
+    // wire batch album add-split buttons
+    el.querySelectorAll('.batch-album-add-split').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const list = el.querySelector(`.batch-album-split-list[data-alias="${btn.dataset.alias}"][data-album="${btn.dataset.album}"]`)
+        if (list) _addBatchSplitRow(list)
+      })
+    })
+
     // wire batch list album buttons
     el.querySelectorAll('.batch-list-album-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -2263,6 +2487,12 @@ function renderModuleEditor(el, mod) {
         const supplyInput = el.querySelector(`.batch-album-supply[data-alias="${a}"][data-album="${b}"]`)
         const priceEth = parseFloat(priceInput?.value || '0')
         const maxSupply = parseInt(supplyInput?.value || '0') || 0
+
+        // Collect collaborator splits from the batch UI
+        const splitList = el.querySelector(`.batch-album-split-list[data-alias="${a}"][data-album="${b}"]`)
+        const splitResult = await _collectBatchSplits(splitList)
+        if (splitResult.error) { if (statusEl) statusEl.textContent = splitResult.error; return }
+        const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
         const tracks = (album.tracks || []).filter(t => t.src && (t.mediaId === undefined || t.mediaId === null || t.mediaId === ''))
         if (!tracks.length) { if (statusEl) statusEl.textContent = 'no unlisted tracks'; return }
@@ -2276,7 +2506,7 @@ function renderModuleEditor(el, mod) {
           const artSrc = album.art || ''
           const artCidMatch = artSrc.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
           const metadataCid = artCidMatch ? artCidMatch[1] : ''
-          entries.push({ title: tr.title || 'untitled', ipfsCid: cid, metadataCid, price: priceEth, maxSupply, collaborators: [], splits: [] })
+          entries.push({ title: tr.title || 'untitled', ipfsCid: cid, metadataCid, price: priceEth, maxSupply, collaborators: batchCollabs, splits: batchSplits })
         }
         if (!entries.length) { if (statusEl) statusEl.textContent = 'no tracks on IPFS'; return }
 
@@ -2295,7 +2525,7 @@ function renderModuleEditor(el, mod) {
             if (!cidMatch) continue
             if (idIdx < ids.length) {
               tr.mediaId = ids[idIdx]
-              tr.mediaPrice = (priceEth * 1e18).toString()
+              tr.mediaPrice = parseEther(String(priceEth)).toString()
               tr.mediaMaxSupply = maxSupply
               idIdx++
             }
@@ -2366,10 +2596,18 @@ function renderModuleEditor(el, mod) {
         html += `<div style="margin-top:0.75em;padding:0.5em;border:1px solid var(--accent);font-size:0.8em">
           <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
             <span style="color:var(--accent)">batch list ${unlistedImgs.length} unlisted image${unlistedImgs.length === 1 ? '' : 's'}</span>
-            <input type="text" class="project-input batch-gallery-price" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
-            <span style="color:var(--dim)">ETH each</span>
+            <input type="text" class="project-input batch-gallery-price eth-price-input" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
+            <span style="color:var(--dim)">ETH each</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.8em;margin-left:0.5ch"></span>
             <input type="number" class="project-input batch-gallery-supply" placeholder="unlimited" style="width:10ch;font-size:0.85em;padding:0.2em 0.5ch">
             <span style="color:var(--dim)">supply</span>
+          </div>
+          <div class="batch-gallery-splits" style="margin-top:0.5em">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="color:var(--dim);font-size:0.85em">splits</span>
+              <button class="batch-gallery-add-split" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.1em 0.5ch;cursor:pointer">+ collaborator</button>
+            </div>
+            <div class="batch-gallery-split-list"></div>
+            <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all images</div>
           </div>
           <button class="buy-btn batch-list-gallery-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list collection on-chain</button>
           <span class="batch-gallery-status" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
@@ -2473,6 +2711,12 @@ function renderModuleEditor(el, mod) {
       })
     })
 
+    // wire batch gallery add-split button
+    el.querySelector('.batch-gallery-add-split')?.addEventListener('click', () => {
+      const list = el.querySelector('.batch-gallery-split-list')
+      if (list) _addBatchSplitRow(list)
+    })
+
     // wire batch list gallery button
     el.querySelector('.batch-list-gallery-btn')?.addEventListener('click', async () => {
       const statusEl = el.querySelector('.batch-gallery-status')
@@ -2481,6 +2725,12 @@ function renderModuleEditor(el, mod) {
       const priceEth = parseFloat(priceInput?.value || '0')
       const maxSupply = parseInt(supplyInput?.value || '0') || 0
       const btn = el.querySelector('.batch-list-gallery-btn')
+
+      // Collect collaborator splits from the batch UI
+      const splitList = el.querySelector('.batch-gallery-split-list')
+      const splitResult = await _collectBatchSplits(splitList)
+      if (splitResult.error) { if (statusEl) statusEl.textContent = splitResult.error; return }
+      const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
       const unlisted = images.filter(img => img.src && (img.mediaId === undefined || img.mediaId === null || img.mediaId === ''))
       if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unlisted images'; return }
@@ -2491,7 +2741,7 @@ function renderModuleEditor(el, mod) {
         const cidMatch = (img.src || '').match(/ipfs-proxy\/([A-Za-z0-9]+)/)
         const cid = cidMatch ? cidMatch[1] : ''
         if (!cid) continue
-        entries.push({ title: img.title || 'untitled', ipfsCid: cid, metadataCid: '', price: priceEth, maxSupply, collaborators: [], splits: [] })
+        entries.push({ title: img.title || 'untitled', ipfsCid: cid, metadataCid: '', price: priceEth, maxSupply, collaborators: batchCollabs, splits: batchSplits })
         entryToImg.push(img)
       }
       if (!entries.length) { if (statusEl) statusEl.textContent = 'no images on IPFS'; return }
@@ -2503,7 +2753,7 @@ function renderModuleEditor(el, mod) {
         const ids = await listBatchMedia(entries)
         for (let i = 0; i < ids.length && i < entryToImg.length; i++) {
           entryToImg[i].mediaId = ids[i]
-          entryToImg[i].mediaPrice = (priceEth * 1e18).toString()
+          entryToImg[i].mediaPrice = parseEther(String(priceEth)).toString()
           entryToImg[i].mediaMaxSupply = maxSupply
         }
         if (statusEl) statusEl.textContent = `listed ${ids.length} images — saving...`
@@ -2676,10 +2926,18 @@ function renderModuleEditor(el, mod) {
       return `<div style="margin-top:0.75em;padding:0.5em;border:1px solid var(--accent);font-size:0.8em">
         <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
           <span style="color:var(--accent)">batch list ${unlisted.length} unlisted ${label}${unlisted.length === 1 ? '' : 's'}</span>
-          <input type="text" class="project-input batch-gen-price" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
-          <span style="color:var(--dim)">ETH each</span>
+          <input type="text" class="project-input batch-gen-price eth-price-input" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
+          <span style="color:var(--dim)">ETH each</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.8em;margin-left:0.5ch"></span>
           <input type="number" class="project-input batch-gen-supply" placeholder="unlimited" style="width:10ch;font-size:0.85em;padding:0.2em 0.5ch">
           <span style="color:var(--dim)">supply</span>
+        </div>
+        <div class="batch-gen-splits" style="margin-top:0.5em">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="color:var(--dim);font-size:0.85em">splits</span>
+            <button class="batch-gen-add-split" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.1em 0.5ch;cursor:pointer">+ collaborator</button>
+          </div>
+          <div class="batch-gen-split-list"></div>
+          <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all items</div>
         </div>
         <button class="buy-btn batch-list-gen-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list collection on-chain</button>
         <span class="batch-gen-status" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
@@ -2786,6 +3044,12 @@ function renderModuleEditor(el, mod) {
         _handleRemoveCollabTag(btn, items, el, mod)
       })
     })
+    // wire batch generic add-split button
+    el.querySelector('.batch-gen-add-split')?.addEventListener('click', () => {
+      const list = el.querySelector('.batch-gen-split-list')
+      if (list) _addBatchSplitRow(list)
+    })
+
     // wire batch list collection button for video/audio/film
     el.querySelector('.batch-list-gen-btn')?.addEventListener('click', async () => {
       const statusEl = el.querySelector('.batch-gen-status')
@@ -2795,6 +3059,12 @@ function renderModuleEditor(el, mod) {
       const priceEth = parseFloat(priceInput?.value || '0')
       const maxSupply = parseInt(supplyInput?.value || '0') || 0
       const mediaSrcKey = type === 'film' ? 'video' : 'src'
+
+      // Collect collaborator splits from the batch UI
+      const splitList = el.querySelector('.batch-gen-split-list')
+      const splitResult = await _collectBatchSplits(splitList)
+      if (splitResult.error) { if (statusEl) statusEl.textContent = splitResult.error; return }
+      const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
       const unlisted = items.filter(it => (it[mediaSrcKey] || it.src) && (it.mediaId === undefined || it.mediaId === null || it.mediaId === ''))
       if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unlisted items'; return }
@@ -2809,7 +3079,7 @@ function renderModuleEditor(el, mod) {
         const artSrc = it.poster || it.art || it.coverArt || ''
         const artCidMatch = artSrc.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
         const metadataCid = artCidMatch ? artCidMatch[1] : ''
-        entries.push({ title: it.title || 'untitled', ipfsCid: cid, metadataCid, price: priceEth, maxSupply, collaborators: [], splits: [] })
+        entries.push({ title: it.title || 'untitled', ipfsCid: cid, metadataCid, price: priceEth, maxSupply, collaborators: batchCollabs, splits: batchSplits })
         entryToItem.push(it)
       }
       if (!entries.length) { if (statusEl) statusEl.textContent = 'no items on IPFS'; return }
@@ -2821,7 +3091,7 @@ function renderModuleEditor(el, mod) {
         const ids = await listBatchMedia(entries)
         for (let i = 0; i < ids.length && i < entryToItem.length; i++) {
           entryToItem[i].mediaId = ids[i]
-          entryToItem[i].mediaPrice = (priceEth * 1e18).toString()
+          entryToItem[i].mediaPrice = parseEther(String(priceEth)).toString()
           entryToItem[i].mediaMaxSupply = maxSupply
         }
         if (statusEl) statusEl.textContent = `listed ${ids.length} items — saving...`
@@ -3238,39 +3508,89 @@ function lightnessShift(original, corrected) {
 
 function renderThemeTab(el) {
   const theme = siteData.theme || {}
+  const fonts = [
+    { value: "-apple-system, 'Helvetica Neue', Arial, sans-serif", label: t('settings.theme.systemDefault'), key: 'apple-system' },
+    { value: "Georgia, 'Times New Roman', serif", label: t('settings.theme.serif'), key: 'Georgia' },
+    { value: "'Courier New', monospace", label: t('settings.theme.monospace'), key: 'Courier' },
+  ]
   el.innerHTML = `
-    <div style="max-width:400px">
+    <div style="max-width:500px">
       <div class="settings-field">
         <label class="settings-label">${t('settings.theme.background')}</label>
-        <input type="color" id="s-theme-bg" value="${theme.bg || '#0a0a0a'}" style="width:60px;height:2em;border:1px solid var(--border);background:transparent;cursor:pointer">
+        <div style="display:flex;align-items:center;gap:1.5ch">
+          <label class="settings-swatch" style="background:${theme.bg || '#0a0a0a'};position:relative;overflow:hidden">
+            <input type="color" id="s-theme-bg" value="${theme.bg || '#0a0a0a'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+          </label>
+          <span style="color:var(--dim);font-size:0.85em;font-family:monospace">${theme.bg || '#0a0a0a'}</span>
+        </div>
       </div>
       <div class="settings-field">
         <label class="settings-label">${t('settings.theme.text')}</label>
-        <div style="display:flex;align-items:center;gap:1ch">
-          <input type="color" id="s-theme-fg" value="${theme.fg || '#c0c0c0'}" style="width:60px;height:2em;border:1px solid var(--border);background:transparent;cursor:pointer">
+        <div style="display:flex;align-items:center;gap:1.5ch">
+          <label class="settings-swatch" style="background:${theme.fg || '#c0c0c0'};position:relative;overflow:hidden">
+            <input type="color" id="s-theme-fg" value="${theme.fg || '#c0c0c0'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+          </label>
           <span id="contrast-badge-fg"></span>
         </div>
       </div>
       <div class="settings-field">
         <label class="settings-label">${t('settings.theme.accent')}</label>
-        <div style="display:flex;align-items:center;gap:1ch">
-          <input type="color" id="s-theme-accent" value="${theme.accent || '#ffffff'}" style="width:60px;height:2em;border:1px solid var(--border);background:transparent;cursor:pointer">
+        <div style="display:flex;align-items:center;gap:1.5ch">
+          <label class="settings-swatch" style="background:${theme.accent || '#ffffff'};position:relative;overflow:hidden">
+            <input type="color" id="s-theme-accent" value="${theme.accent || '#ffffff'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+          </label>
           <span id="contrast-badge-accent"></span>
         </div>
       </div>
       <div class="settings-field">
         <label class="settings-label">${t('settings.theme.font')}</label>
-        <select id="s-theme-font" class="project-input">
-          <option ${theme.font?.includes('apple-system') ? 'selected' : ''} value="-apple-system, 'Helvetica Neue', Arial, sans-serif">${t('settings.theme.systemDefault')}</option>
-          <option ${theme.font?.includes('Georgia') ? 'selected' : ''} value="Georgia, 'Times New Roman', serif">${t('settings.theme.serif')}</option>
-          <option ${theme.font?.includes('Courier') ? 'selected' : ''} value="'Courier New', monospace">${t('settings.theme.monospace')}</option>
+        <select id="s-theme-font" class="project-input" style="display:none">
+          ${fonts.map(f => `<option value="${f.value}" ${theme.font?.includes(f.key) ? 'selected' : ''}>${f.label}</option>`).join('')}
         </select>
+        <div id="font-preview-list">
+          ${fonts.map(f => {
+            const isActive = theme.font?.includes(f.key) || (!theme.font && f.key === 'apple-system')
+            return `<div class="font-preview-card ${isActive ? 'active' : ''}" data-font="${f.value}">
+              <div style="font-family:${f.value};font-size:1.3em;color:var(--fg);margin-bottom:0.3em">Aa Bb Cc 123</div>
+              <div style="font-size:0.85em;color:var(--dim)">${f.label}</div>
+            </div>`
+          }).join('')}
+        </div>
       </div>
       <div id="contrast-warning" style="display:none;margin-top:0.5em;padding:0.5em;border:1px solid #da3;color:#da3;font-size:0.85em"></div>
-      <div style="margin-top:1em;padding:1em;border:1px solid var(--border)">
-        <div id="theme-preview" style="padding:1em">
+      <div style="margin-top:1.5em;padding:1.25em;border:1px solid var(--border);border-radius:4px">
+        <div id="theme-preview" style="padding:1em;border-radius:4px">
           <span style="font-size:1.2em">${t('settings.theme.preview')}</span>
           <p style="opacity:0.7;margin-top:0.5em">${t('settings.theme.howItLooks')}</p>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:2em 0">
+      <h3 style="font-size:1em;margin-bottom:1em">app settings (PWA)</h3>
+      <p style="color:var(--dim);font-size:0.85em;margin-bottom:1em">customize how your site appears when installed as an app on phones and tablets.</p>
+      <div class="settings-field">
+        <label class="settings-label">app name</label>
+        <input type="text" id="s-pwa-name" class="project-input" value="${escapeHtml(siteData.pwa?.name || siteData.name || '')}" placeholder="${escapeHtml(siteData.name || 'my site')}" style="max-width:300px">
+        <p style="color:var(--dim);font-size:0.75em;margin-top:0.25em">shown on the home screen when installed</p>
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">app icon (512x512 PNG)</label>
+        <div style="display:flex;align-items:center;gap:1em">
+          ${siteData.pwa?.icon ? `<img src="${escapeHtml(siteData.pwa.icon)}" style="width:64px;height:64px;border-radius:12px;border:1px solid var(--border)">` : '<div style="width:64px;height:64px;border-radius:12px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--dim)"><i class="ph ph-image" style="font-size:1.5em"></i></div>'}
+          <div>
+            <input type="file" id="s-pwa-icon" accept="image/png" style="display:none">
+            <button type="button" id="s-pwa-icon-btn" class="feed-card-btn" style="font-size:0.8em">upload icon</button>
+            <p style="color:var(--dim);font-size:0.75em;margin-top:0.25em">square PNG, at least 512x512px</p>
+          </div>
+        </div>
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">splash background color</label>
+        <div style="display:flex;align-items:center;gap:1ch">
+          <label class="settings-swatch" style="background:${siteData.pwa?.background || theme.bg || '#0a0a0a'};position:relative;overflow:hidden">
+            <input type="color" id="s-pwa-bg" value="${siteData.pwa?.background || theme.bg || '#0a0a0a'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+          </label>
+          <span style="color:var(--dim);font-size:0.85em">shown during app launch</span>
         </div>
       </div>
     </div>
@@ -3313,9 +3633,76 @@ function renderThemeTab(el) {
     preview.querySelector('span').style.color = palette.accent.color
   }
 
-  document.getElementById('s-theme-bg')?.addEventListener('input', updatePreview)
-  document.getElementById('s-theme-fg')?.addEventListener('input', updatePreview)
-  document.getElementById('s-theme-accent')?.addEventListener('input', updatePreview)
+  // PWA icon upload
+  document.getElementById('s-pwa-icon-btn')?.addEventListener('click', () => {
+    document.getElementById('s-pwa-icon')?.click()
+  })
+  document.getElementById('s-pwa-icon')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Validate: must be PNG, at least 512x512
+    if (!file.type.startsWith('image/png')) { alert('Please upload a PNG file'); return }
+    const btn = document.getElementById('s-pwa-icon-btn')
+    btn.textContent = 'uploading...'
+    try {
+      let authToken = sessionStorage.getItem('praxis-auth-token') || ''
+      if (!authToken) {
+        await window.ensureAuthorized?.()
+        const addr = window.getWalletAddress?.()
+        const provider = window.getWalletProvider?.()
+        if (provider && addr) {
+          const msg = `admin:${location.hostname}:${Date.now()}`
+          const sig = await provider.request({ method: 'personal_sign', params: [msg, addr] })
+          const authRes = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr, signature: sig, message: msg }) })
+          const authData = await authRes.json()
+          if (authData.token) { authToken = authData.token; sessionStorage.setItem('praxis-auth-token', authToken) }
+        }
+      }
+      const buf = await file.arrayBuffer()
+      const uploadRes = await fetch(`/api/ipfs?name=pwa-icon.png`, { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: buf })
+      const uploadData = await uploadRes.json()
+      if (uploadData.jobId) {
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          const s = await fetch(`/api/ipfs/status/${uploadData.jobId}`).then(r => r.json())
+          if (s.cid) {
+            if (!siteData.pwa) siteData.pwa = {}
+            siteData.pwa.icon = `/api/ipfs-proxy/${s.cid}`
+            btn.textContent = 'uploaded ✓'
+            break
+          }
+          if (s.status === 'error') { btn.textContent = 'upload failed'; break }
+        }
+      }
+    } catch { btn.textContent = 'error' }
+    setTimeout(() => { btn.textContent = 'upload icon' }, 3000)
+  })
+
+  document.getElementById('s-theme-bg')?.addEventListener('input', () => {
+    const swatch = document.getElementById('s-theme-bg')?.closest('.settings-swatch')
+    if (swatch) swatch.style.background = document.getElementById('s-theme-bg').value
+    updatePreview()
+  })
+  document.getElementById('s-theme-fg')?.addEventListener('input', () => {
+    const swatch = document.getElementById('s-theme-fg')?.closest('.settings-swatch')
+    if (swatch) swatch.style.background = document.getElementById('s-theme-fg').value
+    updatePreview()
+  })
+  document.getElementById('s-theme-accent')?.addEventListener('input', () => {
+    const swatch = document.getElementById('s-theme-accent')?.closest('.settings-swatch')
+    if (swatch) swatch.style.background = document.getElementById('s-theme-accent').value
+    updatePreview()
+  })
+  // Font preview cards
+  el.querySelectorAll('.font-preview-card').forEach(card => {
+    card.addEventListener('click', () => {
+      el.querySelectorAll('.font-preview-card').forEach(c => c.classList.remove('active'))
+      card.classList.add('active')
+      const fontSel = document.getElementById('s-theme-font')
+      if (fontSel) { fontSel.value = card.dataset.font; fontSel.dispatchEvent(new Event('change', { bubbles: true })) }
+      updatePreview()
+    })
+  })
   document.getElementById('s-theme-font')?.addEventListener('change', updatePreview)
   updatePreview()
 }
@@ -3354,6 +3741,15 @@ async function saveSettings() {
     siteData.theme.fg = fg?.value || '#c0c0c0'
     siteData.theme.accent = accent?.value || '#ffffff'
     siteData.theme.font = font?.value || "-apple-system, 'Helvetica Neue', Arial, sans-serif"
+  }
+
+  // PWA settings
+  const pwaName = document.getElementById('s-pwa-name')?.value?.trim()
+  const pwaBg = document.getElementById('s-pwa-bg')?.value
+  if (pwaName || pwaBg) {
+    if (!siteData.pwa) siteData.pwa = {}
+    if (pwaName) siteData.pwa.name = pwaName
+    if (pwaBg) siteData.pwa.background = pwaBg
   }
 
   try {

@@ -6,10 +6,48 @@ import { purchaseMedia, getArtistMedia, annotateRelistings } from './media.js'
 import { formatEther } from './vendor.js'
 
 import { MEDIA_ABI, getMediaAddress } from './contracts.js'
+import { t } from './i18n.js'
+import './feed-cards.js' // registers global .feed-buy-btn click delegation
+
+let _artAbortController = null
 
 registerPage('art-page', initArt)
 
+// Render a reference button for any media item
+// opts: { title, artist, art (thumbnail url), src (playable audio url), type (music|gallery|video|audio|writing|film) }
+function refButtonHtml(item, opts = {}) {
+  if (item.mediaId == null) return ''
+  const title = escapeHtml(opts.title || item.title || '')
+  const artist = escapeHtml(opts.artist || '')
+  const art = escapeHtml(opts.art || item.art || '')
+  const src = escapeHtml(opts.src || '')
+  const type = opts.type || ''
+  return `<button class="media-ref-btn" data-ref-media="${item.mediaId}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${type}" title="${t('music.writeAbout')}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.85em;cursor:pointer;padding:0.25em 0.8ch;border-radius:3px;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-note-pencil"></i></button>`
+}
+
+// Wire all reference buttons in a container
+function wireRefButtons(container) {
+  container.querySelectorAll('.media-ref-btn, .track-ref-btn, .album-ref-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const mediaRef = {
+        mediaId: btn.dataset.refMedia,
+        title: btn.dataset.refTitle || '',
+        artist: btn.dataset.refArtist || '',
+        art: btn.dataset.refArt || '',
+        src: btn.dataset.refSrc || '',
+        type: btn.dataset.refType || ''
+      }
+      const params = new URLSearchParams({ ref: mediaRef.mediaId, refTitle: mediaRef.title, refArtist: mediaRef.artist, refArt: mediaRef.art, refSrc: mediaRef.src, refType: mediaRef.type })
+      window.location.href = '/write?' + params.toString()
+    })
+  })
+}
+
 async function initArt() {
+  _artAbortController?.abort()
+  _artAbortController = new AbortController()
+
   const loadingEl = document.getElementById('art-loading')
   const contentEl = document.getElementById('art-content')
   if (!loadingEl || !contentEl) return
@@ -125,18 +163,17 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
 
   if (album.art) {
     const artUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=600`
-    html += `<div style="flex-shrink:0;width:min(300px, 45%)"><img src="${artUrl}" alt="${escapeHtml(album.title)}" style="width:100%;display:block" loading="lazy"></div>`
+    html += `<div style="flex-shrink:0;width:min(300px, 45%)"><img src="${artUrl}" alt="${escapeHtml(album.title)}" style="width:100%;display:block;border-radius:6px" loading="lazy"></div>`
   }
 
   html += `<div style="flex:1;min-width:0">`
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(album.title)}</h1>`
-  html += `<div style="color:var(--muted);margin-bottom:0.75em">by ${escapeHtml(album.artist || alias.name)}${album.year ? ` (${album.year})` : ''}</div>`
+  html += `<h1 style="font-size:clamp(1.5em, 4vw, 2.2em);margin:0 0 0.3em;font-weight:700;letter-spacing:-0.02em">${escapeHtml(album.title)}</h1>`
+  html += `<div style="color:var(--muted);margin-bottom:1em;font-size:0.95em">${t('art.by')} ${escapeHtml(album.artist || alias.name)}${album.year ? ` (${album.year})` : ''}</div>`
   if (album.collab) {
     html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">with <a href="https://${escapeHtml(album.collab.from)}" style="color:var(--accent)">${escapeHtml(album.collab.from)}</a></div>`
   }
 
   if (album.genre) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">${escapeHtml(album.genre)}</div>`
-  if (album.producer) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">produced by ${escapeHtml(album.producer)}</div>`
 
   if (album.description) {
     html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em;max-height:12em;overflow-y:auto">${escapeHtml(album.description)}</div>`
@@ -147,8 +184,30 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   const playableTracks = (album.tracks || []).filter(t => t.src)
   if (playableTracks.length > 0) {
     const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' }))))
-    html += `<button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">play</button>`
-    html += `<button class="album-queue-btn" data-queue="${queueData}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add album to queue"><i class="ph ph-plus"></i></button>`
+    html += `<button class="album-play-btn feed-card-btn" data-queue="${queueData}"><i class="ph ph-play"></i> ${t('art.play')}</button>`
+  }
+  // Buy album button — sum all track prices
+  const buyableTracks = (album.tracks || []).filter(t => t.mediaId != null && t.mediaPrice && Number(t.mediaPrice) > 0)
+  if (buyableTracks.length > 0) {
+    let totalWei = 0n
+    for (const t of buyableTracks) { try { totalWei += BigInt(Math.round(Number(t.mediaPrice))) } catch {} }
+    const allMediaIds = buyableTracks.map(t => t.mediaId).join(',')
+    html += `<button class="feed-buy-btn feed-card-btn green" data-media-id="${allMediaIds}" data-price="${String(totalWei)}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)">${t('art.buy')} <span data-eth-wei="${String(totalWei)}" data-fiat-primary="true"></span></button>`
+  }
+  // Overflow menu for queue + reference
+  const firstListedTrack = (album.tracks || []).find(t => t.mediaId != null)
+  if (playableTracks.length > 0 || firstListedTrack) {
+    const queueData = playableTracks.length > 0 ? encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' })))) : ''
+    html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
+    html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
+    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3em 0;z-index:100;min-width:180px;box-shadow:0 -2px 8px rgba(0,0,0,0.3)">`
+    if (queueData) {
+      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+    }
+    if (firstListedTrack) {
+      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+    }
+    html += `</div></div>`
   }
   if (album.links && Object.keys(album.links).length) {
     for (const [platform, url] of Object.entries(album.links)) {
@@ -159,29 +218,41 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   html += `</div></div>` // close metadata + hero
 
   // Mobile stack: CSS for the hero flex
-  html += `<style>.art-album-hero { text-align: left; } @media (max-width: 600px) { .art-album-hero { flex-direction: column; align-items: center; text-align: center; } .art-album-hero > div:first-child { width: min(280px, 80%) !important; } }</style>`
+  html += `<style>.art-album-hero { text-align: left; } @media (max-width: 600px) { #art-page { margin-top: -2em; } .art-album-hero { flex-direction: column; align-items: flex-start; text-align: left; gap: 1em !important; } .art-album-hero > div:first-child { width: 100% !important; } .art-album-hero > div:first-child img { width: 100%; display: block; } }</style>`
 
   // track list (skip empty/deleted tracks)
   const validTracks = (album.tracks || []).filter(t => t.title || t.src)
   if (validTracks.length) {
     html += `<div class="art-tracklist" style="margin-bottom:1.5em">`
     validTracks.forEach((track, i) => {
-      html += `<div class="album-track" style="display:flex;align-items:center;gap:1ch;padding:0.4em 0;border-bottom:1px solid var(--border)">`
-      html += `<span style="color:var(--dim);min-width:2ch;text-align:right">${i + 1}.</span>`
-      html += `<span class="track-title" style="flex:1">${escapeHtml(track.title)}</span>`
+      html += `<div class="album-track" style="display:flex;align-items:center;gap:0.75ch;padding:0.2em 0;border-bottom:1px solid var(--border)">`
+      html += `<span style="color:var(--dim);min-width:2ch;text-align:right;font-size:0.9em">${i + 1}.</span>`
+      html += track.mediaId != null
+        ? `<a href="/art?media=${track.mediaId}" class="track-title" style="flex:1;font-size:0.95em;color:inherit;text-decoration:none">${escapeHtml(track.title)}</a>`
+        : `<span class="track-title" style="flex:1;font-size:0.95em">${escapeHtml(track.title)}</span>`
       if (track.duration) {
         const m = Math.floor(track.duration / 60)
         const s = String(track.duration % 60).padStart(2, '0')
         html += `<span style="color:var(--dim);font-size:0.85em">${m}:${s}</span>`
       }
       if (track.src) {
-        html += `<button class="track-play-btn" data-track-src="${track.src}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.8em;padding:0.15em 0.8ch;cursor:pointer"><i class="ph ph-play"></i></button>`
-        html += `<button class="track-queue-btn" data-src="${track.src}" data-title="${escapeHtml(track.title)}" data-artist="${escapeHtml(album.artist || alias.name)}" data-art="${escapeHtml(album.art || '')}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.15em 0.4ch" title="add to queue"><i class="ph ph-plus"></i></button>`
+        html += `<button class="track-play-btn" data-track-src="${track.src}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0.2em 0.35ch;font-size:1.1em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-play"></i></button>`
       }
       if (track.mediaId !== undefined && track.mediaId !== null) {
-        const priceEth = track.mediaPrice ? (Number(track.mediaPrice) / 1e18) : 0
-        const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'free'
-        html += `<button class="track-buy-btn" data-media-id="${track.mediaId}" data-price="${track.mediaPrice || '0'}" data-eth-wei="${track.mediaPrice || '0'}" data-title="${escapeHtml(track.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
+        const priceWei = track.mediaPrice || '0'
+        html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${track.mediaId}" data-price="${priceWei}" data-title="${escapeHtml(track.title || '')}" style="font-size:0.7em">${t('art.buy')} <span data-eth-wei="${priceWei}" data-fiat-primary="true"></span></button>`
+      }
+      if (track.src || track.mediaId != null) {
+        html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
+        html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
+        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3em 0;z-index:100;min-width:160px;box-shadow:0 -2px 8px rgba(0,0,0,0.3)">`
+        if (track.src) {
+          html += `<button class="track-queue-btn track-overflow-item" data-src="${track.src}" data-title="${escapeHtml(track.title)}" data-artist="${escapeHtml(album.artist || alias.name)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+        }
+        if (track.mediaId != null) {
+          html += `<button class="track-ref-btn track-overflow-item" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+        }
+        html += `</div></div>`
       }
       html += `</div>`
     })
@@ -191,6 +262,30 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
+
+  // Wire overflow menus (··· buttons)
+  const signal = _artAbortController?.signal
+  el.querySelectorAll('.track-overflow-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const menu = btn.nextElementSibling
+      const isOpen = menu.style.display !== 'none'
+      // close all other menus
+      el.querySelectorAll('.track-overflow-menu').forEach(m => m.style.display = 'none')
+      menu.style.display = isOpen ? 'none' : 'block'
+    }, { signal })
+  })
+  // Close overflow menus on outside click
+  document.addEventListener('click', () => {
+    el.querySelectorAll('.track-overflow-menu').forEach(m => m.style.display = 'none')
+  }, { signal })
+  // Close menu after clicking an item
+  el.querySelectorAll('.track-overflow-item').forEach(item => {
+    item.addEventListener('click', () => {
+      item.closest('.track-overflow-menu').style.display = 'none'
+    }, { signal })
+  })
 }
 
 function renderGalleryImage(el, image, idx) {
@@ -208,15 +303,16 @@ function renderGalleryImage(el, image, idx) {
   if (image.series) meta.push(image.series)
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
 
-  // buy button
+  // buy + ref buttons
   if (image.mediaId !== undefined && image.mediaId !== null) {
-    const priceEth = image.mediaPrice ? (Number(image.mediaPrice) / 1e18) : 0
-    const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'collect free'
-    html += `<div style="margin-bottom:1.5em"><button class="track-buy-btn" data-media-id="${image.mediaId}" data-price="${image.mediaPrice || '0'}" data-eth-wei="${image.mediaPrice || '0'}" data-title="${escapeHtml(image.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button></div>`
+    const priceWei = image.mediaPrice || '0'
+    const isFree = Number(priceWei) === 0
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${image.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
   }
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
 }
 
 function renderFilmWork(el, work) {
@@ -231,10 +327,11 @@ function renderFilmWork(el, work) {
   // action buttons
   html += `<div style="display:flex;gap:1ch;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
   if (work.mediaId !== undefined && work.mediaId !== null) {
-    const priceEth = work.mediaPrice ? (Number(work.mediaPrice) / 1e18) : 0
-    const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'collect free'
-    html += `<button class="track-buy-btn" data-media-id="${work.mediaId}" data-price="${work.mediaPrice || '0'}" data-eth-wei="${work.mediaPrice || '0'}" data-title="${escapeHtml(work.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button>`
+    const priceWei = work.mediaPrice || '0'
+    const isFree = Number(priceWei) === 0
+    html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${work.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(work.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>`
   }
+  html += refButtonHtml(work, { src: work.video || '', type: 'film' })
   html += `</div>`
 
   if (work.video) {
@@ -243,6 +340,7 @@ function renderFilmWork(el, work) {
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
 }
 
 function renderVideoItem(el, item) {
@@ -254,11 +352,11 @@ function renderVideoItem(el, item) {
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:0.5em">${escapeHtml(meta.join(' -- '))}</div>`
   if (item.description) html += `<p style="margin-bottom:1em">${escapeHtml(item.description)}</p>`
 
-  // buy button (before video so it's visible without scrolling)
+  // buy + ref buttons (before video so it's visible without scrolling)
   if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceEth = item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : 0
-    const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'collect free'
-    html += `<div style="margin-bottom:1em"><button class="track-buy-btn" data-media-id="${item.mediaId}" data-price="${item.mediaPrice || '0'}" data-eth-wei="${item.mediaPrice || '0'}" data-title="${escapeHtml(item.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button></div>`
+    const priceWei = item.mediaPrice || '0'
+    const isFree = Number(priceWei) === 0
+    html += `<div style="margin-bottom:1em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { art: item.poster || item.thumbnail || '', type: 'video' })}</div>`
   }
 
   // video player — same lazy pattern as /video page with auto-generated thumbnail
@@ -277,6 +375,7 @@ function renderVideoItem(el, item) {
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
 }
 
 function renderAudioItem(el, item, idx) {
@@ -287,15 +386,16 @@ function renderAudioItem(el, item, idx) {
   if (item.src) html += `<audio src="${item.src}" controls preload="none" style="width:100%;margin-bottom:1.5em"></audio>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceEth = item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : 0
-    const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'collect free'
-    html += `<div style="margin-bottom:1.5em"><button class="track-buy-btn" data-media-id="${item.mediaId}" data-price="${item.mediaPrice || '0'}" data-eth-wei="${item.mediaPrice || '0'}" data-title="${escapeHtml(item.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button></div>`
+    const priceWei = item.mediaPrice || '0'
+    const isFree = Number(priceWei) === 0
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { src: item.src || '', type: 'audio' })}</div>`
   }
 
   if (item.url) html += `<div style="margin-bottom:1.5em"><a href="${item.url}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.9em">listen</a></div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
 }
 
 function renderWritingItem(el, item, idx) {
@@ -310,13 +410,14 @@ function renderWritingItem(el, item, idx) {
   if (item.excerpt) html += `<div style="margin-bottom:1.5em;color:var(--fg);line-height:1.6">${escapeHtml(item.excerpt)}</div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceEth = item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : 0
-    const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'collect free'
-    html += `<div style="margin-bottom:1.5em"><button class="track-buy-btn" data-media-id="${item.mediaId}" data-price="${item.mediaPrice || '0'}" data-eth-wei="${item.mediaPrice || '0'}" data-title="${escapeHtml(item.title || '')}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button></div>`
+    const priceWei = item.mediaPrice || '0'
+    const isFree = Number(priceWei) === 0
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { type: 'writing' })}</div>`
   }
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
+  wireRefButtons(el)
 }
 
 // --- On-chain media: /art?media=0 ---
@@ -327,7 +428,6 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
   const pc = await getPublicClient()
 
-  // read media data + collaborators in parallel
   const [mediaResult, collabResult] = await Promise.all([
     pc.readContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'media', args: [BigInt(mediaId)] }),
     pc.readContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'getCollaborators', args: [BigInt(mediaId)] }).catch(() => [[], []]),
@@ -408,36 +508,34 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
   let html = ''
 
-  // cover art / media preview
+  // cover art / media preview — with play overlay for audio
+  const isAudioContent = contentType.startsWith('audio/') || contentType === 'application/ogg'
   if (coverUrl) {
-    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="/api/img?url=${encodeURIComponent(coverUrl)}&w=600" alt="${escapeHtml(title)}" style="max-width:100%;max-height:400px" loading="lazy"></div>`
+    html += `<div class="art-cover" style="margin-bottom:1.5em;position:relative;display:inline-block">
+      <img src="/api/img?url=${encodeURIComponent(coverUrl)}&w=600" alt="${escapeHtml(title)}" style="max-width:100%;max-height:400px;display:block" loading="lazy">
+      ${isAudioContent && mediaUrl ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="${mediaUrl}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artistDomain)}" style="width:56px;height:56px;font-size:20px"><i class="ph ph-play"></i></button>` : ''}
+    </div>`
   }
 
-  // title + artist
+  // title + artist + price
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(title)}</h1>`
-  html += `<div style="color:var(--muted);margin-bottom:1em">by <a href="https://${escapeHtml(artistDomain)}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a></div>`
+  html += `<div style="color:var(--muted);margin-bottom:0.75em">${t('art.by')} <a href="https://${escapeHtml(artistDomain)}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a>${priceNum > 0 ? ` — <span data-eth-wei="${price.toString()}" data-fiat-primary="true" style="color:var(--fg)"></span>` : ''}</div>`
 
-  // action row: play, buy, download
-  html += `<div style="display:flex;gap:1ch;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
+  // action row
+  html += `<div style="display:flex;gap:0.6em;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
 
-  if (mediaUrl) {
-    if (contentType.startsWith('audio/') || contentType === 'application/ogg') {
-      html += `<button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artistDomain)}" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">play</button>`
-    }
-    // video: no separate play button — poster click starts inline player, PiP button hands off to global player
-  }
+  // Audio play is now on the cover art overlay; video uses poster click
 
   // buy button (or superseded notice)
   if (isSuperseded) {
     html += `<span style="color:var(--muted);font-size:0.85em">this listing has been updated</span>`
     html += `<a href="/art?media=${activeListingId}" style="color:var(--accent);font-size:0.85em;margin-left:1ch">view current listing</a>`
   } else {
-    const priceLabel = priceNum > 0 ? `buy ${priceEth} ETH` : 'collect free'
-    html += `<button id="art-buy-btn" data-media-id="${mediaId}" data-price="${price.toString()}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;cursor:pointer">${priceLabel}</button>`
+    html += `<button id="art-buy-btn" class="feed-card-btn green" data-media-id="${mediaId}" data-price="${price.toString()}">${priceNum > 0 ? t('art.buy') : t('art.collectFree')}</button>`
   }
 
   if (mediaUrl) {
-    html += `<a href="${mediaUrl}" download="${escapeHtml(title)}" style="color:var(--dim);font-size:0.85em">download</a>`
+    html += `<a href="${mediaUrl}" download="${escapeHtml(title)}" class="feed-card-btn" style="text-decoration:none"><i class="ph ph-download-simple"></i> download</a>`
   }
 
   html += `</div>`
@@ -489,22 +587,24 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
     buyBtn.addEventListener('click', async () => {
       if (buyBtn.disabled) return
-      const priceLabel = buyBtn.textContent
-      buyBtn.textContent = 'confirming...'
-      buyBtn.disabled = true
-      try {
-        await purchaseMedia(parseInt(mediaId), price.toString())
-        buyBtn.textContent = 'owned'
-        buyBtn.style.borderColor = 'var(--accent)'
-        buyBtn.style.color = 'var(--accent)'
-      } catch (err) {
-        buyBtn.textContent = err.code === 4001 ? 'cancelled' : (err.shortMessage || 'could not complete purchase')
-        setTimeout(() => { buyBtn.textContent = priceLabel }, 2000)
-      } finally {
-        if (buyBtn.textContent !== 'owned') buyBtn.disabled = false
-      }
+      const { showPurchaseConfirmation } = await import('./pay.js')
+      showPurchaseConfirmation(mediaId, price.toString(), title || 'untitled')
     })
   }
+
+  // Sync playing state on track buttons
+  function syncPlayState() {
+    const src = window._playerCurrentSrc?.() || ''
+    const playing = window.isPlaying?.() || false
+    contentEl.querySelectorAll('.track-play-btn[data-track-src]').forEach(btn => {
+      const icon = btn.querySelector('i')
+      if (!icon) return
+      icon.className = (playing && src && btn.dataset.trackSrc === src) ? 'ph ph-pause' : 'ph ph-play'
+    })
+  }
+  syncPlayState()
+  const _artSyncInterval = setInterval(syncPlayState, 2000)
+  window.addEventListener('spa-navigate', () => clearInterval(_artSyncInterval), { once: true })
 
   // wire lazy video player (click poster to play inline)
   contentEl.querySelectorAll('.video-lazy').forEach(lazy => {
@@ -532,31 +632,28 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
 // Wire buy buttons for local portfolio items on art detail pages
 function wireArtDetailBuyButtons(container) {
+  const signal = _artAbortController?.signal
   container.querySelectorAll('.track-buy-btn[data-media-id]').forEach(buyBtn => {
     const mediaId = buyBtn.dataset.mediaId
     const price = buyBtn.dataset.price || '0'
 
-    // check ownership
+    // check ownership now and again when wallet connects
     checkOwnership(mediaId, buyBtn)
 
     buyBtn.addEventListener('click', async () => {
       if (buyBtn.disabled) return
-      const priceLabel = buyBtn.textContent
-      buyBtn.textContent = 'confirming...'
-      buyBtn.disabled = true
-      try {
-        await purchaseMedia(parseInt(mediaId), price)
-        buyBtn.textContent = 'owned'
-        buyBtn.style.borderColor = 'var(--accent)'
-        buyBtn.style.color = 'var(--accent)'
-      } catch (err) {
-        buyBtn.textContent = err.code === 4001 ? 'cancelled' : (err.shortMessage || 'could not complete purchase')
-        setTimeout(() => { buyBtn.textContent = priceLabel }, 2000)
-      } finally {
-        if (buyBtn.textContent !== 'owned') buyBtn.disabled = false
-      }
-    })
+      const title = buyBtn.dataset.title || 'untitled'
+      const { showPurchaseConfirmation } = await import('./pay.js')
+      showPurchaseConfirmation(mediaId, price, title)
+    }, { signal })
   })
+
+  // Re-check ownership when wallet connects (user may sign in after page load)
+  window.addEventListener('wallet-connected', () => {
+    container.querySelectorAll('.track-buy-btn[data-media-id]').forEach(buyBtn => {
+      if (!buyBtn.disabled) checkOwnership(buyBtn.dataset.mediaId, buyBtn)
+    })
+  }, { signal })
 }
 
 async function checkOwnership(mediaId, buyBtn) {
@@ -568,7 +665,7 @@ async function checkOwnership(mediaId, buyBtn) {
     const pc = await getPublicClient()
     const balance = await pc.readContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'balanceOf', args: [addr, BigInt(mediaId)] })
     if (balance > 0n) {
-      buyBtn.textContent = 'owned'
+      buyBtn.textContent = t('art.owned')
       buyBtn.style.borderColor = 'var(--accent)'
       buyBtn.style.color = 'var(--accent)'
       buyBtn.disabled = true

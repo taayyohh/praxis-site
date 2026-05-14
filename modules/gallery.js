@@ -312,7 +312,7 @@ function renderLoadMore(images, pageSize, seriesId) {
           var captionText = esc(img.t || '') + (img.y ? ' (' + esc(String(img.y)) + ')' : '') + (img.m ? ' -- ' + esc(img.m) : '');
           var div = document.createElement('div');
           div.className = 'gallery-item';
-          div.innerHTML = '<img src="' + thumb + '" data-full="' + (fullSrc || '') + '" data-caption="' + captionText + '" data-art-url="' + artUrl + '" alt="' + esc(img.t) + '" loading="lazy" class="gallery-thumb"><div class="gallery-caption"><a href="' + artUrl + '" style="color:inherit;text-decoration:none">' + captionText + '</a>' + extra + '</div>';
+          div.innerHTML = '<img src="' + esc(thumb || '') + '" data-full="' + esc(fullSrc || '') + '" data-caption="' + captionText + '" data-art-url="' + esc(artUrl) + '" alt="' + esc(img.t) + '" loading="lazy" class="gallery-thumb"><div class="gallery-caption"><a href="' + esc(artUrl) + '" style="color:inherit;text-decoration:none">' + captionText + '</a>' + extra + '</div>';
           grid.appendChild(div);
         }
         shown = end;

@@ -8,16 +8,17 @@ import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
 
-const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
+const PROJECT_TYPE_PRESETS = ['show', 'film', 'theater', 'recording', 'workshop', 'installation']
 const STATUS_LABELS = [
   () => t('projects.status.proposed'),
   () => t('projects.status.funded'),
   () => t('projects.status.confirmed'),
+  () => t('projects.status.completing') || 'completing',
   () => t('projects.status.completed'),
   () => t('projects.status.cancelled'),
   () => t('projects.status.disputed'),
 ]
-const STATUS_COLORS = ['#c0c0c0', '#4ade80', '#60a5fa', '#a78bfa', '#666', '#666']
+const STATUS_COLORS = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
 
 import { PRAXIS_ABI, PRAXIS_ADDR } from './contracts.js'
 const HUB_ABI = PRAXIS_ABI
@@ -354,9 +355,8 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
             const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: cashAcct })
             await publicClient.waitForTransactionReceipt({ hash })
             cs.textContent = t('projects.claimedOfframp')
-            // then offramp via native ramp (zkp2p + Relay)
-            const ok = await window.peerOfframpOptimism?.(wallet, ethAmount)
-            cs.textContent = ok ? t('projects.cashedOut') : t('projects.offrampCancelled')
+            // open peer.xyz for off-ramp
+            window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
           } catch (e) {
             cs.textContent = e.code === 4001 ? t('status.cancelled') : `error: ${e.shortMessage || e.message}`
           }
@@ -602,7 +602,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
       <div class="project-card-header">
         <div>
           <h3 class="project-card-title"><a href="/project?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.title)}</a></h3>
-          <span class="project-type-badge">${PROJECT_TYPES[p.type]}</span>
+          <span class="project-type-badge">${escapeHtml(p.type) || 'other'}</span>
           <span class="project-status-badge" style="color:${STATUS_COLORS[p.status]}">${STATUS_LABELS[p.status]?.() || ''}</span>
         </div>
         <div class="project-deadline">${p.status <= 2 && daysLeft > 0 ? t('projects.daysLeft', { d: daysLeft }) : p.status <= 2 ? '' : deadlineDate}</div>
@@ -783,7 +783,7 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
       <div style="flex:1;overflow-y:auto;padding-bottom:2em">
         <div style="display:grid;gap:1em">
           <input type="text" id="propose-title" placeholder="${t('projects.titlePlaceholder')}" class="project-input">
-          <textarea id="propose-desc" placeholder="${t('projects.descPlaceholder')}" rows="4" class="project-input" style="resize:vertical"></textarea>
+          <div id="propose-desc-editor"></div>
           <div id="propose-type-container" class="project-input" style="display:flex;flex-wrap:wrap;gap:0.3em;align-items:center;position:relative;cursor:text;min-height:2em;padding:0.3em 0.5ch">
             <input type="text" id="propose-type" placeholder="${t('projects.categoryPlaceholder')}" style="border:none;outline:none;background:none;color:var(--fg);font:inherit;flex:1;min-width:8ch;padding:0">
             <div id="propose-type-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg,#111);border:1px solid var(--border);max-height:150px;overflow-y:auto;z-index:10"></div>
@@ -985,7 +985,7 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
 
   function _showCategoryDropdown(filter) {
     const cached = _getCachedCategories()
-    const combined = [...new Set([...PROJECT_TYPES, ...cached])]
+    const combined = [...new Set([...PROJECT_TYPE_PRESETS, ...cached])]
     const matches = filter ? combined.filter(c => c.includes(filter.toLowerCase()) && !_categoryTags.includes(c)) : combined.filter(c => !_categoryTags.includes(c))
     if (matches.length === 0) { _catDropdown.style.display = 'none'; return }
     _catDropdown.innerHTML = ''
@@ -1300,6 +1300,20 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
     })
   }
 
+  // Shared markdown editor for project description
+  const editorContainer = document.getElementById('propose-desc-editor')
+  let _descEditor = null
+  if (editorContainer) {
+    import('./markdown-editor.js').then(({ createMarkdownEditor }) => {
+      _descEditor = createMarkdownEditor(editorContainer, { placeholder: t('projects.descPlaceholder'), rows: 6 })
+    }).catch(() => {
+      // fallback: plain textarea
+      editorContainer.innerHTML = `<textarea id="propose-desc" placeholder="${t('projects.descPlaceholder')}" rows="6" class="project-input" style="resize:vertical;width:100%"></textarea>`
+    })
+  }
+  // Make desc value accessible for submit
+  window._getProjectDesc = () => _descEditor ? _descEditor.getValue() : (document.getElementById('propose-desc')?.value || '')
+
   document.getElementById('propose-team').addEventListener('focusout', (e) => {
     if (e.target.classList.contains('team-domain-input')) {
       setTimeout(() => {
@@ -1320,8 +1334,16 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
     }
     const el = document.getElementById('tier-calc')
     if (el) {
-      el.textContent = total > 0 ? t('projects.fundingGoal', { eth: formatEthAmount(BigInt(Math.round(total * 1e18))) }) : t('projects.fundingGoal', { eth: '0' })
-      el.style.color = total > 0 ? '#4ade80' : '#444'
+      if (total > 0) {
+        const wei = BigInt(Math.round(total * 1e18))
+        const ethStr = formatEthAmount(wei)
+        el.innerHTML = `funding goal: ${ethStr} ETH <span data-eth-wei="${wei}" data-fiat-primary="true" style="font-weight:600"></span>`
+        el.style.color = 'var(--green, #4ade80)'
+        import('./fiat.js').then(({ enhanceEthLabels }) => enhanceEthLabels(el)).catch(() => {})
+      } else {
+        el.textContent = t('projects.fundingGoal', { eth: '0' })
+        el.style.color = 'var(--dim)'
+      }
     }
   }
 
@@ -1352,11 +1374,10 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
   document.getElementById('propose-btn').addEventListener('click', async () => {
     const ps = document.getElementById('propose-status')
     const title = document.getElementById('propose-title').value.trim()
-    const desc = document.getElementById('propose-desc').value.trim()
-    // collect category tags; use first matching PROJECT_TYPE for the contract enum
+    const desc = (window._getProjectDesc?.() || document.getElementById('propose-desc')?.value || '').trim()
+    // collect category tags; use first tag as the project type string
     if (_catInput.value.trim()) _addCategoryTag(_catInput.value) // capture any unsubmitted text
-    const typeStr = _categoryTags.find(t => PROJECT_TYPES.indexOf(t) >= 0) || _categoryTags[0] || ''
-    const typeVal = PROJECT_TYPES.indexOf(typeStr) >= 0 ? PROJECT_TYPES.indexOf(typeStr) : 6 // default to OTHER
+    const typeStr = _categoryTags[0] || ''
     // collect team from rows
     const teamRows = document.querySelectorAll('.propose-team-row')
     const collabDomains = []
@@ -1487,7 +1508,7 @@ function renderProposeForm(hubAddress, publicClient, domainToWallet, resolve, al
       const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await wc.writeContract({
         address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-        args: [title, desc, typeVal, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
+        args: [title, desc, typeStr, '', collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
         account: proposeAcct,
       })
       ps.textContent = `tx: ${hash.slice(0, 14)}...`
@@ -1749,7 +1770,7 @@ async function initMap(projects, resolve) {
       const popupHtml = `
         <div style="font-family:inherit;font-size:13px;min-width:150px">
           <strong><a href="/project?id=${p.id}" style="color:inherit">${escapeHtml(p.title)}</a></strong><br>
-          <span style="opacity:0.7">${PROJECT_TYPES[p.type] || 'other'}</span>
+          <span style="opacity:0.7">${escapeHtml(p.type) || 'other'}</span>
           <span style="margin-left:0.5em;color:${STATUS_COLORS[p.status]}">${STATUS_LABELS[p.status]?.() || ''}</span><br>
           <span>${pct.toFixed(0)}% ${t('feed.funded').toLowerCase()}</span>
         </div>
@@ -1808,14 +1829,14 @@ async function initMap(projects, resolve) {
           ? `<h4 style="color:var(--muted);margin-bottom:0.5em">${t('projects.noLocation')} (${withoutLocation.length})</h4>` +
             withoutLocation.map(p => {
               const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
-              return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${PROJECT_TYPES[p.type] || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
+              return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
             }).join('')
           : '')
     } else if (withoutLocation.length > 0) {
       noLocationEl.innerHTML = `<h4 style="color:var(--muted);margin-bottom:0.5em">${t('projects.noLocation')} (${withoutLocation.length})</h4>` +
         withoutLocation.map(p => {
           const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
-          return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${PROJECT_TYPES[p.type] || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
+          return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
         }).join('')
     } else {
       noLocationEl.innerHTML = ''

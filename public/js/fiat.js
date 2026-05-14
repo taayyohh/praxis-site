@@ -15,9 +15,13 @@ const LOCALE_TO_CURRENCY = {
   'ja': 'jpy', 'ja-JP': 'jpy', 'zh': 'cny', 'zh-CN': 'cny',
   'ko': 'krw', 'ko-KR': 'krw', 'pt-BR': 'brl', 'hi': 'inr', 'hi-IN': 'inr',
   'sw': 'kes', 'sw-KE': 'kes', 'de': 'eur', 'fr': 'eur', 'es': 'eur',
+  'sv': 'sek', 'sv-SE': 'sek', 'da': 'dkk', 'da-DK': 'dkk',
+  'id': 'idr', 'id-ID': 'idr', 'tr': 'try', 'tr-TR': 'try',
+  'ru': 'rub', 'ru-RU': 'rub', 'bn': 'bdt', 'bn-BD': 'bdt',
+  'vi': 'vnd', 'vi-VN': 'vnd', 'fa': 'irr', 'ur': 'pkr',
 }
 
-const SUPPORTED_CURRENCIES = ['usd', 'eur', 'gbp', 'jpy', 'cny', 'brl', 'ngn', 'kes', 'inr', 'krw']
+const SUPPORTED_CURRENCIES = ['usd', 'eur', 'gbp', 'jpy', 'cny', 'brl', 'ngn', 'kes', 'inr', 'krw', 'sek', 'dkk', 'idr', 'try', 'rub', 'bdt', 'vnd', 'pkr']
 
 export function getUserCurrency() {
   return localStorage.getItem(CURRENCY_KEY) || detectCurrency()
@@ -84,6 +88,21 @@ export function formatPriceSync(wei, prices) {
   return `${ethStr} ETH <span style="color:var(--dim)">(~${formatFiat(fiatAmount, currency)})</span>`
 }
 
+// Fiat-primary format: shows fiat first, ETH as dim secondary
+// e.g. "~$7.97 (0.0035 ETH)" instead of "0.0035 ETH (~$7.97)"
+export function formatPriceFiatPrimary(wei, prices) {
+  const ethStr = formatEthAmount(wei)
+  const ethNum = Number(wei) / 1e18
+  if (ethNum === 0) return `0 ETH`
+  if (!prices) return `${ethStr} ETH`
+  const currency = getUserCurrency()
+  const rate = prices[currency]
+  if (!rate) return `${ethStr} ETH`
+  const fiatAmount = ethNum * rate
+  if (fiatAmount < 0.01) return `<${formatFiat(0.01, currency)} <span style="color:var(--dim)">(${ethStr} ETH)</span>`
+  return `~${formatFiat(fiatAmount, currency)} <span style="color:var(--dim)">(${ethStr} ETH)</span>`
+}
+
 // Post-render enhancement: finds all elements with data-eth-wei="<bigint string>"
 // and appends the fiat approximation to their text. Idempotent — re-applies on
 // currency-changed event so toggling the switcher re-renders live.
@@ -106,8 +125,13 @@ export async function enhanceEthLabels(rootEl) {
     if (ethNum === 0) { el.dataset.fiatApplied = '1'; continue }
     const fiatAmount = ethNum * rate
     const fiatStr = fiatAmount < 0.01 ? `<${formatFiat(0.01, currency)}` : `~${formatFiat(fiatAmount, currency)}`
-    const existing = el.innerHTML.replace(/\s*<span class="fiat-approx">.*?<\/span>\s*$/i, '')
-    el.innerHTML = `${existing} <span class="fiat-approx" style="color:var(--dim);font-size:0.85em">(${fiatStr})</span>`
+    if (el.dataset.fiatPrimary) {
+      // Fiat-first: show fiat as the main label
+      el.innerHTML = fiatStr.replace(/^~/, '')
+    } else {
+      const existing = el.innerHTML.replace(/\s*<span class="fiat-approx">.*?<\/span>\s*$/i, '')
+      el.innerHTML = `${existing} <span class="fiat-approx" style="color:var(--dim);font-size:0.85em">(${fiatStr})</span>`
+    }
     el.dataset.fiatApplied = '1'
   }
 }

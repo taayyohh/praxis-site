@@ -3,10 +3,10 @@
 
 // --- Contract Addresses (Optimism L2, chain 10) ---
 // All 9 contracts redeployed to Optimism 2026-04-10.
-export const PRAXIS_ADDR = '0x119dFac33408dDb3F42A2a9bA08a83716e1F8e77'
-export const INVITES_ADDR = '0xfda3080f7B1b4C0FD008Da9f2695EA5811d4FaCE'
-export const TICKET_MARKET_ADDR = '0x77FcbfcBe7A79bC461cee3281ba77AB5B9e349CC'
-export const ARTIST_SPONSOR_ADDR = '0x1C10799b6f02fcfd3fE3Ebf54e8699A287fcD3e1'
+export const PRAXIS_ADDR = '0xA34f1d26Ff9D6fd1E36DD317987DffE2a557DDA0'
+export const INVITES_ADDR = '0xbC74c3D815beC49507826A6b9e07E7f086FB744D'
+export const TICKET_MARKET_ADDR = '0x0ea62A91acE3D77Bc96d77f1B05Ff3C1C60aF74c'
+export const ARTIST_SPONSOR_ADDR = '0x15F5f22F130ecEF5eee15d9BA90bB73B287a4F6A'
 
 // Dynamic addresses (from HTML data attributes)
 export function getMediaAddress() {
@@ -36,7 +36,8 @@ export const PRAXIS_ABI = [
   { name: 'proposeProject', type: 'function', inputs: [{ name: 'args', type: 'tuple', components: [
     { name: 'title', type: 'string' },
     { name: 'description', type: 'string' },
-    { name: 'projectType', type: 'uint8' },
+    { name: 'projectType', type: 'string' },
+    { name: 'metadataCid', type: 'string' },
     { name: 'collaborators', type: 'address[]' },
     { name: 'splits', type: 'uint256[]' },
     { name: 'fundingGoal', type: 'uint256' },
@@ -45,6 +46,7 @@ export const PRAXIS_ABI = [
     { name: 'tierPrices', type: 'uint256[]' },
     { name: 'tierMaxSupplies', type: 'uint256[]' },
     { name: 'tierTransferable', type: 'bool[]' },
+    { name: 'tierMetadataCids', type: 'string[]' },
     { name: 'revenueSharePercent', type: 'uint256' },
     { name: 'location', type: 'uint128' },
     { name: 'disputeWindowDays', type: 'uint256' },
@@ -74,6 +76,23 @@ export const PRAXIS_ABI = [
   { name: 'setOperator', type: 'function', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [{ type: 'bool' }], stateMutability: 'nonpayable' },
   { name: 'isOperator', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
   { name: 'balanceOf', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+  { name: 'updateProject', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }, { name: 'title', type: 'string' }, { name: 'description', type: 'string' }, { name: 'projectType', type: 'string' }, { name: 'metadataCid', type: 'string' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'timeoutProject', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'migrateProject', type: 'function', inputs: [{ name: 'args', type: 'tuple', components: [
+    { name: 'proposer', type: 'address' },
+    { name: 'title', type: 'string' },
+    { name: 'description', type: 'string' },
+    { name: 'projectType', type: 'string' },
+    { name: 'metadataCid', type: 'string' },
+    { name: 'status', type: 'uint8' },
+    { name: 'collaborators', type: 'address[]' },
+    { name: 'splits', type: 'uint256[]' },
+    { name: 'fundingGoal', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+    { name: 'createdAt', type: 'uint256' },
+  ]}], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'migrationLocked', type: 'function', inputs: [], outputs: [{ type: 'bool' }], stateMutability: 'view' },
+  { name: 'lockMigration', type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' },
 ]
 
 // BlogRegistry — post, postWithRef
@@ -190,7 +209,7 @@ export const ARTIST_SPONSOR_ABI = [
 ]
 
 // PraxisOrganization — orgs, members, management
-export const ORG_ADDRESS = '0x93faC7A4E020B5D20E0b5216b483090114C4Bc67'
+export const ORG_ADDRESS = '0x23045DF374874274497541cCF34945069447e01F'
 export function getOrgAddress() { return ORG_ADDRESS }
 export const ORG_ABI = [
   // Lifecycle

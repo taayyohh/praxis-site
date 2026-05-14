@@ -3,7 +3,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther, formatEther } from './vendor.js'
 import { scroll } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, ensureWallet, rewriteIpfsUrls, isBlocked, requireUser , getWalletProvider, parseEventMetadata } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, ensureWallet, rewriteIpfsUrls, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -14,7 +14,7 @@ let _countdownInterval = null
 
 import { PRAXIS_ABI, BLOG_ABI } from './contracts.js'
 
-const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
+const PROJECT_TYPE_PRESETS = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
 const STATUS_LABELS = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
 const STATUS_COLORS = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
 
@@ -168,7 +168,7 @@ async function initProjectDetail() {
     const goalEth = formatEthAmount(p.fundingGoal)
     const fundedEth = formatEthAmount(p.totalFunded)
     const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
-    const typeName = PROJECT_TYPES[p.projectType] || 'other'
+    const typeName = p.projectType || 'other'
     const isEvent = typeName === 'show' || typeName === 'theater' || typeName === 'workshop'
     const statusLabel = isEvent
       ? { 0: 'tickets available', 1: 'tickets available', 2: 'confirmed', 3: 'happening soon', 4: 'event over', 5: 'cancelled', 6: 'disputed' }[p.status] || STATUS_LABELS[p.status]
@@ -753,21 +753,6 @@ async function initProjectDetail() {
 }
 
 // --- Project comments (blog posts with refType=1, refId=projectId) ---
-
-function renderMarkdown(raw) {
-  let body = escapeHtml(raw)
-  body = rewriteIpfsUrls(body)
-  body = body.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, (_, alt, url) => {
-    const src = url.includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(url)}&w=800` : url
-    return `<img src="${src}" alt="${alt}" loading="lazy" style="max-width:100%;margin:0.5em 0">`
-  })
-  body = body.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
-    if (!/^https?:|^\/[^\/]/i.test(href)) return text
-    return `<a href="${href}">${text}</a>`
-  })
-  body = body.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
-  return body
-}
 
 async function loadProjectComments(projectId, projectTitle, domainMap) {
   const commentsEl = document.getElementById('project-comments')

@@ -9,7 +9,7 @@ import { privateKeyToAccount, createWalletClient, http, optimism } from './vendo
 
 const STORAGE_KEY = 'praxis-wallet-enc'
 const ADDR_KEY = 'praxis-embedded-addr'
-const OPTIMISM_RPC = 'https://mainnet.optimism.io'
+const OPTIMISM_RPC = '/api/rpc/10' // server proxy keeps Alchemy key server-side
 const OPTIMISM_CHAIN_ID = '0xa'
 
 // --- Cross-subdomain cookie helpers ---
@@ -69,18 +69,9 @@ function _consumeSuppressToken() {
   _suppressExpiresAt = 0
   return true
 }
-// Legacy shim: still honor `window._suppressNextSignPrompt = true` for
-// callers that haven't been migrated yet. Setter is a plain assignment that
-// we translate into the module counter on read.
+// Consume suppress token (module-scoped, time-limited, single-use)
 function _consumeSuppressFlag() {
-  if (_consumeSuppressToken()) return true
-  try {
-    if (window._suppressNextSignPrompt) {
-      try { delete window._suppressNextSignPrompt } catch { window._suppressNextSignPrompt = false }
-      return true
-    }
-  } catch {}
-  return false
+  return _consumeSuppressToken()
 }
 const SESSION_TIMEOUT = 15 * 60 * 1000 // 15 minutes
 const _webauthnCredId = localStorage.getItem('praxis-webauthn-cred') // passkey credential ID
@@ -388,14 +379,14 @@ function confirmTransaction(to, value) {
 
     // Human-readable context based on the destination contract
     const KNOWN_CONTRACTS = {
-      '0x119d62a8eb466EAd6435d3c9479B2C8aF15F437B': { name: 'register as an artist', desc: 'this registers your domain on the praxis network. one-time deploy fee.' },
-      '0x119dFac33408dDb3F42A2a9bA08a83716e1F8e77': { name: 'project action', desc: 'this interacts with the praxis project system (funding, credentials, revenue).' },
-      '0xCa52D47900308AAB1e18ee83Ce98be9FAc24B71D': { name: 'media listing', desc: 'this lists or purchases media on the praxis marketplace.' },
-      '0xfda3080f7B1b4C0FD008Da9f2695EA5811d4FaCE': { name: 'use invite code', desc: 'this activates your invite code on the network.' },
-      '0x1C10799b6f02fcfd3fE3Ebf54e8699A287fcD3e1': { name: 'sponsor an invite', desc: 'this deposits funds to cover the registration fee for someone you invite. the funds go to a smart contract — not to another person — and are only released when someone uses your invite link to register. you can refund unused slots anytime.' },
-      '0x77FcbfcBe7A79bC461cee3281ba77AB5B9e349CC': { name: 'ticket marketplace', desc: 'this lists or purchases a ticket on the marketplace.' },
-      '0x10861656E0b194b670348e6597Fd4304Fc2FdC61': { name: 'add to library', desc: 'this adds an item to the shared knowledge base.' },
-      '0xE37C4f2278838016f81f68342f14B82Cb36d88Ef': { name: 'treasury', desc: 'this interacts with the praxis treasury.' },
+      '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'this registers your domain on the praxis network. one-time deploy fee.' },
+      '0xab7c23ac815f03059026fec32c60a06e5e4d4e33': { name: 'project action', desc: 'this interacts with the praxis project system (funding, credentials, revenue).' },
+      '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'media listing', desc: 'this lists or purchases media on the praxis marketplace.' },
+      '0xbc74c3d815bec49507826a6b9e07e7f086fb744d': { name: 'use invite code', desc: 'this activates your invite code on the network.' },
+      '0x15f5f22f130ecef5eee15d9ba90bb73b287a4f6a': { name: 'sponsor an invite', desc: 'this deposits funds to cover the registration fee for someone you invite. the funds go to a smart contract — not to another person — and are only released when someone uses your invite link to register. you can refund unused slots anytime.' },
+      '0x0ea62a91ace3d77bc96d77f1b05ff3c1c60af74c': { name: 'ticket marketplace', desc: 'this lists or purchases a ticket on the marketplace.' },
+      '0x59a4f01be3ad2b83d9a6a9ae481c08b9f3fe9aa2': { name: 'add to library', desc: 'this adds an item to the shared knowledge base.' },
+      '0xe37c4f2278838016f81f68342f14b82cb36d88ef': { name: 'treasury', desc: 'this interacts with the praxis treasury.' },
     }
     const contract = KNOWN_CONTRACTS[to?.toLowerCase()]
 
@@ -678,25 +669,40 @@ function createEmbeddedProvider(account) {
           if (!account) throw new Error('wallet is locked — please unlock first')
           const tx = params[0]
 
-          // confirmation for value transfers
+          // confirmation for value transfers (skip if pre-approved by purchase modal via one-time token)
           const val = tx.value ? BigInt(tx.value) : 0n
           if (val > 0n) {
-            const confirmed = await confirmTransaction(tx.to, val)
-            if (!confirmed) throw { code: 4001, message: 'user rejected transaction' }
+            const now = Date.now()
+            const token = window._praxisTxApprovalToken
+            const isPreApproved = token && token.nonce && (now - token.ts < 30000) && !token.used
+            if (isPreApproved) {
+              token.used = true // consume — single use only
+            } else {
+              const confirmed = await confirmTransaction(tx.to, val)
+              if (!confirmed) throw { code: 4001, message: 'user rejected transaction' }
+            }
           }
 
-          // Use viem walletClient with pre-estimated gas to avoid internal estimateGas issues
+          // Use viem walletClient — detect chain from tx.chainId (supports bridge to non-Optimism chains)
+          const txChainId = tx.chainId ? parseInt(tx.chainId, 16) : 10
+          const rpcUrl = `/api/rpc/${txChainId}`
+          const chainConfigs = {
+            1: { id: 1, name: 'Ethereum', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
+            10: optimism,
+          }
+          const txChain = chainConfigs[txChainId] || optimism
+          const txRpc = txChainId === 10 ? OPTIMISM_RPC : rpcUrl
           const client = createWalletClient({
             account,
-            chain: optimism,
-            transport: http(OPTIMISM_RPC),
+            chain: txChain,
+            transport: http(txRpc),
           })
 
           // Estimate gas ourselves via raw RPC if not provided (clean params, no viem overhead)
           let gas = tx.gas ? BigInt(tx.gas) : undefined
           if (!gas) {
             try {
-              const estResp = await fetch(OPTIMISM_RPC, {
+              const estResp = await fetch(txRpc, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_estimateGas',
@@ -708,13 +714,28 @@ function createEmbeddedProvider(account) {
             if (!gas) gas = 200000n // safe fallback
           }
 
-          return await client.sendTransaction({
-            to: tx.to,
-            value: val || undefined,
-            data: tx.data,
-            gas,
-            account,
-          })
+          // Send with auto-retry on "replacement transaction underpriced" (stuck nonce)
+          for (let _attempt = 0; _attempt < 3; _attempt++) {
+            try {
+              const txParams = { to: tx.to, value: val || undefined, data: tx.data, gas, account }
+              // On retry: bump gas price to replace the stuck tx
+              if (_attempt > 0) {
+                const block = await client.request({ method: 'eth_getBlockByNumber', params: ['latest', false] })
+                const baseFee = block?.baseFeePerGas ? BigInt(block.baseFeePerGas) : 1000000n
+                const bump = BigInt(_attempt + 1) * 2n
+                txParams.maxPriorityFeePerGas = 1500000000n * bump // 1.5 gwei * bump
+                txParams.maxFeePerGas = baseFee * 2n + txParams.maxPriorityFeePerGas
+              }
+              return await client.sendTransaction(txParams)
+            } catch (txErr) {
+              const errMsg = txErr?.shortMessage || txErr?.message || ''
+              if (_attempt < 2 && (errMsg.includes('underpriced') || errMsg.includes('replacement'))) {
+                console.warn(`[wallet] tx underpriced (attempt ${_attempt + 1}), retrying with bumped gas...`)
+                continue
+              }
+              throw txErr
+            }
+          }
         }
 
         case 'eth_chainId':
@@ -815,7 +836,7 @@ function activateEmbeddedProvider(account) {
 // through this — never window.ethereum directly.
 if (typeof window !== 'undefined') {
   window.getWalletProvider = function () {
-    return window.praxisEthereum || window.ethereum || null
+    return window.praxisEthereum || null
   }
 }
 
@@ -918,6 +939,7 @@ function showRecoveryPhraseUI(mnemonic, address, onComplete) {
   const overlay = document.createElement('div')
   overlay.id = 'recovery-phrase-overlay'
   overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10002'
 
   const words = mnemonic.split(' ')
   const wordGrid = words.map((w, i) =>
@@ -1041,6 +1063,7 @@ async function showUnlockPrompt() {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-unlock-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10010'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -1050,15 +1073,16 @@ async function showUnlockPrompt() {
     const _addrShort = _storedAddr ? `${_storedAddr.slice(0, 6)}...${_storedAddr.slice(-4)}` : ''
     dialog.innerHTML = `
       <h3 style="color:var(--accent, #00ff41);margin-bottom:0.25em">${useBiometric ? 'verify identity' : 'sign in'}</h3>
-      <div id="unlock-account-label" style="color:#666;font-size:0.8em;margin-bottom:0.75em">${_addrShort ? `account: ${_addrShort}` : ''}</div>
-      <input type="password" id="unlock-password" placeholder="password" autocomplete="current-password" style="width:100%;background:#111;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:1em;padding:0.5em 1ch;margin-bottom:0.75em;box-sizing:border-box">
+      <div id="unlock-account-label" style="color:var(--dim, #666);font-size:0.8em;margin-bottom:0.75em">${_addrShort ? `account: ${_addrShort}` : ''}</div>
+      <input type="password" id="unlock-password" placeholder="password" autocomplete="current-password" style="width:100%;background:var(--surface, #111);border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:1em;padding:0.5em 1ch;margin-bottom:0.75em;box-sizing:border-box">
       <p id="unlock-error" style="color:#ef4444;font-size:0.85em;min-height:1.2em;margin-bottom:0.5em"></p>
       <div style="display:flex;gap:1ch;justify-content:flex-end">
-        <button id="unlock-cancel-btn" style="background:none;border:1px solid #333;color:#666;font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">cancel</button>
-        <button id="unlock-submit-btn" style="background:none;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">unlock</button>
+        <button id="unlock-cancel-btn" style="background:none;border:1px solid var(--border, #333);color:var(--dim, #666);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">cancel</button>
+        <button id="unlock-submit-btn" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">unlock</button>
       </div>
-      <div style="margin-top:1em;border-top:1px solid #222;padding-top:0.75em">
-        <button id="unlock-recover-btn" style="background:none;border:none;color:#555;font-family:inherit;font-size:0.8em;padding:0;cursor:pointer;text-decoration:underline">recover with phrase</button>
+      <div style="margin-top:1em;border-top:1px solid var(--border, #222);padding-top:0.75em;display:flex;flex-direction:column;gap:0.5em">
+        <button id="unlock-recover-btn" style="background:none;border:none;color:var(--dim, #555);font-family:inherit;font-size:0.8em;padding:0;cursor:pointer;text-decoration:underline;text-align:left">recover with phrase</button>
+        <button id="unlock-switch-btn" style="background:none;border:none;color:var(--dim, #555);font-family:inherit;font-size:0.8em;padding:0;cursor:pointer;text-decoration:underline;text-align:left">use different account</button>
       </div>
     `
     overlay.appendChild(dialog)
@@ -1108,6 +1132,22 @@ async function showUnlockPrompt() {
       overlay.remove()
       showRecoveryPrompt().then(resolve)
     })
+    document.getElementById('unlock-switch-btn').addEventListener('click', async () => {
+      // Clear current wallet from local storage so user can sign in with a different account
+      try { localStorage.removeItem(STORAGE_KEY) } catch {}
+      try { localStorage.removeItem(ADDR_KEY) } catch {}
+      try { localStorage.removeItem('praxis-wallet-mnemonic-enc') } catch {}
+      try { localStorage.removeItem('praxis-webauthn-cred') } catch {}
+      try { sessionStorage.removeItem('praxis-wallet-session') } catch {}
+      try { sessionStorage.removeItem('praxis-bio-pw') } catch {}
+      clearWalletCookie()
+      _cachedAccount = null
+      _cachedPassword = null
+      overlay.remove()
+      // Show full sign-in choice screen (sign in / create / recover)
+      const addr = await window.connectWallet?.(true)
+      resolve(addr)
+    })
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); resolve(null) } })
 
     passwordInput.focus()
@@ -1121,6 +1161,7 @@ function showCreateWalletPrompt() {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-create-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10002'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -1191,6 +1232,7 @@ function showRecoveryPrompt() {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-recovery-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10002'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -1311,6 +1353,7 @@ function showSignInPrompt() {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-signin-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10002'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -1366,23 +1409,37 @@ function showSignInPrompt() {
             return r.json()
           }
 
+          // Try subdomain first, then custom domain, then supporter handle
+          let found = null
           const data = await ponderQuery(
             `query LookupArtist($domain: String!) { artists(where: { domain: $domain }, limit: 1) { items { id } } }`,
             { domain: lookupDomain }
           )
-          const found = data?.data?.artists?.items?.[0]?.id
+          found = data?.data?.artists?.items?.[0]?.id
+          // If not found as subdomain and handle doesn't contain a dot, also try as-is
+          // (e.g. user typed "fiction" but their domain is "fiction.bio")
+          if (!found && !handle.includes('.')) {
+            // Search by handle in the domain index — try common TLDs
+            for (const tld of ['bio', 'xyz', 'com', 'space', 'world', 'art', 'me', 'io', 'net', 'org']) {
+              const tryDomain = `${handle.toLowerCase()}.${tld}`
+              const d2 = await ponderQuery(
+                `query LookupArtist($domain: String!) { artists(where: { domain: $domain }, limit: 1) { items { id } } }`,
+                { domain: tryDomain }
+              )
+              found = d2?.data?.artists?.items?.[0]?.id
+              if (found) break
+            }
+          }
           if (!found) {
             // try supporter lookup
             const sData = await ponderQuery(
               `query LookupSupporter($handle: String!) { supporters(where: { handle: $handle }, limit: 1) { items { id } } }`,
               { handle: handle.toLowerCase() }
             )
-            const sFound = sData?.data?.supporters?.items?.[0]?.id
-            if (!sFound) { errorEl.textContent = 'handle not found'; return }
-            address = sFound
-          } else {
-            address = found
+            found = sData?.data?.supporters?.items?.[0]?.id
           }
+          if (!found) { errorEl.textContent = 'handle not found'; return }
+          address = found
         }
 
         address = address.toLowerCase()
@@ -1416,7 +1473,21 @@ function showSignInPrompt() {
           return
         }
 
-        const { encrypted } = await retrieveResp.json()
+        let { encrypted } = await retrieveResp.json()
+        // Fallback: try ourpraxis.network if this site doesn't have the backup
+        if (!encrypted) {
+          try {
+            const fallbackResp = await fetch('https://ourpraxis.network/api/wallet/retrieve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ address }),
+            })
+            if (fallbackResp.ok) {
+              const fb = await fallbackResp.json()
+              if (fb.encrypted) encrypted = fb.encrypted
+            }
+          } catch {}
+        }
         if (!encrypted) { errorEl.textContent = 'no account backup found'; return }
 
         // store locally and try to decrypt

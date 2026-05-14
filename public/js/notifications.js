@@ -62,9 +62,10 @@ function setLastSeen(ts) {
   // Fire-and-forget: persist to server for cross-device sync
   const addr = window.getWalletAddress?.()
   if (addr) {
+    const authToken = sessionStorage.getItem('praxis-auth-token') || ''
     fetch('/api/notifications/mark-read', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
       body: JSON.stringify({ wallet: addr, timestamp: ts }),
     }).catch(() => {}) // fire-and-forget
   }
@@ -124,7 +125,7 @@ async function loadNotifications(myAddr) {
             type: 'purchase',
             text: t('notifications.mediaPurchased', { who: whoLink(n.fromAddr, domainMap), title: escapeHtml(n.title || `media #${n.refId}`) }),
             time: Number(n.timestamp) * 1000,
-            link: '/works',
+            link: `/art?media=${n.refId}`,
             fromAddr: n.fromAddr, refId: n.refId, _who: whoLink(n.fromAddr, domainMap), _title: escapeHtml(n.title || `media #${n.refId}`),
           })
         } else if (n.eventType === 'confirmed') {
@@ -203,7 +204,7 @@ async function loadNotifications(myAddr) {
     if (pending.praxis > 0n) {
       notifications.push({
         type: 'unclaimed',
-        text: t('notifications.unclaimedFunds', { amount: formatEthAmount(pending.praxis), source: 'projects' }),
+        text: `<span data-eth-wei="${String(pending.praxis)}" data-fiat-primary="true">${formatEthAmount(pending.praxis)} ETH</span> unclaimed from projects`,
         time: Date.now(),
         link: '/earnings',
       })
@@ -214,7 +215,7 @@ async function loadNotifications(myAddr) {
       const source = mediaTitles.length > 0 ? `media sales (${mediaTitles.slice(0, 3).join(', ')})` : 'media sales'
       notifications.push({
         type: 'unclaimed',
-        text: t('notifications.unclaimedFunds', { amount: formatEthAmount(pending.media), source }),
+        text: `<span data-eth-wei="${String(pending.media)}" data-fiat-primary="true">${formatEthAmount(pending.media)} ETH</span> unclaimed from ${escapeHtml(source)}`,
         time: Date.now(),
         link: '/earnings',
       })
@@ -570,6 +571,9 @@ function renderNotificationsPage(contentEl, notifications) {
     </div>`
   }).join('')
 
+  // Convert ETH amounts to fiat display
+  import('./fiat.js').then(({ enhanceEthLabels }) => enhanceEthLabels(contentEl)).catch(() => {})
+
   // claim buttons
   contentEl.querySelectorAll('.notif-claim-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -585,8 +589,13 @@ function renderNotificationsPage(contentEl, notifications) {
           return
         }
         btn.textContent = 'claimed'
+        btn.disabled = true
+        btn.style.opacity = '0.5'
         btn.style.borderColor = 'var(--accent)'
         btn.style.color = 'var(--accent)'
+        btn.style.cursor = 'default'
+        // Refresh header balance after claim
+        window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
       } catch (e) {
         btn.textContent = e.code === 4001 ? 'cancelled' : 'error'
         btn.disabled = false

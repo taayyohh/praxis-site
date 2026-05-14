@@ -15,6 +15,41 @@ export function dbg(...args) {
   } catch {}
 }
 
+// === Auth token ===
+// Shared auth token for admin endpoints. Resets on wallet connect/disconnect.
+let _authToken = ''
+if (typeof window !== 'undefined') {
+  window.addEventListener('wallet-connected', () => { _authToken = '' })
+  window.addEventListener('wallet-disconnected', () => { _authToken = '' })
+}
+
+export async function getAuthToken() {
+  if (_authToken) return _authToken
+  let addr = window.getWalletAddress?.()
+  if (!addr || !getWalletProvider()) {
+    addr = await window.connectWallet?.()
+    if (!addr) return ''
+  }
+  try {
+    await window.ensureAuthorized?.()
+    const msg = `admin:${location.hostname}:${Date.now()}`
+    const sig = await getWalletProvider().request({ method: 'personal_sign', params: [msg, addr] })
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: addr, signature: sig, message: msg }),
+    })
+    if (!res.ok) throw new Error(`auth ${res.status}`)
+    const data = await res.json()
+    if (data.error) console.warn('auth error:', data.error)
+    if (data.token) _authToken = data.token
+    return _authToken
+  } catch (e) {
+    console.warn('getAuthToken failed:', e?.message)
+    return ''
+  }
+}
+
 // === Wallet provider routing ===
 // Returns the EIP-1193 provider that Praxis should use for any wallet operation.
 // When another wallet (Phantom/Coinbase/Rabby) has locked window.ethereum as
@@ -22,7 +57,8 @@ export function dbg(...args) {
 // EVERY wallet RPC call must go through this helper, not window.ethereum directly.
 export function getWalletProvider() {
   if (typeof window === 'undefined') return null
-  return window.praxisEthereum || window.ethereum || null
+  // Always use the embedded wallet — never fall back to MetaMask/browser extensions
+  return window.praxisEthereum || null
 }
 
 // Sign a personal_sign message using the embedded wallet first, falling back to
@@ -272,7 +308,7 @@ function renderPdf(url) {
       try {
         // Render page 1 thumbnail first for fast preview
         const thumbCanvas = await renderPdfThumbnail(url, Math.min(window.innerWidth - 32, 600))
-        thumbCanvas.style.cssText = 'width:100%;height:auto;display:block;cursor:pointer;border:1px solid var(--border);border-radius:4px'
+        thumbCanvas.style.cssText = 'width:100%;height:auto;display:block;cursor:pointer;border:1px solid var(--border);border-radius:4px;background:#fff'
         thumbCanvas.addEventListener('click', () => window.open(url, '_blank'))
 
         const openBtn = document.createElement('a')
@@ -419,19 +455,25 @@ export function renderMarkdown(text) {
   let html = escapeHtml(text)
   // Rewrite IPFS gateway URLs if the function exists
   if (typeof window !== 'undefined' && window.__rewriteIpfsUrls) html = window.__rewriteIpfsUrls(html)
+  // Helper: escape a value for safe insertion into HTML attributes
+  const escAttr = (s) => (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   // Images: ![alt](url)
   html = html.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, (_, alt, url) => {
     if (!/^(https?:|\/[^\/])/.test(url)) return alt
     const src = url.includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(url)}&amp;w=1200` : url
-    return `<img src="${src}" alt="${alt}" loading="lazy" style="max-width:100%;margin:1em 0">`
+    return `<img src="${escAttr(src)}" alt="${escAttr(alt)}" loading="lazy" style="max-width:100%;margin:1em 0">`
   })
   // Video embeds: [video: filename](url) — renders as thumbnail with click-to-play
   html = html.replace(/\[video:\s*([^\]]*)\]\s*\(([^)]+)\)/g, (_, label, url) => {
     if (!/^(https?:|\/[^\/])/.test(url)) return label
-    return `<div class="video-lazy" data-src="${url}" style="position:relative;max-width:100%;border-radius:6px;overflow:hidden;cursor:pointer;background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center">
-      <video src="${url}" preload="metadata" style="width:100%;height:100%;object-fit:contain;pointer-events:none"></video>
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3)">
-        <div style="width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center">
+    const safeUrl = escAttr(url)
+    // Extract CID for video-thumb poster (avoids autoplay/mute issues from <video preload>)
+    const cidMatch = url.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
+    const posterUrl = cidMatch ? '/api/video-thumb?cid=' + cidMatch[1] + '&w=800' : ''
+    return `<div class="video-lazy" data-src="${safeUrl}" data-title="${escAttr(label)}" style="position:relative;width:100%;overflow:hidden;cursor:pointer;background:#000;aspect-ratio:16/9">
+      ${posterUrl ? `<img src="${posterUrl}" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy" onerror="this.style.display='none'">` : ''}
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center">
           <i class="ph ph-play" style="color:#fff;font-size:1.4em;margin-left:2px"></i>
         </div>
       </div>
@@ -440,18 +482,19 @@ export function renderMarkdown(text) {
   // Audio embeds: [audio: filename](url)
   html = html.replace(/\[audio:\s*([^\]]*)\]\s*\(([^)]+)\)/g, (_, label, url) => {
     if (!/^(https?:|\/[^\/])/.test(url)) return label
-    return `<button class="track-play-btn" data-track-src="${url}" data-track-title="${label}" style="margin:0.5em 0">play ${label}</button>`
+    return `<button class="track-play-btn" data-track-src="${escAttr(url)}" data-track-title="${escAttr(label)}" style="margin:0.5em 0">play ${escAttr(label)}</button>`
   })
   // Links: [text](url) — supports praxis:// internal links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
     const praxisMatch = href.match(/^praxis:\/\/(project|media|post|library|artist)\/(.+)$/)
     if (praxisMatch) {
       const [, type, id] = praxisMatch
-      const routes = { project: `/project?id=${id}`, media: `/art?id=${id}`, post: `/post?id=${id}`, library: `/library?item=${id}`, artist: `/network?artist=${id}` }
-      return `<a href="${routes[type]}" style="color:var(--accent);text-decoration:underline;text-decoration-style:dotted">${text}</a>`
+      const eid = encodeURIComponent(id)
+      const routes = { project: `/project?id=${eid}`, media: `/art?id=${eid}`, post: `/post?id=${eid}`, library: `/library?item=${eid}`, artist: `/network?artist=${eid}` }
+      return `<a href="${escAttr(routes[type])}" style="color:var(--accent);text-decoration:underline;text-decoration-style:dotted">${text}</a>`
     }
     if (!/^(https?:|\/[^\/]|mailto:)/.test(href)) return text
-    return `<a href="${href}">${text}</a>`
+    return `<a href="${escAttr(href)}">${text}</a>`
   })
   // Bold then italic (order matters)
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -544,6 +587,7 @@ function _showInlineRegistration(address, registryAddress, publicClient, action)
     const overlay = document.createElement('div')
     overlay.id = 'praxis-register-overlay'
     overlay.className = 'praxis-modal-overlay'
+    overlay.style.zIndex = '10002'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog'
@@ -694,6 +738,26 @@ function _showInlineRegistration(address, registryAddress, publicClient, action)
 
         statusEl.textContent = t('audience.registered')
 
+        function showWelcome(handle) {
+          const siteUrl = `${handle}.ourpraxis.network`
+          submitBtn.style.display = 'none'
+          cancelBtn.style.display = 'none'
+          dialog.innerHTML = `
+            <div style="text-align:center;padding:1em 0">
+              <div style="font-size:1.1em;color:var(--fg, #c0c0c0);margin-bottom:0.75em">welcome to praxis</div>
+              <div style="color:var(--dim, #666);font-size:0.85em;margin-bottom:1.25em;line-height:1.5">your site is live at<br><a href="https://${escapeHtml(siteUrl)}" target="_blank" style="color:var(--accent, #00ff41);text-decoration:none;font-size:1.05em">${escapeHtml(siteUrl)}</a></div>
+              <div style="color:var(--dim, #555);font-size:0.8em;margin-bottom:1.5em">collect music, video, and art directly from artists.<br>100% of every purchase goes to the creator.</div>
+              <button id="praxis-welcome-continue" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.85em;padding:0.5em 2ch;cursor:pointer">continue</button>
+            </div>
+          `
+          document.getElementById('praxis-welcome-continue')?.addEventListener('click', () => {
+            txInProgress = false
+            cleanup(address)
+          })
+        }
+
+        const regHandle = handleInput.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+
         // offer biometric setup if supported and using embedded wallet
         if (window.PublicKeyCredential && !localStorage.getItem('praxis-webauthn-cred') && getWalletProvider()?.isPraxis) {
           submitBtn.style.display = 'none'
@@ -706,14 +770,20 @@ function _showInlineRegistration(address, registryAddress, publicClient, action)
             </div>
           `
           document.getElementById('praxis-bio-yes')?.addEventListener('click', async () => {
-            await window.setupBiometric?.()
-            cleanup(address)
+            try {
+              await window.setupBiometric?.()
+            } catch (e) {
+              console.warn('biometric setup failed:', e.message)
+            }
+            showWelcome(regHandle)
           })
-          document.getElementById('praxis-bio-skip')?.addEventListener('click', () => cleanup(address))
+          document.getElementById('praxis-bio-skip')?.addEventListener('click', () => {
+            showWelcome(regHandle)
+          })
           return
         }
 
-        setTimeout(() => cleanup(address), 800)
+        showWelcome(regHandle)
       } catch (e) {
         const msg = e.shortMessage || e.message || ''
         statusEl.textContent = msg.includes('handle taken') ? 'handle taken'

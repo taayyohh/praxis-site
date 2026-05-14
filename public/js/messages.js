@@ -276,32 +276,98 @@ async function initMessages() {
     }
   }
 
-  // compose dropdown toggle
+  // compose modal
   const composeBtn = document.getElementById('messages-compose')
-  const composeDd = document.getElementById('messages-compose-dropdown')
-  composeBtn?.addEventListener('click', (e) => {
-    e.stopPropagation()
-    if (composeDd) composeDd.style.display = composeDd.style.display === 'none' ? '' : 'none'
+  composeBtn?.addEventListener('click', () => {
+    // Remove existing modal
+    document.getElementById('messages-compose-modal')?.remove()
+    const overlay = document.createElement('div')
+    overlay.id = 'messages-compose-modal'
+    overlay.className = 'msg-compose-overlay'
+    const sheet = document.createElement('div')
+    sheet.className = 'msg-compose-sheet'
+    overlay.appendChild(sheet)
+
+    function showMenu() {
+      sheet.innerHTML = `
+        <h3 style="margin:0 0 1em;font-size:1em;font-weight:600">new conversation</h3>
+        <button id="messages-new" class="msg-compose-option"><i class="ph ph-chat-circle"></i> direct message</button>
+        <button id="messages-group" class="msg-compose-option"><i class="ph ph-users-three"></i> group chat</button>
+        <button class="msg-compose-cancel">cancel</button>
+      `
+      sheet.querySelector('.msg-compose-cancel').addEventListener('click', () => overlay.remove())
+      sheet.querySelector('#messages-new').addEventListener('click', () => showDmPicker())
+      sheet.querySelector('#messages-group').addEventListener('click', () => showGroupPicker())
+    }
+
+    async function showDmPicker() {
+      sheet.innerHTML = `<div class="msg-picker-header"><button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button><span>direct message</span></div><input class="msg-picker-search" type="text" placeholder="search..." autofocus><div class="msg-picker-list" style="max-height:300px;overflow-y:auto"><div style="padding:1.5em;display:flex;justify-content:center"><span class="praxis-loader"></span></div></div>`
+      sheet.querySelector('.msg-picker-back').addEventListener('click', showMenu)
+      try {
+        const mutuals = await _fetchMutuals()
+        const listEl = sheet.querySelector('.msg-picker-list')
+        if (!mutuals.length) { listEl.innerHTML = `<div style="color:var(--muted);padding:1em;font-size:0.85em">no mutual follows yet</div>`; return }
+        const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
+        Object.assign(addrToDomain, mutualDomains)
+        listEl.innerHTML = mutuals.map(addr => {
+          const domain = addrToDomain[addr] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+          return `<div class="msg-convo-item msg-new-item" data-addr="${escapeHtml(addr)}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}</div>`
+        }).join('')
+        sheet.querySelector('.msg-picker-search')?.addEventListener('input', (e) => {
+          const q = e.target.value.toLowerCase()
+          listEl.querySelectorAll('.msg-new-item').forEach(el => { el.style.display = el.dataset.domain.toLowerCase().includes(q) ? '' : 'none' })
+        })
+        listEl.querySelectorAll('.msg-new-item').forEach(el => {
+          el.addEventListener('click', () => { overlay.remove(); openDmByAddress(el.dataset.addr, el.dataset.domain) })
+        })
+      } catch { sheet.querySelector('.msg-picker-list').innerHTML = `<div style="color:var(--muted);padding:1em">failed to load</div>` }
+    }
+
+    async function showGroupPicker() {
+      sheet.innerHTML = `<div class="msg-picker-header"><button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button><span>new group</span></div><div style="padding:1.5em;display:flex;justify-content:center"><span class="praxis-loader"></span></div>`
+      sheet.querySelector('.msg-picker-back').addEventListener('click', showMenu)
+      try {
+        const mutuals = await _fetchMutuals()
+        if (!mutuals.length) { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted);font-size:0.85em">no mutual follows yet</div>`; return }
+        const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
+        Object.assign(addrToDomain, mutualDomains)
+        const formHtml = `<div style="padding:0 1em 1em">
+          <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">group name</div>
+          <input id="group-name-input" type="text" placeholder="e.g. the crew" style="width:100%;padding:0.5em;margin-bottom:0.75em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;border-radius:4px;box-sizing:border-box">
+          <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">add members</div>
+          <div style="max-height:200px;overflow-y:auto">${mutuals.map(addr => {
+            const domain = addrToDomain[addr] || addr.slice(0, 6) + '...' + addr.slice(-4)
+            return `<label class="msg-convo-item" style="display:flex;align-items:center;gap:0.5em;cursor:pointer"><input type="checkbox" data-addr="${escapeHtml(addr)}" style="accent-color:var(--accent)"><span style="font-size:0.85em">${escapeHtml(domain)}</span></label>`
+          }).join('')}</div>
+          <button id="group-create-btn" class="msg-compose-option" style="margin-top:0.75em;justify-content:center;font-weight:600">create group</button>
+        </div>`
+        sheet.querySelector('div[style*=padding]').outerHTML = formHtml
+        sheet.querySelector('#group-create-btn')?.addEventListener('click', async () => {
+          const name = sheet.querySelector('#group-name-input')?.value.trim()
+          const addrs = [...sheet.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.dataset.addr)
+          if (!name || !addrs.length) return
+          const inboxIds = []
+          for (const addr of addrs) {
+            try {
+              const id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
+              if (id) inboxIds.push(id)
+            } catch {}
+          }
+          if (!inboxIds.length) return
+          try {
+            const group = await client.conversations.createGroup(inboxIds, { name })
+            overlay.remove()
+            await loadConversations()
+            openConversation(group, name)
+          } catch (e) { console.error('create group error:', e) }
+        })
+      } catch { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted)">failed to load</div>` }
+    }
+
+    showMenu()
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+    document.body.appendChild(overlay)
   })
-  // new message + group buttons (inside dropdown)
-  document.getElementById('messages-new')?.addEventListener('click', (e) => {
-    e.stopPropagation()
-    if (composeDd) composeDd.style.display = 'none'
-    toggleNewPicker()
-  })
-  document.getElementById('messages-group')?.addEventListener('click', (e) => {
-    e.stopPropagation()
-    if (composeDd) composeDd.style.display = 'none'
-    toggleGroupPicker()
-  })
-  // close dropdown on any click outside
-  if (!window._msgComposeListenerBound) {
-    window._msgComposeListenerBound = true
-    document.addEventListener('click', () => {
-      const dd = document.getElementById('messages-compose-dropdown')
-      if (dd) dd.style.display = 'none'
-    })
-  }
   // settings button — manage XMTP installations
   document.getElementById('messages-settings-btn')?.addEventListener('click', () => {
     showMessagesSettings()
@@ -332,28 +398,85 @@ async function initMessages() {
   }
   // Attachment button
   document.getElementById('messages-attach-btn')?.addEventListener('click', () => {
-    document.getElementById('messages-attach-input')?.click()
+    const input = document.getElementById('messages-attach-input')
+    if (input) { input.value = ''; input.click() }
   })
   document.getElementById('messages-attach-input')?.addEventListener('change', async (e) => {
-    const files = e.target.files
-    if (!files?.length || !activeConvo) return
+    const fileList = [...(e.target.files || [])] // copy to array before reset clears FileList
     e.target.value = '' // reset for next use
-    for (const file of files) {
+    console.log('[attach] change event, files:', fileList.length, 'activeConvo:', !!activeConvo)
+    if (!fileList.length) return
+    if (!activeConvo) { const { toast } = await import('./toast.js'); toast.error('select a conversation first'); return }
+    for (const file of fileList) {
       try {
+        console.log('[attach] file:', file.name, 'type:', file.type, 'size:', file.size)
         const isImage = file.type.startsWith('image/')
+        const isVideo = file.type.startsWith('video/')
         const isPdf = file.type === 'application/pdf'
-        if (!isImage && !isPdf) { console.warn('unsupported file type:', file.type); continue }
-        // Upload to IPFS
-        const formData = new FormData()
-        formData.append('file', file)
-        const statusEl = document.getElementById('messages-input')
-        if (statusEl) statusEl.placeholder = `uploading ${file.name}...`
-        const res = await fetch('/api/upload', { method: 'POST', body: formData })
-        const data = await res.json()
-        if (statusEl) statusEl.placeholder = 'type a message...'
-        if (!data.cid) { console.error('upload failed:', data); continue }
-        const ipfsUrl = `/api/ipfs-proxy/${data.cid}`
-        const prefix = isImage ? 'image' : 'pdf'
+        if (!isImage && !isVideo && !isPdf) { console.warn('[attach] unsupported type:', file.type); continue }
+        if (file.size > 100 * 1024 * 1024) { const { toast } = await import('./toast.js'); toast.error('max 100MB for message attachments'); continue }
+        const inputEl = document.getElementById('messages-input')
+        if (inputEl) inputEl.placeholder = `uploading ${file.name}...`
+
+        // Upload to IPFS via async queue (requires auth session token)
+        const addr = window.getWalletAddress?.()
+        console.log('[attach] addr:', addr, 'file:', file.name, file.type, file.size)
+        if (!addr) { console.error('[attach] wallet not connected'); continue }
+        // Get or create auth session
+        let authToken = sessionStorage.getItem('praxis-auth-token') || ''
+        console.log('[attach] cached authToken:', authToken ? 'yes' : 'no')
+        if (!authToken) {
+          try {
+            await window.ensureAuthorized?.()
+            const provider = window.getWalletProvider?.()
+            console.log('[attach] provider:', !!provider)
+            if (provider) {
+              const msg = `admin:${location.hostname}:${Date.now()}`
+              const sig = await provider.request({ method: 'personal_sign', params: [msg, addr] })
+              console.log('[attach] got signature, authenticating...')
+              const authRes = await fetch('/api/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: addr, signature: sig, message: msg }),
+              })
+              const authData = await authRes.json()
+              console.log('[attach] auth result:', authData.token ? 'got token' : authData.error || 'no token')
+              if (authData.token) { authToken = authData.token; sessionStorage.setItem('praxis-auth-token', authToken) }
+            }
+          } catch (authErr) {
+            console.error('[attach] auth failed:', authErr.message)
+            const { toast } = await import('./toast.js')
+            toast.error('sign in to attach files')
+            continue
+          }
+        }
+        if (!authToken) { console.error('[attach] no auth token'); const { toast } = await import('./toast.js'); toast.error('authentication required'); continue }
+        console.log('[attach] uploading', file.size, 'bytes...')
+        const arrayBuf = await file.arrayBuffer()
+        const uploadRes = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}&ephemeral=1`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(arrayBuf.byteLength), 'Authorization': `Bearer ${authToken}` },
+          body: arrayBuf,
+        })
+        console.log('[attach] upload response:', uploadRes.status)
+        const uploadData = await uploadRes.json()
+        if (!uploadData.jobId) { console.error('upload failed:', uploadData); if (inputEl) inputEl.placeholder = 'type a message...'; continue }
+
+        // Poll for completion
+        let cid = null
+        for (let i = 0; i < 60; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          const statusRes = await fetch(`/api/ipfs/status/${uploadData.jobId}`)
+          const statusData = await statusRes.json()
+          if (statusData.status === 'done' && statusData.cid) { cid = statusData.cid; break }
+          if (statusData.status === 'error') { console.error('upload error:', statusData.error); break }
+          if (inputEl) inputEl.placeholder = `uploading ${file.name}...`
+        }
+        if (inputEl) inputEl.placeholder = 'type a message...'
+        if (!cid) { const { toast } = await import('./toast.js'); toast.error('upload failed — try again'); continue }
+
+        const ipfsUrl = `/api/ipfs-proxy/${cid}`
+        const prefix = isImage ? 'image' : (isVideo ? 'video' : 'pdf')
         const msgText = `[${prefix}:${file.name}](${ipfsUrl})`
         // Upgrade client if read-only
         if (window._xmtpClientIsReadOnly) {
@@ -369,6 +492,10 @@ async function initMessages() {
         renderMessages(await activeConvo.messages())
       } catch (err) {
         console.error('attachment send failed:', err)
+        const inputEl = document.getElementById('messages-input')
+        if (inputEl) inputEl.placeholder = 'type a message...'
+        const { toast } = await import('./toast.js')
+        toast.error(`attachment failed: ${(err.message || '').slice(0, 50)}`)
       }
     }
   })
@@ -545,17 +672,27 @@ async function startXmtp(address) {
 
     if (!isMessagesPage && hasRegistered) {
       // Try Client.build for read-only contexts (no signature popup)
-      try {
-        const identifier = { identifier: address, identifierKind: sdk.IdentifierKind.Ethereum }
-        client = await sdk.Client.build(identifier, { env: 'production' })
-        if (client?.inboxId) {
-          dbg('praxis: XMTP reconnected via Client.build (no signature)')
-        } else {
+      for (let _buildAttempt = 0; _buildAttempt < 3; _buildAttempt++) {
+        try {
+          const identifier = { identifier: address, identifierKind: sdk.IdentifierKind.Ethereum }
+          client = await sdk.Client.build(identifier, { env: 'production' })
+          if (client?.inboxId) {
+            dbg('praxis: XMTP reconnected via Client.build (no signature)')
+          } else {
+            client = null
+          }
+          break
+        } catch (buildErr) {
+          const bMsg = buildErr?.message || ''
+          if (_buildAttempt < 2 && (bMsg.includes('undefined') || bMsg.includes('worker') || bMsg === '')) {
+            console.warn(`praxis: Client.build worker error (attempt ${_buildAttempt + 1}/3), retrying...`)
+            await new Promise(r => setTimeout(r, (_buildAttempt + 1) * 1500))
+            continue
+          }
+          console.warn('praxis: Client.build failed, falling back to create:', bMsg)
           client = null
+          break
         }
-      } catch (buildErr) {
-        console.warn('praxis: Client.build failed, falling back to create:', buildErr?.message)
-        client = null
       }
     }
 
@@ -573,8 +710,8 @@ async function startXmtp(address) {
             break // success
           } catch (retryErr) {
             const msg = retryErr?.message || ''
-            if (attempt < 2 && (msg.includes('Access Handle') || msg.includes('OPFS') || msg.includes('sync access') || msg.includes('createSyncAccessHandle'))) {
-              console.warn(`praxis: Client.create OPFS conflict (attempt ${attempt + 1}/3), retrying in ${(attempt + 1) * 2}s...`)
+            if (attempt < 2 && (msg.includes('Access Handle') || msg.includes('OPFS') || msg.includes('sync access') || msg.includes('createSyncAccessHandle') || msg.includes('undefined') || msg.includes('worker') || msg === '')) {
+              console.warn(`praxis: Client.create worker/OPFS error (attempt ${attempt + 1}/3), retrying in ${(attempt + 1) * 2}s...`, msg || '(empty)')
               await new Promise(r => setTimeout(r, (attempt + 1) * 2000))
               continue
             }
@@ -847,6 +984,63 @@ async function startXmtp(address) {
     window._xmtpSdk = sdk
     window._xmtpClientIsReadOnly = false
 
+    // Verify installation validity and sync state across devices
+    try {
+      const myInstallId = client.installationId ? String(client.installationId) : ''
+      if (myInstallId && client.inboxId) {
+        const state = await client.inboxState?.(true) // refresh from network
+        const installations = state?.installations || []
+        const idStrs = installations.map(inst => {
+          const id = inst.id || inst.installationId || ''
+          return typeof id === 'object' ? Array.from(id).map(b => b.toString(16).padStart(2, '0')).join('') : String(id)
+        })
+        const isStillValid = idStrs.some(id => id === myInstallId || id.slice(0, 16) === myInstallId.slice(0, 16))
+
+        dbg(`praxis: inbox has ${installations.length} installation(s), ours ${isStillValid ? 'valid' : 'REVOKED'} (${myInstallId.slice(0, 8)})`)
+
+        if (!isStillValid) {
+          console.warn('praxis: installation revoked — re-registering...')
+          try {
+            await Promise.race([
+              client.registerIdentity?.(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('registerIdentity timeout')), 10000))
+            ])
+            dbg('praxis: re-registered')
+          } catch (regErr) {
+            console.warn('praxis: re-registration failed:', regErr?.message, '— continuing with existing client')
+          }
+        }
+
+        // Always request history sync from other installations (phone, other browsers)
+        // This ensures conversations created on other devices appear here
+        if (installations.length > 1) {
+          dbg(`praxis: ${installations.length} installations — requesting history sync...`)
+          try { await client.sendSyncRequest() } catch (e) { dbg('praxis: sendSyncRequest:', e?.message) }
+        }
+
+        // Persistent sync loop — keep syncing until inactive groups reactivate
+        // or we've waited long enough. Other installations need time to respond.
+        let inactiveCount = 0
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
+          const convos = await client.conversations.list()
+          inactiveCount = 0
+          for (const c of convos) {
+            try {
+              const active = typeof c.isActive === 'function' ? await c.isActive() : true
+              if (!active) inactiveCount++
+            } catch {}
+          }
+          if (inactiveCount === 0) break
+          dbg(`praxis: sync attempt ${attempt + 1}/2 — ${inactiveCount} inactive conversations, waiting...`)
+          await new Promise(r => setTimeout(r, 3000))
+        }
+        if (inactiveCount > 0) {
+          dbg(`praxis: ${inactiveCount} conversations still inactive after sync — they'll reactivate when peers come online`)
+        }
+      }
+    } catch (e) { dbg('praxis: installation/sync check failed:', e?.message) }
+
     await _loadConversations(address)
     _initInFlight = false
 
@@ -939,7 +1133,7 @@ async function _loadConversations(address) {
             if (typeof client.fetchInboxIdByIdentifier === 'function') {
               const id = await client.fetchInboxIdByIdentifier({
                 identifier: addr,
-                identifierKind: sdk.IdentifierKind?.Ethereum ?? 'Ethereum',
+                identifierKind: sdk.IdentifierKind?.Ethereum ?? 0,
               })
               if (id) { setInboxToAddr(id, addr); setInboxToAddr(addr, id) }
             } else if (typeof client.findInboxIdByAddress === 'function') {
@@ -1025,8 +1219,12 @@ async function startUnreadStream() {
 
 async function showMsgToast(msg) {
   // Double-check: skip typing/read control messages that slipped past extractText
+  // Check all possible content locations — XMTP v3 can nest content in various shapes
   const rawText = typeof msg.content === 'string' ? msg.content : msg.content?.text || msg.content?.content || ''
-  if (rawText.includes('praxis:typing:') || rawText.includes('praxis:read:')) return
+  const fullDump = JSON.stringify(msg.content || '')
+  if (rawText.includes('praxis:typing:') || rawText.includes('praxis:read:') ||
+      fullDump.includes('praxis:typing:') || fullDump.includes('praxis:read:') ||
+      rawText.includes('\x00praxis:') || fullDump.includes('\\u0000praxis:')) return
 
   // Stack toasts — shift existing ones up
   document.querySelectorAll('.msg-toast').forEach(t => {
@@ -1104,17 +1302,11 @@ async function showMsgToast(msg) {
   }
   if (!domain) domain = msg.senderInboxId?.slice(0, 10) + '...'
   const text = typeof msg.content === 'string' ? msg.content.slice(0, 60) : 'new message'
-  const toast = document.createElement('div')
-  toast.className = 'msg-toast'
-  toast.style.cssText = 'position:fixed;bottom:50px;right:16px;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);color:var(--fg,#c0c0c0);padding:1.25em 2.5ch;font-size:0.85em;font-family:inherit;z-index:2000;min-width:320px;max-width:400px;cursor:pointer;opacity:0;transform:translateY(10px);transition:all 0.3s'
-  toast.innerHTML = `<strong style="color:var(--accent)">${escapeHtml(domain)}</strong><br><span style="color:var(--muted)">${escapeHtml(text)}</span>`
-  toast.addEventListener('click', () => { toast.remove(); window.location.href = '/messages' })
-  document.body.appendChild(toast)
-  requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)' })
-  setTimeout(() => {
-    toast.style.opacity = '0'; toast.style.transform = 'translateY(10px)'
-    setTimeout(() => toast.remove(), 300)
-  }, 8000)
+  const { toast } = await import('./toast.js')
+  toast(`<strong style="color:var(--accent)">${escapeHtml(domain)}</strong> ${escapeHtml(text)}`, {
+    type: 'message', html: true, duration: 8000,
+    onClick: () => { window.location.href = '/messages' },
+  })
 }
 
 // expose stream starter globally so wallet.js can init on any page
@@ -1452,36 +1644,32 @@ async function loadConversations() {
       })()
     }
 
-    // Stitch inactive DMs — creates new MLS groups, XMTP merges history
-    let stitched = false
-    for (const c of all) {
-      try {
-        const active = typeof c.isActive === 'function' ? await c.isActive() : true
-        if (!active) {
-          const peerInbox = await c.peerInboxId?.()
-          if (peerInbox) {
-            await (client.conversations.getDmByInboxId?.(peerInbox) || client.conversations.createDm?.(peerInbox))
-            dbg('praxis: stitched inactive DM with', peerInbox)
-            stitched = true
-          }
-        }
-      } catch {}
-    }
-    // Re-sync after stitching to pick up new groups
-    if (stitched) {
-      await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
-      all = await client.conversations.list()
-    }
+    // Note: we do NOT create new DMs to "stitch" inactive conversations.
+    // Per XMTP docs, inactive groups reactivate automatically when other
+    // members sync. Creating new DMs causes duplicates and makes things worse.
 
-    // Filter out inactive conversations (they've been stitched to new ones)
-    const activeAll = []
+    // Deduplicate conversations by peer — prefer active over inactive
+    const peerMap = new Map() // peerId -> conversation (prefer active)
+    const nonDm = [] // groups without peerInboxId
     for (const c of all) {
       try {
-        const active = typeof c.isActive === 'function' ? await c.isActive() : true
-        if (active) activeAll.push(c)
-      } catch { activeAll.push(c) } // on error, keep it
+        const peerId = await c.peerInboxId?.()
+        if (peerId) {
+          const existing = peerMap.get(peerId)
+          if (!existing) {
+            peerMap.set(peerId, c)
+          } else {
+            // Keep the active one, or the newer one if both same state
+            const existActive = typeof existing.isActive === 'function' ? await existing.isActive() : true
+            const newActive = typeof c.isActive === 'function' ? await c.isActive() : true
+            if (newActive && !existActive) peerMap.set(peerId, c)
+          }
+        } else {
+          nonDm.push(c)
+        }
+      } catch { nonDm.push(c) }
     }
-    all = activeAll
+    all = [...peerMap.values(), ...nonDm]
 
     conversations = all
     dbg(`praxis: loaded ${all.length} conversations`)
@@ -1495,7 +1683,7 @@ async function loadConversations() {
         // sync individual conversation to get latest messages
         try { await c.sync() } catch (e) {
           const msg = e?.message || ''
-          if (msg.includes('inactive') || msg.includes('GroupError')) {
+          if (msg.includes('inactive') || msg.includes('GroupError') || msg.includes('GroupInactive')) {
             // Try to stitch: create a new DM to replace the inactive group
             try {
               const peerInbox = await c.peerInboxId?.()
@@ -1505,12 +1693,19 @@ async function loadConversations() {
                 if (newC) {
                   try { await newC.sync() } catch {}
                   c = newC
+                } else {
+                  return null // can't stitch, skip
                 }
+              } else {
+                return null // no peer to stitch to
               }
             } catch (se) {
               console.warn('praxis: stitch failed:', se?.message)
               return null
             }
+          } else {
+            // Non-inactive sync error — log but continue with cached messages
+            console.warn('praxis: sync failed for convo', c.id?.slice(0, 8), msg.slice(0, 60))
           }
         }
         const lastMsg = await c.lastMessage().catch((e) => { console.warn('praxis: lastMessage() failed:', e?.message); return null })
@@ -1621,25 +1816,43 @@ async function loadConversations() {
         // for the conversation preview so the list always shows meaningful text.
         let text = extractText(lastMsg)
         let previewMsg = lastMsg
+        // Check if last message is a reaction (contentType includes 'reaction')
+        const isReaction = lastMsg?.contentType?.typeId === 'reaction' || lastMsg?.content?.action === 'added' || lastMsg?.content?.schema === 'unicode'
         if (!text && lastMsg) {
-          try {
-            const recent = await c.messages().catch(() => [])
-            // messages() returns ascending (oldest first) — search from end to find newest non-control message
-            for (let i = recent.length - 1; i >= 0; i--) {
-              const rm = recent[i]
-              const t = extractText(rm)
-              if (t) { text = t; previewMsg = rm; break }
-            }
-          } catch {}
+          if (isReaction) {
+            text = 'reacted to a message'
+            // Use lastMsg for timestamp/unread (reaction IS the latest activity)
+          } else {
+            try {
+              const recent = await c.messages().catch(() => [])
+              for (let i = recent.length - 1; i >= 0; i--) {
+                const rm = recent[i]
+                // Check if it's a reaction
+                if (rm.contentType?.typeId === 'reaction' || rm.content?.action === 'added') {
+                  text = 'reacted to a message'
+                  previewMsg = rm
+                  break
+                }
+                const t = extractText(rm)
+                if (t) { text = t; previewMsg = rm; break }
+              }
+            } catch {}
+          }
         }
-        const lastMsgTs = previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0
+        // Use the actual last message timestamp for unread (not the preview text message)
+        const lastMsgTs = lastMsg?.sentAtNs ? Number(lastMsg.sentAtNs) : (previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0)
         const time = lastMsgTs ? relativeTime(lastMsgTs / 1e6) : ''
         // check if conversation has unread messages (last message is from someone else)
         const myInboxId = client.inboxId
         const lastSeen = parseInt(localStorage.getItem(`praxis:msg-seen:${c.id}`) || '0', 10)
         // lastMsgTs is nanoseconds, lastSeen is nanoseconds (stored as nanos since fix)
         const isUnread = lastMsg && lastMsg.senderInboxId !== myInboxId && lastMsgTs > lastSeen
-        return { convo: c, peerDomain: displayName, preview: text || '', time, peerInboxId, isGroup, lastMsgTs, isUnread }
+        // Clean attachment markdown for preview
+        let preview = text || ''
+        if (preview.includes('[image:')) preview = preview.replace(/\[image:[^\]]*\]\([^)]+\)/g, 'sent an image').trim()
+        if (preview.includes('[video:')) preview = preview.replace(/\[video:[^\]]*\]\([^)]+\)/g, 'sent a video').trim()
+        if (preview.includes('[pdf:')) preview = preview.replace(/\[pdf:[^\]]*\]\([^)]+\)/g, 'sent a PDF').trim()
+        return { convo: c, peerDomain: displayName, preview, time, peerInboxId, isGroup, lastMsgTs, isUnread }
       }))
       items.push(...results.filter(Boolean))
     }
@@ -1882,6 +2095,19 @@ async function loadConversations() {
 // --- Active conversation ---
 
 async function openConversation(convo, peerDomain) {
+  // Check if conversation is active — sync to try reactivation
+  let _convoInactive = false
+  try {
+    // Sync to trigger reactivation (per XMTP docs, inactive groups reactivate
+    // when members sync — the new installation gets added automatically)
+    try { await convo.sync() } catch {}
+    const isActive = typeof convo.isActive === 'function' ? await convo.isActive() : true
+    if (!isActive) {
+      _convoInactive = true
+      dbg('praxis: openConversation — conversation inactive, will show read-only')
+    }
+  } catch (e) { dbg('praxis: openConversation sync failed:', e?.message) }
+
   activeConvo = convo
   if (activeStream) { try { activeStream.return?.() } catch {} }
   activeStream = null
@@ -2234,14 +2460,25 @@ function renderMessageContent(text) {
   // Detect attachment embeds: [image:filename](url) or [pdf:filename](url)
   let html = escaped.replace(/\[image:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
     const safeUrl = escapeHtml(url)
-    return `<div style="margin:0.3em 0"><img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:6px;cursor:pointer" loading="lazy" onclick="window.open('${safeUrl}','_blank')"></div>`
+    return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
+      <img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer" loading="lazy" onclick="window.open('${safeUrl}','_blank')">
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
+    </div>`
+  })
+  html = html.replace(/\[video:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
+    const safeUrl = escapeHtml(url)
+    return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
+      <video src="${safeUrl}" controls preload="none" playsinline style="max-width:100%;max-height:300px;border-radius:8px;display:block"></video>
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
+    </div>`
   })
   html = html.replace(/\[pdf:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
     const safeUrl = escapeHtml(url)
     const thumbUrl = `/api/pdf-thumb?url=${encodeURIComponent(url)}`
-    return `<div style="margin:0.3em 0;cursor:pointer" onclick="window.open('${safeUrl}','_blank')">
-      <img src="${thumbUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border)" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div style="display:none;align-items:center;gap:0.5ch;padding:0.5em;border:1px solid var(--border);border-radius:6px"><i class="ph ph-file-pdf" style="font-size:1.2em"></i><span>${escapeHtml(name)}</span></div>
+    return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
+      <img src="${thumbUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer;background:#fff" loading="lazy" onclick="window.open('${safeUrl}','_blank')" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div style="display:none;align-items:center;gap:0.5ch;padding:0.75em 1em;cursor:pointer;font-size:0.9em" onclick="window.open('${safeUrl}','_blank')"><i class="ph ph-file-pdf" style="font-size:1.2em"></i><span>${escapeHtml(name)}</span></div>
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
     </div>`
   })
   // Detect artist domain URLs and render as link cards
@@ -2251,9 +2488,9 @@ function renderMessageContent(text) {
     // Check if it looks like a praxis artist domain
     const isPraxis = domain.endsWith('.ourpraxis.network') || addrToDomain && Object.values(addrToDomain).includes(domain)
     if (isPraxis) {
-      return `<a href="${safeUrl}" target="_blank" style="text-decoration:none;color:inherit;display:block;margin:0.4em 0;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-        <img src="https://${escapeHtml(domain)}/og/index.png" style="width:100%;height:60px;object-fit:cover;display:block" loading="lazy" onerror="this.style.display='none'">
-        <div style="padding:0.4em 0.7em;font-size:0.85em;color:var(--accent)">${escapeHtml(domain)}</div>
+      return `<a href="${safeUrl}" target="_blank" class="dm-og-card">
+        <img src="https://${escapeHtml(domain)}/og/index.png" loading="lazy" onerror="this.style.display='none'">
+        <div class="dm-og-domain">${escapeHtml(domain)}</div>
       </a>`
     }
     return `<a href="${safeUrl}" target="_blank" style="color:var(--accent);text-decoration:underline">${escapeHtml(domain)}</a>`
@@ -2784,16 +3021,58 @@ async function sendMessage(e) {
         console.error('praxis: MLS recovery failed:', retryErr?.message)
       }
     }
-    // GroupInactive: the conversation is dead. Create a new DM with the same peer.
-    if (errMsg.includes('GroupInactive') || errMsg.includes('inactive group')) {
-      console.warn('praxis: group inactive, creating new conversation with peer...')
+    // GroupInactive: try re-register + sync + retry before giving up
+    if (errMsg.includes('GroupInactive') || errMsg.includes('inactive group') || errMsg.includes('inactive')) {
+      console.warn('praxis: group inactive — attempting recovery...')
       try {
-        // Get peer inbox ID from the inactive conversation
+        // Step 1: Check if our installation is still valid
+        const sdk = window._xmtpSdk
+        let needsReregister = false
+        if (sdk && client.inboxId && client.installationId) {
+          try {
+            const states = await sdk.Client.fetchInboxStates([client.inboxId], 'production')
+            const installs = states?.[0]?.installations || []
+            const myId = String(client.installationId)
+            const valid = installs.some(inst => {
+              const id = inst.id || inst.installationId || ''
+              const idStr = typeof id === 'object' ? Array.from(id).map(b => b.toString(16).padStart(2, '0')).join('') : String(id)
+              return idStr === myId || idStr.slice(0, 16) === myId.slice(0, 16)
+            })
+            if (!valid) needsReregister = true
+          } catch {}
+        }
+
+        // Step 2: Re-register if needed
+        if (needsReregister) {
+          console.warn('praxis: installation revoked, re-registering...')
+          try {
+            await client.registerIdentity?.()
+            await client.sendSyncRequest?.()
+            await new Promise(r => setTimeout(r, 1500))
+          } catch (regErr) { console.warn('praxis: re-register on send failed:', regErr?.message) }
+        }
+
+        // Step 3: Sync everything
+        await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
+        try { await activeConvo.sync() } catch {}
+
+        // Step 4: Check if active now and retry
+        const nowActive = typeof activeConvo.isActive === 'function' ? await activeConvo.isActive() : false
+        if (nowActive) {
+          if (replyText) await activeConvo.sendText(`> ${replyText}\n\n${text}`)
+          else await activeConvo.sendText(text)
+          const optEl3 = document.querySelector(`[data-optimistic-id="${optimisticId}"]`)
+          if (optEl3) optEl3.removeAttribute('data-optimistic-id')
+          console.log('praxis: group reactivated after recovery, message sent')
+          return
+        }
+
+        // Still inactive after sync + re-register — group is permanently dead
+        // for this installation. Create a new DM as last resort.
+        console.warn('praxis: group permanently inactive — creating new DM with peer...')
         let peerInboxId = null
-        try {
-          peerInboxId = await activeConvo.peerInboxId?.()
-        } catch {}
-        if (!peerInboxId && activeConvo.members) {
+        try { peerInboxId = await activeConvo.peerInboxId?.() } catch {}
+        if (!peerInboxId) {
           try {
             const members = await activeConvo.members()
             const peer = members.find(m => m.inboxId !== client.inboxId)
@@ -2801,24 +3080,83 @@ async function sendMessage(e) {
           } catch {}
         }
         if (peerInboxId) {
-          await client.conversations.sync()
-          const newConvo = await client.conversations.createDm(peerInboxId)
-          await newConvo.sync()
-          activeConvo = newConvo
-          if (replyText) {
-            await activeConvo.sendText(`> ${replyText}\n\n${text}`)
-          } else {
-            await activeConvo.sendText(text)
+          try {
+            // Try createDmWithIdentifier (uses wallet address) which may create a fresh DM
+            // unlike createDm(inboxId) which returns the same inactive group
+            let newConvo = null
+            const peerAddr = inboxToAddr[peerInboxId]
+            if (peerAddr && client.conversations.createDmWithIdentifier) {
+              try {
+                // identifierKind must be numeric enum (0 = Ethereum) not string
+                const sdk = window._xmtpSdk
+                const kind = sdk?.IdentifierKind?.Ethereum ?? 0
+                newConvo = await client.conversations.createDmWithIdentifier({ identifier: peerAddr, identifierKind: kind })
+              } catch (e) { dbg('praxis: createDmWithIdentifier failed:', e?.message) }
+            }
+            if (!newConvo) {
+              newConvo = await client.conversations.createDm(peerInboxId)
+            }
+            await newConvo.sync()
+            // Check if the new convo is active (isActive is a getter in newer SDK)
+            const newActive = newConvo.isActive ?? (typeof newConvo.isActive === 'function' ? await newConvo.isActive() : true)
+            if (newActive && newConvo.id !== activeConvo.id) {
+              activeConvo = newConvo
+              if (replyText) await activeConvo.sendText(`> ${replyText}\n\n${text}`)
+              else await activeConvo.sendText(text)
+              const optEl3 = document.querySelector(`[data-optimistic-id="${optimisticId}"]`)
+              if (optEl3) optEl3.removeAttribute('data-optimistic-id')
+              try { await _loadConversations(window.getWalletAddress?.()) } catch {}
+              console.log('praxis: message sent via new DM', newConvo.id?.slice(0, 8))
+              return
+            }
+          } catch (createErr) {
+            console.warn('praxis: new DM creation failed:', createErr?.message)
           }
-          const optEl3 = document.querySelector(`[data-optimistic-id="${optimisticId}"]`)
-          if (optEl3) optEl3.removeAttribute('data-optimistic-id')
-          // Reload conversation list to show the new conversation
-          try { await _loadConversations(window.getWalletAddress?.()) } catch {}
-          console.log('praxis: message sent via new conversation')
-          return
         }
-      } catch (recreateErr) {
-        console.error('praxis: failed to recreate conversation:', recreateErr?.message)
+        // All attempts failed — offer to reset messaging database
+        markOptimisticFailed(optimisticId, text, replyText)
+        const msgsEl = document.getElementById('messages-msgs')
+        if (msgsEl && !msgsEl.querySelector('.xmtp-inactive-notice')) {
+          const notice = document.createElement('div')
+          notice.className = 'xmtp-inactive-notice'
+          notice.style.cssText = 'text-align:center;color:var(--dim);font-size:0.85em;padding:1em;border:1px solid var(--border);margin:0.5em 0;border-radius:6px'
+          notice.innerHTML = `
+            <p style="margin:0 0 0.75em">this conversation's encryption session is corrupted and can't be recovered.</p>
+            <button id="xmtp-reset-btn" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.9em;padding:0.4em 1.5ch;cursor:pointer">reset messaging</button>
+            <p style="margin:0.5em 0 0;font-size:0.8em;color:var(--dim)">this clears your local message cache and creates a fresh session. your conversation history may take a few minutes to re-sync from your other devices.</p>
+          `
+          notice.querySelector('#xmtp-reset-btn')?.addEventListener('click', async () => {
+            notice.querySelector('#xmtp-reset-btn').disabled = true
+            notice.querySelector('#xmtp-reset-btn').textContent = 'resetting...'
+            try {
+              // Clear OPFS database files for XMTP
+              if (navigator.storage?.getDirectory) {
+                const root = await navigator.storage.getDirectory()
+                for await (const [name] of root.entries()) {
+                  if (name.includes('xmtp') || name.includes('.db3')) {
+                    try { await root.removeEntry(name, { recursive: true }) } catch {}
+                  }
+                }
+              }
+              // Clear localStorage XMTP state
+              const addr = window.getWalletAddress?.()?.toLowerCase() || ''
+              for (const key of Object.keys(localStorage)) {
+                if (key.includes('xmtp') || key.includes('praxis-xmtp')) {
+                  localStorage.removeItem(key)
+                }
+              }
+              // Force page reload to create fresh client
+              window.location.reload()
+            } catch (e) {
+              notice.querySelector('#xmtp-reset-btn').textContent = 'reset failed: ' + (e.message || '').slice(0, 30)
+            }
+          })
+          msgsEl.appendChild(notice)
+          msgsEl.scrollTop = msgsEl.scrollHeight
+        }
+        return
+      } catch (syncErr) {
+        console.warn('praxis: recovery failed:', syncErr?.message)
       }
     }
     console.error('send error:', err)
@@ -3303,6 +3641,32 @@ async function showMessagesSettings() {
 
 // --- New message picker ---
 
+// Shared: fetch mutual follows for contact pickers
+async function _fetchMutuals() {
+  const myAddr = window.getWalletAddress()?.toLowerCase()
+  if (!myAddr) return []
+  async function _fetchPages(field, extractKey) {
+    const items = []
+    let cursor = null
+    for (let page = 0; page < 10; page++) {
+      const vars = { me: myAddr }
+      if (cursor) vars.after = cursor
+      const d = await query(`query($me: String!${cursor ? ', $after: String' : ''}) { follows(where: { ${field}: $me }, limit: 200${cursor ? ', after: $after' : ''}) { items { ${extractKey} } pageInfo { endCursor hasNextPage } } }`, vars)
+      items.push(...(d.follows?.items || []))
+      if (items.length >= 2000 || !d.follows?.pageInfo?.hasNextPage) break
+      cursor = d.follows.pageInfo.endCursor
+    }
+    return items
+  }
+  const [followingItems, followerItems] = await Promise.all([
+    _fetchPages('follower', 'followed'),
+    _fetchPages('followed', 'follower'),
+  ])
+  const iFollow = new Set(followingItems.map(f => f.followed.toLowerCase()))
+  const followsMe = new Set(followerItems.map(f => f.follower.toLowerCase()))
+  return [...iFollow].filter(addr => followsMe.has(addr) && addr !== myAddr)
+}
+
 async function toggleNewPicker() {
   const picker = document.getElementById('messages-new-picker')
   if (picker.style.display !== 'none') { picker.style.display = 'none'; return }
@@ -3345,14 +3709,37 @@ async function toggleNewPicker() {
     const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
     Object.assign(addrToDomain, mutualDomains)
 
-    picker.innerHTML = mutuals.map(addr => {
+    // Hide conversation list, show picker with header
+    const list = document.getElementById('messages-list')
+    if (list) list.style.display = 'none'
+
+    let html = `<div class="msg-picker-header">
+      <button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button>
+      <span>new message</span>
+    </div>
+    <input class="msg-picker-search" type="text" placeholder="search..." autofocus>`
+    html += mutuals.map(addr => {
       const domain = addrToDomain[addr] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
       return `<div class="msg-convo-item msg-new-item" data-addr="${escapeHtml(addr)}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}</div>`
     }).join('')
+    picker.innerHTML = html
 
+    // Back button closes picker
+    picker.querySelector('.msg-picker-back')?.addEventListener('click', () => {
+      picker.style.display = 'none'
+      if (list) list.style.display = ''
+    })
+    // Search filter
+    picker.querySelector('.msg-picker-search')?.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase()
+      picker.querySelectorAll('.msg-new-item').forEach(el => {
+        el.style.display = el.dataset.domain.toLowerCase().includes(q) ? '' : 'none'
+      })
+    })
     picker.querySelectorAll('.msg-new-item').forEach(el => {
       el.addEventListener('click', () => {
         picker.style.display = 'none'
+        if (list) list.style.display = ''
         openDmByAddress(el.dataset.addr, el.dataset.domain)
       })
     })
@@ -3405,7 +3792,14 @@ async function toggleGroupPicker() {
     const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
     Object.assign(addrToDomain, mutualDomains)
 
+    const list = document.getElementById('messages-list')
+    if (list) list.style.display = 'none'
+
     picker.innerHTML = `
+      <div class="msg-picker-header">
+        <button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button>
+        <span>new group</span>
+      </div>
       <div style="padding:0.5em 1em">
         <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">group name</div>
         <input id="group-name-input" type="text" placeholder="e.g. the crew" autofocus style="width:100%;padding:0.4em 0.5em;margin-bottom:0.75em;background:var(--surface);border:1px solid var(--accent);color:var(--text);font-family:inherit;font-size:0.85em;outline:none">
@@ -3422,6 +3816,11 @@ async function toggleGroupPicker() {
         <button id="group-create-btn" class="buy-btn" style="font-size:0.8em;padding:0.2em 0.8ch;margin-top:0.5em">${t('messages.create')}</button>
       </div>
     `
+
+    picker.querySelector('.msg-picker-back')?.addEventListener('click', () => {
+      picker.style.display = 'none'
+      if (list) list.style.display = ''
+    })
 
     document.getElementById('group-create-btn').addEventListener('click', async () => {
       const nameInput = document.getElementById('group-name-input')
@@ -3453,6 +3852,7 @@ async function toggleGroupPicker() {
       try {
         const group = await client.conversations.createGroup(inboxIds, { name })
         picker.style.display = 'none'
+        if (list) list.style.display = ''
         await loadConversations()
         openConversation(group, name || t('messages.unnamedGroup'))
       } catch (e) {
@@ -3615,18 +4015,47 @@ async function openDmByAddress(addr, domain) {
     const peerInboxId = await resolveInboxIdForAddr(addr)
     if (!peerInboxId) return
 
-    // find existing conversation or create new
-    await client.conversations.sync()
+    // Find existing conversation (active or inactive) or create new
+    await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
     let convo = null
+    let activeConvoFound = null
     for (const c of await client.conversations.list()) {
       try {
-        if (await c.peerInboxId() === peerInboxId) { convo = c; break }
+        if (await c.peerInboxId() === peerInboxId) {
+          const isAct = typeof c.isActive === 'function' ? await c.isActive() : true
+          if (isAct) { activeConvoFound = c; break }
+          if (!convo) convo = c // keep first inactive as fallback
+        }
       } catch {}
     }
+    convo = activeConvoFound || convo
     if (!convo) {
-      convo = await client.conversations.createDm(peerInboxId)
+      // Use findOrCreateDmWithIdentity if available, otherwise createDm
+      if (client.conversations.findOrCreateDmWithIdentity) {
+        const idKind = window._xmtpSdk?.IdentifierKind?.Ethereum ?? 0
+        convo = await client.conversations.createDmWithIdentifier({ identifier: addr, identifierKind: idKind })
+      } else {
+        convo = await client.conversations.createDm(peerInboxId)
+      }
+      try { await convo.sync() } catch {}
     }
     openConversation(convo, domain)
+    // Ensure the new/existing conversation appears in the sidebar
+    try { await _loadConversations(window.getWalletAddress?.()) } catch {}
+    // Re-highlight the active conversation in the refreshed list
+    const listEl = document.getElementById('messages-list')
+    if (listEl && convo) {
+      listEl.querySelectorAll('.msg-convo-item').forEach(item => {
+        item.classList.remove('active')
+      })
+      // Find the item by peer domain text
+      listEl.querySelectorAll('.msg-convo-item').forEach(item => {
+        const peerEl = item.querySelector('.msg-convo-peer')
+        if (peerEl?.textContent === domain) {
+          item.classList.add('active')
+        }
+      })
+    }
   } catch (e) {
     console.error('open DM error:', e)
   }

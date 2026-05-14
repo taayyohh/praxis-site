@@ -97,6 +97,11 @@ export async function purchaseMedia(mediaId, price) {
   })
   const pc = await getPublicClient()
   await pc.waitForTransactionReceipt({ hash })
+  // Invalidate collection cache so new purchase shows immediately
+  try {
+    const { invalidate } = await import('./cache.js')
+    invalidate('collection-data:')
+  } catch {}
   return hash
 }
 

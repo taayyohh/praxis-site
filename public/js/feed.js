@@ -1,18 +1,37 @@
 // Social feed — shows blog posts from followed artists on the homepage
-// Compose box to publish on-chain blog posts via BlogRegistry
+import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard } from './feed-cards.js'
+
+// Named constants for magic numbers used across the module
+const PREVIEW_LEN_WITH_MEDIA = 200
+const PREVIEW_LEN_TEXT_ONLY = 300
+const FEED_CACHE_MAX = 50
+const FEED_RENDERED_MAX = 200
+const OWNED_MEDIA_MAX = 2000
+
+// Cached site modules for album name resolution (fetched once lazily)
+let _cachedSiteModules = null
+async function _ensureSiteModules() {
+  if (_cachedSiteModules) return
+  try {
+    const res = await fetch('/api/site')
+    if (res.ok) {
+      const data = await res.json()
+      _cachedSiteModules = data.modules || []
+    }
+  } catch (e) { console.warn('praxis: failed to fetch site modules:', e?.message) }
+}
+// Pre-fetch on load (non-blocking)
+_ensureSiteModules()
+
 import { F } from './fragments.js'
-import { createWalletClient, custom } from './vendor.js'
-import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, resolveDomain, formatTxError, getAllFollows, rewriteIpfsUrls, ipfsUrl, getPublicClient , formatEthAmount, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks , getWalletProvider, renderMarkdown, renderPdfThumbnail } from './utils.js'
+import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
 // Temporary map used during renderCachedFeed to collect replies and inject
 // them under their parent post card. Set to {} before rendering, null after.
 let _replyMap = null
-
-import { BLOG_ABI } from './contracts.js'
 
 let feedContainer = document.getElementById('feed')
 let highlightsContainer = document.getElementById('portfolio-highlights')
@@ -32,10 +51,16 @@ function isOwnSite(walletAddr) {
 
 // listen for dock events (dock is created by wallet.js, events handled here)
 window.addEventListener('open-compose', (e) => {
-  const blogAddr = document.body.dataset.blog || document.getElementById('feed')?.dataset.blog
-  if (blogAddr) {
-    const detail = e.detail || {}
-    openComposeModal(blogAddr, detail.amendPostId, detail.title, detail.content)
+  const detail = e.detail || {}
+  if (detail.amendPostId) {
+    window.location.href = `/write?amend=${detail.amendPostId}`
+  } else if (detail.title || detail.content) {
+    const params = new URLSearchParams()
+    if (detail.title) params.set('prefillTitle', detail.title)
+    if (detail.content) params.set('prefillContent', detail.content)
+    window.location.href = '/write?' + params.toString()
+  } else {
+    window.location.href = '/write'
   }
 })
 window.addEventListener('toggle-portfolio', () => {
@@ -138,22 +163,24 @@ function renderBalance(addr, balance) {
     }
 }
 
-function renderCachedFeed(feedItems, domainMap, postsEl) {
-  const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
-  const resolve = addr => domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+// Module-level renderItem — shared by renderCachedFeed and renderFeedBatch.
+// domainMap is passed explicitly so the caller controls which map is used.
+function renderItem(item, domainMap, resolve) {
+  if (item.type === 'post') return renderPost(item.data, domainMap)
+  if (item.type === 'project') return renderProjectCard(item.data, resolve)
+  if (item.type === 'funded') return renderFundedCard(item.data, resolve)
+  if (item.type === 'follow') return renderFollowCard(item.data, resolve)
+  if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
+  if (item.type === 'supporter') return renderSupporterCard(item.data, resolve)
+  if (item.type === 'purchase') return renderPurchaseCard(item.data, resolve)
+  if (item.type === 'purchase-batch') return renderPurchaseBatchCard(item.data, resolve)
+  if (item.type === 'listed') return renderMediaCard(item.data, resolve)
+  if (item.type === 'listed-batch') return renderBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
+  return ''
+}
 
-  function renderItem(item) {
-    if (item.type === 'post') return renderPost(item.data, domainMap)
-    if (item.type === 'project') return renderProjectCard(item.data, domainMap, PROJECT_TYPES)
-    if (item.type === 'funded') return renderFundedActivity(item.data, resolve)
-    if (item.type === 'follow') return renderFollowActivity(item.data, resolve)
-    if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
-    if (item.type === 'supporter') return renderSupporterActivity(item.data, resolve)
-    if (item.type === 'purchase') return renderPurchaseActivity(item.data, resolve)
-    if (item.type === 'listed') return renderListedActivity(item.data, resolve)
-    if (item.type === 'listed-batch') return renderListedBatchActivity(item.data, resolve)
-    return ''
-  }
+function renderCachedFeed(feedItems, domainMap, postsEl) {
+  const resolve = addr => domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
 
   // Pre-pass: collect replies into a map keyed by parent post ID, so they
   // can be injected under their parent post card after rendering.
@@ -168,7 +195,7 @@ function renderCachedFeed(feedItems, domainMap, postsEl) {
     if (seen.has(key)) return false
     seen.add(key)
     return true
-  }).map(renderItem).filter(Boolean).join('<div class="feed-separator">\u25C7</div>')
+  }).map(i => renderItem(i, domainMap, resolve)).filter(Boolean).join('<div class="feed-separator">\u25C7</div>')
 
   // Inject reply sections under their parent post cards. Each post card
   // has data-post-id="<id>". Replies are grouped in a scrollable mini-box
@@ -292,9 +319,12 @@ async function loadFeed(myAddr, blogAddr) {
     // render first batch
     await renderFeedBatch(firstPageItems, postsEl)
 
+    // Hide buy buttons for items the user already owns
+    hideOwnedBuyButtons(postsEl, myAddr)
+
     // cache only the first page (max 50 items) to bound sessionStorage usage
     if (!hasMoreFeedPages()) {
-      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, 50), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
     }
 
     // set up IntersectionObserver for infinite scroll
@@ -321,6 +351,7 @@ function feedItemKey(item) {
   if (item.type === 'library') return `library:${d.id}`
   if (item.type === 'supporter') return `supporter:${d.wallet}`
   if (item.type === 'purchase') return `purchase:${d.buyer}-${d.mediaId}`
+  if (item.type === 'purchase-batch') return `purchase-batch:${d.buyer}-${d.items?.[0]?.mediaId || item.timestamp}`
   if (item.type === 'listed') return `listed:${d.artist}-${d.mediaId}`
   if (item.type === 'listed-batch') return `listed-batch:${d.artist}-${d.items?.[0]?.mediaId || item.timestamp}`
   return `${item.type}:${item.timestamp}`
@@ -387,31 +418,20 @@ async function renderFeedBatch(items, postsEl) {
     Object.assign(_feedDomainMap, extra)
   }
 
-  const PROJECT_TYPES = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
   const resolve = addr => _feedDomainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
-
-  function renderItem(item) {
-    if (item.type === 'post') return renderPost(item.data, _feedDomainMap)
-    if (item.type === 'project') return renderProjectCard(item.data, _feedDomainMap, PROJECT_TYPES)
-    if (item.type === 'funded') return renderFundedActivity(item.data, resolve)
-    if (item.type === 'follow') return renderFollowActivity(item.data, resolve)
-    if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
-    if (item.type === 'supporter') return renderSupporterActivity(item.data, resolve)
-    if (item.type === 'purchase') return renderPurchaseActivity(item.data, resolve)
-    if (item.type === 'listed') return renderListedActivity(item.data, resolve)
-    if (item.type === 'listed-batch') return renderListedBatchActivity(item.data, resolve)
-    return ''
-  }
 
   // remove sentinel before appending
   postsEl.querySelector('#feed-sentinel')?.remove()
 
-  const html = items.map(renderItem).filter(Boolean).join('<div class="feed-separator">\u25C7</div>')
-  postsEl.insertAdjacentHTML('beforeend', html)
+  const sep = '<div class="feed-separator">\u25C7</div>'
+  const html = items.map(i => renderItem(i, _feedDomainMap, resolve)).filter(Boolean).join(sep)
+  // Add separator before new items if there's existing content
+  const needsSep = postsEl.children.length > 0 && html
+  postsEl.insertAdjacentHTML('beforeend', (needsSep ? sep : '') + html)
   _feedRenderedItems.push(...items)
   // cap rendered items to prevent unbounded memory growth
-  if (_feedRenderedItems.length > 200) {
-    _feedRenderedItems.splice(0, _feedRenderedItems.length - 200)
+  if (_feedRenderedItems.length > FEED_RENDERED_MAX) {
+    _feedRenderedItems.splice(0, _feedRenderedItems.length - FEED_RENDERED_MAX)
   }
 
   // add click handlers to new items
@@ -460,7 +480,7 @@ function setupFeedObserver(postsEl, myAddr) {
       _feedObserver.disconnect()
       // cache only first page of feed items to bound sessionStorage usage
       const cacheKey = 'feed:' + myAddr.toLowerCase()
-      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, 50), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
       return
     }
 
@@ -475,6 +495,7 @@ function setupFeedObserver(postsEl, myAddr) {
       const nextItems = await fetchNextFeedPages()
       if (nextItems.length > 0) {
         await renderFeedBatch(nextItems, postsEl)
+        hideOwnedBuyButtons(postsEl, window.getWalletAddress?.()?.toLowerCase())
       }
 
       // re-observe the new sentinel
@@ -484,7 +505,7 @@ function setupFeedObserver(postsEl, myAddr) {
       } else {
         _feedObserver.disconnect()
         const cacheKey = 'feed:' + myAddr.toLowerCase()
-        setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, 50), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+        setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
       }
     } catch (e) {
       console.warn('feed scroll error:', e)
@@ -500,7 +521,7 @@ function setupFeedObserver(postsEl, myAddr) {
 // Uses IntersectionObserver to lazy-render first-page thumbnails when visible.
 // Checks content-type via HEAD for IPFS CID items (no file extension).
 let _pdfThumbObserver = null
-const _pdfThumbRendered = new Set() // track processed elements to avoid duplicates
+const _pdfThumbRendered = new Map() // LRU map: key=url, value=true
 const _PDF_THUMB_RENDERED_MAX = 200
 
 function observePdfThumbs(container) {
@@ -512,12 +533,12 @@ function observePdfThumbs(container) {
         _pdfThumbObserver.unobserve(el)
         const url = el.dataset.pdfThumb
         if (!url || _pdfThumbRendered.has(url)) continue
-        // Bound the set
+        // Evict oldest entry (first key in Map insertion order)
         if (_pdfThumbRendered.size >= _PDF_THUMB_RENDERED_MAX) {
-          const oldest = _pdfThumbRendered.values().next().value
-          _pdfThumbRendered.delete(oldest)
+          const oldest = _pdfThumbRendered.keys().next().value
+          if (oldest !== undefined) _pdfThumbRendered.delete(oldest)
         }
-        _pdfThumbRendered.add(url)
+        _pdfThumbRendered.set(url, true)
         _renderFeedPdfThumb(el, url)
       }
     }, { rootMargin: '300px' })
@@ -551,651 +572,9 @@ async function _renderFeedPdfThumb(card, url) {
   slot.style.display = 'block'
 }
 
-// compose state for references and amendments
-let composeRef = { type: 0, id: 0 }
-let _amendPostId = null
-let authToken = ''
-window.addEventListener('wallet-connected', () => { authToken = '' })
-window.addEventListener('wallet-disconnected', () => { authToken = '' })
 
-async function getAuthToken() {
-  if (authToken) return authToken
-  const addr = window.getWalletAddress?.()
-  if (!addr || !getWalletProvider()) return ''
-  try {
-    await window.ensureAuthorized?.()
-    const msg = `admin:${location.hostname}:${Date.now()}`
-    const sig = await getWalletProvider().request({ method: 'personal_sign', params: [msg, addr] })
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: addr, signature: sig, message: msg }),
-    })
-    if (!res.ok) throw new Error(`auth ${res.status}`)
-    const data = await res.json()
-    if (data.error) console.warn('auth error:', data.error)
-    if (data.token) authToken = data.token
-    return authToken
-  } catch (e) {
-    console.warn('getAuthToken failed:', e?.message)
-    return ''
-  }
-}
 
-function openComposeModal(blogAddr, amendPostId, prefillTitle, prefillContent) {
-  document.getElementById('compose-panel')?.remove()
-  composeRef = { type: 0, id: 0 }
-  _amendPostId = amendPostId || null
-
-  // Restore draft if no prefill content provided
-  if (!prefillTitle && !prefillContent && !amendPostId) {
-    try {
-      const draft = JSON.parse(localStorage.getItem('praxis-blog-draft') || 'null')
-      if (draft && (draft.title || draft.body)) {
-        prefillTitle = draft.title || ''
-        prefillContent = draft.body || ''
-      }
-    } catch {}
-  }
-
-  const isAmend = !!_amendPostId
-  const headerLabel = isAmend ? `${t('compose.amending')} #${_amendPostId}` : t('compose.write')
-  const publishLabel = isAmend ? t('compose.saveEdit') : t('compose.publish')
-
-  const panel = document.createElement('div')
-  panel.id = 'compose-panel'
-  panel.className = 'compose-panel'
-  panel.innerHTML = `
-    <div class="compose-panel-inner">
-      <div class="compose-header" style="display:flex;align-items:center;justify-content:space-between;padding:0.75em 0;position:relative">
-        <button id="compose-close" class="compose-close-btn" aria-label="close compose" style="display:flex;align-items:center;padding:0;margin:0;background:none;border:none;color:var(--fg);cursor:pointer"><i class="ph ph-x"></i></button>
-        <span class="compose-label" style="position:absolute;left:50%;transform:translateX(-50%)">${headerLabel}</span>
-        <div style="display:flex;align-items:center;gap:1ch">
-          <button id="compose-preview-toggle" class="compose-tool" title="${t('compose.preview')}" style="font-size:0.85em;padding:0.3em 1.5ch;vertical-align:middle;margin:0">${t('compose.preview')}</button>
-          <button id="compose-post" class="buy-btn" style="font-size:0.85em;padding:0.3em 1.5ch;vertical-align:middle;margin:0">${publishLabel}</button>
-        </div>
-      </div>
-      <div class="compose-body">
-        <input type="text" id="compose-title" class="compose-title" placeholder="${t('compose.titlePlaceholder')}" autocomplete="off">
-        <div class="compose-format-bar">
-          <button class="compose-fmt" data-wrap="**" title="${t('compose.bold')}"><b>B</b></button>
-          <button class="compose-fmt" data-wrap="*" title="${t('compose.italic')}"><i>I</i></button>
-          <button class="compose-fmt" data-prefix="## " title="${t('compose.heading')}">H</button>
-          <button class="compose-fmt" data-prefix="> " title="${t('compose.quote')}"><i class="ph ph-quotes"></i></button>
-          <button class="compose-fmt" data-link="true" title="${t('compose.link')}"><i class="ph ph-link-simple"></i></button>
-          <button id="compose-image" class="compose-fmt" title="${t('compose.image')}"><i class="ph ph-image"></i></button>
-          <button class="compose-fmt" data-inline-ref="true" title="${t('compose.inlineRef')}"><i class="ph ph-at"></i></button>
-        </div>
-        <textarea id="compose-content" class="compose-content" placeholder="${t('compose.bodyPlaceholder')}"></textarea>
-        <div id="compose-preview" class="compose-preview" style="display:none"></div>
-        <div class="compose-toolbar" style="display:flex;justify-content:space-between;align-items:center;padding:0.75em 1ch;margin-top:0.5em">
-          <div style="display:flex;align-items:center;gap:1.5ch">
-            <button id="compose-ref" class="compose-tool" title="${t('compose.addReference')}"><i class="ph ph-link"></i> <span style="font-size:0.8em">${t('compose.reference')}</span></button>
-            <span id="compose-ref-label" style="color:var(--dim);font-size:0.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40ch"></span>
-          </div>
-          <a href="/blog" id="compose-blog-link" style="color:var(--dim);font-size:0.8em;white-space:nowrap;flex-shrink:0">your posts</a>
-        </div>
-        <div style="display:flex;justify-content:center;padding:0.75em 0 0.25em;border-top:1px solid var(--border)">
-          <span style="color:var(--dim);font-size:0.75em">${t('compose.permanent')}</span>
-        </div>
-        <div id="compose-ref-picker" style="display:none"></div>
-        <p id="compose-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
-      </div>
-    </div>
-  `
-  document.body.appendChild(panel)
-
-  // prevent background scroll while compose is open
-  document.body.style.overflow = 'hidden'
-
-  // animate in
-  requestAnimationFrame(() => panel.classList.add('compose-open'))
-
-  // close
-  document.getElementById('compose-close').addEventListener('click', closeCompose)
-
-  // your posts link — close compose first
-  document.getElementById('compose-blog-link')?.addEventListener('click', (e) => {
-    e.preventDefault()
-    closeCompose()
-    setTimeout(() => { window.location.href = '/blog' }, 300)
-  })
-
-  // publish
-  document.getElementById('compose-post').addEventListener('click', () => submitPost(blogAddr))
-
-  // image upload
-  document.getElementById('compose-image').addEventListener('click', async () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = async () => {
-      const file = input.files[0]
-      if (!file) return
-      const statusEl = document.getElementById('compose-status')
-      statusEl.textContent = t('compose.uploading')
-      try {
-        const token = await getAuthToken()
-        if (!token) { statusEl.textContent = t('compose.walletRequired'); return }
-        const buffer = await file.arrayBuffer()
-        const res = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: buffer,
-        })
-        const data = await res.json()
-        if (data.cid) {
-          const textarea = document.getElementById('compose-content')
-          const url = ipfsUrl(data.cid)
-          // insert markdown at cursor position
-          const pos = textarea.selectionStart || textarea.value.length
-          const before = textarea.value.substring(0, pos)
-          const after = textarea.value.substring(pos)
-          textarea.value = before + (before.endsWith('\n') || !before ? '' : '\n') + `![${file.name}](${url})` + '\n' + after
-          // show inline thumbnail preview
-          statusEl.innerHTML = `<img src="${escapeHtml(url)}" loading="lazy" style="max-width:200px;max-height:100px;margin-top:0.5em;border:1px solid var(--border)"> ${t('compose.uploaded')}`
-        } else {
-          statusEl.textContent = t('compose.uploadFailed', { error: data.error || 'unknown' })
-        }
-      } catch (e) { statusEl.textContent = t('compose.uploadError', { error: e.message }) }
-    }
-    input.click()
-  })
-
-  // --- Drag-and-drop + paste media upload on compose textarea ---
-  const composeTextarea = document.getElementById('compose-content')
-  let _composeDropOverlay = null
-
-  // File type helpers
-  function _composeFileCategory(file) {
-    if (!file || !file.type) return 'other'
-    if (file.type.startsWith('image/')) return 'image'
-    if (file.type.startsWith('video/')) return 'video'
-    if (file.type.startsWith('audio/')) return 'audio'
-    if (file.type === 'application/pdf') return 'pdf'
-    return 'other'
-  }
-
-  function _composeSizeLimit(category) {
-    // 10MB images, 50MB video, 50MB audio, 10MB PDF
-    if (category === 'video' || category === 'audio') return 50 * 1024 * 1024
-    return 10 * 1024 * 1024
-  }
-
-  function _composeMarkdown(category, filename, url) {
-    if (category === 'image') return `![${filename}](${url})`
-    if (category === 'video') return `[video: ${filename}](${url})`
-    if (category === 'audio') return `[audio: ${filename}](${url})`
-    return `[${filename}](${url})`
-  }
-
-  function _composeInsertText(textarea, text) {
-    const pos = textarea.selectionStart || textarea.value.length
-    const before = textarea.value.substring(0, pos)
-    const after = textarea.value.substring(pos)
-    const nl = before.endsWith('\n') || !before ? '' : '\n'
-    textarea.value = before + nl + text + '\n' + after
-    textarea.selectionStart = textarea.selectionEnd = pos + nl.length + text.length + 1
-  }
-
-  function _composeShowDropOverlay(show) {
-    if (show) {
-      if (!_composeDropOverlay) {
-        _composeDropOverlay = document.createElement('div')
-        _composeDropOverlay.className = 'compose-drop-overlay'
-        _composeDropOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border:2px dashed var(--accent);border-radius:4px;color:var(--accent);font-size:0.95em;pointer-events:none;z-index:10'
-        _composeDropOverlay.textContent = 'drop to upload'
-      }
-      const wrapper = composeTextarea.parentElement
-      if (wrapper && !wrapper.contains(_composeDropOverlay)) {
-        wrapper.style.position = 'relative'
-        wrapper.appendChild(_composeDropOverlay)
-      }
-      composeTextarea.style.borderColor = 'var(--accent)'
-    } else {
-      if (_composeDropOverlay?.parentElement) _composeDropOverlay.remove()
-      composeTextarea.style.borderColor = ''
-    }
-  }
-
-  // Poll IPFS upload job until done (mirrors settings.js _pollUploadJob)
-  async function _composePollJob(jobId, statusEl, onStatus) {
-    const POLL_INTERVAL = 2000
-    const MAX_POLLS = 300
-    for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise(r => setTimeout(r, POLL_INTERVAL))
-      try {
-        const res = await fetch(`/api/ipfs/status/${jobId}`)
-        const data = await res.json()
-        if (data.status === 'done' && data.cid) return data.cid
-        if (data.status === 'error') throw new Error(data.error || 'upload failed')
-        const msg = data.status === 'queued' ? 'queued — waiting...' : 'pinning to IPFS...'
-        statusEl.textContent = msg
-        if (onStatus) onStatus(msg)
-      } catch (e) { throw e }
-    }
-    throw new Error('upload timed out')
-  }
-
-  // Core upload handler shared by drag-drop and paste
-  let _composeUploadActive = 0
-
-  function _composeSetPublishEnabled(enabled) {
-    const btn = document.getElementById('compose-post')
-    if (btn) { btn.disabled = !enabled; btn.style.opacity = enabled ? '1' : '0.4' }
-  }
-
-  async function _composeUploadFile(file) {
-    const statusEl = document.getElementById('compose-status')
-    const category = _composeFileCategory(file)
-    if (category === 'other') { statusEl.textContent = 'unsupported file type'; return }
-
-    const limit = _composeSizeLimit(category)
-    if (file.size > limit) {
-      const limitMB = Math.round(limit / (1024 * 1024))
-      statusEl.textContent = `file too large (max ${limitMB}MB for ${category})`
-      return
-    }
-
-    // Disable publish while uploading
-    _composeUploadActive++
-    _composeSetPublishEnabled(false)
-
-    // Insert placeholder at cursor (updated with % during upload)
-    const safeName = escapeHtml(file.name)
-    let placeholder = `[uploading ${safeName} 0%...]`
-    _composeInsertText(composeTextarea, placeholder)
-    statusEl.textContent = t('compose.uploading')
-
-    function updatePlaceholder(pct) {
-      const newPlaceholder = `[uploading ${safeName} ${pct}%...]`
-      composeTextarea.value = composeTextarea.value.replace(placeholder, newPlaceholder)
-      placeholder = newPlaceholder
-    }
-
-    try {
-      const token = await getAuthToken()
-      if (!token) {
-        composeTextarea.value = composeTextarea.value.replace(placeholder, '')
-        statusEl.textContent = t('compose.walletRequired')
-        return
-      }
-
-      // Phase 1: XHR upload with progress
-      const queueData = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `/api/ipfs?name=${encodeURIComponent(file.name)}`)
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100)
-            updatePlaceholder(pct)
-            statusEl.textContent = `uploading... ${pct}%`
-          }
-        }
-        xhr.onload = () => {
-          try { resolve(JSON.parse(xhr.responseText)) }
-          catch { reject(new Error(xhr.statusText || 'upload failed')) }
-        }
-        xhr.onerror = () => reject(new Error('upload failed'))
-        xhr.ontimeout = () => reject(new Error('upload timeout'))
-        xhr.timeout = 10 * 60 * 1000
-        xhr.send(file)
-      })
-
-      if (queueData.error) {
-        composeTextarea.value = composeTextarea.value.replace(placeholder, '')
-        statusEl.textContent = t('compose.uploadFailed', { error: queueData.error })
-        return
-      }
-
-      // Phase 2: resolve CID (poll job queue or use direct CID)
-      let cid
-      if (queueData.jobId) {
-        statusEl.textContent = 'queued...'
-        cid = await _composePollJob(queueData.jobId, statusEl, (msg) => {
-          const newPlaceholder = `[${msg} ${safeName}...]`
-          composeTextarea.value = composeTextarea.value.replace(placeholder, newPlaceholder)
-          placeholder = newPlaceholder
-        })
-      } else if (queueData.cid) {
-        cid = queueData.cid
-      } else {
-        composeTextarea.value = composeTextarea.value.replace(placeholder, '')
-        statusEl.textContent = t('compose.uploadFailed', { error: 'no CID returned' })
-        return
-      }
-
-      const url = ipfsUrl(cid)
-      const md = _composeMarkdown(category, file.name, url)
-      composeTextarea.value = composeTextarea.value.replace(placeholder, md)
-
-      // Show preview for images
-      if (category === 'image') {
-        statusEl.innerHTML = `<img src="${escapeHtml(url)}" loading="lazy" style="max-width:200px;max-height:100px;margin-top:0.5em;border:1px solid var(--border)"> ${t('compose.uploaded')}`
-      } else {
-        statusEl.textContent = `${t('compose.uploaded')} (${category})`
-      }
-    } catch (e) {
-      composeTextarea.value = composeTextarea.value.replace(placeholder, '')
-      statusEl.textContent = t('compose.uploadError', { error: e.message })
-    } finally {
-      _composeUploadActive = Math.max(0, _composeUploadActive - 1)
-      if (_composeUploadActive === 0) _composeSetPublishEnabled(true)
-    }
-  }
-
-  // Drag events
-  let _composeDragCounter = 0
-  composeTextarea.addEventListener('dragenter', (e) => {
-    e.preventDefault()
-    _composeDragCounter++
-    _composeShowDropOverlay(true)
-  })
-  composeTextarea.addEventListener('dragover', (e) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  })
-  composeTextarea.addEventListener('dragleave', (e) => {
-    e.preventDefault()
-    _composeDragCounter--
-    if (_composeDragCounter <= 0) { _composeDragCounter = 0; _composeShowDropOverlay(false) }
-  })
-  composeTextarea.addEventListener('drop', async (e) => {
-    e.preventDefault()
-    _composeDragCounter = 0
-    _composeShowDropOverlay(false)
-    const files = e.dataTransfer?.files
-    if (!files?.length) return
-    // Upload first valid file
-    for (const file of files) {
-      const cat = _composeFileCategory(file)
-      if (cat !== 'other') { await _composeUploadFile(file); break }
-    }
-  })
-
-  // Paste support (Ctrl+V / Cmd+V images from clipboard)
-  composeTextarea.addEventListener('paste', async (e) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile()
-        if (!file) continue
-        const cat = _composeFileCategory(file)
-        if (cat !== 'other') {
-          e.preventDefault()
-          await _composeUploadFile(file)
-          return
-        }
-      }
-    }
-  })
-
-  // formatting buttons
-  document.querySelectorAll('.compose-fmt').forEach(btn => {
-    if (btn.id === 'compose-image') return // handled separately
-    btn.addEventListener('click', () => {
-      const textarea = document.getElementById('compose-content')
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selected = textarea.value.substring(start, end)
-
-      if (btn.dataset.wrap) {
-        const wrap = btn.dataset.wrap
-        textarea.value = textarea.value.substring(0, start) + wrap + selected + wrap + textarea.value.substring(end)
-        textarea.selectionStart = start + wrap.length
-        textarea.selectionEnd = end + wrap.length
-      } else if (btn.dataset.prefix) {
-        const prefix = btn.dataset.prefix
-        textarea.value = textarea.value.substring(0, start) + prefix + selected + textarea.value.substring(end)
-        textarea.selectionStart = start + prefix.length
-        textarea.selectionEnd = end + prefix.length
-      } else if (btn.dataset.link) {
-        // inline link input instead of browser prompt
-        const existing = document.getElementById('compose-link-input')
-        if (existing) { existing.remove(); return }
-        const linkBar = document.createElement('div')
-        linkBar.id = 'compose-link-input'
-        linkBar.style.cssText = 'display:flex;gap:0.5ch;align-items:center;padding:0.5em 0;'
-        linkBar.innerHTML = `
-          <input type="url" id="compose-link-url" placeholder="https://..." style="flex:1;background:#111;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.85em;padding:0.4em 1ch;box-sizing:border-box">
-          <button id="compose-link-insert" class="buy-btn" style="font-size:0.8em;padding:0.3em 1ch">insert</button>
-          <button id="compose-link-cancel" style="background:none;border:none;color:#666;font-family:inherit;font-size:0.8em;cursor:pointer">cancel</button>
-        `
-        btn.parentElement.after(linkBar)
-        const urlInput = document.getElementById('compose-link-url')
-        urlInput.focus()
-        document.getElementById('compose-link-insert').addEventListener('click', () => {
-          const url = urlInput.value.trim()
-          if (url) {
-            const linkText = selected || 'link'
-            textarea.value = textarea.value.substring(0, start) + `[${linkText}](${url})` + textarea.value.substring(end)
-          }
-          linkBar.remove()
-          textarea.focus()
-        })
-        urlInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); document.getElementById('compose-link-insert').click() }
-          if (e.key === 'Escape') linkBar.remove()
-        })
-        document.getElementById('compose-link-cancel').addEventListener('click', () => linkBar.remove())
-        return // don't focus textarea yet
-      } else if (btn.dataset.inlineRef) {
-        // inline reference picker
-        const existing = document.getElementById('compose-inline-ref')
-        if (existing) { existing.remove(); return }
-        const refBar = document.createElement('div')
-        refBar.id = 'compose-inline-ref'
-        refBar.style.cssText = 'padding:0.5em 0;'
-        refBar.innerHTML = `
-          <input type="text" id="inline-ref-search" placeholder="${t('compose.searchRefs')}" style="width:100%;background:transparent;border:1px solid #333;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.4em 0.75ch;box-sizing:border-box;margin-bottom:0.5em" autocomplete="off">
-          <div id="inline-ref-results" style="max-height:200px;overflow-y:auto"></div>
-        `
-        btn.parentElement.after(refBar)
-        const refSearchInput = document.getElementById('inline-ref-search')
-        refSearchInput.focus()
-
-        let inlineRefTimer = null
-        const doInlineRefSearch = async (q) => {
-          const resultsEl = document.getElementById('inline-ref-results')
-          if (!resultsEl) return
-          try {
-            const [projData, postData, libData, mediaData] = await Promise.all([
-              query(`{ projects(limit: 20, orderBy: "createdAt", orderDirection: "desc") { items { ${F.projectSummary} } } }`),
-              query(`{ blogPosts(limit: 20, orderBy: "timestamp", orderDirection: "desc") { items { ${F.postSummary} } } }`),
-              query(`{ libraryItems(limit: 20, orderBy: "timestamp", orderDirection: "desc") { items { ${F.libraryItem} } } }`),
-              query(`{ mediaListings(limit: 20, orderBy: "timestamp", orderDirection: "desc") { items { ${F.mediaListing} } } }`),
-            ])
-            const lower = q.toLowerCase()
-            const filter = (items) => (items || []).filter(i => !q || (i.title || '').toLowerCase().includes(lower)).slice(0, 5)
-            const projects = filter(projData.projects?.items).map(i => ({ ...i, _type: 'project' }))
-            const posts = filter(postData.blogPosts?.items).map(i => ({ ...i, _type: 'post' }))
-            const library = filter(libData.libraryItems?.items).map(i => ({ ...i, _type: 'library' }))
-            const media = filter(mediaData.mediaListings?.items).map(i => ({ ...i, _type: 'media' }))
-            const all = [...projects, ...posts, ...library, ...media]
-            if (all.length === 0) {
-              resultsEl.innerHTML = `<p style="color:var(--dim);font-size:0.8em">${t('compose.noMatches')}</p>`
-              return
-            }
-            const badgeColors = { project: '#6a9955', post: '#569cd6', library: '#c586c0', media: '#ce9178' }
-            resultsEl.innerHTML = all.map(item => `
-              <div class="inline-ref-item" data-type="${item._type}" data-id="${item.id}" data-title="${escapeHtml(item.title)}" style="display:flex;align-items:center;gap:1ch;padding:0.4em 0.5ch;cursor:pointer;font-size:0.85em;border-bottom:1px solid var(--border)">
-                <span style="font-size:0.7em;padding:0.15em 0.5ch;border-radius:2px;background:${badgeColors[item._type]};color:#000;text-transform:uppercase;flex-shrink:0">${item._type}</span>
-                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.title)}</span>
-              </div>
-            `).join('')
-            resultsEl.querySelectorAll('.inline-ref-item').forEach(el => {
-              el.addEventListener('click', () => {
-                const type = el.dataset.type
-                const id = el.dataset.id
-                const title = el.dataset.title
-                const linkText = selected || title
-                textarea.value = textarea.value.substring(0, start) + `[${linkText}](praxis://${type}/${id})` + textarea.value.substring(end)
-                refBar.remove()
-                textarea.focus()
-              })
-            })
-          } catch (e) {
-            const resultsEl = document.getElementById('inline-ref-results')
-            if (resultsEl) resultsEl.innerHTML = `<p style="color:var(--dim);font-size:0.8em">${t('compose.couldNotSearch')}</p>`
-          }
-        }
-
-        doInlineRefSearch('')
-        refSearchInput.addEventListener('input', () => {
-          clearTimeout(inlineRefTimer)
-          inlineRefTimer = setTimeout(() => doInlineRefSearch(refSearchInput.value.trim()), 250)
-        })
-        refSearchInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') refBar.remove()
-        })
-        return // don't focus textarea yet
-      }
-      textarea.focus()
-    })
-  })
-
-  // preview toggle
-  let previewing = false
-  document.getElementById('compose-preview-toggle').addEventListener('click', () => {
-    previewing = !previewing
-    const textarea = document.getElementById('compose-content')
-    const preview = document.getElementById('compose-preview')
-    const toggleBtn = document.getElementById('compose-preview-toggle')
-
-    if (previewing) {
-      preview.innerHTML = renderMarkdown(textarea.value)
-      preview.style.display = 'block'
-      textarea.style.display = 'none'
-      toggleBtn.textContent = t('compose.edit')
-      toggleBtn.style.color = 'var(--accent)'
-    } else {
-      preview.style.display = 'none'
-      textarea.style.display = ''
-      toggleBtn.textContent = t('compose.preview')
-      toggleBtn.style.color = ''
-    }
-  })
-
-  // reference picker
-  document.getElementById('compose-ref').addEventListener('click', toggleRefPicker)
-
-  // pre-fill for amendments
-  if (prefillTitle) document.getElementById('compose-title').value = prefillTitle
-  if (prefillContent) document.getElementById('compose-content').value = prefillContent
-
-  document.getElementById('compose-title').focus()
-}
-
-let refSearchTimer = null
-
-function toggleRefPicker() {
-  const picker = document.getElementById('compose-ref-picker')
-  if (picker.style.display !== 'none') { picker.style.display = 'none'; return }
-
-  picker.style.display = 'block'
-  picker.innerHTML = `
-    <div style="border:1px solid var(--border);padding:0.75em;border-radius:6px">
-      <input type="text" id="ref-search" placeholder="${t('compose.searchRefs')}" style="width:100%;background:transparent;border:1px solid #222;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.4em 0.75ch;margin-bottom:0.5em" autocomplete="off">
-      <div id="ref-results" style="max-height:200px;overflow-y:auto"></div>
-      <p style="color:var(--dim);font-size:0.75em;margin-top:0.5em">${t('compose.searchHelp')}</p>
-    </div>
-  `
-
-  const searchInput = document.getElementById('ref-search')
-  searchInput.focus()
-
-  // load recent items immediately
-  searchRefs('')
-
-  searchInput.addEventListener('input', () => {
-    clearTimeout(refSearchTimer)
-    refSearchTimer = setTimeout(() => searchRefs(searchInput.value.trim()), 250)
-  })
-}
-
-async function searchRefs(q) {
-  const resultsEl = document.getElementById('ref-results')
-  if (!resultsEl) return
-
-  try {
-    const [libData, projData] = await Promise.all([
-      query(`{ libraryItems(limit: 50, orderBy: "timestamp", orderDirection: "desc") { items { ${F.libraryItem} } } }`),
-      query(`{ projects(limit: 50, orderBy: "createdAt", orderDirection: "desc") { items { ${F.projectSummary} } } }`),
-    ])
-
-    const lower = q.toLowerCase()
-    const libItems = (libData.libraryItems?.items || []).filter(i =>
-      !q || i.title.toLowerCase().includes(lower) || (i.author || '').toLowerCase().includes(lower)
-    ).slice(0, 10)
-    const projItems = (projData.projects?.items || []).filter(i =>
-      !q || i.title.toLowerCase().includes(lower)
-    ).slice(0, 10)
-
-    if (libItems.length === 0 && projItems.length === 0) {
-      resultsEl.innerHTML = `<p style="color:var(--muted);font-size:0.85em;padding:0.5em">${q ? t('compose.noMatches') : t('compose.noItems')}</p>`
-      return
-    }
-
-    let html = ''
-
-    if (libItems.length > 0) {
-      html += `<p style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.05em;padding:0.3em 0.5em">${t('compose.refLibrary')}</p>`
-      for (const item of libItems) {
-        html += `<div class="ref-option" data-ref-type="4" data-ref-id="${item.id}">
-          <span style="color:var(--accent)">${escapeHtml(item.title)}</span>
-          ${item.author ? `<span style="color:var(--dim)"> -- ${escapeHtml(item.author)}</span>` : ''}
-        </div>`
-      }
-    }
-
-    if (projItems.length > 0) {
-      html += `<p style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.05em;padding:0.3em 0.5em;margin-top:0.5em">${t('compose.refProjects')}</p>`
-      for (const proj of projItems) {
-        html += `<div class="ref-option" data-ref-type="1" data-ref-id="${proj.id}">
-          <span style="color:var(--accent)">${escapeHtml(proj.title)}</span>
-        </div>`
-      }
-    }
-
-    resultsEl.innerHTML = html
-
-    resultsEl.querySelectorAll('.ref-option').forEach(opt => {
-      opt.style.cssText = 'padding:0.4em 0.5em;cursor:pointer;font-size:0.85em;border-bottom:1px solid var(--border)'
-      opt.addEventListener('click', () => {
-        composeRef.type = parseInt(opt.dataset.refType)
-        composeRef.id = parseInt(opt.dataset.refId)
-        const title = opt.querySelector('span')?.textContent || ''
-        document.getElementById('compose-ref-label').textContent = t('compose.referencing', { title })
-        document.getElementById('compose-ref-picker').style.display = 'none'
-      })
-      opt.addEventListener('mouseenter', () => opt.style.background = 'var(--surface)')
-      opt.addEventListener('mouseleave', () => opt.style.background = '')
-    })
-  } catch {
-    resultsEl.innerHTML = `<p style="color:var(--muted);font-size:0.85em">${t('compose.couldNotSearch')}</p>`
-  }
-}
-
-function closeCompose() {
-  const panel = document.getElementById('compose-panel')
-  if (!panel) return
-  // Save draft if there's content
-  const title = panel.querySelector('#compose-title')?.value?.trim() || ''
-  const body = panel.querySelector('#compose-body')?.value?.trim() || ''
-  if (title || body) {
-    try { localStorage.setItem('praxis-blog-draft', JSON.stringify({ title, body, ts: Date.now() })) } catch {}
-  }
-  panel.classList.remove('compose-open')
-  document.body.style.overflow = ''
-  setTimeout(() => {
-    if (panel.parentNode) panel.remove()
-  }, 300)
-  const dockWrite = document.getElementById('dock-write')
-  if (dockWrite) dockWrite.disabled = false
-}
-
+// (compose modal removed — all compose goes through /write page)
 
 function stripMarkdown(text, preserveNewlines = false) {
   let out = text
@@ -1231,12 +610,12 @@ function renderPost(p, domainMap) {
     const textOnly = content.replace(/\[video:\s*[^\]]*\]\s*\([^)]+\)/g, '').replace(/!\[[^\]]*\]\s*\([^)]+\)/g, '').trim()
     if (textOnly) {
       const raw = stripMarkdown(textOnly, true)
-      const truncated = raw.length > 200 ? raw.slice(0, 200) + '...' : raw
+      const truncated = raw.length > PREVIEW_LEN_WITH_MEDIA ? raw.slice(0, PREVIEW_LEN_WITH_MEDIA) + '...' : raw
       textPreview = escapeHtml(truncated).replace(/\n/g, '<br>')
     }
   } else {
     const raw = stripMarkdown(content, true)
-    const truncated = raw.length > 300 ? raw.slice(0, 300) + '...' : raw
+    const truncated = raw.length > PREVIEW_LEN_TEXT_ONLY ? raw.slice(0, PREVIEW_LEN_TEXT_ONLY) + '...' : raw
     textPreview = escapeHtml(truncated).replace(/\n/g, '<br>')
   }
 
@@ -1277,149 +656,42 @@ function renderPost(p, domainMap) {
   `
 }
 
-async function submitPost(blogAddr) {
-  const titleInput = document.getElementById('compose-title')
-  const bodyInput = document.getElementById('compose-content') || document.getElementById('compose-body')
-  const statusEl = document.getElementById('compose-status')
-  const title = titleInput.value.trim()
-  const content = bodyInput.value.trim()
 
-  if (!title) { statusEl.textContent = t('compose.enterTitle'); return }
-
-  const addr = window.getWalletAddress?.()
-  if (!addr) {
-    await window.connectWallet?.()
-    if (!window.getWalletAddress?.()) { statusEl.textContent = t('compose.connectWallet'); return }
-  }
-
+// Hide buy buttons for media the current user already owns (purchased)
+let _ownedMediaIds = null
+async function hideOwnedBuyButtons(container, myAddr) {
+  if (!myAddr || !container) return
   try {
-    await getWalletProvider().request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: '0xa' }],
-    })
-  } catch (e) {
-    if (e.code === 4902) { statusEl.textContent = t('compose.addOptimism'); return }
-  }
-
-  statusEl.textContent = t('compose.confirming')
-
-  try {
-    const publicClient = await getPublicClient()
-
-    const isAmend = !!_amendPostId
-    const useRef = isAmend || (composeRef.type > 0 && composeRef.id > 0)
-    let fnArgs
-    if (isAmend) {
-      fnArgs = [title, content, 5, BigInt(_amendPostId)]
-    } else if (useRef) {
-      fnArgs = [title, content, composeRef.type, BigInt(composeRef.id)]
-    } else {
-      fnArgs = [title, content]
+    // Lazy-load owned media IDs (once per session)
+    if (!_ownedMediaIds) {
+      const addr = myAddr.toLowerCase()
+      const allIds = new Set()
+      let cursor = null
+      do {
+        const res = await query(`{ mediaPurchases(where: { buyer: "${addr}" }, limit: 200${cursor ? `, after: "${cursor}"` : ''}) { items { mediaId } pageInfo { endCursor hasNextPage } } }`)
+        const items = res.mediaPurchases?.items || []
+        for (const item of items) allIds.add(String(item.mediaId))
+        cursor = res.mediaPurchases?.pageInfo?.hasNextPage ? res.mediaPurchases?.pageInfo?.endCursor : null
+        if (allIds.size >= OWNED_MEDIA_MAX) break // safety cap
+      } while (cursor)
+      _ownedMediaIds = allIds
     }
-    await window.ensureOptimism?.()
-    const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({
-      chain: optimism,
-      transport: custom(getWalletProvider()),
+    if (_ownedMediaIds.size === 0) return
+    // Hide buy buttons for owned items
+    container.querySelectorAll('.feed-buy-btn[data-media-id]').forEach(btn => {
+      const ids = (btn.dataset.mediaId || '').split(',')
+      if (ids.some(id => _ownedMediaIds.has(id))) {
+        const owned = document.createElement('span')
+        owned.className = 'feed-card-btn'
+        owned.style.cssText = 'opacity:0.5;cursor:default;pointer-events:none'
+        owned.innerHTML = '<i class="ph ph-check"></i> owned'
+        btn.replaceWith(owned)
+      }
     })
-    const hash = await walletClient.writeContract({
-      address: blogAddr,
-      abi: BLOG_ABI,
-      functionName: useRef ? 'postWithRef' : 'post',
-      args: fnArgs,
-      account: currentAccount,
-    })
-
-    statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
-    await publicClient.waitForTransactionReceipt({ hash })
-
-    titleInput.value = ''
-    bodyInput.value = ''
-    _amendPostId = null
-    try { localStorage.removeItem('praxis-blog-draft') } catch {}
-    statusEl.textContent = t('compose.published')
-    closeCompose()
-    // Clear feed cache so the reload fetches fresh data from Ponder.
-    // Ponder typically indexes within 5-10s on Optimism; reload after 5s.
-    try { sessionStorage.removeItem('praxis-feed-' + document.body.dataset.owner?.toLowerCase()) } catch {}
-    try { for (const k of Object.keys(sessionStorage)) { if (k.startsWith('praxis-feed')) sessionStorage.removeItem(k) } } catch {}
-    setTimeout(() => location.reload(), 5000)
-  } catch (e) {
-    statusEl.textContent = formatTxError(e)
-  }
+  } catch (e) { console.warn('praxis: hideOwnedBuyButtons failed:', e?.message) }
 }
 
-function renderProjectCard(p, domainMap, PROJECT_TYPES) {
-  const domain = domainMap[p.proposer.toLowerCase()] || `${p.proposer.slice(0, 6)}...${p.proposer.slice(-4)}`
-  const date = new Date(Number(p.createdAt) * 1000)
-  const timeStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const goalEth = formatEthAmount(p.fundingGoal)
-  const fundedEth = formatEthAmount(p.totalFunded)
-  const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
-  const typeName = PROJECT_TYPES[p.projectType] || 'other'
-  const statusLabels = [t('projects.status.proposed'), t('projects.status.funded'), t('projects.status.confirmed'), t('projects.status.completing'), t('projects.status.completed'), t('projects.status.cancelled'), t('projects.status.disputed')]
-  const statusColors = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
-
-  const deadlineStr = p.deadline > 0 ? new Date(Number(p.deadline) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
-
-  return `
-    <div class="feed-item feed-project-card">
-      <div class="feed-project-type">${typeName}</div>
-      <div class="feed-project-header">
-        <a href="/project?id=${p.id}" class="feed-project-title">${escapeHtml(p.title)}</a>
-        <time class="feed-time">${timeStr}</time>
-      </div>
-      <div class="feed-project-proposer">
-        ${t('feed.proposedBy')} <a href="/network?artist=${p.proposer.toLowerCase()}">${escapeHtml(domain)}</a>
-        ${deadlineStr ? `<span style="color:var(--dim)"> \u00b7 deadline ${deadlineStr}</span>` : ''}
-      </div>
-      ${p.description ? `<p class="feed-project-desc">${escapeHtml(p.description).slice(0, 300)}${p.description.length > 300 ? '...' : ''}</p>` : ''}
-      <div class="feed-project-funding">
-        <div class="feed-project-funding-row">
-          <span class="feed-project-funded" data-eth-wei="${p.goal || '0'}">${fundedEth} / ${goalEth} ETH</span>
-          <span style="color:${statusColors[p.status]}">${statusLabels[p.status]}</span>
-        </div>
-        <div class="project-progress-bar"><div class="project-progress-fill" style="width:${Math.min(pct, 100)}%"></div></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75em">
-          <span style="color:var(--dim);font-size:0.8em">${pct}% funded</span>
-          <a href="/project?id=${p.id}" class="buy-btn" style="font-size:0.8em;padding:0.3em 1.5ch">${t('feed.viewProject')}</a>
-        </div>
-      </div>
-    </div>
-  `
-}
-
-function renderFundedActivity(f, resolve) {
-  const funderDomain = resolve(f.funder)
-  const amountEth = formatEthAmount(f.amount)
-  const amountLabel = formatEthAmount(f.amount) === '0' ? 'free' : `<span data-eth-wei="${f.amount || '0'}">${amountEth} ETH</span>`
-
-  return `
-    <div class="feed-item feed-activity">
-      <div class="feed-activity-text">
-        <a href="/network?artist=${f.funder.toLowerCase()}" class="feed-author">${escapeHtml(funderDomain)}</a>
-        ${t('feed.funded')} <span style="color:#fff">${escapeHtml(f.projectTitle)}</span>
-        <span style="color:#4ade80">${amountLabel}</span>
-      </div>
-    </div>
-  `
-}
-
-function renderFollowActivity(f, resolve) {
-  const followerDomain = resolve(f.follower)
-  const followedDomain = resolve(f.followed)
-  // Use the followed artist's OG image as a mini preview
-  const ogImg = followedDomain.includes('.') ? `<img src="https://${escapeHtml(followedDomain)}/og/index.png" style="width:100%;height:80px;object-fit:cover;display:block;border-radius:6px 6px 0 0" loading="lazy" onerror="this.style.display='none'">` : ''
-
-  return `
-    <a href="/network?artist=${f.followed.toLowerCase()}" class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;margin-bottom:0.5em;overflow:hidden">
-      ${ogImg}
-      <div style="padding:0.6em 1em">
-        <span style="color:var(--muted);font-size:0.85em"><span style="color:var(--fg)">${escapeHtml(followerDomain)}</span> ${t('feed.followed')} <span style="color:var(--fg);font-weight:500">${escapeHtml(followedDomain)}</span></span>
-      </div>
-    </a>
-  `
-}
+// renderProjectCard, renderFundedCard now imported from feed-cards.js
 
 function renderLibraryActivity(item, resolve) {
   const domain = resolve(item.contributor)
@@ -1450,78 +722,7 @@ function renderLibraryActivity(item, resolve) {
   `
 }
 
-function renderSupporterActivity(s, resolve) {
-  const handle = s.handle
-  const displayName = handle || resolve(s.wallet)
-  const link = handle
-    ? `https://${handle}.ourpraxis.network`
-    : `/network?audience=${s.wallet.toLowerCase()}`
-
-  return `
-    <a href="${escapeHtml(link)}" class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0.75em 1em">
-      <span style="color:var(--fg);font-weight:500">${escapeHtml(displayName)}</span>
-      <span style="color:var(--muted);font-size:0.85em"> ${t('feed.joinedAudience')}</span>
-    </a>
-  `
-}
-
-function renderPurchaseActivity(d, resolve) {
-  const buyer = resolve(d.buyer)
-  const title = d.title || 'untitled'
-  const worksLink = `/works`
-  return `
-    <div class="feed-item feed-activity">
-      <div class="feed-activity-text">
-        <span class="feed-author">${escapeHtml(buyer)}</span>
-        collected <a href="${worksLink}" class="accent">${escapeHtml(title)}</a>
-      </div>
-    </div>
-  `
-}
-
-function renderListedActivity(d, resolve) {
-  // Hide delisted listings entirely from feed surfaces. delistMedia() sets the
-  // price to 2^128 wei (DELIST_PRICE_SENTINEL) when totalMinted=0; the server
-  // also filters this in /api/feed/timeline, but client-side belt-and-braces
-  // catches anything coming from older cached responses or fallback paths.
-  let priceWei = 0n
-  try { priceWei = BigInt(d.price || '0') } catch {}
-  if (priceWei >= 2n ** 128n) return ''
-  const artist = resolve(d.artist)
-  const title = d.title || 'untitled'
-  const artLink = `/art?media=${encodeURIComponent(d.mediaId)}`
-  const priceEth = priceWei === 0n ? 'free' : `<span data-eth-wei="${d.price || '0'}">${(Number(priceWei) / 1e18).toFixed(4)} ETH</span>`
-  return `
-    <div class="feed-item feed-activity">
-      <div class="feed-activity-text">
-        <span class="feed-author">${escapeHtml(artist)}</span>
-        listed <a href="${artLink}" class="accent">${escapeHtml(title)}</a>
-        <span class="feed-meta"> · ${priceEth}</span>
-      </div>
-    </div>
-  `
-}
-
-function renderListedBatchActivity(d, resolve) {
-  const artist = resolve(d.artist)
-  const headline = d.headline || 'untitled'
-  const otherCount = d.count - 1
-  const firstItem = d.items?.[0]
-  const artLink = firstItem ? `/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#'
-  const itemLinks = (d.items || []).map(it =>
-    `<a href="/art?media=${encodeURIComponent(it.mediaId)}" class="accent" style="font-size:0.85em">${escapeHtml(it.title || 'untitled')}</a>`
-  ).join(', ')
-  return `
-    <div class="feed-item feed-activity">
-      <div class="feed-activity-text">
-        <span class="feed-author">${escapeHtml(artist)}</span>
-        listed <a href="${artLink}" class="accent">${escapeHtml(headline)}</a>
-        and ${otherCount} other track${otherCount !== 1 ? 's' : ''}
-      </div>
-      <div style="margin-top:0.3em;color:var(--muted);font-size:0.85em;line-height:1.6">${itemLinks}</div>
-    </div>
-  `
-}
+// renderSupporterCard, renderPurchaseCard now imported from feed-cards.js
 
 // --- Bookmark server sync (localStorage base in utils.js) ---
 let _bookmarkToken = ''
@@ -1671,5 +872,7 @@ document.addEventListener('click', (e) => {
   if (!url) return
   openMediaSheet({ url, title, author, itemId })
 })
+
+// Buy button delegation handled globally by feed-cards.js
 
 // escapeHtml imported from utils.js

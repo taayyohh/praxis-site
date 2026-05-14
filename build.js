@@ -260,8 +260,22 @@ async function buildOgImages() {
     pngs.push(svgToPng(ogOpts, join(ogDir, `${name}.png`)))
   }
 
-  // homepage
-  addOg('index', { title: site.name, subtitle: (site.bio || '').slice(0, 80) })
+  // homepage — truncate bio at sentence or word boundary
+  const rawBio = site.bio || ''
+  let ogBio = rawBio
+  if (ogBio.length > 100) {
+    // Try sentence boundary within 140 chars
+    const cut = ogBio.slice(0, 140)
+    const lastSentence = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'))
+    if (lastSentence > 30) {
+      ogBio = ogBio.slice(0, lastSentence + 1)
+    } else {
+      // Fall back to word boundary
+      const wordCut = ogBio.slice(0, 110).replace(/\s+\S*$/, '')
+      ogBio = wordCut.length > 30 ? wordCut + '...' : ogBio.slice(0, 100) + '...'
+    }
+  }
+  addOg('index', { title: site.name, subtitle: ogBio })
 
   // module-based sections
   for (const moduleEntry of getEnabledModules()) {
@@ -584,26 +598,18 @@ if (site.supporter) {
   const slots = site.topArtistsSlots || 4
 
   let artistCardsHtml = ''
-  for (let i = 0; i < slots; i++) {
-    const artist = topArtists[i]
-    const domain = artist?.domain || ''
-    const name = artist?.name || ''
-    if (domain) {
-      artistCardsHtml += `<a href="https://${escapeForHtml(domain)}" class="top-artist-card" data-domain="${escapeForHtml(domain)}" target="_blank" rel="noopener">
-        <img class="top-artist-avatar" src="" alt="" loading="lazy" style="width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--surface)">
-        <span class="top-artist-name">${escapeForHtml(name || domain)}</span>
-      </a>`
-    } else {
-      artistCardsHtml += `<div class="top-artist-card" style="opacity:0.3;border-style:dashed">
-        <div style="width:64px;height:64px;border-radius:50%;background:var(--surface)"></div>
-        <span class="top-artist-name" style="color:var(--muted)">—</span>
-      </div>`
-    }
+  const actualArtists = topArtists.filter(a => a?.domain)
+  for (const artist of actualArtists) {
+    const domain = artist.domain
+    artistCardsHtml += `<a href="https://${escapeForHtml(domain)}" class="top-artist-card" data-domain="${escapeForHtml(domain)}" target="_blank" rel="noopener">
+      <img class="top-artist-avatar" src="https://${escapeForHtml(domain)}/og/index.png" alt="${escapeForHtml(domain)}" loading="lazy" style="width:100%;aspect-ratio:1200/630;object-fit:cover;border-radius:6px">
+      <span class="top-artist-name">${escapeForHtml(artist.name || domain)}</span>
+    </a>`
   }
 
-  const myArtistsSection = topArtists.length > 0
+  const myArtistsSection = actualArtists.length > 0
     ? `<div class="my-artists-section"><h3>my artists</h3><div id="top-artists-grid" class="top-artists-grid">${artistCardsHtml}</div></div>`
-    : `<div class="my-artists-section"><h3>my artists</h3><div id="top-artists-grid" class="top-artists-grid">${artistCardsHtml}</div></div>`
+    : ''
 
   indexContent = `<header style="padding-left:0;margin-bottom:2em">
   <h1>${escapeForHtml(site.name)}</h1>
@@ -613,15 +619,14 @@ if (site.supporter) {
 
 ${myArtistsSection}
 
-<div id="supporter-collection-section" data-wallet="${site.wallet || ''}">
-  <h3>collection</h3>
-  <p id="supporter-collection-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
-  <div id="masonry-grid" class="masonry-grid"></div>
-</div>
-
-<div id="feed" style="display:none" data-blog="${blogRegistryAddr}" data-owner="${site.wallet || ''}">
+<div id="feed" data-blog="${blogRegistryAddr}" data-owner="${site.wallet || ''}">
   <p id="feed-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
   <div id="feed-posts"></div>
+</div>
+
+<div id="supporter-collection-section" data-wallet="${site.wallet || ''}" style="display:none"
+  <p id="supporter-collection-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
+  <div id="masonry-grid" class="masonry-grid"></div>
 </div>`
 } else {
   indexContent = fill(indexTpl, {
@@ -682,6 +687,7 @@ out('collection', wrap(collectionHtml, 'collection', '/collection', '/og/collect
 // works for sale page
 const worksHtml = `<div id="works-page">
 <h2 data-i18n="works.title">works for sale</h2>
+<p style="color:var(--dim);font-size:0.85em;max-width:50ch;margin:0.25em 0 1.5em;line-height:1.5">collect music, video, and art directly from the artist. 100% of every purchase goes to the creator. <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank" style="color:var(--accent)">learn more</a></p>
 <p id="works-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
 <div id="works-content"></div>
 </div>`
@@ -707,6 +713,41 @@ const earningsHtml = `<div id="earnings-page" style="max-width:680px;margin:0 au
 </div>`
 out('earnings', wrap(earningsHtml, 'earnings', '/earnings', '/og/index.png', { noindex: true }))
 
+// write page (full-page compose editor)
+const writeHtml = `<div id="write-page">
+<div class="write-inner">
+  <div class="write-header">
+    <button id="compose-close" class="write-back-btn" aria-label="back"><i class="ph ph-arrow-left"></i></button>
+    <div class="write-actions">
+      <a href="https://ourpraxis.network/how-it-works#writing" target="_blank" style="color:var(--dim);font-size:0.75em;text-decoration:none">what's this?</a>
+      <button id="compose-preview-toggle" class="write-btn write-btn-secondary">preview</button>
+      <button id="compose-post" class="write-btn write-btn-primary">publish</button>
+    </div>
+  </div>
+  <span class="compose-label" id="write-header-label" style="display:none"></span>
+  <div class="write-format-bar">
+    <button class="compose-fmt" data-wrap="**" title="bold"><b>B</b></button>
+    <button class="compose-fmt" data-wrap="*" title="italic"><i>I</i></button>
+    <button class="compose-fmt" data-prefix="## " title="heading">H</button>
+    <button class="compose-fmt" data-prefix="> " title="quote"><i class="ph ph-quotes"></i></button>
+    <button class="compose-fmt" data-link="true" title="link"><i class="ph ph-link-simple"></i></button>
+    <button id="compose-image" class="compose-fmt" title="image"><i class="ph ph-image"></i></button>
+    <span style="flex:1"></span>
+    <button id="compose-ref" class="compose-fmt" title="search people, media, references"><i class="ph ph-at"></i></button>
+    <span id="compose-ref-label" style="color:var(--dim);font-size:0.75em"></span>
+  </div>
+  <div class="write-editor">
+    <input type="text" id="compose-title" class="write-title" placeholder="title" autocomplete="off">
+    <textarea id="compose-content" class="write-content" placeholder="start writing..."></textarea>
+    <div id="compose-preview" class="compose-preview" style="display:none"></div>
+    <div id="compose-ref-card-slot"></div>
+    <div id="compose-ref-picker" style="display:none"></div>
+  </div>
+  <p id="compose-status" style="color:var(--muted);font-size:0.85em;margin-top:auto;padding:0.5em 0"></p>
+</div>
+</div>`
+out('write', wrap(writeHtml, 'write', '/write', '/og/index.png', { noindex: true }))
+
 // notifications page
 const notificationsHtml = `<div id="notifications-page" style="max-width:680px;margin:0 auto">
 <h2 data-i18n="notifications.title">notifications</h2>
@@ -721,14 +762,8 @@ const messagesHtml = `<div id="messages-page">
     <div class="messages-sidebar-header" style="display:flex;align-items:center;justify-content:space-between">
       <span data-i18n="messages.title">messages</span>
       <div style="display:flex;align-items:center;gap:0.5ch">
-        <div style="position:relative">
-          <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:1.1em;padding:0.15em 0.5ch;font-family:inherit"><i class="ph ph-plus-circle"></i></button>
-          <div id="messages-compose-dropdown" style="display:none;position:absolute;right:0;top:100%;background:#0a0a0a;border:1px solid #333;z-index:100;min-width:10ch">
-            <button id="messages-new" class="wallet-dd-btn" data-i18n="messages.new">new</button>
-            <button id="messages-group" class="wallet-dd-btn" data-i18n="messages.group">group</button>
-          </div>
-        </div>
-        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1em"><i class="ph ph-gear"></i></button>
+        <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:1.2em;padding:0.15em 0.5ch;font-family:inherit;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-plus-circle"></i></button>
+        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-gear"></i></button>
       </div>
     </div>
     <div id="messages-connect" style="padding:1em;color:var(--muted);display:none" data-i18n="messages.connectToMessage">connect wallet to message</div>
@@ -757,7 +792,7 @@ const messagesHtml = `<div id="messages-page">
       <form id="messages-send-form" class="messages-send-form">
         <button type="button" id="messages-pay-toggle" class="dock-btn" title="send ETH" style="font-size:1em"><i class="ph ph-currency-eth"></i></button>
         <button type="button" id="messages-attach-btn" class="dock-btn" title="attach image or PDF" style="font-size:1em"><i class="ph ph-paperclip"></i></button>
-        <input type="file" id="messages-attach-input" accept="image/*,.pdf" style="display:none" multiple>
+        <input type="file" id="messages-attach-input" accept="image/*,video/*,.pdf" style="display:none" multiple>
         <textarea id="messages-input" rows="1" placeholder="type a message..." autocomplete="off" data-i18n-placeholder="messages.placeholder" style="resize:none;overflow-y:hidden;min-height:1.8em;max-height:8em;line-height:1.4"></textarea>
         <button type="submit" class="dock-btn" style="font-size:1em"><i class="ph ph-paper-plane-tilt"></i></button>
       </form>
@@ -1019,15 +1054,20 @@ writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml)
 
 // 11. generate manifest.json
 
+const pwaName = site.pwa?.name || site.name
+const pwaIcon = site.pwa?.icon || '/favicon.svg'
 const manifestJson = {
-  name: site.name,
-  short_name: site.name,
+  name: pwaName,
+  short_name: pwaName,
   start_url: '/',
   display: 'standalone',
-  background_color: site.theme?.bg || '#0a0a0a',
+  background_color: site.pwa?.background || site.theme?.bg || '#0a0a0a',
   theme_color: site.theme?.bg || '#0a0a0a',
   icons: [
-    { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }
+    ...(pwaIcon.endsWith('.svg') ? [{ src: pwaIcon, sizes: 'any', type: 'image/svg+xml' }] : []),
+    ...(pwaIcon.endsWith('.png') ? [{ src: pwaIcon, sizes: '512x512', type: 'image/png' }] : []),
+    ...(site.pwa?.icon192 ? [{ src: site.pwa.icon192, sizes: '192x192', type: 'image/png' }] : []),
+    ...(!site.pwa?.icon ? [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }] : []),
   ]
 }
 writeFileSync(join(distDir, 'manifest.json'), JSON.stringify(manifestJson, null, 2))
@@ -1036,4 +1076,57 @@ writeFileSync(join(distDir, 'manifest.json'), JSON.stringify(manifestJson, null,
 try { copyFileSync(join(__dirname, 'public', 'sw.js'), join(distDir, 'sw.js')) } catch {}
 
 console.log(`built ${getEnabledModules().length} modules + network pages (template: ${templateName})`)
+
+// --- Phase 0.4: Build template shells for dynamic serve-time rendering ---
+// When BUILD_TEMPLATES_ONLY=1, generate a "shell" for each template type
+// with placeholder variables left in, so template-engine.js can inject
+// site.json data at serve time instead of needing a per-artist build.
+
+if (process.env.BUILD_TEMPLATES_ONLY === '1') {
+  const TEMPLATE_TYPES = ['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker', 'organization']
+  const shellsDir = join(distDir, 'templates')
+  mkdirSync(shellsDir, { recursive: true })
+
+  for (const tplName of TEMPLATE_TYPES) {
+    const tplDir = existsSync(`templates/${tplName}`) ? `templates/${tplName}` : 'templates/default'
+    const shellDir = join(shellsDir, tplName)
+    mkdirSync(shellDir, { recursive: true })
+
+    // Copy raw template HTML files (with {{placeholders}} intact)
+    const tplLayout = readFileSync(join(tplDir, 'layout.html'), 'utf8')
+    const tplIndex = readFileSync(join(tplDir, 'index.html'), 'utf8')
+    const tplSection = readFileSync(join(tplDir, 'section.html'), 'utf8')
+    writeFileSync(join(shellDir, 'layout.html'), tplLayout)
+    writeFileSync(join(shellDir, 'index.html'), tplIndex)
+    writeFileSync(join(shellDir, 'section.html'), tplSection)
+
+    // blog-index and reading templates (fall back to default)
+    const tplBlogIndex = existsSync(join(tplDir, 'blog-index.html'))
+      ? readFileSync(join(tplDir, 'blog-index.html'), 'utf8')
+      : readFileSync('templates/default/blog-index.html', 'utf8')
+    writeFileSync(join(shellDir, 'blog-index.html'), tplBlogIndex)
+
+    const tplReading = existsSync(join(tplDir, 'reading.html'))
+      ? readFileSync(join(tplDir, 'reading.html'), 'utf8')
+      : readFileSync('templates/default/reading.html', 'utf8')
+    writeFileSync(join(shellDir, 'reading.html'), tplReading)
+
+    // Copy template-specific style.css if it exists
+    const tplStylePath = join(tplDir, 'style.css')
+    if (tplName !== 'default' && existsSync(tplStylePath)) {
+      cpSync(tplStylePath, join(shellDir, 'style.css'))
+    }
+
+    // Write a per-template asset manifest referencing the shared fingerprinted assets
+    // (the main dist/ asset-manifest.json applies to all templates since JS/CSS are shared)
+    const mainManifestPath = join(distDir, 'asset-manifest.json')
+    if (existsSync(mainManifestPath)) {
+      cpSync(mainManifestPath, join(shellDir, 'asset-manifest.json'))
+    }
+
+    console.log(`  template shell: ${tplName} -> ${shellDir}`)
+  }
+
+  console.log(`built ${TEMPLATE_TYPES.length} template shells for dynamic serving`)
+}
 console.log(`done → ${distDir}/`)

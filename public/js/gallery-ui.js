@@ -53,7 +53,7 @@ function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 function escapeAttr(s) {
-  return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
 // Single document-level handler — survives SPA innerHTML swaps
