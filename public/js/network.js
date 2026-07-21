@@ -149,7 +149,7 @@ async function init() {
 
     try {
       const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-      await window.ensureOptimism?.()
+      if (!await window.ensureOptimism?.()) return
       const walletClient = createWalletClient({
         chain: optimism,
         transport: custom(getWalletProvider()),
@@ -258,6 +258,7 @@ async function init() {
   let allLoaded = false
   let _artistObserver = null
   let _artistLoading = false
+  let _orgCount = 0
 
   async function loadPage() {
     if (_artistLoading) return
@@ -270,10 +271,13 @@ async function init() {
             ${F.pageInfo}
             totalCount
           }
+          organizations(where: { dissolved: false }, limit: 1) { totalCount }
         }
       `, { after: afterCursor })
 
       const { items, totalCount, pageInfo } = data.artists
+      _orgCount = data.organizations?.totalCount || 0
+      const orgCount = _orgCount
 
       // batch-load follow state for this page of artists
       const connectedAddr = window.getWalletAddress?.()
@@ -288,9 +292,12 @@ async function init() {
           return
         }
         statusEl.className = 'nc-stats'
-        statusEl.textContent = totalCount === 1
+        const artistLabel = totalCount === 1
           ? t('network.artistCountSingular')
           : t('network.artistCount', { count: totalCount })
+        statusEl.textContent = orgCount > 0
+          ? `${artistLabel} · ${orgCount} organization${orgCount !== 1 ? 's' : ''}`
+          : artistLabel
         listEl.innerHTML = ''
       }
 
@@ -375,9 +382,11 @@ async function init() {
         if (connectedAddr) {
           await loadFollowStateForAddresses(connectedAddr, supItems.map(s => s.id))
         }
-        // update status to show both counts
         const artistCount = statusEl.textContent.match(/^(\d+)/)?.[1] || '0'
-        statusEl.textContent = `${artistCount} artist${artistCount !== '1' ? 's' : ''} · ${supTotalCount} audience member${supTotalCount !== 1 ? 's' : ''}`
+        let statsText = `${artistCount} artist${artistCount !== '1' ? 's' : ''}`
+        if (_orgCount > 0) statsText += ` · ${_orgCount} organization${_orgCount !== 1 ? 's' : ''}`
+        statsText += ` · ${supTotalCount} audience member${supTotalCount !== 1 ? 's' : ''}`
+        statusEl.textContent = statsText
 
         // remove old sentinel before appending
         listEl.querySelector('#supporter-sentinel')?.remove()
@@ -577,10 +586,10 @@ async function init() {
             html += `
               <div class="domain-option-row">
                 <div>
-                  <span style="color:var(--accent)">${d.domain}</span>
+                  <span style="color:var(--accent)">${escapeHtml(d.domain)}</span>
                   ${priceLabel ? `<span style="color:var(--dim);font-size:0.8em;margin-left:1ch">${priceLabel} (${ethLabel})</span>` : ''}
                 </div>
-                <button class="buy-btn domain-buy-btn" data-domain="${d.domain}" data-price-eth="${d.priceEth || '0'}" style="font-size:0.85em;padding:0.3em 1ch">${t('network.buyDeploy')}</button>
+                <button class="buy-btn domain-buy-btn" data-domain="${escapeHtml(d.domain)}" data-price-eth="${d.priceEth || '0'}" style="font-size:0.85em;padding:0.3em 1ch">${t('network.buyDeploy')}</button>
               </div>
             `
           }
@@ -663,10 +672,7 @@ async function init() {
               const addr = window.getWalletAddress?.()
               if (!addr) { buyStatus.textContent = t('network.connectFirst'); return }
 
-              // pay domain cost to treasury (deploy fee is paid on-chain via register())
-              try {
-                await getWalletProvider().request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa' }] })
-              } catch (e) { if (e.code === 4902) { buyStatus.textContent = t('network.addOptimism'); return } }
+              if (!await window.ensureOptimism?.()) { buyStatus.textContent = t('network.connectFirst'); return }
 
               const totalWei = BigInt(Math.ceil(totalEth * 1e18))
 
@@ -768,12 +774,7 @@ async function init() {
       }
     }
 
-    // switch to Scroll
-    try {
-      await getWalletProvider().request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa' }] })
-    } catch (e) {
-      if (e.code === 4902) { statusEl.textContent = t('status.addOptimism'); return }
-    }
+    if (!await window.ensureOptimism?.()) { statusEl.textContent = t('network.connectFirst'); return }
 
     // check if invite is sponsored (deploy fee pre-paid by deployer)
     let isSponsored = false
@@ -790,7 +791,7 @@ async function init() {
       if (!inviteCode) { statusEl.textContent = 'enter an invite code'; return }
       statusEl.textContent = 'validating invite...'
       try {
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) return
         const authAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 
@@ -879,7 +880,7 @@ async function init() {
       statusEl.textContent = 'registering on-chain (includes deploy fee)...'
       let regAccount = window.getWalletAddress()
       try {
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) return
         regAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
         const regWalletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await regWalletClient.writeContract({
@@ -922,7 +923,7 @@ async function init() {
         })
         if (inviter && inviter !== '0x0000000000000000000000000000000000000000') {
           statusEl.textContent = 'following your inviter...'
-          await window.ensureOptimism?.()
+          if (!await window.ensureOptimism?.()) return
           const followWc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
           const fh = await followWc.writeContract({
             address: regTarget, abi: REGISTRY_ABI,
@@ -968,7 +969,7 @@ function appendSponsoredRow(container, code, redeemed = false, publicClient, myA
       try {
         const { keccak256, toBytes } = await import('./vendor.js')
         const codeHash = keccak256(toBytes(code))
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) return
         const currentAccount = await window.ensureAuthorized?.() || myAddr
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const rh = await walletClient.writeContract({
@@ -1203,31 +1204,93 @@ function openInviteCardModal(code) {
 
 function appendInviteLinkRow(container, code, claimed = false) {
   const siteDomain = document.body.dataset.domain || window.location.hostname
-  const link = `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}`
   const row = document.createElement('div')
   row.className = 'invite-row'
   row.dataset.code = code
   if (claimed) {
+    // Show disabled card preview for claimed invites
+    const canvas = generateInviteCard(INVITE_CARD_COLORS[0].bg, INVITE_CARD_COLORS[0].fg, siteDomain, '')
     row.innerHTML = `
-      <span class="invite-code redeemed">${code.slice(0, 8)}...</span>
-      <span class="invite-badge" style="color:var(--dim)">claimed</span>
+      <div class="invite-card-inline claimed">
+        <div class="invite-card-preview"><img src="${canvas.toDataURL('image/png')}" alt="claimed invite" style="width:100%;border-radius:6px;display:block"></div>
+      </div>
     `
-  } else {
-    row.innerHTML = `
-      <span class="invite-code">${code.slice(0, 8)}...</span>
-      <button class="invite-action copy-invite-btn">${t('invites.copyLink')}</button>
-      <button class="invite-action card-invite-btn" title="create invite card" style="margin-left:0.25em">card</button>
-    `
-    row.querySelector('.copy-invite-btn').addEventListener('click', (e) => {
-      navigator.clipboard.writeText(link)
-      e.target.textContent = t('invites.copied')
-      setTimeout(() => { e.target.textContent = t('invites.copyLink') }, 2000)
-    })
-    row.querySelector('.card-invite-btn').addEventListener('click', () => {
-      openInviteCardModal(code)
-    })
+    container.appendChild(row)
+    return
   }
+
+  // Inline invite card with color selector — no modal
+  let selectedColor = INVITE_CARD_COLORS[0]
+  const themeHex = () => selectedColor.bg.replace('#', '')
+  const getLink = () => `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}&theme=${themeHex()}`
+
+  row.innerHTML = `
+    <div class="invite-card-inline">
+      <div class="invite-card-preview"></div>
+      <div class="invite-card-controls">
+        <div class="invite-card-colors" style="display:flex;gap:6px;align-items:center;margin:0.75em 0"></div>
+        <input type="text" class="invite-card-msg" placeholder="personal message (optional)" maxlength="100" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);color:var(--fg);border:1px solid var(--border,#1a1a1a);border-radius:4px;padding:0.4em 0.6em;font-family:inherit;font-size:0.8em;margin-bottom:0.5em">
+        <div style="display:flex;gap:0.5em">
+          <button class="invite-card-copy buy-btn" style="flex:1;font-size:0.8em;padding:0.3em 0.8ch">${t('invites.copyLink')}</button>
+          <button class="invite-card-download buy-btn" style="font-size:0.8em;padding:0.3em 0.8ch"><i class="ph ph-download-simple"></i></button>
+        </div>
+      </div>
+    </div>
+  `
+
+  const previewEl = row.querySelector('.invite-card-preview')
+  const colorsEl = row.querySelector('.invite-card-colors')
+  const msgInput = row.querySelector('.invite-card-msg')
+
+  function renderPreview() {
+    const canvas = generateInviteCard(selectedColor.bg, selectedColor.fg, siteDomain, msgInput.value.trim())
+    previewEl.innerHTML = ''
+    const img = document.createElement('img')
+    img.src = canvas.toDataURL('image/png')
+    img.style.cssText = 'width:100%;border-radius:6px;display:block'
+    img.alt = 'invite card'
+    previewEl.appendChild(img)
+  }
+
+  // Color dots
+  INVITE_CARD_COLORS.forEach((c, i) => {
+    const dot = document.createElement('button')
+    dot.style.cssText = `width:24px;height:24px;border-radius:50%;border:2px solid ${i === 0 ? 'var(--fg)' : 'transparent'};cursor:pointer;background:${c.bg};padding:0;transition:border-color 0.15s`
+    dot.title = c.label
+    dot.addEventListener('click', () => {
+      selectedColor = c
+      colorsEl.querySelectorAll('button').forEach(b => b.style.borderColor = 'transparent')
+      dot.style.borderColor = 'var(--fg)'
+      renderPreview()
+    })
+    colorsEl.appendChild(dot)
+  })
+
+  // Message updates preview (debounced)
+  let _msgTimer = null
+  msgInput.addEventListener('input', () => {
+    if (_msgTimer) clearTimeout(_msgTimer)
+    _msgTimer = setTimeout(renderPreview, 300)
+  })
+
+  // Copy link
+  row.querySelector('.invite-card-copy').addEventListener('click', (e) => {
+    navigator.clipboard.writeText(getLink())
+    e.target.textContent = t('invites.copied')
+    setTimeout(() => { e.target.textContent = t('invites.copyLink') }, 2000)
+  })
+
+  // Download card image
+  row.querySelector('.invite-card-download').addEventListener('click', () => {
+    const canvas = generateInviteCard(selectedColor.bg, selectedColor.fg, siteDomain, msgInput.value.trim())
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    a.download = `praxis-invite-${code.slice(0, 8)}.png`
+    a.click()
+  })
+
   container.appendChild(row)
+  renderPreview()
 }
 
 async function openInvitesModal(myAddr, publicClient) {
@@ -1327,7 +1390,7 @@ async function openInvitesModal(myAddr, publicClient) {
           migBtn.disabled = true
           migStatus.textContent = 'claiming...'
           try {
-            await window.ensureOptimism?.()
+            if (!await window.ensureOptimism?.()) return
             const acct = await window.ensureAuthorized?.() || myAddr
             const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({
@@ -1368,7 +1431,7 @@ async function openInvitesModal(myAddr, publicClient) {
         initBtn.disabled = true
         initStatus.textContent = 'claiming...'
         try {
-          await window.ensureOptimism?.()
+          if (!await window.ensureOptimism?.()) return
           const acct = await window.ensureAuthorized?.() || myAddr
           const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
           const hash = await wc.writeContract({
@@ -1460,6 +1523,7 @@ async function openInvitesModal(myAddr, publicClient) {
     dialog.appendChild(statusEl)
 
     const linksEl = document.createElement('div')
+    linksEl.className = 'invite-cards-scroll'
     linksEl.style.cssText = 'margin-top:0.5em'
     dialog.appendChild(linksEl)
 
@@ -1499,6 +1563,7 @@ async function openInvitesModal(myAddr, publicClient) {
       toggle.style.cssText = 'background:none;border:none;color:var(--muted,#555);font-family:inherit;font-size:0.8em;cursor:pointer;padding:0.3em 0;margin-bottom:0.5em'
       toggle.textContent = `${hiddenCount} older invite${hiddenCount > 1 ? 's' : ''}`
       const olderContainer = document.createElement('div')
+      olderContainer.className = 'invite-cards-scroll'
       olderContainer.style.display = 'none'
       for (const item of storedInvites.slice(0, hiddenCount)) {
         appendInviteLinkRow(olderContainer, item.code, claimedSet.has(item.code))
@@ -1522,7 +1587,7 @@ async function openInvitesModal(myAddr, publicClient) {
         const { keccak256, toBytes } = await import('./vendor.js')
         const code = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
         const codeHash = keccak256(toBytes(code))
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) return
         const currentAccount = await window.ensureAuthorized?.() || myAddr
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
@@ -1703,7 +1768,7 @@ async function openInvitesModal(myAddr, publicClient) {
       sponsorStatus.textContent = 'depositing...'
       try {
         const { keccak256, toBytes } = await import('./vendor.js')
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) return
         const currentAccount = await window.ensureAuthorized?.() || myAddr
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 

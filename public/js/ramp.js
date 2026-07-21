@@ -8,7 +8,7 @@ import { dbg } from './utils.js'
 const ZKP2P_API = 'https://api.zkp2p.xyz/v1'
 const ZKP2P_INDEXER = 'https://indexer.zkp2p.xyz/v1/graphql'
 const BASE_CHAIN_ID = 8453
-const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/59H42Trs6xiuI1wp-JppC'
+const BASE_RPC = 'https://mainnet.base.org'
 const BASE_CHAIN = { id: BASE_CHAIN_ID, name: 'Base', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [BASE_RPC] } } }
 const OPTIMISM_CHAIN_ID = 10
 const ETH_ADDRESS = '0x0000000000000000000000000000000000000000'

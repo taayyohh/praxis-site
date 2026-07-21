@@ -293,3 +293,6 @@ main h3 {
     align-items: center;
   }
 }
+
+/* Write page: override body max-width for 816px doc width */
+body:has(#write-page) { max-width: none; padding-left: 0; padding-right: 0; }

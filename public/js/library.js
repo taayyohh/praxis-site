@@ -215,7 +215,11 @@ async function initLibrary() {
       const match = items.find(i => String(i.id) === itemParam)
       if (match) {
         const link = match.ipfsCid ? ipfsUrl(match.ipfsCid) : match.url
-        openMediaSheet({ url: link, title: match.title || '', author: match.author || '', itemId: match.id || '' })
+        if (link && !link.startsWith('/') && !match.ipfsCid) {
+          window.open(link, '_blank')
+        } else {
+          openMediaSheet({ url: link, title: match.title || '', author: match.author || '', itemId: match.id || '' })
+        }
       }
     }
 
@@ -234,7 +238,13 @@ async function initLibrary() {
             u.searchParams.set('item', itemId)
             history.replaceState(null, '', u)
           }
-          openMediaSheet({ url: el.dataset.link, title: el.dataset.title || '', author: el.dataset.author || '', itemId: itemId || '' })
+          const link = el.dataset.link
+          // URL-only items (no IPFS file) open in a new tab
+          if (link && !link.startsWith('/') && !link.startsWith(location.origin)) {
+            window.open(link, '_blank')
+          } else {
+            openMediaSheet({ url: link, title: el.dataset.title || '', author: el.dataset.author || '', itemId: itemId || '' })
+          }
         })
       })
       container.querySelectorAll('.library-add-tag-btn:not([data-bound])').forEach(btn => {
@@ -592,7 +602,7 @@ function renderAddForm(libraryAddress) {
     // getWalletProvider() and ensureScroll() don't accidentally hijack
     // MetaMask/Brave when window.ethereum is locked by another wallet.
     const addAccount = await window.ensureAuthorized?.() || addr
-    if (!await window.ensureOptimism?.()) { statusEl.textContent = t('projects.addOptimism'); return }
+    if (!await window.ensureOptimism?.()) { statusEl.textContent = t('projects.connectWallet'); return }
 
     let ipfsCid = ''
 

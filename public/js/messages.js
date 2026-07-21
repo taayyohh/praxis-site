@@ -4,7 +4,7 @@ import { query } from './ponder.js'
 import { t } from './i18n.js'
 import { createWalletClient, custom, http, parseEther, formatEther } from './vendor.js'
 import { optimism } from './vendor.js'
-import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg} from './utils.js'
+import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet} from './utils.js'
 
 // Sign a message via the embedded wallet, falling back to window.ethereum.
 // Critical: when another wallet (Phantom, Coinbase, Rabby) has locked window.ethereum
@@ -105,14 +105,7 @@ const PX_TYPING_PREFIX = '\x00praxis:typing:'
 // growth over many conversations. Delete-then-set bumps the key to the end of
 // insertion order so the oldest entry is always evicted first.
 const _CONVO_MAP_CAP = 500
-function boundedSet(map, key, value, cap = _CONVO_MAP_CAP) {
-  if (map.has(key)) map.delete(key)
-  else if (map.size >= cap) {
-    const oldest = map.keys().next().value
-    if (oldest !== undefined) map.delete(oldest)
-  }
-  map.set(key, value)
-}
+// boundedSet() imported from utils.js (shared with wallet.js)
 let _typingIndicatorTimer = null
 // Local debounce for outgoing typing events.
 let _lastTypingSentAt = 0
@@ -185,20 +178,7 @@ function clearMsgDot() {
 }
 window._clearMsgDot = clearMsgDot
 
-// --- Worker patching for XMTP ---
-function patchWorker() {
-  if (window._workerPatched) return
-  window._workerPatched = true
-  const Orig = window.Worker
-  window.Worker = function(url, opts) {
-    const s = url instanceof URL ? url.href : url
-    if (typeof s === 'string' && (s.includes('esm.sh') || s.includes('xmtp') || s.includes('workers/client') || s.includes('workers/opfs'))) {
-      if (s.includes('client')) return new Orig('/js/xmtp-workers/client.js', { ...opts, type: 'module' })
-      if (s.includes('opfs')) return new Orig('/js/xmtp-workers/opfs.js', { ...opts, type: 'module' })
-    }
-    return new Orig(url, opts)
-  }
-}
+// patchWorker() imported from xmtp-proxy.js (shared with dm.js + wallet.js)
 
 // cleanup XMTP stream on SPA navigation away from messages
 window.addEventListener('spa-navigate', () => {
@@ -542,45 +522,98 @@ async function startXmtp(address) {
   document.getElementById('messages-connect').style.display = 'none'
   document.getElementById('messages-loading').style.display = 'block'
 
-  // Cross-tab coordination: acquire the XMTP lock before proceeding.
-  // Uses atomic request() — no pre-check with query() which has a TOCTOU race on refresh.
-  // Skip if this tab already holds the lock (dm.js or wallet.js acquired it before SPA nav).
+  // Cross-tab coordination via xmtp-proxy module
   const _xmtpLockName = `xmtp-${location.hostname}`
-  if (navigator.locks && !client?.inboxId && !window._xmtpLockHolder) {
-    const lockAcquired = await new Promise(resolve => {
-      navigator.locks.request(_xmtpLockName, { ifAvailable: true }, async (lock) => {
-        if (!lock) {
-          resolve(false)
-          return
-        }
-        resolve(true)
-        // Hold lock until tab closes
-        await new Promise(() => {})
-      }).catch(() => resolve(false))
-    })
+  const { acquireLeadership, createProxyClient, startLeaderResponder, broadcastNewMessage, broadcastUnread, patchWorker } = await import('./xmtp-proxy.js')
 
-    if (!lockAcquired) {
-      // Another tab genuinely holds the lock — show message + listen for broadcasts
-      const loadingEl = document.getElementById('messages-loading')
-      loadingEl.innerHTML = '<div style="color:var(--muted);padding:1em">messaging is active in another tab. close the other tab to use messages here.</div>'
-      try {
-        const bc = new BroadcastChannel(_xmtpLockName)
-        bc.onmessage = (e) => {
-          if (e.data.type === 'unread') {
-            const dot = document.getElementById('dock-msg-dot')
-            if (dot) dot.style.display = ''
-            try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
-          }
+  // Skip lock acquisition if this tab already holds it (dm.js or wallet.js acquired before SPA nav)
+  let _leadership = null
+  if (!client?.inboxId && !window._xmtpLockHolder) {
+    _leadership = await acquireLeadership(_xmtpLockName)
+    if (_leadership.isLeader) window._xmtpLockHolder = true
+  }
+
+  const _isFollower = _leadership && !_leadership.isLeader
+  const _proxyChannel = _leadership?.channel || null
+
+  if (_isFollower) {
+    // /messages needs Client.create (full, with signer) to send messages.
+    // Request the read-only leader (wallet.js/dm.js) to yield, then this
+    // tab auto-promotes via the queued lock and creates a full client.
+    // If the leader is also on /messages (full client), it refuses — use proxy.
+    console.log('praxis: messages.js follower — requesting leader to yield')
+    const loadingEl = document.getElementById('messages-loading')
+    loadingEl.innerHTML = '<div style="color:var(--dim);padding:0.5em 1em;font-size:0.8em;text-align:center">connecting...</div>'
+
+    const { requestYield, createProxyClient: _createProxy } = await import('./xmtp-proxy.js')
+
+    // Listen for yield-refused before requesting
+    let _yieldRefused = false
+    const _refusedHandler = (e) => { if (e.data?.type === 'yield-refused') _yieldRefused = true }
+    _proxyChannel.addEventListener('message', _refusedHandler)
+    requestYield(_proxyChannel)
+
+    // Wait for either promotion or refusal
+    try {
+      await Promise.race([
+        _leadership.onPromoted,
+        new Promise((resolve, reject) => {
+          const check = setInterval(() => {
+            if (_yieldRefused) { clearInterval(check); reject(new Error('yield refused')) }
+          }, 100)
+          setTimeout(() => { clearInterval(check); reject(new Error('promotion timeout')) }, 4000)
+        })
+      ])
+      _proxyChannel.removeEventListener('message', _refusedHandler)
+      console.log('praxis: messages.js promoted to leader after yield')
+      window._xmtpLockHolder = true
+      await new Promise(r => setTimeout(r, 500))
+      // Fall through to the normal leader/Client.create path below
+    } catch (e) {
+      _proxyChannel.removeEventListener('message', _refusedHandler)
+      if (_yieldRefused) {
+        // Leader is another /messages tab with full client — use proxy
+        console.log('praxis: leader refused yield (full client), using proxy')
+        sdk = await import('./vendor-xmtp.js')
+        client = _createProxy(_proxyChannel)
+        window._xmtpClient = client
+        window._xmtpSdk = sdk
+        window._xmtpClientIsReadOnly = false
+
+        loadingEl.innerHTML = '<div style="color:var(--dim);padding:0.5em 1em;font-size:0.8em;text-align:center">synced via another tab</div>'
+        setTimeout(() => { if (loadingEl) loadingEl.style.display = 'none' }, 2000)
+
+        let _proxyLoaded = false
+        for (let attempt = 0; attempt < 3 && !_proxyLoaded; attempt++) {
+          try {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt))
+            await _loadConversations(address)
+            _proxyLoaded = true
+          } catch (le) { console.warn(`praxis: proxy load attempt ${attempt + 1}/3:`, le?.message) }
         }
-      } catch {}
-      _initInFlight = false
-      return
+        if (loadingEl) loadingEl.style.display = 'none'
+        _initInFlight = false
+
+        // Auto-promote when leader tab closes
+        _leadership.onPromoted.then(async () => {
+          console.log('praxis: messages.js promoted to leader (other tab closed)')
+          window._xmtpLockHolder = true
+          if (client?._isProxy) client.close()
+          client = null
+          window._xmtpClient = null
+          _initInFlight = false
+          startXmtp(address)
+        })
+        return
+      }
+      console.warn('praxis: yield/promotion failed, retrying as leader:', e?.message)
+      window._xmtpLockHolder = true
     }
   }
 
-  // Set up BroadcastChannel to notify other tabs of unread messages
-  let _xmtpBroadcast = null
-  try { _xmtpBroadcast = new BroadcastChannel(`xmtp-${location.hostname}`) } catch {}
+  // Leader path: set up BroadcastChannel to notify other tabs of unread messages
+  let _xmtpBroadcast = _proxyChannel || null
+  if (!_xmtpBroadcast) { try { _xmtpBroadcast = new BroadcastChannel(`xmtp-${location.hostname}`) } catch {} }
   window._xmtpBroadcast = _xmtpBroadcast
 
   try {
@@ -1025,7 +1058,8 @@ async function startXmtp(address) {
           await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
           const convos = await client.conversations.list()
           inactiveCount = 0
-          for (const c of convos) {
+          // Cap isActive() checks to first 50 conversations to avoid N+1 on large inboxes
+          for (const c of convos.slice(0, 50)) {
             try {
               const active = typeof c.isActive === 'function' ? await c.isActive() : true
               if (!active) inactiveCount++
@@ -1044,14 +1078,23 @@ async function startXmtp(address) {
     await _loadConversations(address)
     _initInFlight = false
 
+    // Start leader responder so follower tabs can proxy through this tab
+    if (window._xmtpBroadcast && !client?._isProxy) {
+      try {
+        const { startLeaderResponder } = await import('./xmtp-proxy.js')
+        startLeaderResponder(window._xmtpBroadcast, () => client, { releaseLock: _leadership?.release })
+      } catch {}
+    }
+
     // Periodic sync to discover new DMs (every 30s) while on Messages page
     const _msgSyncInterval = setInterval(async () => {
       try {
-        const before = (await client.conversations.list()).length
+        const before = conversations.length
         await (client.conversations.syncAll?.(['allowed', 'unknown']) || client.conversations.sync())
-        const after = (await client.conversations.list()).length
-        if (after > before) {
-          dbg(`praxis: discovered ${after - before} new conversation(s)`)
+        let fresh = []
+        try { fresh = await client.conversations.list({ limit: BigInt(50) }) } catch { fresh = await client.conversations.list() }
+        if (fresh.length !== before) {
+          dbg(`praxis: discovered ${fresh.length - before} new conversation(s)`)
           await _loadConversations(address)
         }
       } catch {}
@@ -1198,8 +1241,14 @@ async function startUnreadStream() {
         showMsgDot()
         showMsgToast(msg)
       }
-      // Broadcast unread status to other tabs
-      window._xmtpBroadcast?.postMessage({ type: 'unread', conversationId: msg.conversationId })
+      // Broadcast to other tabs (new-message for proxy clients, unread for dots)
+      if (window._xmtpBroadcast) {
+        try {
+          const { broadcastNewMessage, broadcastUnread } = await import('./xmtp-proxy.js')
+          broadcastNewMessage(window._xmtpBroadcast, msg)
+          broadcastUnread(window._xmtpBroadcast, msg.conversationId)
+        } catch { window._xmtpBroadcast?.postMessage({ type: 'unread', conversationId: msg.conversationId }) }
+      }
     }
   } catch (e) {
     const errMsg = e?.message || ''
@@ -1425,6 +1474,8 @@ function extractText(m) {
     // never render as visible bubbles. They are still delivered over the normal
     // message stream and handled in the activeStream iterator.
     if (txt.startsWith(PX_READ_PREFIX) || txt.startsWith(PX_TYPING_PREFIX) || txt.startsWith('praxis:typing:') || txt.startsWith('praxis:read:')) return null
+    // Filter group membership change events that arrive as JSON strings
+    if (txt.includes('"initiatedByInboxId"') || txt.includes('"addedInboxes"') || txt.includes('"removedInboxes"') || txt.includes('"metadataFieldChanges"')) return null
     return txt
   }
   if (m.contentType?.typeId === 'group_updated') return null
@@ -1844,9 +1895,17 @@ async function loadConversations() {
         const time = lastMsgTs ? relativeTime(lastMsgTs / 1e6) : ''
         // check if conversation has unread messages (last message is from someone else)
         const myInboxId = client.inboxId
-        const lastSeen = parseInt(localStorage.getItem(`praxis:msg-seen:${c.id}`) || '0', 10)
-        // lastMsgTs is nanoseconds, lastSeen is nanoseconds (stored as nanos since fix)
-        const isUnread = lastMsg && lastMsg.senderInboxId !== myInboxId && lastMsgTs > lastSeen
+        const lastSeenStr = localStorage.getItem(`praxis:msg-seen:${c.id}`) || ''
+        const lastMsgNsStr = String(lastMsg?.sentAtNs || previewMsg?.sentAtNs || '0')
+        // If no seen timestamp exists for this conversation, mark it as seen now
+        // (prevents all conversations showing as unread on first sign-in)
+        if (!lastSeenStr) {
+          try { localStorage.setItem(`praxis:msg-seen:${c.id}`, lastMsgNsStr) } catch {}
+        }
+        // Compare as strings padded to same length (nanosecond values exceed Number.MAX_SAFE_INTEGER)
+        const effectiveSeenStr = lastSeenStr || lastMsgNsStr
+        const padLen = Math.max(effectiveSeenStr.length, lastMsgNsStr.length)
+        const isUnread = lastMsg && lastMsg.senderInboxId !== myInboxId && lastMsgNsStr.padStart(padLen, '0') > effectiveSeenStr.padStart(padLen, '0')
         // Clean attachment markdown for preview
         let preview = text || ''
         if (preview.includes('[image:')) preview = preview.replace(/\[image:[^\]]*\]\([^)]+\)/g, 'sent an image').trim()
@@ -2030,7 +2089,7 @@ async function loadConversations() {
         const idx = parseInt(el.dataset.idx)
         const item = _msgItems[idx]
         if (item) {
-          try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(Date.now() * 1e6)) } catch {}
+          try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
           // Remove the red unread dot from this conversation item
           el.querySelector('.msg-unread-dot')?.remove()
           openConversation(item.convo, item.peerDomain)
@@ -2071,7 +2130,7 @@ async function loadConversations() {
               el.classList.add('active')
               const item = _msgItems[parseInt(el.dataset.idx)]
               if (item) {
-                try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(Date.now() * 1e6)) } catch {}
+                try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
           // Remove the red unread dot from this conversation item
           el.querySelector('.msg-unread-dot')?.remove()
                 openConversation(item.convo, item.peerDomain)
@@ -2125,13 +2184,43 @@ async function openConversation(convo, peerDomain) {
     activeIsGroup = true
   }
 
-  const chatEmpty = document.getElementById('messages-chat-empty')
-  const chatActive = document.getElementById('messages-chat-active')
-  const peerNameEl = document.getElementById('messages-peer-name')
-  const payBar = document.getElementById('messages-pay-bar')
-  if (!chatEmpty || !chatActive || !peerNameEl) {
-    console.warn('praxis: openConversation DOM not ready', { chatEmpty: !!chatEmpty, chatActive: !!chatActive, peerNameEl: !!peerNameEl })
-    return
+  let chatEmpty = document.getElementById('messages-chat-empty')
+  let chatActive = document.getElementById('messages-chat-active')
+  let peerNameEl = document.getElementById('messages-peer-name')
+  let payBar = document.getElementById('messages-pay-bar')
+
+  // Settings may have replaced the chat DOM — restore it from <template>
+  if (!chatEmpty || !chatActive) {
+    const chatEl = document.getElementById('messages-chat')
+    if (!chatEl) { console.warn('praxis: openConversation — no chat container'); return }
+    const tpl = document.getElementById('messages-chat-template')
+    if (tpl) {
+      chatEl.innerHTML = ''
+      chatEl.appendChild(tpl.content.cloneNode(true))
+    }
+    chatEmpty = document.getElementById('messages-chat-empty')
+    chatActive = document.getElementById('messages-chat-active')
+    peerNameEl = document.getElementById('messages-peer-name')
+    payBar = document.getElementById('messages-pay-bar')
+    // Re-bind send form
+    document.getElementById('messages-send-form')?.addEventListener('submit', sendMessage)
+    const _msgInputEl = document.getElementById('messages-input')
+    if (_msgInputEl) {
+      _msgInputEl.addEventListener('input', () => {
+        requestAnimationFrame(() => {
+          _msgInputEl.style.height = 'auto'
+          _msgInputEl.style.height = Math.min(_msgInputEl.scrollHeight, 128) + 'px'
+          _msgInputEl.style.overflowY = _msgInputEl.scrollHeight > 128 ? 'auto' : 'hidden'
+        })
+      })
+      _msgInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('messages-send-form')?.requestSubmit() }
+      })
+    }
+    // Re-bind back button for mobile
+    document.getElementById('messages-back')?.addEventListener('click', () => {
+      document.getElementById('messages-container')?.classList.remove('chat-active')
+    })
   }
   chatEmpty.style.display = 'none'
   chatActive.style.display = 'flex'
@@ -2300,6 +2389,13 @@ async function openConversation(convo, peerDomain) {
             // doing the sync+render, so we don't pay the sync round-trip for an
             // event that won't change the visible message list.
             if (handlePraxisControlMessage(msg, convo)) continue
+            // Broadcast to follower tabs so their conversation streams update
+            if (window._xmtpBroadcast && !client?._isProxy) {
+              try {
+                const { broadcastNewMessage } = await import('./xmtp-proxy.js')
+                broadcastNewMessage(window._xmtpBroadcast, msg)
+              } catch {}
+            }
             try { await convo.sync() } catch {}
             const msgs = await convo.messages()
             renderMessages(msgs)
@@ -2325,6 +2421,9 @@ async function openConversation(convo, peerDomain) {
                 activeStream = await match.stream()
                 for await (const msg of activeStream) {
                   if (handlePraxisControlMessage(msg, match)) continue
+                  if (window._xmtpBroadcast && !client?._isProxy) {
+                    try { const { broadcastNewMessage } = await import('./xmtp-proxy.js'); broadcastNewMessage(window._xmtpBroadcast, msg) } catch {}
+                  }
                   try { await match.sync() } catch {}
                   renderMessages(await match.messages())
                 }
@@ -2459,6 +2558,7 @@ function renderMessageContent(text) {
   const escaped = escapeHtml(text)
   // Detect attachment embeds: [image:filename](url) or [pdf:filename](url)
   let html = escaped.replace(/\[image:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
+    if (!/^(https?:\/\/|\/)/i.test(url)) return `[image:${escapeHtml(name)}](${escapeHtml(url)})`
     const safeUrl = escapeHtml(url)
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
       <img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer" loading="lazy" onclick="window.open('${safeUrl}','_blank')">
@@ -2466,13 +2566,17 @@ function renderMessageContent(text) {
     </div>`
   })
   html = html.replace(/\[video:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
+    if (!/^(https?:\/\/|\/)/i.test(url)) return `[video:${escapeHtml(name)}](${escapeHtml(url)})`
     const safeUrl = escapeHtml(url)
+    const cidMatch = url.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
+    const posterUrl = cidMatch ? `/api/video-thumb?cid=${cidMatch[1]}&w=400` : ''
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
-      <video src="${safeUrl}" controls preload="none" playsinline style="max-width:100%;max-height:300px;border-radius:8px;display:block"></video>
+      <video src="${safeUrl}" controls preload="none" playsinline ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} style="max-width:100%;max-height:300px;border-radius:8px;display:block"></video>
       <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
     </div>`
   })
   html = html.replace(/\[pdf:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
+    if (!/^(https?:\/\/|\/)/i.test(url)) return `[pdf:${escapeHtml(name)}](${escapeHtml(url)})`
     const safeUrl = escapeHtml(url)
     const thumbUrl = `/api/pdf-thumb?url=${encodeURIComponent(url)}`
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
@@ -2622,7 +2726,8 @@ function renderMessages(messages) {
       <div class="dm-time">${time}</div>
     </div>`
   }).join('')
-  el.scrollTop = el.scrollHeight
+  // Scroll to bottom — use requestAnimationFrame to ensure layout is complete
+  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
   // After every render, update the receipt indicator on the LAST outgoing
   // bubble (single source of truth — much cleaner than per-message ✓✓).
   updateLastReceiptIndicator()
@@ -2964,6 +3069,9 @@ async function sendMessage(e) {
           try {
             for await (const msg of activeStream) {
               if (handlePraxisControlMessage(msg, activeConvo)) continue
+              if (window._xmtpBroadcast && !client?._isProxy) {
+                try { const { broadcastNewMessage } = await import('./xmtp-proxy.js'); broadcastNewMessage(window._xmtpBroadcast, msg) } catch {}
+              }
               if (msg.conversationId === activeConvo?.id) {
                 await activeConvo.sync()
                 renderMessages(await activeConvo.messages())
@@ -3173,11 +3281,10 @@ async function sendPayment() {
   if (!amount || !activePeerAddr) return
 
   try {
-    await window.ensureScroll?.()
     const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
     // Use getWalletProvider() so embedded users with another wallet (Phantom/Coinbase/Rabby)
     // installed still hit our embedded provider — window.ethereum may be locked.
-    const walletClient = createWalletClient({ chain: scroll, transport: custom(window.getWalletProvider?.() || window.ethereum) })
+    const walletClient = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider?.() || window.ethereum) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
       value: parseEther(amount.toString()),
@@ -3259,9 +3366,25 @@ function renderStaticInstallations(chatEl, installations, inboxId, signer, tempC
 
 // --- Messages settings (XMTP installations) ---
 
+function _wireSettingsBack(chatEl) {
+  // Show back button on mobile, wire click to return to conversation list
+  if (window.innerWidth <= 768) {
+    chatEl.querySelectorAll('.messages-settings-back').forEach(btn => {
+      btn.style.display = 'inline-flex'
+      btn.addEventListener('click', () => {
+        const container = document.getElementById('messages-container')
+        if (container) container.classList.remove('chat-active')
+      })
+    })
+  }
+}
+
 async function showMessagesSettings() {
   const chatEl = document.getElementById('messages-chat')
   if (!chatEl) return
+  // Show chat panel on mobile
+  const container = document.getElementById('messages-container')
+  if (container && window.innerWidth <= 768) container.classList.add('chat-active')
   if (!client) {
     // no client — use static SDK methods to list + revoke installations
     const addr = window.getWalletAddress?.()
@@ -3270,7 +3393,10 @@ async function showMessagesSettings() {
     }
     chatEl.innerHTML = `
       <div style="padding:2em;max-width:500px;margin:0 auto">
-        <h3 style="margin-bottom:1em">message settings</h3>
+        <div style="display:flex;align-items:center;gap:0.75ch;margin-bottom:1em">
+          <button class="messages-settings-back" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:1.25rem;padding:0;min-width:44px;min-height:44px;display:none;align-items:center;justify-content:center"><i class="ph ph-arrow-left"></i></button>
+          <h3 style="margin:0">message settings</h3>
+        </div>
         <div id="xmtp-static-installations" style="margin-bottom:1.5em">
           <p style="color:var(--muted);font-size:0.85em"><span class="praxis-loader"></span> loading installations...</p>
         </div>
@@ -3356,12 +3482,16 @@ async function showMessagesSettings() {
       } catch {}
       window.location.reload()
     })
+    _wireSettingsBack(chatEl)
     return
   }
 
   chatEl.innerHTML = `
     <div style="padding:2em;max-width:500px;margin:0 auto">
-      <h3 style="margin-bottom:1em">${t('messages.settings') || 'message settings'}</h3>
+      <div style="display:flex;align-items:center;gap:0.75ch;margin-bottom:1em">
+        <button class="messages-settings-back" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:1.25rem;padding:0;min-width:44px;min-height:44px;display:none;align-items:center;justify-content:center"><i class="ph ph-arrow-left"></i></button>
+        <h3 style="margin:0">${t('messages.settings') || 'message settings'}</h3>
+      </div>
       <div style="margin-bottom:1.5em">
         <div style="color:var(--dim);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5em">${t('messages.inboxId') || 'your inbox id'}</div>
         <div style="font-family:monospace;font-size:0.85em;word-break:break-all;color:var(--muted)">${client.inboxId || 'unknown'}</div>
@@ -3380,6 +3510,7 @@ async function showMessagesSettings() {
       <p id="xmtp-settings-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
     </div>
   `
+  _wireSettingsBack(chatEl)
 
   // load installations
   try {

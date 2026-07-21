@@ -287,7 +287,7 @@ async function loadFeed(myAddr, blogAddr) {
     // get who I follow (capped at 200 most recent to keep _in filters small)
     const followed = await getAllFollows(query, myAddr, 200)
     // include own posts — filter to valid eth addresses only
-    _feedAuthors = [...new Set([myAddr, ...followed])].filter(a => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a))
+    _feedAuthors = [...new Set([myAddr, ...followed])].filter(a => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a)).slice(0, 1000)
 
     if (_feedAuthors.length === 0) {
       statusEl.textContent = t('feed.empty')
@@ -668,7 +668,7 @@ async function hideOwnedBuyButtons(container, myAddr) {
       const allIds = new Set()
       let cursor = null
       do {
-        const res = await query(`{ mediaPurchases(where: { buyer: "${addr}" }, limit: 200${cursor ? `, after: "${cursor}"` : ''}) { items { mediaId } pageInfo { endCursor hasNextPage } } }`)
+        const res = await query(`query($buyer: String!, $limit: Int!${cursor ? ', $after: String' : ''}) { mediaPurchases(where: { buyer: $buyer }, limit: $limit${cursor ? ', after: $after' : ''}) { items { mediaId } pageInfo { endCursor hasNextPage } } }`, { buyer: addr, limit: 200, ...(cursor ? { after: cursor } : {}) })
         const items = res.mediaPurchases?.items || []
         for (const item of items) allIds.add(String(item.mediaId))
         cursor = res.mediaPurchases?.pageInfo?.hasNextPage ? res.mediaPurchases?.pageInfo?.endCursor : null
@@ -701,20 +701,31 @@ function renderLibraryActivity(item, resolve) {
 
   const cid = item.ipfsCid || ''
   const url = item.url || ''
-  const mediaLink = cid ? `/api/ipfs-proxy/${cid}` : url
+  const hasFile = !!cid
+  const mediaLink = cid ? `/api/ipfs-proxy/${cid}` : ''
 
-  // All library items get a PDF thumb attempt — if it's not a PDF, the renderer silently skips
-  const pdfThumbAttr = mediaLink ? ` data-pdf-thumb="${escapeHtml(mediaLink)}"` : ''
+  // Only show PDF thumb for IPFS-hosted files
+  const pdfThumbAttr = hasFile && mediaLink ? ` data-pdf-thumb="${escapeHtml(mediaLink)}"` : ''
+
+  // URL-only items (no IPFS file) open externally; file items open in our viewer
+  const titleLink = hasFile
+    ? `<a href="#" class="feed-library-open" data-media-url="${escapeHtml(mediaLink)}" data-title="${escapeHtml(item.title)}" data-author="${escapeHtml(item.author || '')}" data-item-id="${item.id || ''}" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:block">${escapeHtml(item.title)}</a>`
+    : `<a href="${escapeHtml(url)}" target="_blank" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:flex;align-items:center;gap:0.5ch">${escapeHtml(item.title)} <i class="ph ph-arrow-square-out" style="font-size:0.8em;color:var(--muted)"></i></a>`
+
+  // URL-only items show a link icon instead of PDF icon
+  const iconSlot = hasFile
+    ? '<div class="feed-pdf-thumb-slot" style="display:none"></div>'
+    : ''
 
   return `
     <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden"${pdfThumbAttr}>
-      <div class="feed-pdf-thumb-slot" style="display:none"></div>
+      ${iconSlot}
       <div style="padding:0.75em 1em">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
           <a href="/network?artist=${item.contributor.toLowerCase()}" class="feed-author">${escapeHtml(domain)}</a>
           <span style="color:var(--dim);font-size:0.8em">${t('feed.addedToLibrary')}</span>
         </div>
-        <a href="#" class="feed-library-open" data-media-url="${escapeHtml(mediaLink)}" data-title="${escapeHtml(item.title)}" data-author="${escapeHtml(item.author || '')}" data-item-id="${item.id || ''}" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:block">${escapeHtml(item.title)}</a>
+        ${titleLink}
         ${item.author ? `<div style="color:var(--muted);font-size:0.85em;margin-top:0.2em">${escapeHtml(item.author)}</div>` : ''}
         ${tags ? `<div style="margin-top:0.4em;display:flex;flex-wrap:wrap">${tags}</div>` : ''}
       </div>

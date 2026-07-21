@@ -4,9 +4,25 @@ body {
   max-width: 900px;
 }
 
+.org-header-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1em;
+}
+
+.org-logo {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 header h1 {
   font-size: 2.4em;
   letter-spacing: -0.02em;
+  margin-bottom: 0;
 }
 
 /* roster grid */
@@ -33,9 +49,15 @@ header h1 {
 .roster-card {
   text-decoration: none;
   color: var(--fg);
-  padding: 1em;
+  padding: 1.25em;
   border: 1px solid var(--border);
+  border-radius: 12px;
   transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  text-align: center;
 }
 
 .roster-card:hover {
@@ -44,16 +66,26 @@ header h1 {
 
 .roster-name {
   color: var(--accent);
-  font-size: 1em;
-  margin-bottom: 0.25em;
+  font-size: 0.9em;
 }
 
-.roster-domain {
-  color: var(--dim);
-  font-size: 0.8em;
+/* catalog: 2-column grid, no span overrides */
+#org-home-catalog.works-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+#org-home-catalog .works-card[data-span="2"] {
+  grid-column: span 1;
+}
+#org-home-catalog .works-card[data-span="2"] .works-card-art {
+  aspect-ratio: 1;
 }
 
 @media (max-width: 600px) {
+  .org-logo {
+    width: 100px;
+    height: 100px;
+  }
+
   header h1 {
     font-size: 1.8em;
   }
@@ -63,3 +95,6 @@ header h1 {
     gap: 1em;
   }
 }
+
+/* Write page: override body max-width for 816px doc width */
+body:has(#write-page) { max-width: none; padding-left: 0; padding-right: 0; }

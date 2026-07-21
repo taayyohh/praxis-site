@@ -12,8 +12,8 @@
 
 const FLAG_KEY = 'praxis-pending-custom-domain'
 const DISMISSED_UNTIL_KEY = 'praxis-pending-custom-domain-dismissed-until'
-const POLL_INTERVAL_MS = 10000
-const POLL_MAX_MS = 10 * 60 * 1000 // 10 minutes per page load
+const POLL_INTERVAL_MS = 15000
+const POLL_MAX_MS = 30 * 60 * 1000 // 30 minutes per page load
 const DISMISS_COOLDOWN_MS = 10 * 60 * 1000
 
 // Module-scoped cancel flag so the 10-minute poll chain can abort cleanly on
@@ -21,8 +21,19 @@ const DISMISS_COOLDOWN_MS = 10 * 60 * 1000
 // keeps pinging /api/health for up to 10 minutes after the user is gone.
 let _cancelled = false
 
-function showBanner(customDomain) {
+function showPendingBanner(customDomain) {
   if (document.getElementById('praxis-dns-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'praxis-dns-banner'
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;padding:0.6em 1em;background:rgba(255,255,255,0.05);border-bottom:1px solid var(--border,#333);color:var(--muted,#999);font-size:0.85em;display:flex;justify-content:center;align-items:center;gap:1ch;flex-wrap:wrap'
+  banner.innerHTML = `<span class="praxis-loader" style="width:0.8em;height:0.8em"></span> <span>setting up <strong style="color:var(--fg,#c0c0c0)"></strong> — this usually takes a few minutes</span>`
+  banner.querySelector('strong').textContent = customDomain
+  document.body.appendChild(banner)
+}
+
+function showReadyBanner(customDomain) {
+  const existing = document.getElementById('praxis-dns-banner')
+  if (existing) existing.remove()
   const banner = document.createElement('div')
   banner.id = 'praxis-dns-banner'
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;padding:0.75em 1em;background:rgba(0,255,65,0.12);border-bottom:1px solid var(--accent,#00ff41);color:var(--fg,#c0c0c0);font-size:0.9em;display:flex;justify-content:center;align-items:center;gap:1ch;flex-wrap:wrap'
@@ -90,17 +101,25 @@ export function initDnsBanner() {
   const start = Date.now()
   const tick = async () => {
     if (_cancelled) return
-    if (Date.now() - start > POLL_MAX_MS) return
+    if (Date.now() - start > POLL_MAX_MS) {
+      const el = document.getElementById('praxis-dns-banner')
+      if (el) el.remove()
+      return
+    }
     const ok = await checkOnce(customDomain)
     if (_cancelled) return
     if (ok) {
-      showBanner(customDomain)
+      showReadyBanner(customDomain)
       return
     }
     setTimeout(tick, POLL_INTERVAL_MS)
   }
-  // Kick off after the page settles so we don't contend with initial loads.
-  setTimeout(() => { if (!_cancelled) tick() }, 2000)
+  // Show "setting up" banner immediately, then start polling.
+  setTimeout(() => {
+    if (_cancelled) return
+    showPendingBanner(customDomain)
+    tick()
+  }, 2000)
 }
 
 initDnsBanner()

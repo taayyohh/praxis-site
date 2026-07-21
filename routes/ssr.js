@@ -47,13 +47,8 @@ export async function handleSsr(ctx) {
           if (isScript) {
             const markerEnd = displayPost.content.indexOf('\n') + 1
             body = displayPost.content.slice(markerEnd)
-            // Sanitize: only allow safe Fountain/stageplay tags, strip all event handlers and dangerous elements
-            body = body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-            body = body.replace(/<(iframe|object|embed|form|input|textarea|button|link|meta|base)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
-            body = body.replace(/<(iframe|object|embed|form|input|textarea|button|link|meta|base)\b[^>]*\/?>/gi, '')
-            body = body.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-            body = body.replace(/\s+on\w+\s*=\s*\S+/gi, '')
-            body = body.replace(/\bhref\s*=\s*["']?\s*javascript:[^"'>]*/gi, 'href="#"')
+            // Escape all HTML — SSR is just for SEO/OG; the SPA re-renders via fountain.js
+            body = `<pre style="white-space:pre-wrap;font-family:inherit">${esc(body)}</pre>`
           } else {
             body = esc(displayPost.content)
             body = body.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, (_, alt, imgUrl) => {
@@ -75,7 +70,7 @@ export async function handleSsr(ctx) {
           const site = getSiteJson(SITE_JSON)
           const postHtmlFile = join(DIR, 'post', 'index.html')
           if (cachedExists(postHtmlFile)) {
-            let html = getSsrTemplate(postHtmlFile)
+            let html = await getSsrTemplate(postHtmlFile)
             if (!html) { res.writeHead(500); res.end('template read error'); return true }
 
             const ssrContent = `<header class="post-page-header"><h1 class="post-page-title">${esc(displayPost.title)}</h1><div class="post-page-meta"><a href="/network?artist=${post.author.toLowerCase()}">${esc(authorDomain)}</a><span style="color:var(--dim)"> · </span><time>${dateStr}</time></div></header><div class="post-page-body">${body}</div><div id="post-replies" style="margin-top:2em"></div><div id="post-reply-form" style="margin-top:1.5em"></div>`
@@ -148,7 +143,7 @@ export async function handleSsr(ctx) {
       if (ogTitle) {
         const artHtmlFile = join(DIR, 'art', 'index.html')
         if (cachedExists(artHtmlFile)) {
-          let html = getSsrTemplate(artHtmlFile)
+          let html = await getSsrTemplate(artHtmlFile)
           if (!html) { res.writeHead(500); res.end('template read error'); return true }
           const canonical = `https://${site.domain}${req.url}`
 
@@ -188,7 +183,7 @@ export async function handleSsr(ctx) {
 
           const projectHtmlFile = join(DIR, 'project', 'index.html')
           if (cachedExists(projectHtmlFile)) {
-            let html = getSsrTemplate(projectHtmlFile)
+            let html = await getSsrTemplate(projectHtmlFile)
             if (!html) { res.writeHead(500); res.end('template read error'); return true }
 
             html = injectOgTags(html, { title: ogTitle, description: ogDescription, image: ogImage, url: canonical })

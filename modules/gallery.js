@@ -1,6 +1,7 @@
 // Gallery module — images, exhibitions, series/collections
 // For photographers, painters, sculptors, visual artists
 // data: { images: [{ src, title, medium, year, series, description, dimensions, materials, edition, location }], exhibitions: [{ title, venue, year, startDate, endDate, curator, coArtists, url }] }
+import { esc, batchBuyScript } from './shared.js'
 export default {
   type: 'gallery',
   label: 'visual',
@@ -163,63 +164,7 @@ export default {
         })
       })
 
-      // Buy button delegation (shared)
-      import('/js/media.js').then(function(m) { if (m.wireMediaBuyButtons) m.wireMediaBuyButtons() })
-      // Wire batch buy buttons (buy collection)
-      if (!window._batchBuyDelegated) {
-        window._batchBuyDelegated = true
-        document.addEventListener('click', async function(e) {
-          var btn = e.target.closest('.batch-buy-btn[data-media-ids]')
-          if (!btn || btn.disabled) return
-          e.stopPropagation()
-          try {
-            var ids = JSON.parse(btn.dataset.mediaIds)
-            var totalPrice = btn.dataset.totalPrice || '0'
-            var addr = window.getWalletAddress && window.getWalletAddress()
-            if (addr) {
-              var owned = window._getOwnedMediaIds && await window._getOwnedMediaIds(addr)
-              if (owned) {
-                var unownedIds = ids.filter(function(id) { return !owned.has(String(id)) })
-                if (unownedIds.length === 0) { btn.textContent = 'owned'; btn.disabled = true; return }
-              }
-            }
-            btn.textContent = 'confirming...'
-            btn.disabled = true
-            var mod = await import('/js/media.js')
-            await mod.purchaseBatchMedia(ids, totalPrice)
-            btn.textContent = 'owned'
-            btn.style.borderColor = 'var(--accent)'
-            btn.style.color = 'var(--accent)'
-          } catch (err) {
-            btn.textContent = err.code === 4001 ? 'cancelled' : 'error'
-            btn.disabled = false
-            setTimeout(function() {
-              var totalEth = Number(btn.dataset.totalPrice || '0') / 1e18
-              btn.textContent = 'buy collection (' + (totalEth > 0 ? totalEth + ' ETH' : 'free') + ')'
-            }, 2000)
-          }
-        })
-        async function checkBatchOwned() {
-          var addr = window.getWalletAddress && window.getWalletAddress()
-          if (!addr) return
-          var owned = window._getOwnedMediaIds && await window._getOwnedMediaIds(addr)
-          if (!owned) return
-          document.querySelectorAll('.batch-buy-btn[data-media-ids]').forEach(function(btn) {
-            try {
-              var ids = JSON.parse(btn.dataset.mediaIds)
-              if (ids.every(function(id) { return owned.has(String(id)) })) {
-                btn.textContent = 'owned'
-                btn.style.borderColor = 'var(--accent)'
-                btn.style.color = 'var(--accent)'
-                btn.disabled = true
-              }
-            } catch (ex) {}
-          })
-        }
-        checkBatchOwned()
-        window.addEventListener('wallet-connected', checkBatchOwned)
-        window.addEventListener('spa-navigate', function() { setTimeout(checkBatchOwned, 100) })
-      }
+      ${batchBuyScript('buy collection ({price})')}
     })();
     </script>`
     return html
@@ -248,13 +193,9 @@ export default {
 
 // --- Helpers ---
 
-function escapeHtml(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
-
-function escapeAttr(s) {
-  return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
+// escapeHtml and escapeAttr are aliases for the shared esc() function
+const escapeHtml = esc
+const escapeAttr = esc
 
 function renderGalleryItem(img) {
   const gridThumb = img.src ? `/api/img?url=${encodeURIComponent(img.src)}&w=800` : img.src

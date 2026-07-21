@@ -210,16 +210,23 @@ export async function getCachedBalance(addr) {
   }
 }
 
+// Rewrite external URLs to go through our proxy (avoids CSP connect-src blocks)
+function proxyUrl(url) {
+  if (!url || url.startsWith('/') || url.startsWith(location.origin)) return url
+  return `/api/fetch-url?url=${encodeURIComponent(url)}`
+}
+
 // universal media renderer — inline display for any file type
 // handles IPFS URLs without extensions by using a placeholder that auto-detects MIME
 export function renderMedia(url, filename) {
+  const proxied = proxyUrl(url)
   const ext = (filename || url)?.split('.').pop()?.toLowerCase()?.split('?')[0] || ''
-  const html = renderByExt(url, ext)
+  const html = renderByExt(proxied, ext)
   if (html) return html
 
   // no extension match (common with IPFS URLs) — render auto-detect container
   const id = 'media-' + Math.random().toString(36).slice(2, 8)
-  setTimeout(() => detectAndRender(id, url), 0)
+  setTimeout(() => detectAndRender(id, proxied), 0)
   return `<div id="${id}" style="margin:0.5em 0"><span class="praxis-loader"></span></div>`
 }
 
@@ -696,7 +703,7 @@ function _showInlineRegistration(address, registryAddress, publicClient, action)
       cancelBtn.style.display = 'none'
 
       try {
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) { submitBtn.textContent = 'join'; submitBtn.style.opacity = ''; cancelBtn.style.display = ''; return }
 
         // sponsor gas
         const sponsorRes = await fetch('https://ourpraxis.network/orchestrator/sponsor-gas', {
@@ -820,7 +827,7 @@ export async function ensureFundsForPurchase(amountWei, statusEl) {
   // 2. ensure on Optimism
   const onOptimism = await window.ensureOptimism?.()
   if (!onOptimism) {
-    if (statusEl) statusEl.textContent = 'please add Optimism to your wallet'
+    if (statusEl) statusEl.textContent = 'could not connect wallet'
     return null
   }
 
@@ -870,6 +877,41 @@ const _domainCache = new Map()
 const _DOMAIN_CACHE_MAX = 2000
 
 const _DOMAIN_CACHE_TTL = 600000 // L16: 10 minute TTL
+
+const _profilePicCache = new Map()
+const _nameCache = new Map()
+
+export function getProfilePic(addr) {
+  if (!addr) return null
+  const key = addr.toLowerCase()
+  const cached = _profilePicCache.get(key)
+  if (cached) return cached
+  try {
+    const val = sessionStorage.getItem(`pfp:${key}`)
+    if (val) {
+      if (_profilePicCache.size >= _DOMAIN_CACHE_MAX) _profilePicCache.delete(_profilePicCache.keys().next().value)
+      _profilePicCache.set(key, val)
+      return val
+    }
+  } catch {}
+  return null
+}
+
+export function getArtistName(addr) {
+  if (!addr) return null
+  const key = addr.toLowerCase()
+  const cached = _nameCache.get(key)
+  if (cached) return cached
+  try {
+    const val = sessionStorage.getItem(`name:${key}`)
+    if (val) {
+      if (_nameCache.size >= _DOMAIN_CACHE_MAX) _nameCache.delete(_nameCache.keys().next().value)
+      _nameCache.set(key, val)
+      return val
+    }
+  } catch {}
+  return null
+}
 
 function _domainCacheSet(addr, domain) {
   const key = addr.toLowerCase()
@@ -928,7 +970,34 @@ export async function resolveAddresses(queryFn, addresses) {
     }
   }
 
-  if (uncached.length === 0) return result
+  if (uncached.length === 0) {
+    const needPics = unique.filter(a => !_profilePicCache.has(a) && !sessionStorage.getItem?.(`pfp:${a}`))
+    if (needPics.length > 0) {
+      try {
+        const r = await fetch('/api/artists/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: needPics.slice(0, 200) }),
+        })
+        const data = r.ok ? await r.json() : null
+        if (data) {
+          for (const [addr, pic] of Object.entries(data.profilePics || {})) {
+            const pk = addr.toLowerCase()
+            if (_profilePicCache.size >= _DOMAIN_CACHE_MAX) _profilePicCache.delete(_profilePicCache.keys().next().value)
+            _profilePicCache.set(pk, pic)
+            try { sessionStorage.setItem(`pfp:${pk}`, pic) } catch {}
+          }
+          for (const [addr, name] of Object.entries(data.names || {})) {
+            const nk = addr.toLowerCase()
+            if (_nameCache.size >= _DOMAIN_CACHE_MAX) _nameCache.delete(_nameCache.keys().next().value)
+            _nameCache.set(nk, name)
+            try { sessionStorage.setItem(`name:${nk}`, name) } catch {}
+          }
+        }
+      } catch {}
+    }
+    return result
+  }
 
   // deduplicate inflight requests: hash sorted address list to a short key
   const sorted = uncached.slice().sort().join(',')
@@ -959,6 +1028,22 @@ export async function resolveAddresses(queryFn, addresses) {
           const key = addr.toLowerCase()
           batchResult[key] = domain
           _domainCacheSet(key, domain)
+        }
+        for (const [addr, pic] of Object.entries(data.profilePics || {})) {
+          const pk = addr.toLowerCase()
+          _profilePicCache.set(pk, pic)
+          try { sessionStorage.setItem(`pfp:${pk}`, pic) } catch {}
+          if (_profilePicCache.size > _DOMAIN_CACHE_MAX) {
+            _profilePicCache.delete(_profilePicCache.keys().next().value)
+          }
+        }
+        for (const [addr, name] of Object.entries(data.names || {})) {
+          const nk = addr.toLowerCase()
+          _nameCache.set(nk, name)
+          try { sessionStorage.setItem(`name:${nk}`, name) } catch {}
+          if (_nameCache.size > _DOMAIN_CACHE_MAX) {
+            _nameCache.delete(_nameCache.keys().next().value)
+          }
         }
       } catch (e) {
         console.warn('resolveAddresses server error, falling back to direct query:', e)
@@ -1290,4 +1375,62 @@ export function formatTxError(e) {
   if (msg.includes('user rejected')) return 'cancelled'
   if (msg.includes('not registered')) return 'wallet not registered in the network'
   return msg.length > 80 ? msg.slice(0, 80) + '...' : msg
+}
+
+// --- Batch content-type resolution (server-side, persistent cache) ---
+const _ctCache = new Map() // cid -> contentType (client-side session cache)
+const CT_CACHE_MAX = 500
+
+export async function resolveContentTypes(cids) {
+  const unknown = cids.filter(c => !_ctCache.has(c))
+  if (unknown.length > 0) {
+    try {
+      const res = await fetch('/api/content-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(unknown.slice(0, 50)),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        for (const [cid, ct] of Object.entries(data)) {
+          if (_ctCache.size >= CT_CACHE_MAX) _ctCache.delete(_ctCache.keys().next().value)
+          _ctCache.set(cid, ct)
+        }
+      }
+    } catch {}
+  }
+  const result = {}
+  for (const cid of cids) result[cid] = _ctCache.get(cid) || ''
+  return result
+}
+
+// --- Bounded LRU helper ---
+// Delete-then-set bump pattern so Map insertion order tracks recency.
+// Shared by messages.js, wallet.js, and any module needing bounded Maps.
+export function boundedSet(map, key, value, cap = 500) {
+  if (map.has(key)) map.delete(key)
+  else if (map.size >= cap) {
+    const oldest = map.keys().next().value
+    if (oldest !== undefined) map.delete(oldest)
+  }
+  map.set(key, value)
+}
+
+export function classifyContentType(ct, title) {
+  if (ct) {
+    const lower = ct.toLowerCase()
+    if (lower.startsWith('audio/') || lower === 'application/ogg') return 'audio'
+    if (lower.startsWith('video/')) return 'video'
+    if (lower.startsWith('image/')) return 'image'
+    if (lower === 'application/pdf') return 'pdf'
+    if (lower.startsWith('text/')) return 'text'
+  }
+  if (title) {
+    const t = title.toLowerCase()
+    if (/\.(mp4|mov|webm|avi|mkv)$/.test(t)) return 'video'
+    if (/\.(mp3|wav|flac|aac|ogg|m4a)$/.test(t)) return 'audio'
+    if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(t)) return 'image'
+    if (/\.(pdf|txt|doc|epub)$/.test(t)) return 'text'
+  }
+  return 'other'
 }

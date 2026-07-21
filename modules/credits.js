@@ -2,10 +2,7 @@
 // Replaces separate theater/film/tv modules
 // data: [{ title, role, org, year, category, director, venue, url, characterName, startDate, endDate, productionCompany, choreographer, musicDirector, castingDirector, press, description }]
 // category: theater, film, tv, dance, comedy, opera, etc.
-function esc(s) {
-  if (typeof s !== 'string') return s == null ? '' : String(s)
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
+import { esc } from './shared.js'
 export default {
   type: 'credits',
   label: 'credits',

@@ -616,14 +616,14 @@ async function buyItem(button) {
     let hash
 
     if (currency === 'ETH') {
-      await window.ensureOptimism?.()
+      if (!await window.ensureOptimism?.()) return
       hash = await walletClient.sendTransaction({
         account: payAccount,
         to: recipient,
         value: parseEther(price),
       })
     } else {
-      await window.ensureOptimism?.()
+      if (!await window.ensureOptimism?.()) return
       hash = await walletClient.sendTransaction({
         account: payAccount,
         to: currency,

@@ -1,27 +1,18 @@
 // PraxisTicketMarket — list, purchase, cancel, and manage ticket resale on-chain
-import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
-import { optimism } from './vendor.js'
+import { parseEther } from './vendor.js'
 import { query } from './ponder.js'
-import { ensureWallet, ensureFundsForPurchase, formatTxError, getPublicClient , getWalletProvider } from './utils.js'
+import { ensureWallet, ensureFundsForPurchase, formatTxError, getPublicClient, getWalletProvider, getWalletClient } from './utils.js'
 import { t } from './i18n.js'
 
 import { TICKET_MARKET_ADDR, TICKET_MARKET_ABI, PRAXIS_ADDR, PRAXIS_ABI } from './contracts.js'
-// PRAXIS_ABI includes setOperator, isOperator, balanceOf — use it directly
 const PRAXIS_APPROVAL_ABI = PRAXIS_ABI
-
-// Create wallet client on demand — must be called AFTER ensureAuthorized
-// so window.ethereum is the correct provider (embedded or MetaMask).
-// Not cached because provider can change between calls.
-function getWalletClient() {
-  return createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-}
 
 // --- Exported contract interactions ---
 
 export async function listTicket(tokenId, priceWei) {
   const addr = await ensureWallet()
   if (!addr) throw new Error(t('status.connectWallet'))
-  await window.ensureOptimism?.()
+  if (!await window.ensureOptimism?.()) return
 
   const pc = await getPublicClient()
   const currentAccount = await window.ensureAuthorized?.() || addr
@@ -72,7 +63,7 @@ export async function purchaseTicket(tokenId, priceWei) {
 export async function cancelTicketListing(tokenId) {
   const addr = await ensureWallet()
   if (!addr) throw new Error(t('status.connectWallet'))
-  await window.ensureOptimism?.()
+  if (!await window.ensureOptimism?.()) return
 
   const cancelAccount = await window.ensureAuthorized?.() || addr
   const wc = getWalletClient()
@@ -89,7 +80,7 @@ export async function cancelTicketListing(tokenId) {
 export async function updateTicketPrice(tokenId, newPriceWei) {
   const addr = await ensureWallet()
   if (!addr) throw new Error(t('status.connectWallet'))
-  await window.ensureOptimism?.()
+  if (!await window.ensureOptimism?.()) return
 
   const updateAccount = await window.ensureAuthorized?.() || addr
   const wc = getWalletClient()
@@ -106,7 +97,7 @@ export async function updateTicketPrice(tokenId, newPriceWei) {
 export async function withdrawTicketEarnings() {
   const addr = await ensureWallet()
   if (!addr) throw new Error(t('status.connectWallet'))
-  await window.ensureOptimism?.()
+  if (!await window.ensureOptimism?.()) return
 
   const withdrawAccount = await window.ensureAuthorized?.() || addr
   const wc = getWalletClient()

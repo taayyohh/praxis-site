@@ -1,4 +1,5 @@
 // Module registry — all available content modules
+export { esc, batchBuyScript } from './shared.js'
 import music from './music.js'
 import audio from './audio.js'
 import credits from './credits.js'

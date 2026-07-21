@@ -175,8 +175,8 @@ function confirmModal({ title, body = '', confirmLabel = 'remove', cancelLabel =
     dialog.className = 'praxis-modal-dialog'
     dialog.style.maxWidth = '380px'
     dialog.style.fontFamily = 'inherit'
-    const titleHtml = title ? `<div style="color:var(--fg, #c0c0c0);margin-bottom:0.5em;font-size:0.95em">${title}</div>` : ''
-    const bodyHtml = body ? `<div style="color:var(--dim, #888);font-size:0.85em;margin-bottom:1em;line-height:1.4">${body}</div>` : ''
+    const titleHtml = title ? `<div style="color:var(--fg, #c0c0c0);margin-bottom:0.5em;font-size:0.95em">${escapeHtml(title)}</div>` : ''
+    const bodyHtml = body ? `<div style="color:var(--dim, #888);font-size:0.85em;margin-bottom:1em;line-height:1.4">${escapeHtml(body)}</div>` : ''
     const confirmColor = danger ? 'var(--accent)' : 'var(--fg, #c0c0c0)'
     dialog.innerHTML = `
       ${titleHtml}
@@ -207,7 +207,7 @@ function promptModal({ title, placeholder = '', confirmLabel = 'ok', cancelLabel
     dialog.className = 'praxis-modal-dialog'
     dialog.style.maxWidth = '380px'
     dialog.innerHTML = `
-      <div style="color:var(--fg);margin-bottom:0.75em;font-size:0.95em">${title || ''}</div>
+      <div style="color:var(--fg);margin-bottom:0.75em;font-size:0.95em">${escapeHtml(title || '')}</div>
       <div style="position:relative">
         <input id="pm-input" type="text" placeholder="${placeholder}" autocomplete="off" style="width:100%;background:var(--bg,#111);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.5em 1ch;box-sizing:border-box">
         <div id="pm-suggestions" style="position:absolute;top:100%;left:0;right:0;background:var(--bg,#111);border:1px solid var(--border);border-top:none;max-height:150px;overflow-y:auto;display:none;z-index:10"></div>
@@ -606,12 +606,24 @@ function renderTemplatePreview(template) {
 // --- Identity Tab ---
 
 function renderIdentityTab(el) {
-  const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  const esc = escapeHtml
   el.innerHTML = `
     <div style="max-width:500px">
       <div class="settings-field">
         <label class="settings-label">${t('settings.identity.name')}</label>
         <input type="text" id="s-name" class="project-input" value="${esc(siteData.name)}">
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">profile picture</label>
+        <div style="display:flex;align-items:center;gap:1em">
+          <div id="s-pfp-preview" style="width:64px;height:64px;border-radius:50%;border:1px solid var(--border);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg2,#1a1a1a)">
+            ${siteData.profilePic ? `<img src="${esc(siteData.profilePic)}" style="width:100%;height:100%;object-fit:cover">` : `<span style="font-size:0.7em;color:var(--dim)">none</span>`}
+          </div>
+          <div style="display:flex;gap:0.5em;flex-wrap:wrap">
+            <button type="button" id="s-pfp-upload" class="btn-small" style="font-size:0.8em">upload</button>
+            ${siteData.profilePic ? `<button type="button" id="s-pfp-remove" class="btn-small" style="font-size:0.8em;opacity:0.6">remove</button>` : ''}
+          </div>
+        </div>
       </div>
       <div class="settings-field">
         <label class="settings-label">short bio</label>
@@ -629,21 +641,38 @@ function renderIdentityTab(el) {
         <label class="settings-label">${t('settings.identity.template')}</label>
         <input type="hidden" id="s-template" value="${siteData.template || 'default'}">
         <div id="s-template-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75em;margin-top:0.5em">
-          ${['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker'].map(tp => {
-            const info = {
-              default: { desc: 'minimal text-only layout', style: 'clean lines, text-forward' },
-              musician: { desc: 'album art, discography', style: 'cover art, track listings' },
-              visual: { desc: 'image grid, portfolio', style: 'masonry gallery, exhibitions' },
-              writer: { desc: 'large type, long-form', style: 'serif headings, reading-optimized' },
-              performer: { desc: 'stage + event-oriented', style: 'credits, headshot, resume' },
-              filmmaker: { desc: 'video-forward, cinematic', style: 'video hero, film credits' },
-            }[tp]
-            return `<div class="template-card ${siteData.template === tp ? 'active' : ''}" data-template="${tp}">
-              <span class="template-card-name">${t('settings.template.' + tp)}</span>
-              <span class="template-card-desc">${info.desc}</span>
-              <span class="template-card-style">${info.style}</span>
-            </div>`
-          }).join('')}
+          ${siteData.template === 'organization'
+            ? ['collective', 'label', 'gallery', 'company', 'publisher'].map(tp => {
+                const info = {
+                  collective: { desc: 'shared practice, flat structure', style: 'equal roster, collaborative' },
+                  label: { desc: 'roster + catalog', style: 'artist roster, releases, discography' },
+                  gallery: { desc: 'exhibitions + represented artists', style: 'curated shows, collection' },
+                  company: { desc: 'productions + cast/crew', style: 'theatre, dance, film productions' },
+                  publisher: { desc: 'publications + authors', style: 'books, journals, literary catalog' },
+                }[tp]
+                const orgType = siteData.orgType || 'collective'
+                return `<div class="template-card ${orgType === tp ? 'active' : ''}" data-org-type="${tp}">
+                  <span class="template-card-name">${tp}</span>
+                  <span class="template-card-desc">${info.desc}</span>
+                  <span class="template-card-style">${info.style}</span>
+                </div>`
+              }).join('')
+            : ['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker'].map(tp => {
+                const info = {
+                  default: { desc: 'minimal text-only layout', style: 'clean lines, text-forward' },
+                  musician: { desc: 'album art, discography', style: 'cover art, track listings' },
+                  visual: { desc: 'image grid, portfolio', style: 'masonry gallery, exhibitions' },
+                  writer: { desc: 'large type, long-form', style: 'serif headings, reading-optimized' },
+                  performer: { desc: 'stage + event-oriented', style: 'credits, headshot, resume' },
+                  filmmaker: { desc: 'video-forward, cinematic', style: 'video hero, film credits' },
+                }[tp]
+                return `<div class="template-card ${siteData.template === tp ? 'active' : ''}" data-template="${tp}">
+                  <span class="template-card-name">${t('settings.template.' + tp)}</span>
+                  <span class="template-card-desc">${info.desc}</span>
+                  <span class="template-card-style">${info.style}</span>
+                </div>`
+              }).join('')
+          }
         </div>
       </div>
       <div class="settings-field">
@@ -656,7 +685,8 @@ function renderIdentityTab(el) {
           <input type="text" id="s-domain-search" class="project-input" placeholder="search for a new domain...">
           <div id="s-domain-results" style="margin-top:0.5em;max-height:200px;overflow-y:auto"></div>
           <div id="s-domain-own" style="margin-top:0.75em">
-            <label style="font-size:0.8em;color:var(--muted)">or enter your own domain (must point DNS to our server first)</label>
+            <label style="font-size:0.8em;color:var(--muted)">or enter your own domain</label>
+            <div style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0.6em;line-height:1.6;border:1px solid var(--border);padding:0.6em 1ch;background:rgba(255,255,255,0.02)">point DNS to our server first:<br><b>@</b> (root) → A record → <code style="user-select:all">5.161.199.120</code><br><b>www</b> → A record → <code style="user-select:all">5.161.199.120</code></div>
             <div style="display:flex;gap:0.5ch;margin-top:0.25em">
               <input type="text" id="s-domain-custom" class="project-input" placeholder="yourdomain.com" style="flex:1">
               <button id="s-domain-custom-btn" class="buy-btn" style="font-size:0.75em;padding:0.2em 1ch">use</button>
@@ -933,11 +963,35 @@ function renderIdentityTab(el) {
     card.addEventListener('click', () => {
       el.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'))
       card.classList.add('active')
-      if (tplInput) tplInput.value = card.dataset.template
-      // Trigger autosave
+      if (card.dataset.orgType) {
+        siteData.orgType = card.dataset.orgType
+      } else if (tplInput) {
+        tplInput.value = card.dataset.template
+      }
       tplInput?.dispatchEvent(new Event('change', { bubbles: true }))
     })
   })
+
+  // profile picture upload
+  const pfpBtn = document.getElementById('s-pfp-upload')
+  if (pfpBtn) {
+    pfpBtn.addEventListener('click', () => uploadFile(pfpBtn, (url) => {
+      siteData.profilePic = url
+      const preview = document.getElementById('s-pfp-preview')
+      if (preview) preview.innerHTML = `<img src="${escapeHtml(url)}" style="width:100%;height:100%;object-fit:cover">`
+      saveSettings()
+    }, 'image/*'))
+  }
+  const pfpRemoveBtn = document.getElementById('s-pfp-remove')
+  if (pfpRemoveBtn) {
+    pfpRemoveBtn.addEventListener('click', () => {
+      delete siteData.profilePic
+      const preview = document.getElementById('s-pfp-preview')
+      if (preview) preview.innerHTML = '<span style="font-size:0.7em;color:var(--dim)">none</span>'
+      pfpRemoveBtn.remove()
+      saveSettings()
+    })
+  }
 
   // short bio character counter
   const shortBioEl = document.getElementById('s-short-bio')
@@ -964,38 +1018,197 @@ async function loadOrgSection() {
   }
 
   try {
-    const res = await fetch(`/api/orgs/by-member/${addr}`)
-    const data = await res.json()
+    const [memberRes, inviteRes] = await Promise.all([
+      fetch(`/api/orgs/by-member/${addr}`),
+      fetch(`/api/orgs/invites/${addr}`),
+    ])
+    const data = await memberRes.json()
+    const inviteData = await inviteRes.json().catch(() => ({ invites: [] }))
     const orgs = data.orgs || []
+    const pendingInvites = (inviteData.invites || []).filter(i => i.status === 'pending')
+    const esc = escapeHtml
 
-    if (orgs.length) {
-      const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-      orgContent.innerHTML = `
-        <div style="margin-bottom:1em">
-          ${orgs.map(o => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border)">
-              <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.95em">${esc(o.name)}</a>
-              ${o.admin?.toLowerCase() === addr.toLowerCase() ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>' : '<span style="font-size:0.7em;color:var(--dim)">member</span>'}
-            </div>
-          `).join('')}
-        </div>
-        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">create another organization</button>
-      `
-    } else {
-      orgContent.innerHTML = `
-        <p style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">you are not a member of any organization</p>
-        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">create organization</button>
-      `
+    let html = ''
+
+    // Pending invites
+    if (pendingInvites.length) {
+      html += `<div style="margin-bottom:1.5em">
+        <p style="font-size:0.85em;color:var(--accent);margin-bottom:0.5em">${pendingInvites.length} pending invite${pendingInvites.length > 1 ? 's' : ''}</p>
+        ${pendingInvites.map(inv => `
+          <div class="org-invite-row" style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border)" data-org-id="${esc(String(inv.orgId))}">
+            <span style="font-size:0.9em">${esc(inv.orgName || `org #${inv.orgId}`)}</span>
+            <span style="display:flex;gap:0.5em">
+              <button class="buy-btn org-accept-btn" style="font-size:0.8em;padding:0.3em 1ch" data-org-id="${esc(String(inv.orgId))}">accept</button>
+              <button class="buy-btn org-decline-btn" style="font-size:0.8em;padding:0.3em 1ch;border-color:var(--dim);color:var(--dim)" data-org-id="${esc(String(inv.orgId))}">decline</button>
+            </span>
+          </div>
+        `).join('')}
+      </div>`
     }
 
+    // Current orgs
+    if (orgs.length) {
+      html += `<div style="margin-bottom:1em">
+        ${orgs.map(o => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border)">
+            <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.95em">${esc(o.name)}</a>
+            ${o.admin?.toLowerCase() === addr.toLowerCase() ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>' : '<span style="font-size:0.7em;color:var(--dim)">member</span>'}
+          </div>
+        `).join('')}
+      </div>
+      <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">create another organization</button>`
+    } else {
+      html += `
+        <p style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">you are not a member of any organization</p>
+        <button id="s-org-convert" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">convert this site to an organization</button>
+        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-left:0.5em;border-color:var(--dim);color:var(--dim)">create separate organization</button>`
+    }
+
+    orgContent.innerHTML = html
+
+    // Wire accept/decline buttons
+    orgContent.querySelectorAll('.org-accept-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleOrgInvite(btn, 'acceptInvite', btn.dataset.orgId))
+    })
+    orgContent.querySelectorAll('.org-decline-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleOrgInvite(btn, 'declineInvite', btn.dataset.orgId))
+    })
+
+    document.getElementById('s-org-convert')?.addEventListener('click', showConvertToOrgModal)
     document.getElementById('s-org-create')?.addEventListener('click', showCreateOrgModal)
   } catch {
     orgContent.innerHTML = '<p style="color:var(--dim);font-size:0.85em">failed to load organizations</p>'
   }
 }
 
+async function handleOrgInvite(btn, fnName, orgId) {
+  const row = btn.closest('.org-invite-row')
+  try {
+    btn.textContent = '...'
+    if (!await window.ensureOptimism?.()) { btn.textContent = fnName === 'acceptInvite' ? 'accept' : 'decline'; return }
+    const { createWalletClient, custom, optimism } = await import('./vendor.js')
+    const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+    const addr = window.getWalletAddress?.()
+    const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+    const hash = await wc.writeContract({
+      address: ORG_ADDRESS,
+      abi: ORG_ABI,
+      functionName: fnName,
+      args: [BigInt(orgId)],
+      account: addr,
+    })
+    const { getPublicClient } = await import('./utils.js')
+    const pc = await getPublicClient()
+    await pc.waitForTransactionReceipt({ hash })
+    if (row) row.remove()
+    if (fnName === 'acceptInvite') setTimeout(() => loadOrgSection(), 1000)
+  } catch (e) {
+    btn.textContent = fnName === 'acceptInvite' ? 'accept' : 'decline'
+    if (e.code !== 4001) btn.textContent = 'failed'
+  }
+}
+
+async function showConvertToOrgModal() {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10010'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '440px'
+  const handle = window._siteData?.handle || location.hostname.split('.')[0]
+  const domain = window._siteData?.domain || location.hostname
+  dialog.innerHTML = `
+    <h3 style="margin:0 0 0.5em;font-size:1em">convert to organization</h3>
+    <p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${domain}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>
+    <div style="margin-bottom:0.8em">
+      <label style="font-size:0.8em;color:var(--muted)">organization name</label>
+      <input type="text" id="org-convert-name" class="project-input" value="${handle}" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
+    </div>
+    <div id="org-convert-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin-bottom:0.6em"></div>
+    <div style="display:flex;gap:0.5em">
+      <button id="org-convert-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">convert</button>
+      <button id="org-convert-cancel" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#org-convert-cancel')?.addEventListener('click', () => overlay.remove())
+  dialog.querySelector('#org-convert-name')?.focus()
+
+  dialog.querySelector('#org-convert-submit')?.addEventListener('click', async () => {
+    const nameInput = dialog.querySelector('#org-convert-name')
+    const statusEl = dialog.querySelector('#org-convert-status')
+    const name = nameInput?.value?.trim()
+    if (!name) { statusEl.textContent = 'name is required'; return }
+
+    try {
+      statusEl.textContent = 'uploading metadata...'
+      const metadata = JSON.stringify({ name, convertedFrom: handle })
+      const blob = new Blob([metadata], { type: 'application/json' })
+      const token = await getSettingsToken()
+      if (!token) { statusEl.textContent = 'auth required'; return }
+
+      const uploadRes = await fetch('/api/ipfs?name=org-metadata.json', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: await blob.arrayBuffer(),
+      })
+      const uploadData = await uploadRes.json()
+
+      let metadataCid = ''
+      if (uploadData.cid) {
+        metadataCid = uploadData.cid
+      } else if (uploadData.jobId) {
+        statusEl.textContent = 'waiting for upload...'
+        for (let i = 0; i < 60; i++) {
+          await new Promise(r => setTimeout(r, 2000))
+          const sres = await fetch(`/api/ipfs/status/${uploadData.jobId}`)
+          const sdata = await sres.json()
+          if (sdata.status === 'done' && sdata.cid) { metadataCid = sdata.cid; break }
+          if (sdata.status === 'error') throw new Error(sdata.error || 'upload failed')
+        }
+        if (!metadataCid) throw new Error('upload timed out')
+      } else {
+        throw new Error(uploadData.error || 'upload failed')
+      }
+
+      statusEl.textContent = 'confirm transaction in wallet...'
+      if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; return }
+      const { getWalletClient, getPublicClient } = await import('./utils.js')
+      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+      const addr = window.getWalletAddress?.()
+      const wc = await getWalletClient()
+      const hash = await wc.writeContract({
+        address: ORG_ADDRESS,
+        abi: ORG_ABI,
+        functionName: 'createOrg',
+        args: [name, metadataCid],
+        account: addr,
+      })
+
+      statusEl.textContent = 'waiting for confirmation...'
+      const pc = await getPublicClient()
+      await pc.waitForTransactionReceipt({ hash })
+
+      statusEl.textContent = 'updating site template...'
+      const siteRes = await fetch('/api/site')
+      const siteData = await siteRes.json()
+      siteData.template = 'organization'
+      await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
+
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.textContent = 'converted to organization!'
+      setTimeout(() => { overlay.remove(); loadOrgSection(); location.reload() }, 1500)
+    } catch (e) {
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 80)}`
+    }
+  })
+}
+
 async function showCreateOrgModal() {
-  const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  const esc = escapeHtml
   const overlay = document.createElement('div')
   overlay.className = 'praxis-modal-overlay'
   overlay.style.zIndex = '10010'
@@ -2113,27 +2326,27 @@ function renderModuleEditor(el, mod) {
       <div class="editor-item" data-index="${i}" data-drag-idx="${i}">
         <div class="editor-collapse-header" data-toggle-idx="${i}" data-toggle-prefix="credits">
           <span class="drag-handle">\u2261</span>
-          <span class="collapse-title">${_tl}${c.year ? ' (' + c.year + ')' : ''}</span>
+          <span class="collapse-title">${_tl}${c.year ? ' (' + escapeHtml(String(c.year)) + ')' : ''}</span>
           <span class="collapse-chevron ${_exp ? 'expanded' : ''}">\u25B8</span>
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-          <input class="project-input ed-field" data-i="${i}" data-f="title" data-i="${i}" data-f="title" value="${c.title || ''}" placeholder="${t('settings.credits.title')}">
-          <input class="project-input ed-field" data-i="${i}" data-f="role" value="${c.role || ''}" placeholder="role (e.g. actor, director, writer)">
-          <input class="project-input ed-field" data-i="${i}" data-f="characterName" value="${c.characterName || ''}" placeholder="character name">
-          <input class="project-input ed-field" data-i="${i}" data-f="org" value="${c.org || ''}" placeholder="${t('settings.credits.organization')}">
-          <input class="project-input ed-field" data-i="${i}" data-f="year" type="number" value="${c.year || ''}" placeholder="${t('settings.credits.year')}">
-          <input class="project-input ed-field" data-i="${i}" data-f="director" value="${c.director || ''}" placeholder="director">
-          <input class="project-input ed-field" data-i="${i}" data-f="venue" value="${c.venue || ''}" placeholder="venue">
-          <input class="project-input ed-field" data-i="${i}" data-f="productionCompany" value="${c.productionCompany || ''}" placeholder="production company">
-          <input class="project-input ed-field" data-i="${i}" data-f="startDate" value="${c.startDate || ''}" placeholder="start date">
-          <input class="project-input ed-field" data-i="${i}" data-f="endDate" value="${c.endDate || ''}" placeholder="end date">
-          <input class="project-input ed-field" data-i="${i}" data-f="choreographer" value="${c.choreographer || ''}" placeholder="choreographer">
-          <input class="project-input ed-field" data-i="${i}" data-f="musicDirector" value="${c.musicDirector || ''}" placeholder="music director">
-          <input class="project-input ed-field" data-i="${i}" data-f="castingDirector" value="${c.castingDirector || ''}" placeholder="casting director">
-          <input class="project-input ed-field" data-i="${i}" data-f="press" value="${c.press || ''}" placeholder="press/review URL">
+          <input class="project-input ed-field" data-i="${i}" data-f="title" value="${escapeHtml(c.title || '')}" placeholder="${t('settings.credits.title')}">
+          <input class="project-input ed-field" data-i="${i}" data-f="role" value="${escapeHtml(c.role || '')}" placeholder="role (e.g. actor, director, writer)">
+          <input class="project-input ed-field" data-i="${i}" data-f="characterName" value="${escapeHtml(c.characterName || '')}" placeholder="character name">
+          <input class="project-input ed-field" data-i="${i}" data-f="org" value="${escapeHtml(c.org || '')}" placeholder="${t('settings.credits.organization')}">
+          <input class="project-input ed-field" data-i="${i}" data-f="year" type="number" value="${escapeHtml(String(c.year || ''))}" placeholder="${t('settings.credits.year')}">
+          <input class="project-input ed-field" data-i="${i}" data-f="director" value="${escapeHtml(c.director || '')}" placeholder="director">
+          <input class="project-input ed-field" data-i="${i}" data-f="venue" value="${escapeHtml(c.venue || '')}" placeholder="venue">
+          <input class="project-input ed-field" data-i="${i}" data-f="productionCompany" value="${escapeHtml(c.productionCompany || '')}" placeholder="production company">
+          <input class="project-input ed-field" data-i="${i}" data-f="startDate" value="${escapeHtml(c.startDate || '')}" placeholder="start date">
+          <input class="project-input ed-field" data-i="${i}" data-f="endDate" value="${escapeHtml(c.endDate || '')}" placeholder="end date">
+          <input class="project-input ed-field" data-i="${i}" data-f="choreographer" value="${escapeHtml(c.choreographer || '')}" placeholder="choreographer">
+          <input class="project-input ed-field" data-i="${i}" data-f="musicDirector" value="${escapeHtml(c.musicDirector || '')}" placeholder="music director">
+          <input class="project-input ed-field" data-i="${i}" data-f="castingDirector" value="${escapeHtml(c.castingDirector || '')}" placeholder="casting director">
+          <input class="project-input ed-field" data-i="${i}" data-f="press" value="${escapeHtml(c.press || '')}" placeholder="press/review URL">
         </div>
-        <textarea class="project-input ed-field" data-i="${i}" data-f="description" placeholder="production notes" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${c.description || ''}</textarea>
+        <textarea class="project-input ed-field" data-i="${i}" data-f="description" placeholder="production notes" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${escapeHtml(c.description || '')}</textarea>
         <select class="project-input ed-field" data-i="${i}" data-f="category" style="margin-top:0.25em">
           ${['theater', 'film', 'tv', 'dance', 'comedy', 'opera', 'music', 'other'].map(cat =>
             `<option ${c.category === cat ? 'selected' : ''}>${t('settings.credits.' + cat)}</option>`
@@ -2622,19 +2835,19 @@ function renderModuleEditor(el, mod) {
       <div class="editor-item" data-drag-idx="${i}" data-ex-drag="${i}">
         <div class="editor-collapse-header" data-toggle-idx="${i}" data-toggle-prefix="ex">
           <span class="drag-handle">\u2261</span>
-          <span class="collapse-title">${_tl}${ex.year ? ' (' + ex.year + ')' : ''}</span>
+          <span class="collapse-title">${_tl}${ex.year ? ' (' + escapeHtml(String(ex.year)) + ')' : ''}</span>
           <span class="collapse-chevron ${_exp ? 'expanded' : ''}">\u25B8</span>
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-          <input class="project-input ed-ex" data-i="${i}" data-f="title" value="${ex.title || ''}" placeholder="${t('settings.credits.title')}">
-          <input class="project-input ed-ex" data-i="${i}" data-f="venue" value="${ex.venue || ''}" placeholder="${t('settings.gallery.venue')}">
-          <input class="project-input ed-ex" data-i="${i}" data-f="year" type="number" value="${ex.year || ''}" placeholder="${t('settings.credits.year')}">
-          <input class="project-input ed-ex" data-i="${i}" data-f="startDate" value="${ex.startDate || ''}" placeholder="start date">
-          <input class="project-input ed-ex" data-i="${i}" data-f="endDate" value="${ex.endDate || ''}" placeholder="end date">
-          <input class="project-input ed-ex" data-i="${i}" data-f="curator" value="${ex.curator || ''}" placeholder="curator">
-          <input class="project-input ed-ex" data-i="${i}" data-f="coArtists" value="${ex.coArtists || ''}" placeholder="co-artists (group shows)">
-          <input class="project-input ed-ex" data-i="${i}" data-f="url" value="${ex.url || ''}" placeholder="exhibition page URL">
+          <input class="project-input ed-ex" data-i="${i}" data-f="title" value="${escapeHtml(ex.title || '')}" placeholder="${t('settings.credits.title')}">
+          <input class="project-input ed-ex" data-i="${i}" data-f="venue" value="${escapeHtml(ex.venue || '')}" placeholder="${t('settings.gallery.venue')}">
+          <input class="project-input ed-ex" data-i="${i}" data-f="year" type="number" value="${escapeHtml(String(ex.year || ''))}" placeholder="${t('settings.credits.year')}">
+          <input class="project-input ed-ex" data-i="${i}" data-f="startDate" value="${escapeHtml(ex.startDate || '')}" placeholder="start date">
+          <input class="project-input ed-ex" data-i="${i}" data-f="endDate" value="${escapeHtml(ex.endDate || '')}" placeholder="end date">
+          <input class="project-input ed-ex" data-i="${i}" data-f="curator" value="${escapeHtml(ex.curator || '')}" placeholder="curator">
+          <input class="project-input ed-ex" data-i="${i}" data-f="coArtists" value="${escapeHtml(ex.coArtists || '')}" placeholder="co-artists (group shows)">
+          <input class="project-input ed-ex" data-i="${i}" data-f="url" value="${escapeHtml(ex.url || '')}" placeholder="exhibition page URL">
         </div>
         <button class="ed-remove-ex" data-i="${i}" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.75em">${t('settings.modules.remove')}</button>
         </div>
@@ -2787,14 +3000,14 @@ function renderModuleEditor(el, mod) {
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-          <input class="project-input ed-field" data-i="${i}" data-f="name" value="${p.name || ''}" placeholder="${t('settings.tech.name')}">
-          <input class="project-input ed-field" data-i="${i}" data-f="role" value="${p.role || ''}" placeholder="${t('settings.tech.role')}">
+          <input class="project-input ed-field" data-i="${i}" data-f="name" value="${escapeHtml(p.name || '')}" placeholder="${t('settings.tech.name')}">
+          <input class="project-input ed-field" data-i="${i}" data-f="role" value="${escapeHtml(p.role || '')}" placeholder="${t('settings.tech.role')}">
         </div>
-        <input class="project-input ed-field" data-i="${i}" data-f="description" value="${p.description || ''}" placeholder="${t('settings.tech.description')}" style="margin-top:0.25em">
-        <input class="project-input ed-field" data-i="${i}" data-f="url" value="${p.url || ''}" placeholder="${t('settings.tech.url')}" style="margin-top:0.25em">
-        <input class="project-input ed-field" data-i="${i}" data-f="stack" value="${p.stack || ''}" placeholder="tech stack (e.g. React, Node.js, Solidity)" style="margin-top:0.25em">
+        <input class="project-input ed-field" data-i="${i}" data-f="description" value="${escapeHtml(p.description || '')}" placeholder="${t('settings.tech.description')}" style="margin-top:0.25em">
+        <input class="project-input ed-field" data-i="${i}" data-f="url" value="${escapeHtml(p.url || '')}" placeholder="${t('settings.tech.url')}" style="margin-top:0.25em">
+        <input class="project-input ed-field" data-i="${i}" data-f="stack" value="${escapeHtml(p.stack || '')}" placeholder="tech stack (e.g. React, Node.js, Solidity)" style="margin-top:0.25em">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr;margin-top:0.25em">
-          <input class="project-input ed-field" data-i="${i}" data-f="repo" value="${p.repo || ''}" placeholder="repo URL (GitHub/GitLab)">
+          <input class="project-input ed-field" data-i="${i}" data-f="repo" value="${escapeHtml(p.repo || '')}" placeholder="repo URL (GitHub/GitLab)">
           <select class="project-input ed-field" data-i="${i}" data-f="status" style="font-size:0.85em">
             <option value="" ${!p.status ? 'selected' : ''}>status</option>
             ${['active', 'archived', 'deprecated'].map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}
@@ -2817,22 +3030,22 @@ function renderModuleEditor(el, mod) {
       <div class="editor-item" data-drag-idx="${i}" data-pub-drag="${i}">
         <div class="editor-collapse-header" data-toggle-idx="${i}" data-toggle-prefix="pub">
           <span class="drag-handle">\u2261</span>
-          <span class="collapse-title">${_tl}${p.year ? ' (' + p.year + ')' : ''}</span>
+          <span class="collapse-title">${_tl}${p.year ? ' (' + escapeHtml(String(p.year)) + ')' : ''}</span>
           <span class="collapse-chevron ${_exp ? 'expanded' : ''}">\u25B8</span>
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-          <input class="project-input ed-pub" data-i="${i}" data-f="title" value="${p.title || ''}" placeholder="${t('settings.credits.title')}">
-          <input class="project-input ed-pub" data-i="${i}" data-f="publication" value="${p.publication || ''}" placeholder="${t('settings.writing.publication')}">
-          <input class="project-input ed-pub" data-i="${i}" data-f="year" type="number" value="${p.year || ''}" placeholder="${t('settings.credits.year')}">
-          <input class="project-input ed-pub" data-i="${i}" data-f="url" value="${p.url || ''}" placeholder="${t('settings.tech.url')}">
-          <input class="project-input ed-pub" data-i="${i}" data-f="genre" value="${p.genre || ''}" placeholder="genre (poetry, essay, fiction...)">
-          <input class="project-input ed-pub" data-i="${i}" data-f="publisher" value="${p.publisher || ''}" placeholder="publisher">
-          <input class="project-input ed-pub" data-i="${i}" data-f="translator" value="${p.translator || ''}" placeholder="translator">
-          <input class="project-input ed-pub" data-i="${i}" data-f="isbn" value="${p.isbn || ''}" placeholder="ISBN">
-          <input class="project-input ed-pub" data-i="${i}" data-f="pageCount" type="number" value="${p.pageCount || ''}" placeholder="page count">
-          <input class="project-input ed-pub" data-i="${i}" data-f="language" value="${p.language || ''}" placeholder="language">
-          <input class="project-input ed-pub" data-i="${i}" data-f="awards" value="${p.awards || ''}" placeholder="awards">
+          <input class="project-input ed-pub" data-i="${i}" data-f="title" value="${escapeHtml(p.title || '')}" placeholder="${t('settings.credits.title')}">
+          <input class="project-input ed-pub" data-i="${i}" data-f="publication" value="${escapeHtml(p.publication || '')}" placeholder="${t('settings.writing.publication')}">
+          <input class="project-input ed-pub" data-i="${i}" data-f="year" type="number" value="${escapeHtml(String(p.year || ''))}" placeholder="${t('settings.credits.year')}">
+          <input class="project-input ed-pub" data-i="${i}" data-f="url" value="${escapeHtml(p.url || '')}" placeholder="${t('settings.tech.url')}">
+          <input class="project-input ed-pub" data-i="${i}" data-f="genre" value="${escapeHtml(p.genre || '')}" placeholder="genre (poetry, essay, fiction...)">
+          <input class="project-input ed-pub" data-i="${i}" data-f="publisher" value="${escapeHtml(p.publisher || '')}" placeholder="publisher">
+          <input class="project-input ed-pub" data-i="${i}" data-f="translator" value="${escapeHtml(p.translator || '')}" placeholder="translator">
+          <input class="project-input ed-pub" data-i="${i}" data-f="isbn" value="${escapeHtml(p.isbn || '')}" placeholder="ISBN">
+          <input class="project-input ed-pub" data-i="${i}" data-f="pageCount" type="number" value="${escapeHtml(String(p.pageCount || ''))}" placeholder="page count">
+          <input class="project-input ed-pub" data-i="${i}" data-f="language" value="${escapeHtml(p.language || '')}" placeholder="language">
+          <input class="project-input ed-pub" data-i="${i}" data-f="awards" value="${escapeHtml(p.awards || '')}" placeholder="awards">
         </div>
         <div style="display:flex;gap:0.5em;margin-top:0.25em;flex-wrap:wrap">
           <button class="buy-btn upload-doc" data-i="${i}" style="font-size:0.7em;padding:0.15em 0.5ch">${p.src ? 'has document' : 'upload document'}</button>
@@ -2889,16 +3102,24 @@ function renderModuleEditor(el, mod) {
       <div class="editor-item" data-drag-idx="${i}" data-gen-drag="${i}">
         <div class="editor-collapse-header" data-toggle-idx="${i}" data-toggle-prefix="${type}">
           <span class="drag-handle">\u2261</span>
-          <span class="collapse-title">${_tl}${item.year ? ' (' + item.year + ')' : ''}</span>
+          <span class="collapse-title">${_tl}${item.year ? ' (' + escapeHtml(String(item.year)) + ')' : ''}</span>
           <span class="collapse-chevron ${_exp ? 'expanded' : ''}">\u25B8</span>
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:${fields.length <= 4 ? '1fr '.repeat(Math.min(fields.length, 2)) : '1fr 1fr'}">
-          ${fields.map(f => `<input class="project-input ed-gen" data-i="${i}" data-f="${f}" value="${item[f] || ''}" placeholder="${f === 'episodeNumber' ? 'episode #' : f === 'startYear' ? 'start year' : f === 'endYear' ? 'end year' : f === 'productionCompany' ? 'production company' : f === 'cinematographer' ? 'cinematographer (DP)' : f === 'startedDate' ? 'started date' : f === 'estimatedCompletion' ? 'est. completion' : f}" ${f === 'year' || f === 'episodeNumber' || f === 'startYear' || f === 'endYear' ? 'type="number"' : ''}>`).join('')}
+          ${fields.map(f => `<input class="project-input ed-gen" data-i="${i}" data-f="${f}" value="${escapeHtml(String(item[f] || ''))}" placeholder="${f === 'episodeNumber' ? 'episode #' : f === 'startYear' ? 'start year' : f === 'endYear' ? 'end year' : f === 'productionCompany' ? 'production company' : f === 'cinematographer' ? 'cinematographer (DP)' : f === 'startedDate' ? 'started date' : f === 'estimatedCompletion' ? 'est. completion' : f}" ${f === 'year' || f === 'episodeNumber' || f === 'startYear' || f === 'endYear' ? 'type="number"' : ''}>`).join('')}
         </div>
-        ${type === 'film' ? `<textarea class="project-input ed-gen" data-i="${i}" data-f="synopsis" placeholder="synopsis" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${item.synopsis || ''}</textarea>` : ''}
-        ${type === 'demos' ? `<textarea class="project-input ed-gen" data-i="${i}" data-f="notes" placeholder="WIP notes, known issues" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${item.notes || ''}</textarea>` : ''}
-        ${type === 'film' || type === 'video' ? `<button class="buy-btn upload-video" data-i="${i}" style="font-size:0.7em;padding:0.15em 0.5ch;margin-top:0.25em">${item.video || item.src ? 'has video' : 'upload video'}</button>` : ''}
+        ${type === 'film' ? `<textarea class="project-input ed-gen" data-i="${i}" data-f="synopsis" placeholder="synopsis" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${escapeHtml(item.synopsis || '')}</textarea>` : ''}
+        ${type === 'demos' ? `<textarea class="project-input ed-gen" data-i="${i}" data-f="notes" placeholder="WIP notes, known issues" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${escapeHtml(item.notes || '')}</textarea>` : ''}
+        ${type === 'film' || type === 'video' ? (() => {
+          const vidUrl = item.video || item.src
+          if (vidUrl) {
+            const cm = vidUrl.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
+            const th = cm ? `/api/video-thumb?cid=${cm[1]}&w=200` : ''
+            return `<button class="buy-btn upload-video" data-i="${i}" style="font-size:0.7em;padding:0.1em 0.3ch;margin-top:0.25em">${th ? `<img src="${th}" alt="" style="width:80px;height:45px;object-fit:cover;border-radius:4px;vertical-align:middle" onerror="this.outerHTML='✓ uploaded'"> <span style="color:var(--green);font-size:0.8em">✓</span>` : '✓ uploaded'}</button>`
+          }
+          return `<button class="buy-btn upload-video" data-i="${i}" style="font-size:0.7em;padding:0.15em 0.5ch;margin-top:0.25em">upload video</button>`
+        })() : ''}
         ${type === 'audio' ? `<button class="buy-btn upload-audio" data-i="${i}" style="font-size:0.7em;padding:0.15em 0.5ch;margin-top:0.25em">${item.src ? 'has audio' : 'upload audio'}</button>` : ''}
         ${type === 'demos' ? `
   <div style="display:flex;gap:0.5em;margin-top:0.25em;flex-wrap:wrap">
@@ -2952,7 +3173,15 @@ function renderModuleEditor(el, mod) {
         item.src = url
         if (posterUrl) item.poster = posterUrl
         if (!item.title) item.title = prettifyFilename(filename)
-        btn.textContent = 'has video'
+        // Show thumbnail preview instead of plain text
+        const cidMatch = url.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
+        const thumbUrl = cidMatch ? `/api/video-thumb?cid=${cidMatch[1]}&w=200` : ''
+        if (thumbUrl) {
+          btn.innerHTML = `<img src="${thumbUrl}" alt="" style="width:80px;height:45px;object-fit:cover;border-radius:4px;vertical-align:middle" onerror="this.outerHTML='✓ uploaded'"> <span style="color:var(--green);font-size:0.8em">✓</span>`
+          btn.style.padding = '0.1em 0.3ch'
+        } else {
+          btn.textContent = '✓ uploaded'
+        }
         renderModuleEditor(el, mod)
       }, undefined, { onFileSelected: (file, b) => showLocalMediaPreview(b, file) }))
     })
@@ -3112,7 +3341,7 @@ function renderModuleEditor(el, mod) {
     })
 
   } else {
-    el.innerHTML = `<p style="color:var(--muted);font-size:0.85em">use the AI tab to edit ${type} content.</p>`
+    el.innerHTML = `<p style="color:var(--muted);font-size:0.85em">use the AI tab to edit ${escapeHtml(type)} content.</p>`
   }
 }
 
@@ -3136,8 +3365,7 @@ async function captureVideoThumbnail(file) {
         resolve(blob)
       }, 'image/jpeg', 0.8)
     })
-    // timeout fallback — some videos fail to seek
-    setTimeout(() => resolve(null), 5000)
+    setTimeout(() => { URL.revokeObjectURL(video.src); resolve(null) }, 5000)
   })
 }
 
@@ -3328,6 +3556,7 @@ async function uploadFile(btn, callback, acceptTypes, options) {
       // title fields on the item being edited (gallery, music, audio,
       // video, demos, library doc, etc.).
       callback(url, posterUrl, file.name)
+      btn.textContent = originalText || 'upload'
       // auto-save after successful upload
       try { await saveSettings() } catch {}
     } catch (e) { btn.textContent = e.message?.slice(0, 30) || t('settings.error') } finally {

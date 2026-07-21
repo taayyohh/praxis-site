@@ -322,28 +322,9 @@ async function showProfile(addr) {
       const registryAddress = window._registryAddress || document.querySelector('[data-registry]')?.dataset?.registry
       if (!registryAddress) return
       const isFollowing = btn.textContent.trim() === 'following'
-      // Pre-flight ETH balance check on Optimism: follow tx is cheap but non-zero.
-      // Using a hardcoded floor (~0.0005 ETH) avoids an extra estimateGas RPC call.
-      // Without this, a zero-balance user gets a confusing wallet error or hanging tx.
       const statusEl = container.querySelector('.follow-status') || btn
       try {
-        const GAS_FLOOR = parseEther('0.0005')
-        const balance = await getCachedBalance(userAddr)
-        if (balance < GAS_FLOOR) {
-          // Delegate to the unified funding sheet: handles wallet/chain/balance/onramp.
-          const { ensureFundsForPurchase } = await import('./utils.js')
-          const ready = await ensureFundsForPurchase(GAS_FLOOR.toString(), statusEl)
-          if (!ready) {
-            // user cancelled or funding failed — statusEl already has a message
-            return
-          }
-        }
-      } catch (balErr) {
-        console.warn('follow balance pre-check failed:', balErr?.message)
-        // fall through and let the writeContract surface the real error
-      }
-      try {
-        await window.ensureOptimism?.()
+        if (!await window.ensureOptimism?.()) { btn.textContent = isFollowing ? 'following' : 'follow'; return }
         const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
@@ -715,7 +696,7 @@ async function showConnectionsModal(type, addr, resolve) {
       console.warn('connections modal fetch:', e)
     } finally {
       loading = false
-      spinner.style.display = hasMore ? 'none' : 'none'
+      spinner.style.display = hasMore ? '' : 'none'
     }
   }
 

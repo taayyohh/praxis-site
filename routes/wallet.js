@@ -64,7 +64,7 @@ function verifyRestoreToken(token, expectedAddress, ip) {
 export async function handleWallet(ctx) {
   const { req, res, path, method, clientIp,
     json, parseBody, rateLimit, siteDir,
-    ARTISTS_DIR, getSession, loadWalletLinks, saveWalletLinks, _resolveCache } = ctx
+    ARTISTS_DIR, getSession, loadWalletLinks, saveWalletLinks, getWalletLinkEntry, _resolveCache } = ctx
 
   const SHARED_WALLET_DIR = join(ARTISTS_DIR, '..', 'wallet-backups')
 
@@ -86,6 +86,10 @@ export async function handleWallet(ctx) {
       const filename = data.address.toLowerCase().replace(/[^0-9a-fx]/g, '') + '.json'
       const existingSharedPath = join(SHARED_WALLET_DIR, filename)
       if (existsSync(existingSharedPath)) {
+        const session = getSession(req)
+        if (!session?.wallet || session.wallet.toLowerCase() !== data.address.toLowerCase()) {
+          json(res, { error: 'auth required to overwrite existing backup' }, 403); return true
+        }
         try {
           const existing = JSON.parse(await readFile(existingSharedPath, 'utf8'))
           const existingParsed = JSON.parse(existing.encrypted)
@@ -113,7 +117,7 @@ export async function handleWallet(ctx) {
 
   if (path === '/api/wallet/retrieve' && method === 'POST') {
     if (rateLimit(clientIp, 'wallet-retrieve', 3)) { json(res, { error: 'too many requests' }, 429); return true }
-    // Daily cap: max 20 retrievals per IP per day
+    // Daily cap: max 20 retrievals per IP per day (all auth modes)
     const dayKey = `wallet-retrieve-day:${clientIp}`
     const now = Date.now()
     if (!handleWallet._dailyCaps) handleWallet._dailyCaps = new Map()
@@ -143,7 +147,7 @@ export async function handleWallet(ctx) {
       //     in for the first time — they don't have a key yet, the whole point
       //     of this endpoint is to give them their encrypted blob so they can
       //     decrypt it with their password. Security relies on:
-      //     - Rate limiting: 3/min + 20/day per IP (enforced above)
+      //     - Rate limiting: 3/min + 5/day per IP for address-only (enforced above + below)
       //     - AES-256-GCM encryption: the blob is useless without the password
       //     - The password IS the auth — no separate key exists
       //     The H3 audit added a signature gate that broke ALL sign-in flows
@@ -175,6 +179,17 @@ export async function handleWallet(ctx) {
         authMode = 'signature'
       }
       // Mode (c): no auth fields → address-only, proceed with rate-limited blob fetch
+      // Stricter daily cap for address-only: 5/day per IP (harvesting protection)
+      if (authMode === 'address-only') {
+        const aoKey = `wallet-retrieve-ao:${clientIp}`
+        const aoEntry = dc.get(aoKey)
+        if (aoEntry && now - aoEntry.start < 86400000) {
+          if (aoEntry.count >= 5) { json(res, { error: 'daily retrieval limit exceeded' }, 429); return true }
+          aoEntry.count++
+        } else {
+          dc.set(aoKey, { start: now, count: 1 })
+        }
+      }
 
       const filename = addrLc.replace(/[^0-9a-fx]/g, '') + '.json'
       const perSitePath = join(siteDir, 'wallet-backups', filename)
@@ -254,7 +269,7 @@ export async function handleWallet(ctx) {
       if (!wl.links[pKey]) wl.links[pKey] = []
       if (!wl.links[pKey].includes(sKey)) wl.links[pKey].push(sKey)
       wl.reverse[sKey] = pKey
-      saveWalletLinks(wl)
+      await saveWalletLinks(wl)
       _resolveCache.delete(sKey)
       json(res, { ok: true, primary: pKey, linked: wl.links[pKey] }); return true
     } catch (e) {
@@ -269,13 +284,14 @@ export async function handleWallet(ctx) {
       if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)) {
         json(res, { error: 'valid address required' }, 400); return true
       }
-      const wl = loadWalletLinks()
-      if (wl.links[addr]) {
-        json(res, { primary: addr, linked: wl.links[addr] }); return true
+      const entry = getWalletLinkEntry(addr)
+      if (entry.links) {
+        json(res, { primary: addr, linked: entry.links }); return true
       }
-      if (wl.reverse[addr]) {
-        const primary = wl.reverse[addr]
-        json(res, { primary, linked: wl.links[primary] || [] }); return true
+      if (entry.reverse) {
+        const primary = entry.reverse
+        const primaryEntry = getWalletLinkEntry(primary)
+        json(res, { primary, linked: primaryEntry.links || [] }); return true
       }
       json(res, { primary: null, linked: [] }); return true
     } catch (e) {

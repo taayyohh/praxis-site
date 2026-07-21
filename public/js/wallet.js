@@ -1,5 +1,5 @@
 import { t } from './i18n.js'
-import { getWalletProvider } from './utils.js'
+import { getWalletProvider, boundedSet, escapeHtml } from './utils.js'
 
 const status = document.getElementById('wallet-status')
 const topBarWallet = document.getElementById('top-bar-wallet')
@@ -12,16 +12,7 @@ let _portfolioObserver = null
 // track whether current connection is via embedded wallet
 let _usingEmbeddedWallet = false
 
-// --- Bounded LRU helper (shared by cache + maps) ---
-// Delete-then-set bump pattern so Map insertion order tracks recency.
-function boundedSet(map, key, value, cap = 500) {
-  if (map.has(key)) map.delete(key)
-  else if (map.size >= cap) {
-    const oldest = map.keys().next().value
-    if (oldest !== undefined) map.delete(oldest)
-  }
-  map.set(key, value)
-}
+// boundedSet() imported from utils.js (shared with messages.js)
 
 // --- Fix 1 (C1): XMTP background stream address→domain resolve cache + batcher ---
 // Each incoming DM toast needs to show the sender's domain. Without batching,
@@ -322,8 +313,13 @@ function showAddress(address) {
         window.dispatchEvent(new CustomEvent('open-settings'))
       })
       overlay.addEventListener('click', closeMenu)
-      topBarWallet.style.position = 'relative'
-      topBarWallet.appendChild(dd)
+      // On mobile, append to body so the sheet escapes parent stacking contexts
+      if (window.innerWidth <= 480) {
+        document.body.appendChild(dd)
+      } else {
+        topBarWallet.style.position = 'relative'
+        topBarWallet.appendChild(dd)
+      }
       // trigger slide-up animation on next frame (used by mobile bottom sheet)
       requestAnimationFrame(() => { dd.classList.add('open'); overlay.classList.add('open') })
       // delay close listener so the opening click doesn't immediately close it
@@ -500,147 +496,128 @@ function showDock() {
       const addr = connectedAddress
       if (!addr || !localStorage.getItem(`xmtp-registered-${addr.toLowerCase()}`)) return
 
-      // Cross-tab coordination: acquire XMTP lock atomically (no pre-check — avoids stale lock race on refresh)
+      // Cross-tab coordination via xmtp-proxy module
       const _xmtpLockName = `xmtp-${location.hostname}`
-      const lockAcquired = navigator.locks ? await new Promise(resolve => {
-        navigator.locks.request(_xmtpLockName, { ifAvailable: true }, async (lock) => {
-          if (!lock) { resolve(false); return }
-          resolve(true)
-          await new Promise(() => {}) // hold until tab closes
-        }).catch(() => resolve(false))
-      }) : true
+      const { acquireLeadership, startLeaderResponder, broadcastNewMessage, broadcastUnread } = await import('./xmtp-proxy.js')
+      const { isLeader, channel, onPromoted, release } = await acquireLeadership(_xmtpLockName)
 
-      if (lockAcquired) {
+      if (isLeader) {
         window._xmtpLockHolder = true
       }
-      if (!lockAcquired) {
-        console.log('praxis: XMTP active in another tab, listening for broadcasts')
-        try {
-          const bc = new BroadcastChannel(_xmtpLockName)
-          bc.onmessage = (e) => {
-            if (e.data.type === 'unread') {
-              const dot = document.getElementById('dock-msg-dot')
-              if (dot) dot.style.display = ''
-              try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
-            }
-          }
-        } catch {}
-        return
+
+      // Helper: show toast for new message (used by both leader stream and follower broadcast)
+      const _streamStartMs = Date.now()
+      function showMsgToast(msg) {
+        if (window.location.pathname.startsWith('/messages')) return
+        const dot = document.getElementById('dock-msg-dot')
+        if (dot) dot.style.display = ''
+        try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
+        // Skip toasts for old messages
+        const sentMs = Number(msg.sentAtNs || 0) / 1e6
+        if (sentMs < _streamStartMs) return
+        const text = typeof msg.content === 'string' ? msg.content.slice(0, 80) : 'new message'
+        let senderName = (msg.senderInboxId || '').slice(0, 8) + '...'
+        const toast = document.createElement('div')
+        toast.style.cssText = 'position:fixed;bottom:70px;right:16px;background:var(--surface,#1a1a1a);border:1px solid var(--border,#333);color:var(--fg,#c0c0c0);padding:1em 1.5ch;font-size:0.9em;font-family:inherit;z-index:2000;max-width:320px;border-radius:8px;cursor:pointer;opacity:0;transform:translateY(10px);transition:opacity 0.3s,transform 0.3s'
+        const esc = escapeHtml
+        toast.innerHTML = `<div style="color:var(--accent);font-size:0.85em;margin-bottom:0.3em;font-weight:bold">${esc(senderName)}</div><div>${esc(text)}</div>`
+        toast.addEventListener('click', () => { toast.remove(); window.location.href = '/messages' })
+        document.body.appendChild(toast)
+        requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)' })
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300) }, 8000)
       }
 
-      try {
-        // patch Worker constructor so XMTP SDK uses local worker bundles
-        if (!window._workerPatched) {
-          window._workerPatched = true
-          const Orig = window.Worker
-          window.Worker = function(url, opts) {
-            const s = url instanceof URL ? url.href : url
-            if (typeof s === 'string' && (s.includes('esm.sh') || s.includes('xmtp') || s.includes('workers/client') || s.includes('workers/opfs'))) {
-              if (s.includes('client')) return new Orig('/js/xmtp-workers/client.js', { ...opts, type: 'module' })
-              if (s.includes('opfs')) return new Orig('/js/xmtp-workers/opfs.js', { ...opts, type: 'module' })
-            }
-            return new Orig(url, opts)
+      if (!isLeader) {
+        // Follower: listen for new-message broadcasts for toasts + unread dots
+        console.log('praxis: XMTP follower tab, listening for broadcasts + queued for promotion')
+        channel.addEventListener('message', (e) => {
+          if (e.data?.type === 'new-message' && e.data.message) {
+            showMsgToast(e.data.message)
           }
-        }
-        const xsdk = await import('./vendor-xmtp.js')
-        const identifier = { identifier: addr, identifierKind: xsdk.IdentifierKind.Ethereum }
-        // Client.build: reconnects from OPFS — NO wallet signature popup
-        const xc = await xsdk.Client.build(identifier, { env: 'production' })
-        if (!xc?.inboxId) { xc?.close?.(); return }
-        window._xmtpClient = xc
-        window._xmtpSdk = xsdk
-        window._xmtpClientIsReadOnly = true
-        console.log('praxis: XMTP reconnected silently via Client.build')
-
-        // Set up BroadcastChannel to notify other tabs of unread messages
-        let bc = null
-        try { bc = new BroadcastChannel(`xmtp-${location.hostname}`) } catch {}
-
-        // check for unread since last visit
-        await xc.conversations.sync()
-        const convos = await xc.conversations.list()
-        const lastSeen = parseInt(localStorage.getItem('praxis-msg-seen') || '0', 10)
-        for (const c of convos) {
-          const lastMsg = await c.lastMessage?.().catch(() => null)
-          if (!lastMsg) continue
-          const msgTime = Number(lastMsg.sentAtNs || 0) / 1e6
-          if (msgTime > lastSeen && lastMsg.senderInboxId !== xc.inboxId) {
+          if (e.data?.type === 'unread') {
             const dot = document.getElementById('dock-msg-dot')
             if (dot) dot.style.display = ''
             try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
-            bc?.postMessage({ type: 'unread', conversationId: c.id })
-            break
           }
-        }
-
-        // Periodically sync ALL conversations (including from unknown senders)
-        // sync() only syncs existing convos; syncAll(['allowed','unknown']) discovers new DMs
-        const _syncInterval = setInterval(async () => {
-          try { await (xc.conversations.syncAll?.(['allowed', 'unknown']) || xc.conversations.sync()) } catch {}
-        }, 30000) // every 30s
-        window.addEventListener('spa-navigate', () => clearInterval(_syncInterval), { once: true })
-
-        // start real-time stream — expose globally so messages.js can stop it.
-        // Record the stream-start time so we only toast messages that arrive
-        // AFTER we started listening. XMTP streamAllMessages replays recent
-        // history on reconnect, and without this gate every past message
-        // triggers a toast notification when the user returns to their site.
-        const stream = await xc.conversations.streamAllMessages()
-        window._xmtpBgStream = stream
-        const _streamStartNs = BigInt(Date.now()) * 1000000n // ms → ns
-        for await (const msg of stream) {
-          if (msg.senderInboxId === xc.inboxId) continue
-          if (window.location.pathname.startsWith('/messages')) continue
-          // Always show the unread dot for ANY inbound message (including
-          // replayed history) — the user missed them either way.
-          const dot = document.getElementById('dock-msg-dot')
-          if (dot) dot.style.display = ''
-          try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
-          // broadcast to other tabs
-          bc?.postMessage({ type: 'unread', conversationId: msg.conversationId })
-          // Only toast messages sent AFTER we started the stream — skip
-          // replayed history from earlier sessions so we don't spam the user.
-          let _skipToast = false
+        })
+        // Auto-promote when leader tab closes
+        onPromoted.then(async () => {
+          console.log('praxis: promoted to XMTP leader (wallet.js)')
+          window._xmtpLockHolder = true
           try {
-            const sentNs = BigInt(msg.sentAtNs || 0)
-            if (sentNs < _streamStartNs) _skipToast = true
-          } catch {}
-          if (_skipToast) continue
-          // toast with sender name
-          const text = typeof msg.content === 'string' ? msg.content.slice(0, 80) : 'new message'
-          // resolve sender name from inbox ID
-          let senderName = msg.senderInboxId?.slice(0, 8) + '...'
-          try {
-            if (xc && typeof xc.fetchInboxIdByIdentifier === 'function') {
-              // try to find sender address via members
-              const convo = (await xc.conversations.list()).find(c => c.id === msg.conversationId)
-              if (convo) {
-                const members = typeof convo.members === 'function' ? await convo.members() : convo.members || []
-                for (const m of members) {
-                  if (m.inboxId === msg.senderInboxId) {
-                    const addr = m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase()
-                    if (addr) {
-                      // Fix 1 (C1): cache + batched resolve — short-circuits per-message fetch storm
-                      const domain = await resolveAddrToDomain(addr)
-                      if (domain) senderName = domain
-                      else senderName = addr.slice(0, 6) + '...' + addr.slice(-4)
-                    }
-                    break
-                  }
-                }
-              }
+            await _initLeaderXmtp(addr, channel, showMsgToast)
+          } catch (e) { console.warn('praxis: leader promotion failed:', e?.message) }
+        })
+        return
+      }
+
+      // Leader: initialize XMTP client + start responder
+      await _initLeaderXmtp(addr, channel, showMsgToast)
+
+      async function _initLeaderXmtp(address, bc, toastFn) {
+        try {
+          // patch Worker constructor so XMTP SDK uses local worker bundles
+          const { patchWorker } = await import('./xmtp-proxy.js')
+          patchWorker()
+          const xsdk = await import('./vendor-xmtp.js')
+          const identifier = { identifier: address, identifierKind: xsdk.IdentifierKind.Ethereum }
+          const xc = await xsdk.Client.build(identifier, { env: 'production' })
+          if (!xc?.inboxId) { xc?.close?.(); return }
+          window._xmtpClient = xc
+          window._xmtpSdk = xsdk
+          window._xmtpClientIsReadOnly = true
+          console.log('praxis: XMTP leader (wallet.js) via Client.build')
+
+          // Start leader responder — releaseLock lets /messages tab take over
+          let _yielded = false
+          startLeaderResponder(bc, () => window._xmtpClient, {
+            releaseLock: release,
+            onYield: () => {
+              _yielded = true
+              try { window._xmtpBgStream?.return?.() } catch {}
+              window._xmtpBgStream = null
             }
-          } catch {}
-          const toast = document.createElement('div')
-          toast.style.cssText = 'position:fixed;bottom:70px;right:16px;background:var(--surface,#1a1a1a);border:1px solid var(--border,#333);color:var(--fg,#c0c0c0);padding:1em 1.5ch;font-size:0.9em;font-family:inherit;z-index:2000;max-width:320px;border-radius:8px;cursor:pointer;opacity:0;transform:translateY(10px);transition:opacity 0.3s,transform 0.3s'
-          const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-          toast.innerHTML = `<div style="color:var(--accent);font-size:0.85em;margin-bottom:0.3em;font-weight:bold">${esc(senderName)}</div><div>${esc(text)}</div>`
-          toast.addEventListener('click', () => { toast.remove(); window.location.href = '/messages' })
-          document.body.appendChild(toast)
-          requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)' })
-          setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300) }, 8000)
-        }
-      } catch (e) { console.warn('praxis: bg xmtp:', e?.message) }
+          })
+
+          // check for unread since last visit
+          await xc.conversations.sync()
+          const convos = await xc.conversations.list()
+          const lastSeen = parseInt(localStorage.getItem('praxis-msg-seen') || '0', 10)
+          for (const c of convos) {
+            const lastMsg = await c.lastMessage?.().catch(() => null)
+            if (!lastMsg) continue
+            const msgTime = Number(lastMsg.sentAtNs || 0) / 1e6
+            if (msgTime > lastSeen && lastMsg.senderInboxId !== xc.inboxId) {
+              const dot = document.getElementById('dock-msg-dot')
+              if (dot) dot.style.display = ''
+              try { sessionStorage.setItem('praxis-unread-msgs', '1') } catch {}
+              broadcastUnread(bc, c.id)
+              break
+            }
+          }
+
+          // Periodic sync (stop on yield or SPA nav)
+          const _syncInterval = setInterval(async () => {
+            if (_yielded) { clearInterval(_syncInterval); return }
+            try { await (xc.conversations.syncAll?.(['allowed', 'unknown']) || xc.conversations.sync()) } catch {}
+          }, 30000)
+          window.addEventListener('spa-navigate', () => clearInterval(_syncInterval), { once: true })
+
+          // Real-time stream — broadcast to other tabs
+          if (_yielded) return
+          const stream = await xc.conversations.streamAllMessages()
+          window._xmtpBgStream = stream
+          for await (const msg of stream) {
+            if (_yielded) break
+            if (msg.senderInboxId === xc.inboxId) continue
+            // Broadcast to all tabs (followers get toast + unread dot)
+            broadcastNewMessage(bc, msg)
+            broadcastUnread(bc, msg.conversationId)
+            // Show toast locally too
+            toastFn(msg)
+          }
+        } catch (e) { console.warn('praxis: bg xmtp:', e?.message) }
+      }
     }, 2000)
   }
 }
@@ -802,7 +779,7 @@ function showAudiencePrompt(address, registryAddress, publicClient) {
     dismissBtn.style.display = 'none'
 
     try {
-      await ensureOptimism()
+      if (!await ensureOptimism()) { registerBtn.textContent = 'join audience'; registerBtn.style.opacity = ''; dismissBtn.style.display = ''; return }
 
       // sponsor gas
       const sponsorRes = await fetch('https://ourpraxis.network/orchestrator/sponsor-gas', {
@@ -1364,7 +1341,7 @@ async function showUnregisterConfirmation(address) {
     try {
       statusEl.textContent = t('unregister.switching')
 
-      await window.ensureOptimism?.()
+      if (!await window.ensureOptimism?.()) return
 
       statusEl.textContent = t('unregister.confirming')
 
@@ -1491,7 +1468,13 @@ async function ensureOptimism() {
   // Callers like library.js use `if (!await ensureOptimism()) return` so the
   // success path MUST return a truthy value or the caller bails out with a
   // false-negative "add Optimism" error.
-  if (!getWalletProvider()) return false
+  if (!getWalletProvider()) {
+    // Provider not active — try restoring embedded wallet session first
+    if (_usingEmbeddedWallet || window.hasEmbeddedWallet?.()) {
+      await ensureAuthorized()
+    }
+    if (!getWalletProvider()) return false
+  }
   // embedded wallet provider is always on Optimism — skip chain switching
   if (getWalletProvider()?.isPraxis) return true
   try {

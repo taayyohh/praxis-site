@@ -416,7 +416,7 @@ async function initProjectDetail() {
           revenueHtml += `<div style="padding:1em;border:1px solid var(--border);margin-bottom:1em">
             <div style="color:var(--fg);font-size:0.9em">you own <span style="color:var(--accent)">${myPct}%</span> of funder revenue</div>
             <div style="color:var(--fg);font-size:0.9em;margin-top:0.25em">claimable: <span style="color:#4ade80">${pendingEth}</span></div>
-            ${Number(pending) > 0 ? '<button class="buy-btn" id="action-claim-revenue" style="margin-top:0.5em">claim revenue</button>' : ''}
+            ${Number(pendingRev) > 0 ? '<button class="buy-btn" id="action-claim-revenue" style="margin-top:0.5em">claim revenue</button>' : ''}
           </div>`
         } catch {}
       }

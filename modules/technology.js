@@ -1,14 +1,13 @@
 // Technology module — engineering, design, repos, case studies, product work
 // For engineers, designers, creative technologists, game devs
-function esc(s) {
-  if (typeof s !== 'string') return s == null ? '' : String(s)
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
+import { esc } from './shared.js'
 function safeUrl(u) {
-  if (typeof u !== 'string' || !u) return ''
-  const trimmed = u.trim()
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) return ''
-  return esc(trimmed)
+  if (!u || typeof u !== 'string') return '#'
+  try {
+    const parsed = new URL(u, 'https://placeholder.invalid')
+    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
+    return esc(u)
+  } catch { return '#' }
 }
 export default {
   type: 'technology',

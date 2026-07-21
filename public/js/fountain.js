@@ -295,3 +295,27 @@ export function fountainToHtml(text) {
   }
   return lines.join('\n')
 }
+
+export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition'])
+
+export function shouldAutoUppercase(type) {
+  return AUTO_UPPERCASE_TYPES.has(type)
+}
+
+export function extractCharacterNames(editorEl) {
+  const names = new Set()
+  editorEl.querySelectorAll('div.script-line[data-type="character"]').forEach(el => {
+    const name = el.textContent.trim()
+    if (name) names.add(name.toUpperCase())
+  })
+  return names
+}
+
+export function extractSceneLocations(editorEl) {
+  const locations = new Set()
+  editorEl.querySelectorAll('div.script-line[data-type="scene"]').forEach(el => {
+    const text = el.textContent.trim().toUpperCase()
+    if (text) locations.add(text)
+  })
+  return locations
+}

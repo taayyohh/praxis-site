@@ -1,6 +1,14 @@
 <header class="artist-header">
-  <h1 class="artist-name">{{name}}</h1>
-  <p class="artist-bio">{{bio}}</p>
+  <div class="header-row">
+    {{profilePicTag}}
+    <div class="header-text">
+      <h1 class="artist-name">{{name}}</h1>
+      <p class="artist-bio" id="bio-short">{{shortBio}}</p>
+      <p class="artist-bio" id="bio-full" style="display:none">{{bio}}</p>
+      <a href="#" id="bio-toggle" style="color:var(--muted);font-size:0.8em;text-decoration:none;display:inline-block;margin-top:0.3em">more</a>
+    </div>
+  </div>
+<script>(function(){var s=document.getElementById('bio-short'),f=document.getElementById('bio-full'),t=document.getElementById('bio-toggle');if(!s||!f||!t)return;if(!f.textContent.trim()||f.textContent.trim()===s.textContent.trim()){t.style.display='none';return}t.addEventListener('click',function(e){e.preventDefault();if(f.style.display==='none'){f.style.display='';s.style.display='none';t.textContent='less'}else{f.style.display='none';s.style.display='';t.textContent='more'}})})();</script>
   <div id="owner-badges"></div>
 </header>
 

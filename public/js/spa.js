@@ -17,6 +17,7 @@ const ROUTE_MODULES = {
   '/': ['/js/feed.js', '/js/supporter-home.js', '/js/gallery-ui.js'],
   '/network': ['/js/network.js', '/js/profile.js', '/js/graph.js'],
   '/projects': ['/js/projects.js'],
+  '/propose': ['/js/projects.js'],
   '/project': ['/js/project-detail.js'],
   '/library': ['/js/library.js'],
   '/post': ['/js/post.js'],

@@ -179,6 +179,28 @@ async function loadNotifications(myAddr) {
             time: Number(n.timestamp) * 1000,
             link: `/project?id=${n.refId}`,
           })
+        } else if (n.eventType === 'disputed') {
+          notifications.push({
+            type: 'disputed',
+            text: t('notifications.disputed', { who: whoLink(n.fromAddr, domainMap), title: escapeHtml(n.title || `project #${n.refId}`) }),
+            time: Number(n.timestamp) * 1000,
+            link: `/project?id=${n.refId}`,
+          })
+        } else if (n.eventType === 'completing') {
+          notifications.push({
+            type: 'completing',
+            text: t('notifications.completing', { title: escapeHtml(n.title || `project #${n.refId}`) }),
+            time: Number(n.timestamp) * 1000,
+            link: `/project?id=${n.refId}`,
+          })
+        } else if (n.eventType === 'revenue') {
+          const amt = formatEthAmount(n.amount)
+          notifications.push({
+            type: 'revenue',
+            text: t('notifications.revenueReceived', { amount: amt, title: escapeHtml(n.title || `project #${n.refId}`) }),
+            time: Number(n.timestamp) * 1000,
+            link: `/project?id=${n.refId}`,
+          })
         }
       }
     }
@@ -192,135 +214,163 @@ async function loadNotifications(myAddr) {
     }
   }
 
-  // Unclaimed funds — always check on-chain (not in Ponder notification table).
-  // Cached 5 minutes to avoid hammering Scroll RPC on every 30s poll.
-  try {
-    const pendingKey = `pendingWithdrawals:${myAddrLower}`
-    let pending = _onchainCacheGet(pendingKey)
-    if (pending === undefined) {
-      pending = await getPendingWithdrawals(myAddr)
-      _onchainCacheSet(pendingKey, pending)
-    }
-    if (pending.praxis > 0n) {
-      notifications.push({
-        type: 'unclaimed',
-        text: `<span data-eth-wei="${String(pending.praxis)}" data-fiat-primary="true">${formatEthAmount(pending.praxis)} ETH</span> unclaimed from projects`,
-        time: Date.now(),
-        link: '/earnings',
-      })
-    }
-    if (pending.media > 0n) {
-      // Try to identify which media earned the funds from recent purchase notifications
-      const mediaTitles = notifications.filter(n => n.type === 'purchase' && n._title).map(n => n._title)
-      const source = mediaTitles.length > 0 ? `media sales (${mediaTitles.slice(0, 3).join(', ')})` : 'media sales'
-      notifications.push({
-        type: 'unclaimed',
-        text: `<span data-eth-wei="${String(pending.media)}" data-fiat-primary="true">${formatEthAmount(pending.media)} ETH</span> unclaimed from ${escapeHtml(source)}`,
-        time: Date.now(),
-        link: '/earnings',
-      })
-    }
-  } catch (e) { console.warn('notifications: pendingWithdrawals check failed', e) }
-
-  // Collaboration invites + dismissal notifications — off-chain, stored in shared SQLite
-  try {
-    const collabRes = await fetch(`/api/collaborations?wallet=${myAddrLower}`)
-    if (collabRes.ok) {
-      const collabs = await collabRes.json()
-      // Pending invites (for collaborator)
-      const pending = collabs.filter(c => c.to === myAddrLower && c.status === 'pending')
-      for (const c of pending) {
-        notifications.push({
-          type: 'collaboration',
-          text: `<a href="https://${escapeHtml(c.fromDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.fromDomain)}</a> tagged you as collaborator on <strong>${escapeHtml(c.itemTitle)}</strong>`,
-          time: new Date(c.createdAt).getTime() || Date.now(),
-          link: '/works',
-          _collabId: c.id,
-        })
-      }
-      // Dismissed collabs — show notifications to the other party
-      const dismissed = collabs.filter(c => c.status === 'dismissed' && c.dismissedBy)
-      for (const c of dismissed) {
-        const updatedTime = new Date(c.updatedAt).getTime() || Date.now()
-        if (c.dismissedBy === 'collaborator' && c.from === myAddrLower) {
-          // Creator sees: collaborator removed the item from their site
+  // Run all three supplementary checks in parallel (unclaimed funds, collab invites, project confirmations)
+  await Promise.all([
+    // Unclaimed funds — always check on-chain (not in Ponder notification table).
+    // Cached 5 minutes to avoid hammering Scroll RPC on every 30s poll.
+    (async () => {
+      try {
+        const pendingKey = `pendingWithdrawals:${myAddrLower}`
+        let pending = _onchainCacheGet(pendingKey)
+        if (pending === undefined) {
+          pending = await getPendingWithdrawals(myAddr)
+          _onchainCacheSet(pendingKey, pending)
+        }
+        if (pending.praxis > 0n) {
           notifications.push({
-            type: 'collab-removed',
-            text: `<a href="https://${escapeHtml(c.toDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.toDomain)}</a> removed your collaboration on <strong>${escapeHtml(c.itemTitle)}</strong> from their site`,
-            time: updatedTime,
-            link: '/works',
-          })
-        } else if (c.dismissedBy === 'creator' && c.to === myAddrLower) {
-          // Collaborator sees: creator removed them from the item
-          notifications.push({
-            type: 'collab-removed',
-            text: `<a href="https://${escapeHtml(c.fromDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.fromDomain)}</a> removed you as collaborator on <strong>${escapeHtml(c.itemTitle)}</strong>`,
-            time: updatedTime,
-            link: '/works',
+            type: 'unclaimed',
+            text: `<span data-eth-wei="${String(pending.praxis)}" data-fiat-primary="true">${formatEthAmount(pending.praxis)} ETH</span> unclaimed from projects`,
+            time: Date.now(),
+            link: '/earnings',
           })
         }
-      }
-    }
-  } catch (e) { console.warn('notifications: collaboration check failed', e) }
-
-  // Projects needing confirmation — requires on-chain multicall (not in notification table)
-  try {
-    const collabsData = await query(`query MyCollabs($me: String!) { collaborators(where: { artist: $me }, limit: 50) { items { ${F.collaborator} } } }`, { me: myAddrLower })
-    const myCollabs = collabsData.collaborators?.items || []
-    if (myCollabs.length) {
-      const collabProjectIds = myCollabs.map(c => c.projectId)
-      const collabProjectsData = await query(
-        `query CollabProjects($ids: [BigInt!]!) { projects(where: { id_in: $ids }, limit: 50) { items { ${F.projectSummary} } } }`,
-        { ids: collabProjectIds }
-      )
-      const needsConfirm = (collabProjectsData.projects?.items || []).filter(p => p.status === 1 || p.status === 2)
-      if (needsConfirm.length) {
-        // Split into cached vs uncached so we only hit RPC for misses.
-        const uncachedIdxs = []
-        const cachedResults = new Array(needsConfirm.length)
-        for (let i = 0; i < needsConfirm.length; i++) {
-          const k = `hasConfirmed:${needsConfirm[i].id}:${myAddrLower}`
-          const hit = _onchainCacheGet(k)
-          if (hit !== undefined) cachedResults[i] = hit
-          else uncachedIdxs.push(i)
+        if (pending.media > 0n) {
+          // Try to identify which media earned the funds from recent purchase notifications
+          const mediaTitles = notifications.filter(n => n.type === 'purchase' && n._title).map(n => n._title)
+          const source = mediaTitles.length > 0 ? `media sales (${mediaTitles.slice(0, 3).join(', ')})` : 'media sales'
+          notifications.push({
+            type: 'unclaimed',
+            text: `<span data-eth-wei="${String(pending.media)}" data-fiat-primary="true">${formatEthAmount(pending.media)} ETH</span> unclaimed from ${escapeHtml(source)}`,
+            time: Date.now(),
+            link: '/earnings',
+          })
         }
-        let freshResults = []
-        if (uncachedIdxs.length > 0) {
-          const pc = await getPublicClient()
-          const confirmCalls = uncachedIdxs.map(i => ({
-            address: PRAXIS_ADDR,
-            abi: PRAXIS_ABI,
-            functionName: 'hasConfirmed',
-            args: [BigInt(needsConfirm[i].id), myAddr],
-          }))
-          freshResults = await pc.multicall({ contracts: confirmCalls, allowFailure: true })
-          for (let j = 0; j < uncachedIdxs.length; j++) {
-            const idx = uncachedIdxs[j]
-            const r = freshResults[j]
-            if (r.status === 'success') {
-              const k = `hasConfirmed:${needsConfirm[idx].id}:${myAddrLower}`
-              _onchainCacheSet(k, r)
-              cachedResults[idx] = r
-            } else {
-              cachedResults[idx] = r
+      } catch (e) { console.warn('notifications: pendingWithdrawals check failed', e) }
+    })(),
+
+    // Collaboration invites + dismissal notifications — off-chain, stored in shared SQLite
+    (async () => {
+      try {
+        const collabRes = await fetch(`/api/collaborations?wallet=${myAddrLower}`)
+        if (collabRes.ok) {
+          const collabs = await collabRes.json()
+          // Pending invites (for collaborator)
+          const pendingCollabs = collabs.filter(c => c.to === myAddrLower && c.status === 'pending')
+          for (const c of pendingCollabs) {
+            notifications.push({
+              type: 'collaboration',
+              text: `<a href="https://${escapeHtml(c.fromDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.fromDomain)}</a> tagged you as collaborator on <strong>${escapeHtml(c.itemTitle)}</strong>`,
+              time: new Date(c.createdAt).getTime() || Date.now(),
+              link: '/works',
+              _collabId: c.id,
+            })
+          }
+          // Dismissed collabs — show notifications to the other party
+          const dismissed = collabs.filter(c => c.status === 'dismissed' && c.dismissedBy)
+          for (const c of dismissed) {
+            const updatedTime = new Date(c.updatedAt).getTime() || Date.now()
+            if (c.dismissedBy === 'collaborator' && c.from === myAddrLower) {
+              notifications.push({
+                type: 'collab-removed',
+                text: `<a href="https://${escapeHtml(c.toDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.toDomain)}</a> removed your collaboration on <strong>${escapeHtml(c.itemTitle)}</strong> from their site`,
+                time: updatedTime,
+                link: '/works',
+              })
+            } else if (c.dismissedBy === 'creator' && c.to === myAddrLower) {
+              notifications.push({
+                type: 'collab-removed',
+                text: `<a href="https://${escapeHtml(c.fromDomain)}" target="_blank" style="color:var(--accent)">${escapeHtml(c.fromDomain)}</a> removed you as collaborator on <strong>${escapeHtml(c.itemTitle)}</strong>`,
+                time: updatedTime,
+                link: '/works',
+              })
             }
           }
         }
-        const results = cachedResults
-        for (let i = 0; i < needsConfirm.length; i++) {
-          const r = results[i]
-          if (r && r.status === 'success' && !r.result) {
+      } catch (e) { console.warn('notifications: collaboration check failed', e) }
+    })(),
+
+    // Org invites — pending on-chain invitations to join an organization
+    (async () => {
+      try {
+        const invRes = await fetch(`/api/orgs/invites/${myAddrLower}`)
+        if (invRes.ok) {
+          const invData = await invRes.json()
+          const pending = (invData.invites || []).filter(i => i.status === 'pending')
+          for (const inv of pending) {
             notifications.push({
-              type: 'confirm',
-              text: t('notifications.confirmNeeded', { project: escapeHtml(needsConfirm[i].title) }),
-              time: Date.now(),
-              link: `/project?id=${needsConfirm[i].id}`,
+              type: 'org-invite',
+              text: `<strong>${escapeHtml(inv.orgName || `org #${inv.orgId}`)}</strong> invited you to join`,
+              time: Number(inv.invitedAt) * 1000 || Date.now(),
+              link: `/org?id=${inv.orgId}`,
+              _orgId: String(inv.orgId),
             })
           }
         }
-      }
-    }
-  } catch (e) { console.warn('notifications: collab confirmation check failed', e) }
+      } catch (e) { console.warn('notifications: org invite check failed', e) }
+    })(),
+
+    // Projects needing confirmation — requires on-chain multicall (not in notification table)
+    // MyCollabs -> CollabProjects are sequential (second depends on first), but run in parallel with the above
+    (async () => {
+      try {
+        const collabsData = await query(`query MyCollabs($me: String!) { collaborators(where: { artist: $me }, limit: 50) { items { ${F.collaborator} } } }`, { me: myAddrLower })
+        const myCollabs = collabsData.collaborators?.items || []
+        if (myCollabs.length) {
+          const collabProjectIds = myCollabs.map(c => c.projectId)
+          const collabProjectsData = await query(
+            `query CollabProjects($ids: [BigInt!]!) { projects(where: { id_in: $ids }, limit: 50) { items { ${F.projectSummary} } } }`,
+            { ids: collabProjectIds }
+          )
+          const needsConfirm = (collabProjectsData.projects?.items || []).filter(p => p.status === 1 || p.status === 2)
+          if (needsConfirm.length) {
+            // Split into cached vs uncached so we only hit RPC for misses.
+            const uncachedIdxs = []
+            const cachedResults = new Array(needsConfirm.length)
+            for (let i = 0; i < needsConfirm.length; i++) {
+              const k = `hasConfirmed:${needsConfirm[i].id}:${myAddrLower}`
+              const hit = _onchainCacheGet(k)
+              if (hit !== undefined) cachedResults[i] = hit
+              else uncachedIdxs.push(i)
+            }
+            let freshResults = []
+            if (uncachedIdxs.length > 0) {
+              const pc = await getPublicClient()
+              const confirmCalls = uncachedIdxs.map(i => ({
+                address: PRAXIS_ADDR,
+                abi: PRAXIS_ABI,
+                functionName: 'hasConfirmed',
+                args: [BigInt(needsConfirm[i].id), myAddr],
+              }))
+              freshResults = await pc.multicall({ contracts: confirmCalls, allowFailure: true })
+              for (let j = 0; j < uncachedIdxs.length; j++) {
+                const idx = uncachedIdxs[j]
+                const r = freshResults[j]
+                if (r.status === 'success') {
+                  const k = `hasConfirmed:${needsConfirm[idx].id}:${myAddrLower}`
+                  _onchainCacheSet(k, r)
+                  cachedResults[idx] = r
+                } else {
+                  cachedResults[idx] = r
+                }
+              }
+            }
+            const results = cachedResults
+            for (let i = 0; i < needsConfirm.length; i++) {
+              const r = results[i]
+              if (r && r.status === 'success' && !r.result) {
+                notifications.push({
+                  type: 'confirm',
+                  text: t('notifications.confirmNeeded', { project: escapeHtml(needsConfirm[i].title) }),
+                  time: Date.now(),
+                  link: `/project?id=${needsConfirm[i].id}`,
+                })
+              }
+            }
+          }
+        }
+      } catch (e) { console.warn('notifications: collab confirmation check failed', e) }
+    })(),
+  ])
 
   // sort newest first, then aggregate
   notifications.sort((a, b) => b.time - a.time)
@@ -524,6 +574,7 @@ const NOTIF_ICONS = {
   unclaimed: '+',
   collaboration: '⊕',
   'collab-removed': '⊖',
+  'org-invite': '⊕',
   follower: '~',
   purchase: '*',
   completed: '!',
@@ -531,6 +582,9 @@ const NOTIF_ICONS = {
   reply: '>',
   'invite-used': '+',
   refund: '-',
+  disputed: '?',
+  completing: '.',
+  revenue: '$',
 }
 
 function timeAgo(ts) {
@@ -558,6 +612,8 @@ function renderNotificationsPage(contentEl, notifications) {
       action = `<button class="buy-btn notif-claim-btn" data-source="${source}" style="font-size:0.75em;padding:0.2em 0.8ch">claim</button>`
     } else if (n.type === 'collaboration' && n._collabId) {
       action = `<span style="display:flex;gap:0.3ch"><button class="buy-btn notif-collab-btn" data-collab-id="${n._collabId}" data-action="accepted" style="font-size:0.75em;padding:0.2em 0.8ch">accept</button><button class="notif-collab-btn" data-collab-id="${n._collabId}" data-action="dismissed" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">dismiss</button></span>`
+    } else if (n.type === 'org-invite' && n._orgId) {
+      action = `<span style="display:flex;gap:0.3ch"><button class="buy-btn notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.75em;padding:0.2em 0.8ch">accept</button><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">decline</button></span>`
     } else if (n.type === 'confirm') {
       action = `<a href="${n.link}" style="color:var(--accent);font-size:0.8em;white-space:nowrap;font-weight:bold">confirm</a>`
     } else if (n.link) {
@@ -594,6 +650,9 @@ function renderNotificationsPage(contentEl, notifications) {
         btn.style.borderColor = 'var(--accent)'
         btn.style.color = 'var(--accent)'
         btn.style.cursor = 'default'
+        // Invalidate on-chain cache so refresh shows 0 unclaimed
+        const myAddr = window.getWalletAddress?.()?.toLowerCase()
+        if (myAddr) _onchainCache.delete(`pendingWithdrawals:${myAddr}`)
         // Refresh header balance after claim
         window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
       } catch (e) {
@@ -655,6 +714,41 @@ function renderNotificationsPage(contentEl, notifications) {
     })
   })
 
+  // org invite accept/decline buttons
+  contentEl.querySelectorAll('.notif-org-invite-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const orgId = btn.dataset.orgId
+      const action = btn.dataset.action
+      const origText = btn.textContent
+      const sibling = btn.parentElement?.querySelector(`.notif-org-invite-btn:not([data-action="${action}"])`)
+      btn.textContent = action === 'accept' ? 'accepting...' : 'declining...'
+      btn.disabled = true
+      if (sibling) sibling.disabled = true
+      try {
+        if (!await window.ensureOptimism?.()) throw new Error('wallet not connected')
+        const { createWalletClient, custom, optimism } = await import('./vendor.js')
+        const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+        const addr = window.getWalletAddress?.()
+        const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const hash = await wc.writeContract({
+          address: ORG_ADDRESS, abi: ORG_ABI,
+          functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
+          args: [BigInt(orgId)], account: addr,
+        })
+        const pc = await getPublicClient()
+        await pc.waitForTransactionReceipt({ hash })
+        const row = btn.closest('.notif-page-row')
+        if (row) row.remove()
+        try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
+      } catch (e) {
+        btn.textContent = e.code === 4001 ? 'cancelled' : (e.message || 'error')
+        btn.disabled = false
+        if (sibling) sibling.disabled = false
+        setTimeout(() => { btn.textContent = origText }, 2000)
+      }
+    })
+  })
+
   // mark as seen
   setLastSeen(Math.max(...notifications.map(n => n.time)))
   updateBadge(0)
@@ -678,12 +772,54 @@ function renderPanel(notifications) {
     for (const n of notifications) {
       const unread = n.time > lastSeen ? ' notif-unread' : ''
       const icon = NOTIF_ICONS[n.type] || '.'
-      const item = document.createElement('a')
-      item.className = `notif-item${unread}`
-      item.href = n.link || '#'
-      item.innerHTML = `<span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span>`
-      notifPanel.appendChild(item)
+      if (n.type === 'org-invite' && n._orgId) {
+        const row = document.createElement('div')
+        row.className = `notif-item${unread}`
+        row.style.cssText = 'display:flex;align-items:center;gap:0.5ch;justify-content:space-between'
+        row.innerHTML = `<span><span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span></span><span style="display:flex;gap:0.3ch;flex-shrink:0"><button class="buy-btn panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.7em;padding:0.15em 0.6ch">accept</button><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.6ch;cursor:pointer">decline</button></span>`
+        notifPanel.appendChild(row)
+      } else {
+        const item = document.createElement('a')
+        item.className = `notif-item${unread}`
+        item.href = n.link || '#'
+        item.innerHTML = `<span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span>`
+        notifPanel.appendChild(item)
+      }
     }
+    // Wire org invite buttons in panel
+    notifPanel.querySelectorAll('.panel-org-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        const orgId = btn.dataset.orgId
+        const action = btn.dataset.action
+        const origText = btn.textContent
+        const sibling = btn.parentElement?.querySelector(`.panel-org-btn:not([data-action="${action}"])`)
+        btn.textContent = '...'
+        btn.disabled = true
+        if (sibling) sibling.disabled = true
+        try {
+          if (!await window.ensureOptimism?.()) throw new Error('wallet not connected')
+          const { createWalletClient, custom, optimism } = await import('./vendor.js')
+          const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+          const addr = window.getWalletAddress?.()
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+          const hash = await wc.writeContract({
+            address: ORG_ADDRESS, abi: ORG_ABI,
+            functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
+            args: [BigInt(orgId)], account: addr,
+          })
+          const pc = await getPublicClient()
+          await pc.waitForTransactionReceipt({ hash })
+          btn.closest('.notif-item')?.remove()
+          try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
+        } catch (e) {
+          btn.textContent = e.code === 4001 ? 'x' : '!'
+          btn.disabled = false
+          if (sibling) sibling.disabled = false
+          setTimeout(() => { btn.textContent = origText }, 2000)
+        }
+      })
+    })
   }
 
   // mark as seen

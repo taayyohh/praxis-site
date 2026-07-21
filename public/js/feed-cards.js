@@ -1,7 +1,18 @@
 // Shared feed card renderers — used by both artist feed (feed.js) and landing (landing.js)
-import { escapeHtml as esc } from './utils.js'
+import { escapeHtml as esc, getProfilePic, getArtistName } from './utils.js'
+const DELIST_PRICE_SENTINEL = 2n ** 128n
 let t = (k) => k // fallback
 try { const i18n = await import('./i18n.js'); t = i18n.t } catch {}
+
+function avatarOverlay(addr, explicitPic) {
+  const pic = explicitPic || getProfilePic(addr)
+  if (!pic) return ''
+  return `<img src="${esc(pic)}" class="feed-card-avatar" style="position:absolute;bottom:-14px;left:10px;width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--bg,#111);z-index:1" loading="lazy" onerror="this.style.display='none'">`
+}
+
+function resolveDisplay(addr, resolve, explicitName) {
+  return explicitName || getArtistName(addr) || resolve(addr)
+}
 
 // Consistent buy button: green solid bg
 function buyBtnHtml(mediaId, price, title, opts = {}) {
@@ -9,7 +20,7 @@ function buyBtnHtml(mediaId, price, title, opts = {}) {
   if (pw <= 0n) return opts.showFree ? '<span style="color:var(--green);font-size:0.8em">free</span>' : ''
   const ids = opts.ids || mediaId
   const prices = opts.prices || price
-  return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${ids}" data-price="${price}" ${opts.prices ? `data-prices="${prices}"` : ''} data-title="${esc(title)}">buy</button>`
+  return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(ids)}" data-price="${esc(price)}" ${opts.prices ? `data-prices="${esc(prices)}"` : ''} data-title="${esc(title)}">buy</button>`
 }
 // Price label for next to title
 function priceLabelHtml(price) {
@@ -93,7 +104,6 @@ if (typeof document !== 'undefined') {
               await new Promise(r => setTimeout(r, 2000))
               const { getPublicClient } = await import('./utils.js')
               const pc = await getPublicClient()
-              await pc.getBalance({ address: addr })
               if (!isFundOnly) {
                 const opBal = await pc.getBalance({ address: addr })
                 if (opBal >= BigInt(priceWei)) break
@@ -131,41 +141,40 @@ if (typeof document !== 'undefined') {
 export function renderMediaCard(d, resolve) {
   let priceWei = 0n
   try { priceWei = BigInt(d.price || '0') } catch {}
-  if (priceWei >= 2n ** 128n) return ''
+  if (priceWei >= DELIST_PRICE_SENTINEL) return ''
   const artist = resolve(d.artist)
   const title = d.title || 'untitled'
   const artLink = d.artLink || `/art?media=${encodeURIComponent(d.mediaId)}`
   const cid = d.ipfsCid || ''
   const metaCid = d.metadataCid || ''
   const isVideo = d.contentType?.startsWith('video')
+  const isPdf = d.contentType === 'application/pdf' || d.contentType?.startsWith('text/')
   // If contentType is empty but metadataCid exists, it's likely audio with cover art (MP3 with album art)
-  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg' || (!d.contentType && metaCid)
+  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg' || (!d.contentType && metaCid && !isPdf)
   const isUnknown = !d.contentType && !metaCid
   // Art source: metadata cover → image content → video thumbnail → generic thumb probe
   let artSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=200` : ''
   if (!artSrc && cid && d.contentType?.startsWith('image')) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=200`
   if (!artSrc && cid && isVideo) artSrc = `/api/video-thumb?cid=${encodeURIComponent(cid)}`
-  // When contentType is unknown but CID exists, try video-thumb (fails gracefully via onerror)
-  if (!artSrc && cid && (isUnknown || isVideo)) artSrc = `/api/video-thumb?cid=${encodeURIComponent(cid)}`
-  const playBtn = isAudio && cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(artist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
-  // Video or unknown-type play button
-  const videoPlayBtn = (isVideo || isUnknown) && cid ? `<button class="video-play-btn" data-video-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-video-title="${esc(title)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
+  const playBtn = isAudio && cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(artist)}" data-track-art="${esc(artSrc)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
   const buyBtn = buyBtnHtml(d.mediaId, d.price, title, { showFree: true })
-  const isWideThumb = isVideo || isUnknown // video thumbs are widescreen, not square
+  const isWideThumb = isVideo // only confirmed video gets wide layout
   const linkTarget = d.external ? 'target="_blank"' : ''
+  const displayName = resolveDisplay(d.artist, resolve, d.artistName)
+  const aPic = d.artistPic || null
   if (isWideThumb && artSrc) {
-    // Video/unknown: thumbnail with play overlay — plays in global player (no native controls)
     const videoSrc = cid ? `/api/ipfs-proxy/${encodeURIComponent(cid)}` : ''
     return `
       <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
         <div class="video-lazy" data-src="${esc(videoSrc)}" data-poster="${esc(artSrc)}" data-title="${esc(title)}" style="aspect-ratio:16/9;background:#000;position:relative;cursor:pointer;overflow:hidden">
           <img src="${esc(artSrc)}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;pointer-events:none"><i class="ph ph-play" style="color:#fff;font-size:22px"></i></div>
+          ${avatarOverlay(d.artist, aPic)}
         </div>
         <div class="feed-media-card-info">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span class="feed-author">${esc(artist)}</span>
-            <span style="color:var(--dim);font-size:0.8em">listed</span>
+            <span class="feed-author">${esc(displayName)}</span>
+            <span style="color:var(--dim);font-size:0.8em">for sale</span>
           </div>
           <div style="display:flex;align-items:center;gap:0.4ch"><a href="${esc(artLink)}" ${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(title)}</a>${priceLabelHtml(d.price)}</div>
           <div class="feed-media-card-actions">${buyBtn}</div>
@@ -173,18 +182,36 @@ export function renderMediaCard(d, resolve) {
       </div>
     `
   }
-  // Audio/image: side-by-side layout — play overlay on art (same as collected)
-  const audioPlayOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(artist)}"><i class="ph ph-play"></i></button>` : ''
+  if ((isUnknown || isPdf) && cid) {
+    const mediaSrc = `/api/ipfs-proxy/${encodeURIComponent(cid)}`
+    const coverSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=400` : ''
+    return `
+      <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden" data-pdf-thumb="${esc(mediaSrc)}">
+        <div class="feed-pdf-thumb-slot" style="display:none"></div>
+        <div style="padding:0.75em 1em">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
+            <span class="feed-author">${esc(displayName)}</span>
+            <span style="color:var(--dim);font-size:0.8em">for sale</span>
+          </div>
+          <a href="#" class="feed-library-open" data-media-url="${esc(mediaSrc)}" data-title="${esc(title)}" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:block">${esc(title)}</a>
+          ${priceLabelHtml(d.price)}
+          <div style="margin-top:0.4em">${buyBtn}</div>
+        </div>
+      </div>
+    `
+  }
+  const audioPlayOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(displayName)}" data-track-art="${esc(artSrc)}"><i class="ph ph-play"></i></button>` : ''
   return `
     <div class="feed-item feed-collected-card">
-      <div class="feed-collected-art-wrap">
-        ${artSrc ? `<a href="${esc(artLink)}" ${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : ''}
+      <div class="feed-collected-art-wrap" style="position:relative${!artSrc ? ';display:flex;align-items:center;justify-content:center;background:var(--surface)' : ''}">
+        ${artSrc ? `<a href="${esc(artLink)}" ${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : `<a href="${esc(artLink)}" ${linkTarget} style="display:flex;align-items:center;justify-content:center;width:100%;height:100%"><i class="ph ph-file" style="font-size:2em;color:var(--muted)"></i></a>`}
         ${audioPlayOverlay}
+        ${avatarOverlay(d.artist, aPic)}
       </div>
       <div class="feed-collected-body">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="feed-author">${esc(artist)}</span>
-          <span style="color:var(--dim);font-size:0.8em">listed</span>
+          <span class="feed-author">${esc(displayName)}</span>
+          <span style="color:var(--dim);font-size:0.8em">for sale</span>
         </div>
         <div style="display:flex;align-items:center;gap:0.4ch"><a href="${esc(artLink)}" ${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(title)}</a>${priceLabelHtml(d.price)}</div>
         <div class="feed-collected-actions">${buyBtn}</div>
@@ -220,10 +247,9 @@ export function renderBatchCard(d, resolve, opts = {}) {
     }
   }
 
-  const artistDomain = resolve(d.artist)
   const firstItem = d.items?.[0]
   const artLink = albumPath
-    ? (artistDomain.includes('.') ? `https://${esc(artistDomain)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
+    ? (artist.includes('.') ? `https://${esc(artist)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
     : (firstItem ? `/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#')
 
   const metaCid = firstItem?.metadataCid || ''
@@ -263,11 +289,11 @@ export function renderBatchCard(d, resolve, opts = {}) {
   const linkTarget = d.external ? ' target="_blank"' : ''
   return `
     <div class="feed-item feed-media-card feed-batch-card">
-      ${artSrc ? `<a href="${esc(artLink)}"${linkTarget} class="feed-media-card-art"><img src="${artSrc}" alt="" loading="lazy"></a>` : ''}
+      ${artSrc ? `<a href="${esc(artLink)}"${linkTarget} class="feed-media-card-art" style="position:relative"><img src="${artSrc}" alt="" loading="lazy">${avatarOverlay(d.artist, d.artistPic)}</a>` : ''}
       <div class="feed-media-card-info">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="feed-author">${esc(aliasName || artist)}</span>
-          <span style="color:var(--dim);font-size:0.8em">listed ${d.count || sorted.length} tracks</span>
+          <span class="feed-author">${esc(aliasName || (getArtistName(d.artist) || artist))}</span>
+          <span style="color:var(--dim);font-size:0.8em">${d.count || sorted.length} tracks</span>
         </div>
         <a href="${esc(artLink)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(headline)}</a>
         <div class="feed-media-card-actions">${playAllBtn}${buyAlbumBtn}</div>
@@ -382,7 +408,7 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
     `
   }
   // Audio/image collected: side-by-side
-  const playOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(buyer)}"><i class="ph ph-play"></i></button>` : ''
+  const playOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(buyer)}" data-track-art="${esc(artSrc)}"><i class="ph ph-play"></i></button>` : ''
   return `
     <div class="feed-item feed-collected-card">
       <div class="feed-collected-art-wrap">
@@ -405,10 +431,9 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   const buyer = resolve(d.buyer)
   const artist = d.artist ? resolve(d.artist) : ''
   const headline = d.headline || 'untitled'
-  const artistDomain = d.artist ? resolve(d.artist) : ''
   const albumPath = d.albumPath
   const artLink = albumPath
-    ? (artistDomain.includes('.') ? `https://${esc(artistDomain)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
+    ? (artist.includes('.') ? `https://${esc(artist)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
     : '#'
   const firstItem = d.items?.[0]
   const metaCid = firstItem?.metadataCid || ''
@@ -435,7 +460,7 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
     ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} tracks)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') })
     : ''
   const linkTarget = opts.external ? ' target="_blank"' : ''
-  const artistLink = artistDomain.includes('.') ? `https://${esc(artistDomain)}` : '#'
+  const artistLink = artist.includes('.') ? `https://${esc(artist)}` : '#'
   return `
     <div class="feed-item feed-collected-card">
       <div class="feed-collected-art-wrap">

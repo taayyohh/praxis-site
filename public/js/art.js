@@ -3,6 +3,7 @@
 import { query } from './ponder.js'
 import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, formatEthAmount, getPublicClient, registerPage } from './utils.js'
 import { purchaseMedia, getArtistMedia, annotateRelistings } from './media.js'
+import { resolveContentTypes, classifyContentType } from './utils.js'
 import { formatEther } from './vendor.js'
 
 import { MEDIA_ABI, getMediaAddress } from './contracts.js'
@@ -200,12 +201,12 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     const queueData = playableTracks.length > 0 ? encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' })))) : ''
     html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
     html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
-    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3em 0;z-index:100;min-width:180px;box-shadow:0 -2px 8px rgba(0,0,0,0.3)">`
+    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
     if (queueData) {
-      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;transition:background 0.1s;border-radius:8px" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
     }
     if (firstListedTrack) {
-      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;transition:background 0.1s;border-radius:8px" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
     }
     html += `</div></div>`
   }
@@ -540,8 +541,12 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
   html += `</div>`
 
-  // inline media player for video/image
-  if (mediaUrl && contentType.startsWith('video/')) {
+  // inline media player for PDF/video/image
+  let pendingPdf = false
+  if (mediaUrl && contentType === 'application/pdf') {
+    html += `<div id="art-pdf-embed" style="margin-bottom:1.5em"></div>`
+    pendingPdf = true
+  } else if (mediaUrl && contentType.startsWith('video/')) {
     const cidMatch = mediaUrl.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
     const posterUrl = cidMatch ? `/api/video-thumb?cid=${cidMatch[1]}&w=960` : ''
     html += `<div style="margin-bottom:1.5em">
@@ -577,7 +582,36 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   const supplyStr = maxSupply > 0n ? `${totalMinted.toString()} / ${maxSupply.toString()}` : `${totalMinted.toString()}`
   html += `<div style="color:var(--dim);font-size:0.85em">${supplyStr} collected</div>`
 
+  // collectors section — loaded async after initial render
+  html += `<div id="art-collectors" style="margin-top:1.5em"></div>`
+
   contentEl.innerHTML = html
+
+  if (pendingPdf) {
+    const { renderMedia } = await import('./utils.js')
+    const el = document.getElementById('art-pdf-embed')
+    if (el) el.innerHTML = renderMedia(mediaUrl, title)
+  }
+
+  // Load collectors list
+  if (totalMinted > 0n) {
+    query(`query Collectors($id: BigInt!) { mediaPurchases(where: { mediaId: $id }, limit: 50, orderBy: "timestamp", orderDirection: "desc") { items { buyer timestamp } } }`, { id: String(mediaId) })
+      .then(async data => {
+        const purchases = data.mediaPurchases?.items || []
+        if (!purchases.length) return
+        const buyers = [...new Set(purchases.map(p => p.buyer))]
+        const domains = await resolveAddresses(query, buyers).catch(() => ({}))
+        const collectorsEl = document.getElementById('art-collectors')
+        if (!collectorsEl) return
+        const names = buyers.map(addr => {
+          const domain = domains[addr.toLowerCase()]
+          return domain
+            ? `<a href="https://${escapeHtml(domain)}" style="color:var(--muted);text-decoration:none" target="_blank">${escapeHtml(domain)}</a>`
+            : `<span style="color:var(--dim)">${escapeHtml(addr.slice(0, 6) + '...' + addr.slice(-4))}</span>`
+        })
+        collectorsEl.innerHTML = `<div style="border-top:1px solid var(--border);padding-top:1em"><span style="color:var(--dim);font-size:0.8em;text-transform:uppercase;letter-spacing:0.05em">collectors</span><div style="margin-top:0.5em;color:var(--muted);font-size:0.85em;line-height:1.8">${names.join(' · ')}</div></div>`
+      }).catch(() => {})
+  }
 
   // attach buy button handler
   const buyBtn = document.getElementById('art-buy-btn')

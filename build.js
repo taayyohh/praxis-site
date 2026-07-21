@@ -284,7 +284,7 @@ async function buildOgImages() {
     addOg(route, { title: mod.label, footer: site.name })
   }
 
-  addOg('network', { title: 'the network', subtitle: 'artists connected on-chain', footer: site.name })
+  addOg('network', { title: 'the network', subtitle: 'artists connected on Ethereum', footer: site.name })
   addOg('projects', { title: 'projects', subtitle: 'propose, fund, build, complete', footer: site.name })
   addOg('library', { title: 'library', subtitle: 'shared knowledge', footer: site.name })
   addOg('messages', { title: 'messages', subtitle: 'encrypted conversations', footer: site.name })
@@ -324,7 +324,7 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
 
   // JSON-LD structured data (homepage only)
   const jsonLd = (!title || canonicalPath === '/')
-    ? `<script type="application/ld+json">\n{"@context":"https://schema.org","@type":"Person","name":"${(site.name || '').replace(/"/g, '\\"')}","url":"https://${site.domain}","description":"${(site.bio || '').replace(/"/g, '\\"').replace(/\n/g, ' ').slice(0, 160)}"}\n</script>`
+    ? `<script type="application/ld+json">\n${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Person', name: site.name || '', url: `https://${site.domain}`, description: (site.bio || '').replace(/\n/g, ' ').slice(0, 160) }).replace(/</g, '\\u003c')}\n</script>`
     : ''
 
   // determine OG image path
@@ -619,20 +619,20 @@ if (site.supporter) {
 
 ${myArtistsSection}
 
-<div id="feed" data-blog="${blogRegistryAddr}" data-owner="${site.wallet || ''}">
+<div id="feed" data-blog="${blogRegistryAddr}" data-owner="${site.wallet || ''}" style="display:none">
   <p id="feed-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
   <div id="feed-posts"></div>
 </div>
 
-<div id="supporter-collection-section" data-wallet="${site.wallet || ''}" style="display:none"
+<div id="supporter-collection-section" data-wallet="${site.wallet || ''}">
   <p id="supporter-collection-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
   <div id="masonry-grid" class="masonry-grid"></div>
 </div>`
 } else {
   indexContent = fill(indexTpl, {
     name: site.name,
-    bio: site.bio || site.shortBio || '',
-    shortBio: site.shortBio || site.bio || '',
+    bio: site.bio || '',
+    shortBio: site.shortBio || (site.bio && site.bio.length > 160 ? site.bio.slice(0, site.bio.lastIndexOf(' ', 160)) + '...' : site.bio || ''),
     highlights: buildHighlights(),
     cv: buildCV(),
     blogRegistry: blogRegistryAddr,
@@ -640,6 +640,8 @@ ${myArtistsSection}
     representation: site.representation || '',
     tagline: site.tagline || '',
     reel: site.reel || '',
+    profilePic: site.profilePic || '',
+    profilePicTag: site.profilePic ? `<img class="header-pic" src="${escapeForHtml(site.profilePic)}" alt="" loading="lazy">` : '',
   })
 }
 writeFileSync(join(distDir, 'index.html'), wrap(indexContent, null, '/', '/og/index.png'))
@@ -717,7 +719,7 @@ out('earnings', wrap(earningsHtml, 'earnings', '/earnings', '/og/index.png', { n
 const writeHtml = `<div id="write-page">
 <div class="write-inner">
   <div class="write-header">
-    <button id="compose-close" class="write-back-btn" aria-label="back"><i class="ph ph-arrow-left"></i></button>
+    <button id="compose-close" class="write-back-btn" aria-label="back"><i class="ph ph-arrow-left"></i> <span style="font-size:0.55em;font-weight:normal;letter-spacing:0.1em;text-transform:uppercase;color:var(--border);margin-left:0.3ch">blog</span></button>
     <div class="write-actions">
       <a href="https://ourpraxis.network/how-it-works#writing" target="_blank" style="color:var(--dim);font-size:0.75em;text-decoration:none">what's this?</a>
       <button id="compose-preview-toggle" class="write-btn write-btn-secondary">preview</button>
@@ -791,10 +793,9 @@ const messagesHtml = `<div id="messages-page">
       </div>
       <form id="messages-send-form" class="messages-send-form">
         <button type="button" id="messages-pay-toggle" class="dock-btn" title="send ETH" style="font-size:1em"><i class="ph ph-currency-eth"></i></button>
-        <button type="button" id="messages-attach-btn" class="dock-btn" title="attach image or PDF" style="font-size:1em"><i class="ph ph-paperclip"></i></button>
+        <textarea id="messages-input" rows="1" placeholder="type a message..." autocomplete="off" data-i18n-placeholder="messages.placeholder" style="resize:none;overflow-y:hidden;min-height:1.8em;max-height:8em;line-height:1.4;border-radius:20px;padding:0.5em 1em"></textarea>
+        <button type="button" id="messages-attach-btn" class="dock-btn" title="attach" style="font-size:1em"><i class="ph ph-paperclip"></i></button>
         <input type="file" id="messages-attach-input" accept="image/*,video/*,.pdf" style="display:none" multiple>
-        <textarea id="messages-input" rows="1" placeholder="type a message..." autocomplete="off" data-i18n-placeholder="messages.placeholder" style="resize:none;overflow-y:hidden;min-height:1.8em;max-height:8em;line-height:1.4"></textarea>
-        <button type="submit" class="dock-btn" style="font-size:1em"><i class="ph ph-paper-plane-tilt"></i></button>
       </form>
     </div>
   </div>
@@ -875,7 +876,13 @@ await buildOgImages()
 // 7. copy public assets
 
 // In multi-tenant mode (DIST_DIR set), skip copying public/ to per-artist dirs (shared assets)
-if (distDir === 'dist') cpSync('public', distDir, { recursive: true })
+if (distDir === 'dist') {
+  cpSync('public', distDir, { recursive: true })
+} else {
+  // Per-artist build: copy fresh CSS + JS (shared assets change frequently)
+  try { cpSync('public/style.css', join(distDir, 'style.css')) } catch {}
+  try { cpSync(join('public', 'js'), join(distDir, 'js'), { recursive: true }) } catch {}
+}
 
 // output public site.json for art detail page (modules data needed client-side)
 // Always write — multi-tenant artists need their own site.json for art page to resolve aliases correctly

@@ -27,7 +27,7 @@
   <link rel="stylesheet" href="/template-style.css">
   <link rel="stylesheet" href="/phosphor.css">
   <link rel="modulepreload" href="/js/vendor.js">
-  <style>:root { --bg: {{themeBg}}; --fg: {{themeFg}}; --accent: {{themeAccent}}; --muted: {{themeMuted}}; --dim: {{themeDim}}; --surface: {{themeSurface}}; --border: {{themeBorder}}; --green: {{themeGreen}}; --font: {{themeFont}}; }</style>
+  <style>:root { --bg: {{themeBg}}; --fg: {{themeFg}}; --accent: {{themeAccent}}; --muted: {{themeMuted}}; --dim: {{themeDim}}; --surface: color-mix(in srgb, {{themeFg}} 4%, transparent); --border: color-mix(in srgb, {{themeFg}} 10%, transparent); --border-hover: color-mix(in srgb, {{themeFg}} 18%, transparent); --green: {{themeGreen}}; --font: {{themeFont}}; }</style>
   <script>
   (function(){var l=localStorage.getItem('praxis-lang')||navigator.language?.slice(0,2)||'en';document.documentElement.lang=l;if(['ar','fa','ur'].includes(l))document.documentElement.dir='rtl'})()
   </script>

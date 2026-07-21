@@ -223,15 +223,6 @@ async function submitPost() {
     if (!window.getWalletAddress?.()) { statusEl.textContent = t('compose.connectWallet'); return }
   }
 
-  try {
-    await getWalletProvider().request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: '0xa' }],
-    })
-  } catch (e) {
-    if (e.code === 4902) { statusEl.textContent = t('compose.addOptimism'); return }
-  }
-
   statusEl.textContent = t('compose.confirming')
 
   try {
@@ -247,7 +238,7 @@ async function submitPost() {
     } else {
       fnArgs = [title, content]
     }
-    await window.ensureOptimism?.()
+    if (!await window.ensureOptimism?.()) return
     const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
     const walletClient = createWalletClient({
       chain: optimism,
@@ -363,7 +354,8 @@ function initWrite() {
   // Set publish button label
   const publishBtn = document.getElementById('compose-post')
   if (publishBtn) {
-    publishBtn.textContent = _amendPostId ? t('compose.saveEdit') : t('compose.publish')
+    const pubLabel = _amendPostId ? (t('compose.saveEdit') || 'save edit') : (t('compose.publish') || 'publish')
+    publishBtn.textContent = pubLabel === 'compose.publish' ? 'publish' : pubLabel === 'compose.saveEdit' ? 'save edit' : pubLabel
   }
 
   const titleInput = document.getElementById('compose-title')
@@ -683,6 +675,8 @@ function initWrite() {
           }
           linkBar.remove()
           contentInput.focus()
+          clearTimeout(_autoPreviewTimer)
+          scheduleAutoPreview()
         })
         urlInput.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); document.getElementById('compose-link-insert').click() }
@@ -695,7 +689,12 @@ function initWrite() {
         toggleRefPicker()
         return
       }
-      contentInput.focus()
+      // Ensure editor is visible and reset auto-preview timer so user
+      // sees their formatting applied before the 2s idle switch to preview
+      if (!_isEditing) showEditor()
+      else contentInput.focus()
+      clearTimeout(_autoPreviewTimer)
+      scheduleAutoPreview()
     })
   })
 

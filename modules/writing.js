@@ -1,7 +1,7 @@
 // Writing module — publications, reading list, excerpts, chapbooks
 // For poets, essayists, novelists, journalists, translators
 // data: { publications: [{ title, publication, year, url, type, excerpt, coverImage, src, mediaId, mediaPrice, genre, isbn, translator, publisher, pageCount, language, awards }], reading: [...] }
-const esc = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+import { esc } from './shared.js'
 const safeUrl = u => {
   if (typeof u !== 'string' || !u) return ''
   const trimmed = u.trim()
@@ -102,6 +102,8 @@ export default {
     html += `<script>
     import('/js/media.js').then(m => m.wireMediaBuyButtons?.())
     import('/js/utils.js').then(({ renderMedia }) => {
+      if (window._writingDelegated) return
+      window._writingDelegated = true
       document.querySelectorAll('.writing-card-clickable').forEach(card => {
         card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--accent)' })
         card.addEventListener('mouseleave', () => { card.style.borderColor = 'var(--border)' })

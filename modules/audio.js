@@ -1,14 +1,13 @@
 // Audio module — podcasts, sound design, voiceover, audio essays
 // For podcasters, sound designers, voice actors, audio engineers
-function esc(s) {
-  if (typeof s !== 'string') return s == null ? '' : String(s)
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
+import { esc, batchBuyScript } from './shared.js'
 function safeUrl(u) {
-  if (typeof u !== 'string' || !u) return ''
-  const trimmed = u.trim()
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) return ''
-  return esc(trimmed)
+  if (!u || typeof u !== 'string') return '#'
+  try {
+    const parsed = new URL(u, 'https://placeholder.invalid')
+    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
+    return esc(u)
+  } catch { return '#' }
 }
 export default {
   type: 'audio',
@@ -87,64 +86,7 @@ export default {
       for (const item of items) html += renderAudioItem(item)
     }
 
-    html += `<script>
-    import('/js/media.js').then(m => m.wireMediaBuyButtons?.())
-    // Wire batch buy buttons
-    if (!window._batchBuyDelegated) {
-      window._batchBuyDelegated = true
-      document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.batch-buy-btn[data-media-ids]')
-        if (!btn || btn.disabled) return
-        e.stopPropagation()
-        try {
-          const ids = JSON.parse(btn.dataset.mediaIds)
-          const totalPrice = btn.dataset.totalPrice || '0'
-          const addr = window.getWalletAddress?.()
-          if (addr) {
-            const owned = await window._getOwnedMediaIds?.(addr)
-            if (owned) {
-              const unownedIds = ids.filter(id => !owned.has(String(id)))
-              if (unownedIds.length === 0) { btn.textContent = 'owned'; btn.disabled = true; return }
-            }
-          }
-          btn.textContent = 'confirming...'
-          btn.disabled = true
-          const { purchaseBatchMedia } = await import('/js/media.js')
-          await purchaseBatchMedia(ids, totalPrice)
-          btn.textContent = 'owned'
-          btn.style.borderColor = 'var(--accent)'
-          btn.style.color = 'var(--accent)'
-        } catch (err) {
-          btn.textContent = err.code === 4001 ? 'cancelled' : 'error'
-          btn.disabled = false
-          setTimeout(() => {
-            const totalEth = Number(btn.dataset.totalPrice || '0') / 1e18
-            btn.textContent = 'buy all (' + (totalEth > 0 ? totalEth + ' ETH' : 'free') + ')'
-          }, 2000)
-        }
-      })
-      async function checkBatchOwned() {
-        const addr = window.getWalletAddress?.()
-        if (!addr) return
-        const owned = await window._getOwnedMediaIds?.(addr)
-        if (!owned) return
-        document.querySelectorAll('.batch-buy-btn[data-media-ids]').forEach(btn => {
-          try {
-            const ids = JSON.parse(btn.dataset.mediaIds)
-            if (ids.every(id => owned.has(String(id)))) {
-              btn.textContent = 'owned'
-              btn.style.borderColor = 'var(--accent)'
-              btn.style.color = 'var(--accent)'
-              btn.disabled = true
-            }
-          } catch {}
-        })
-      }
-      checkBatchOwned()
-      window.addEventListener('wallet-connected', checkBatchOwned)
-      window.addEventListener('spa-navigate', () => setTimeout(checkBatchOwned, 100))
-    }
-    </script>`
+    html += `<script>${batchBuyScript('buy all ({price})')}</script>`
     return html
   },
 

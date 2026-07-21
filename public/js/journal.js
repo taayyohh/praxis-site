@@ -2,6 +2,7 @@
 // Includes script mode: Fountain-based screenplay editor
 import { escapeHtml, registerPage, getWalletProvider } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
+import { createMarkdownEditor } from './markdown-editor.js'
 import {
   FOUNTAIN_MARKER, ELEM_TYPES, STAGE_ELEM_TYPES, SCRIPT_FORMATS,
   detectLineType, parseFountain, stripForcedMarker,
@@ -10,6 +11,7 @@ import {
   wrapFountainForStorage, fountainToHtml,
   isStagePlayContent, extractStagePlayBody,
   detectScriptFormat, getFormatFunctions,
+  shouldAutoUppercase, extractCharacterNames, extractSceneLocations,
 } from './fountain.js'
 
 let journalToken = sessionStorage.getItem('praxis:journal-token') || ''
@@ -77,7 +79,7 @@ function scriptPrintHtml(title, body, format) {
 
   const css = format === 'stageplay' ? stageplayCSS : screenplayCSS
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${title}</title>
+<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
 @page { size: letter; margin: 1in 1in 1in 1.5in; }
 body { font-family: 'Courier New', Courier, monospace; font-size: 12pt; line-height: 1; color: #000; }
@@ -85,7 +87,7 @@ h1 { text-align: center; font-size: 14pt; margin-bottom: 2em; text-transform: up
 p { margin: 0; padding: 0; }
 ${css}
 </style></head>
-<body><h1>${title}</h1>${body}</body></html>`
+<body><h1>${escapeHtml(title)}</h1>${body}</body></html>`
 }
 
 registerPage('journal-page', initJournal)
@@ -375,15 +377,32 @@ async function initJournal() {
       <div style="max-width:680px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1em">
           <span style="color:var(--muted);font-size:0.85em;text-transform:uppercase;letter-spacing:0.1em">${existingFile ? t('journal.editEntry') : t('journal.newEntry')}</span>
-          <button class="buy-btn" id="journal-back" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.back')}</button>
+          <div style="display:flex;gap:0.5ch">
+            <button class="buy-btn" id="journal-publish" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.publishToBlog')}</button>
+            <button class="buy-btn" id="journal-back" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.back')}</button>
+          </div>
         </div>
-        <input type="text" id="journal-filename" placeholder="${today}-untitled" value="${currentFilename}" style="width:100%;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.5em 1ch;margin-bottom:1em">
-        <textarea id="journal-editor" style="width:100%;min-height:60vh;background:transparent;border:none;color:var(--fg);font-family:inherit;font-size:1em;line-height:1.8;padding:0;resize:none;outline:none" placeholder="${t('journal.writePlaceholder')}">${existingContent ? escapeHtml(existingContent) : ''}</textarea>
+        <input type="text" id="journal-title" placeholder="title" value="${existingFile ? existingFile.replace(/-/g, ' ') : ''}" style="width:100%;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.5em 1ch;margin-bottom:1em">
+        <input type="hidden" id="journal-filename" value="${currentFilename}">
+        <div id="journal-md-container"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding-top:1em;border-top:1px solid var(--border)">
           <span id="journal-save-status" style="color:var(--dim);font-size:0.85em"></span>
         </div>
       </div>
     `
+
+    const mdContainer = document.getElementById('journal-md-container')
+    let mdEditor = createMarkdownEditor(mdContainer, {
+      placeholder: t('journal.writePlaceholder'),
+      rows: 20,
+      value: existingContent || '',
+      onInput: () => {
+        if (_autosaveTimer) clearTimeout(_autosaveTimer)
+        const saveStatus = document.getElementById('journal-save-status')
+        if (saveStatus) saveStatus.textContent = ''
+        _autosaveTimer = setTimeout(() => { _saveInFlight = autoSave() }, 2000)
+      },
+    })
 
     document.getElementById('journal-back').addEventListener('click', async () => {
       if (_autosaveTimer) clearTimeout(_autosaveTimer)
@@ -394,71 +413,95 @@ async function initJournal() {
     })
 
     document.getElementById('journal-publish')?.addEventListener('click', async () => {
-      const content = document.getElementById('journal-editor')?.value?.trim()
+      const content = mdEditor.getValue()?.trim()
       if (!content) return
 
-      // custom confirmation modal
+      // preview + confirmation modal
+      const { renderMarkdown } = await import('./utils.js')
+      const previewTitle = document.getElementById('journal-title')?.value.trim() || ''
+      const previewHtml = renderMarkdown(content)
       const confirmed = await new Promise(resolve => {
         const overlay = document.createElement('div')
         overlay.className = 'praxis-modal-overlay'
         const dialog = document.createElement('div')
         dialog.className = 'praxis-modal-dialog'
-        dialog.style.maxWidth = '400px'
+        dialog.style.cssText = 'max-width:680px;max-height:85vh;display:flex;flex-direction:column'
         dialog.innerHTML = `
-          <h3 style="color:var(--accent);margin-bottom:0.75em">${t('journal.publishToBlog')}</h3>
-          <p style="color:var(--fg);font-size:0.9em;line-height:1.5;margin-bottom:1.5em">this will publish your journal entry as a public on-chain blog post. once published, it is permanent and visible to everyone.</p>
+          <p style="color:var(--dim);font-size:0.8em;margin-bottom:1em">preview — this is how your post will appear. once published, it is permanent.</p>
+          <div style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:1.5em;margin-bottom:1em">
+            ${previewTitle ? `<h1 style="font-size:1.6em;font-weight:700;margin:0 0 1em;color:var(--fg)">${escapeHtml(previewTitle)}</h1>` : ''}
+            <div class="post-page-body" style="font-family:Georgia,'Times New Roman',serif;font-size:1.1em;line-height:1.9;max-width:none">${previewHtml}</div>
+          </div>
           <div style="display:flex;gap:1ch;justify-content:flex-end">
-            <button id="pub-cancel" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">cancel</button>
-            <button id="pub-confirm" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">publish</button>
+            <button id="pub-cancel" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer;border-radius:6px">cancel</button>
+            <button id="pub-confirm" style="background:var(--fg);color:var(--bg);border:none;font-family:inherit;font-size:0.85em;padding:0.5em 2ch;cursor:pointer;border-radius:6px;font-weight:600">confirm &amp; publish</button>
           </div>
         `
         overlay.appendChild(dialog)
         document.body.appendChild(overlay)
         overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(false) } })
         dialog.querySelector('#pub-cancel').addEventListener('click', () => { overlay.remove(); resolve(false) })
-        dialog.querySelector('#pub-confirm').addEventListener('click', async () => {
+        const confirmBtn = dialog.querySelector('#pub-confirm')
+        const cancelBtn = dialog.querySelector('#pub-cancel')
+        confirmBtn.addEventListener('click', async () => {
           // biometric gate if enabled
           if (getWalletProvider()?.isPraxis && localStorage.getItem('praxis-webauthn-cred')) {
             const ok = await window.verifyBiometric?.()
             if (!ok) { overlay.remove(); resolve(false); return }
           }
-          overlay.remove()
-          resolve(true)
+          confirmBtn.textContent = 'publishing...'
+          confirmBtn.disabled = true
+          cancelBtn.disabled = true
+          try {
+            const { createWalletClient, custom, optimism } = await import('./vendor.js')
+            const { BLOG_ABI } = await import('./contracts.js')
+            const { getPublicClient } = await import('./utils.js')
+            const blogAddr = document.body.dataset.blog
+            if (!blogAddr) { confirmBtn.textContent = 'error: no blog contract'; return }
+            const pubTitle = document.getElementById('journal-title')?.value.trim() || ''
+            if (!await window.ensureOptimism?.()) return
+            const account = await window.ensureAuthorized?.() || window.getWalletAddress()
+            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const hash = await wc.writeContract({
+              address: blogAddr, abi: BLOG_ABI, functionName: 'post',
+              args: [pubTitle, content], account,
+            })
+            confirmBtn.textContent = `tx: ${hash.slice(0, 14)}...`
+            const pc = await getPublicClient()
+            await pc.waitForTransactionReceipt({ hash })
+            overlay.remove()
+            resolve(true)
+            // Navigate to the blog
+            window.location.href = '/blog'
+          } catch (e) {
+            confirmBtn.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.message || '').slice(0, 40)}`
+            confirmBtn.disabled = false
+            cancelBtn.disabled = false
+            setTimeout(() => { confirmBtn.textContent = 'confirm & publish' }, 3000)
+          }
         })
       })
-      if (!confirmed) return
-
-      const title = document.getElementById('journal-filename')?.value.trim().replace(/[^a-z0-9-]/g, '') || ''
-      const params = new URLSearchParams()
-      if (title) params.set('prefillTitle', title)
-      if (content) params.set('prefillContent', content)
-      window.location.href = '/write?' + params.toString()
     })
 
-    const textarea = document.getElementById('journal-editor')
+    const titleInput = document.getElementById('journal-title')
     const filenameInput = document.getElementById('journal-filename')
 
-    textarea.addEventListener('input', () => {
-      if (_autosaveTimer) clearTimeout(_autosaveTimer)
-      const saveStatus = document.getElementById('journal-save-status')
-      if (saveStatus) saveStatus.textContent = ''
-      _autosaveTimer = setTimeout(() => { _saveInFlight = autoSave() }, 2000)
-    })
-
-    filenameInput.addEventListener('input', () => {
+    // Sync title → filename (lowercase, spaces to hyphens, strip special chars)
+    titleInput.addEventListener('input', () => {
+      const slug = titleInput.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      filenameInput.value = slug || `${today}-untitled`
       if (_autosaveTimer) clearTimeout(_autosaveTimer)
       _autosaveTimer = setTimeout(() => { _saveInFlight = autoSave() }, 2000)
     })
 
     async function autoSave() {
       const saveStatus = document.getElementById('journal-save-status')
-      const content = document.getElementById('journal-editor')?.value
+      const content = mdEditor.getValue()
       if (!content?.trim()) return
 
-      const rawFilename = document.getElementById('journal-filename')?.value.trim()
-      const newFilename = rawFilename?.replace(/[^a-z0-9-]/g, '')
+      const newFilename = filenameInput.value.trim()
       if (!newFilename) {
-        if (saveStatus) saveStatus.textContent = 'enter a filename to save'
+        if (saveStatus) saveStatus.textContent = 'enter a title to save'
         return
       }
 
@@ -535,6 +578,9 @@ async function initJournal() {
     let _lastSavedContent = existingContent || ''
     let _savedFile = existingFile
     let _currentLineType = 'scene'
+    let _autocompleteDropdown = null
+    let _autocompleteIndex = -1
+    let _outlineVisible = false
 
     contentEl.innerHTML = `
       <div style="max-width:680px">
@@ -546,7 +592,9 @@ async function initJournal() {
         <div class="script-toolbar">
           <span class="script-type-indicator" id="script-type-label">${t('journal.script' + fmt.types[0].charAt(0).toUpperCase() + fmt.types[0].slice(1))}</span>
           ${fmt.types.map(type => `<button data-type="${type}" ${type === fmt.types[0] ? 'class="active"' : ''}>${t('journal.script' + type.charAt(0).toUpperCase() + type.slice(1))}</button>`).join('\n          ')}
+          <button id="script-outline-toggle" title="scene outline" style="margin-left:auto"><i class="ph ph-list-bullets"></i></button>
         </div>
+        <div id="script-outline-panel" class="script-outline-panel" style="display:none"></div>
         <div class="script-editor" id="script-editor" contenteditable="true" data-placeholder="${format === 'stageplay' ? t('journal.stageplayPlaceholder') : t('journal.scriptPlaceholder')}"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding-top:1em;border-top:1px solid var(--border)">
           <span id="journal-save-status" style="color:var(--dim);font-size:0.85em"></span>
@@ -589,7 +637,7 @@ async function initJournal() {
       const plainText = fountainToPlain(editor)
       if (!plainText?.trim()) return
       if (!confirm(t('journal.publishConfirm'))) return
-      const title = document.getElementById('journal-filename')?.value.trim().replace(/[^a-z0-9-]/g, '') || ''
+      const title = document.getElementById('journal-filename')?.value.trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || ''
       const htmlBody = fmt.toHtml(plainText)
       const marker = format === 'stageplay' ? '<!-- stageplay -->' : '<!-- screenplay -->'
       const content = `${marker}\n${htmlBody}`
@@ -623,6 +671,15 @@ async function initJournal() {
 
     // key handling
     editor.addEventListener('keydown', (e) => {
+      // Auto-complete keyboard navigation
+      if (_autocompleteDropdown) {
+        const items = _autocompleteDropdown.querySelectorAll('.script-autocomplete-item')
+        if (e.key === 'ArrowDown') { e.preventDefault(); _autocompleteIndex = Math.min(_autocompleteIndex + 1, items.length - 1); items.forEach((el, i) => el.classList.toggle('active', i === _autocompleteIndex)); return }
+        if (e.key === 'ArrowUp') { e.preventDefault(); _autocompleteIndex = Math.max(_autocompleteIndex - 1, 0); items.forEach((el, i) => el.classList.toggle('active', i === _autocompleteIndex)); return }
+        if ((e.key === 'Enter' || e.key === 'Tab') && _autocompleteIndex >= 0) { e.preventDefault(); const sel = items[_autocompleteIndex]?.textContent; if (sel) selectAutocomplete(getCurrentLine(), sel); return }
+        if (e.key === 'Escape') { e.preventDefault(); dismissAutocomplete(); return }
+      }
+
       if (e.key === 'Tab') {
         e.preventDefault()
         const line = getCurrentLine()
@@ -688,25 +745,66 @@ async function initJournal() {
       if (!line) return
 
       // skip auto-detection on manually-typed lines (Tab or toolbar set the type)
-      if (line.dataset.manual) {
-        updateTypeIndicator(line.dataset.type)
-        updateToolbarActive(line.dataset.type)
-        scheduleAutosave()
-        updatePageCount()
-        return
+      if (!line.dataset.manual) {
+        const text = line.textContent || ''
+        const prevLine = line.previousElementSibling
+        const prevType = prevLine?.dataset.type || 'action'
+        const detected = fmt.detect(text, prevType)
+
+        if (detected !== (line.dataset.type || 'action')) {
+          applyTypeToLine(line, detected)
+        }
       }
 
-      const text = line.textContent || ''
-      const prevLine = line.previousElementSibling
-      const prevType = prevLine?.dataset.type || 'action'
-      const detected = fmt.detect(text, prevType)
+      const lineType = line.dataset.type || 'action'
+      updateTypeIndicator(lineType)
+      updateToolbarActive(lineType)
 
-      if (detected !== (line.dataset.type || 'action')) {
-        applyTypeToLine(line, detected)
+      // Auto-capitalize scene headings, character names, transitions
+      if (shouldAutoUppercase(lineType)) {
+        const text = line.textContent
+        const upper = text.toUpperCase()
+        if (text !== upper) {
+          const sel = window.getSelection()
+          if (sel.rangeCount) {
+            const range = sel.getRangeAt(0)
+            let absoluteOffset = 0
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
+            let node
+            while ((node = walker.nextNode())) {
+              if (node === range.startContainer) { absoluteOffset += range.startOffset; break }
+              absoluteOffset += node.length
+            }
+            line.textContent = upper
+            const newNode = line.firstChild
+            if (newNode) {
+              const newRange = document.createRange()
+              newRange.setStart(newNode, Math.min(absoluteOffset, newNode.length))
+              newRange.collapse(true)
+              sel.removeAllRanges()
+              sel.addRange(newRange)
+            }
+          }
+        }
       }
 
-      updateTypeIndicator(line.dataset.type)
-      updateToolbarActive(line.dataset.type)
+      // Auto-complete for character names and scene locations
+      if (lineType === 'character') {
+        const typed = line.textContent.trim().toUpperCase()
+        if (typed.length >= 1) {
+          const allNames = extractCharacterNames(editor)
+          const matches = [...allNames].filter(n => n.startsWith(typed) && n !== typed).slice(0, 5)
+          showAutocomplete(line, matches)
+        } else { dismissAutocomplete() }
+      } else if (lineType === 'scene') {
+        const typed = line.textContent.trim().toUpperCase()
+        if (typed.length >= 2) {
+          const allLocations = extractSceneLocations(editor)
+          const matches = [...allLocations].filter(l => l.startsWith(typed) && l !== typed).slice(0, 5)
+          showAutocomplete(line, matches)
+        } else { dismissAutocomplete() }
+      } else { dismissAutocomplete() }
+
       scheduleAutosave()
       updatePageCount()
     })
@@ -731,6 +829,21 @@ async function initJournal() {
     })
 
     filenameInput.addEventListener('input', () => scheduleAutosave())
+
+    document.getElementById('script-outline-toggle').addEventListener('click', () => {
+      _outlineVisible = !_outlineVisible
+      const panel = document.getElementById('script-outline-panel')
+      if (panel) panel.style.display = _outlineVisible ? '' : 'none'
+      document.getElementById('script-outline-toggle').classList.toggle('active', _outlineVisible)
+      if (_outlineVisible) updateOutline()
+    })
+
+    let _outlineScrollTimer = null
+    editor.addEventListener('scroll', () => {
+      if (!_outlineVisible) return
+      if (_outlineScrollTimer) clearTimeout(_outlineScrollTimer)
+      _outlineScrollTimer = setTimeout(updateOutline, 200)
+    })
 
     function getCurrentLine() {
       const sel = window.getSelection()
@@ -781,6 +894,67 @@ async function initJournal() {
       if (pageCount) pageCount.textContent = `~${pages} ${pages === 1 ? t('journal.scriptPage') : t('journal.scriptPages')}`
     }
 
+    function showAutocomplete(line, matches) {
+      dismissAutocomplete()
+      if (!matches.length) return
+      const dropdown = document.createElement('div')
+      dropdown.className = 'script-autocomplete'
+      const rect = line.getBoundingClientRect()
+      const editorRect = editor.getBoundingClientRect()
+      dropdown.style.top = (rect.bottom - editorRect.top + editor.scrollTop) + 'px'
+      dropdown.style.left = (rect.left - editorRect.left) + 'px'
+      matches.forEach((name) => {
+        const item = document.createElement('div')
+        item.className = 'script-autocomplete-item'
+        item.textContent = name
+        item.addEventListener('mousedown', (e) => { e.preventDefault(); selectAutocomplete(line, name) })
+        dropdown.appendChild(item)
+      })
+      editor.style.position = 'relative'
+      editor.appendChild(dropdown)
+      _autocompleteDropdown = dropdown
+      _autocompleteIndex = -1
+    }
+
+    function dismissAutocomplete() {
+      if (_autocompleteDropdown) { _autocompleteDropdown.remove(); _autocompleteDropdown = null; _autocompleteIndex = -1 }
+    }
+
+    function selectAutocomplete(line, name) {
+      line.textContent = name
+      dismissAutocomplete()
+      const sel = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(line)
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+      scheduleAutosave()
+    }
+
+    function updateOutline() {
+      const panel = document.getElementById('script-outline-panel')
+      if (!panel || !_outlineVisible) return
+      const scenes = editor.querySelectorAll('.script-line[data-type="scene"]')
+      if (!scenes.length) { panel.innerHTML = '<span style="color:var(--dim);font-size:0.85em;padding:0.5em 1ch">no scenes yet</span>'; return }
+      panel.innerHTML = ''
+      const editorRect = editor.getBoundingClientRect()
+      const midY = editorRect.top + editorRect.height / 2
+      let currentIdx = 0
+      scenes.forEach((scene, i) => { if (scene.getBoundingClientRect().top <= midY) currentIdx = i })
+      scenes.forEach((scene, i) => {
+        const item = document.createElement('div')
+        item.className = 'script-outline-item' + (i === currentIdx ? ' active' : '')
+        item.textContent = scene.textContent.trim() || `scene ${i + 1}`
+        item.addEventListener('click', () => {
+          scene.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          scene.style.background = 'rgba(255,255,255,0.05)'
+          setTimeout(() => { scene.style.background = '' }, 1500)
+        })
+        panel.appendChild(item)
+      })
+    }
+
     function renderContentInEditor(el, text, fmtFns) {
       el.innerHTML = ''
       const parsed = fmtFns.parse(text)
@@ -803,6 +977,7 @@ async function initJournal() {
       const saveStatus = document.getElementById('journal-save-status')
       if (saveStatus) saveStatus.textContent = ''
       _autosaveTimer = setTimeout(() => autoSave(), 2000)
+      if (_outlineVisible) updateOutline()
     }
 
     async function autoSave() {
@@ -813,7 +988,7 @@ async function initJournal() {
       // prefix with format marker for mode detection on reload
       const content = fmt.wrap(plainText)
 
-      const newFilename = document.getElementById('journal-filename')?.value.trim().replace(/[^a-z0-9-]/g, '')
+      const newFilename = document.getElementById('journal-filename')?.value.trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
       if (!newFilename) return
 
       if (plainText === _lastSavedContent && newFilename === (_savedFile || currentFilename)) return

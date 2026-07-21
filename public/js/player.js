@@ -3,7 +3,7 @@
 
 const STORAGE_KEY = 'praxis-player'
 const SAVE_INTERVAL = 2000
-function _esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function _esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') }
 
 // --- Build DOM ---
 const bar = document.createElement('div')
@@ -674,19 +674,22 @@ document.addEventListener('click', (e) => {
     const src = btn.dataset.trackSrc
     const title = btn.dataset.trackTitle || ''
     const artist = btn.dataset.trackArtist || ''
-    // Find album art from the nearest album container's img
-    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item') || btn.closest('.art-cover')
+    // Find album art: explicit data attribute first, then nearest container's img
+    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item') || btn.closest('.art-cover') || btn.closest('.feed-collected-art-wrap') || btn.closest('.feed-collected-card') || btn.closest('.works-card-art') || btn.closest('.feed-card')
     const artImg = albumEl?.querySelector('img') || document.querySelector('.art-cover img, .album-art img')
-    let art = artImg?.src || ''
+    let art = btn.dataset.trackArt || artImg?.src || ''
     if (currentSrc === src && !audio.paused) {
       pauseTrack()
     } else {
       // Add to queue if not already there, then play
-      const inQueue = _queue.some(q => q.src === src)
-      if (!inQueue) {
+      let idx = _queue.findIndex(q => q.src === src)
+      if (idx < 0) {
         addToQueue({ src, title, artist, art, type: 'audio' }, btn)
+        idx = _queue.length - 1
       }
+      _queueIdx = idx
       playTrack(src, title, artist, art)
+      if (_queueOpen) renderQueueList()
     }
     return
   }
@@ -707,6 +710,7 @@ document.addEventListener('click', (e) => {
         playQueue(tracks, 0)
         const icon = albumBtn.querySelector('i')
         if (icon) { icon.className = 'ph ph-pause' }
+        _animateQueueDrop(albumBtn, tracks[0]?.art || '')
       }
     } catch (err) { console.error('album-play-btn error:', err) }
   }
@@ -775,10 +779,10 @@ video.addEventListener('ended', () => {
 })
 
 video.addEventListener('pause', () => {
-  if (activeMediaType === 'video') playBtn.textContent = 'play'
+  if (activeMediaType === 'video') playBtn.innerHTML = '<i class="ph ph-play"></i>'
 })
 video.addEventListener('play', () => {
-  if (activeMediaType === 'video') playBtn.textContent = 'pause'
+  if (activeMediaType === 'video') playBtn.innerHTML = '<i class="ph ph-pause"></i>'
 })
 
 // Find the current inline video element (for mini-player + bar controls)
@@ -907,3 +911,37 @@ document.addEventListener('click', (e) => {
     if (icon) { icon.className = 'ph ph-check'; setTimeout(() => { icon.className = 'ph ph-plus' }, 800) }
   } catch {}
 })
+
+// --- Cross-domain player sync ---
+// Pauses local playback when another Praxis site tab starts playing.
+// Uses a hidden iframe on ourpraxis.network as a BroadcastChannel relay.
+;(() => {
+  const syncId = Math.random().toString(36).slice(2)
+  let syncFrame = null
+
+  try {
+    const iframe = document.createElement('iframe')
+    iframe.src = 'https://ourpraxis.network/player-sync.html'
+    iframe.style.cssText = 'display:none;width:0;height:0;border:0'
+    iframe.setAttribute('aria-hidden', 'true')
+    document.body.appendChild(iframe)
+    syncFrame = iframe
+  } catch {}
+
+  function notifyPlaying() {
+    if (!syncFrame?.contentWindow) return
+    syncFrame.contentWindow.postMessage({ type: 'praxis-player-sync', action: 'playing', id: syncId }, '*')
+  }
+
+  audio.addEventListener('play', () => notifyPlaying())
+  video.addEventListener('play', () => notifyPlaying())
+
+  window.addEventListener('message', e => {
+    if (e.origin !== 'https://ourpraxis.network' && !e.origin.endsWith('.ourpraxis.network')) return
+    if (e.data?.type !== 'praxis-player-sync') return
+    if (e.data.action === 'playing' && e.data.id !== syncId) {
+      if (!audio.paused) { audio.pause(); playBtn.innerHTML = '<i class="ph ph-play"></i>'; saveState() }
+      if (!video.paused) video.pause()
+    }
+  })
+})()

@@ -370,72 +370,85 @@ async function signAndSendTransaction(tx) {
 // --- Transaction confirmation dialog ---
 
 function confirmTransaction(to, value) {
-  return new Promise(resolve => {
-    const ethAmount = (Number(value) / 1e18).toFixed(6)
+  return new Promise(async (resolve) => { try {
+    const ethNum = Number(value) / 1e18
+    const ethDisplay = ethNum < 0.001 ? ethNum.toExponential(2) : ethNum.toFixed(ethNum < 0.01 ? 4 : ethNum < 1 ? 3 : 2)
     const shortTo = to ? `${to.slice(0, 8)}...${to.slice(-6)}` : 'contract'
     const purchase = window._pendingPurchase
     const overlay = document.createElement('div')
     overlay.className = 'praxis-modal-overlay z-10001'
 
-    // Human-readable context based on the destination contract
+    // Resolve fiat price
+    let fiatHtml = ''
+    try {
+      const { getEthPrices, getUserCurrency, formatFiat } = await import('./fiat.js')
+      const prices = await getEthPrices()
+      if (prices) {
+        const currency = getUserCurrency()
+        const rate = prices[currency]
+        if (rate) {
+          const fiat = ethNum * rate
+          fiatHtml = `<div style="color:var(--fg,#c0c0c0);font-size:1.8em;font-weight:600;letter-spacing:-0.02em">${formatFiat(fiat, currency)}</div>`
+        }
+      }
+    } catch {}
+    if (!fiatHtml) fiatHtml = `<div style="color:var(--fg,#c0c0c0);font-size:1.8em;font-weight:600">${ethDisplay} ETH</div>`
+
+    // Resolve recipient name
+    let recipientName = shortTo
+    try {
+      const { resolveAddresses } = await import('./utils.js')
+      const { query } = await import('./ponder.js')
+      const resolved = await resolveAddresses(query, [to])
+      const domain = resolved[to?.toLowerCase()]
+      if (domain) recipientName = domain
+    } catch {}
+
+    // Human-readable context
     const KNOWN_CONTRACTS = {
-      '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'this registers your domain on the praxis network. one-time deploy fee.' },
-      '0xab7c23ac815f03059026fec32c60a06e5e4d4e33': { name: 'project action', desc: 'this interacts with the praxis project system (funding, credentials, revenue).' },
-      '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'media listing', desc: 'this lists or purchases media on the praxis marketplace.' },
-      '0xbc74c3d815bec49507826a6b9e07e7f086fb744d': { name: 'use invite code', desc: 'this activates your invite code on the network.' },
-      '0x15f5f22f130ecef5eee15d9ba90bb73b287a4f6a': { name: 'sponsor an invite', desc: 'this deposits funds to cover the registration fee for someone you invite. the funds go to a smart contract — not to another person — and are only released when someone uses your invite link to register. you can refund unused slots anytime.' },
-      '0x0ea62a91ace3d77bc96d77f1b05ff3c1c60af74c': { name: 'ticket marketplace', desc: 'this lists or purchases a ticket on the marketplace.' },
-      '0x59a4f01be3ad2b83d9a6a9ae481c08b9f3fe9aa2': { name: 'add to library', desc: 'this adds an item to the shared knowledge base.' },
-      '0xe37c4f2278838016f81f68342f14b82cb36d88ef': { name: 'treasury', desc: 'this interacts with the praxis treasury.' },
+      '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'one-time network registration fee' },
+      '0xf6bffdfb24101577b6697fc73811086135a52133': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
+      '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
+      '0xbc74c3d815bec49507826a6b9e07e7f086fb744d': { name: 'use invite', desc: 'activating your invite code' },
+      '0x15f5f22f130ecef5eee15d9ba90bb73b287a4f6a': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
+      '0x0ea62a91ace3d77bc96d77f1b05ff3c1c60af74c': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
+      '0x5cddd64f20c69fc2007868476788bc3766c28a0a': { name: 'add to library', desc: 'adding to the shared knowledge base' },
+      '0x5cf9e88417a7ce08028d32c44f9b63bc3d960b21': { name: 'treasury', desc: 'interacting with the network treasury' },
     }
     const contract = KNOWN_CONTRACTS[to?.toLowerCase()]
+    const isDirectSend = !contract && !purchase
+    const isPurchase = !!(purchase && purchase.title)
 
-    let bodyHtml
-    if (purchase && purchase.title) {
-      bodyHtml = `
-        <div style="margin-bottom:0.75em">
-          <div style="color:var(--muted,#666);font-size:0.85em;margin-bottom:0.25em">purchasing</div>
-          <div style="color:var(--fg,#c0c0c0);font-size:1.1em">${purchase.title}</div>
-        </div>
-        <div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-bottom:1em;border-left:2px solid var(--dim,#333);padding-left:1ch">you will receive a permanent, non-transferable proof of purchase (soulbound token)</div>
-        <div style="margin-bottom:1.5em;padding:1em;border:1px solid var(--border,#333);background:rgba(255,255,255,0.02)">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
-            <span style="color:var(--muted,#666);font-size:0.85em">amount</span>
-            <span style="color:var(--fg,#c0c0c0);font-size:1.1em">${ethAmount} ETH</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline">
-            <span style="color:var(--muted,#666);font-size:0.85em">to</span>
-            <span style="color:var(--dim,#555);font-size:0.75em;font-family:monospace">${shortTo}</span>
-          </div>
-        </div>
-      `
+    let title, subtitle, contextHtml
+    if (isPurchase) {
+      title = 'confirm purchase'
+      subtitle = purchase.title
+      contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">you'll receive a permanent, non-transferable proof of purchase</div>`
+    } else if (isDirectSend) {
+      title = 'send payment'
+      subtitle = `to ${recipientName}`
+      contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">sending ETH directly to this person on Optimism</div>`
     } else {
-      const title = contract ? contract.name : 'confirm transaction'
-      const desc = contract ? contract.desc : ''
-      bodyHtml = `
-        ${desc ? `<p style="color:var(--muted,#999);font-size:0.85em;line-height:1.5;margin-bottom:1.25em">${desc}</p>` : ''}
-        <div style="margin-bottom:1.5em;padding:1em;border:1px solid var(--border,#333);background:rgba(255,255,255,0.02)">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
-            <span style="color:var(--muted,#666);font-size:0.85em">amount</span>
-            <span style="color:var(--fg,#c0c0c0);font-size:1.1em">${ethAmount} ETH</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline">
-            <span style="color:var(--muted,#666);font-size:0.85em">to</span>
-            <span style="color:var(--dim,#555);font-size:0.75em;font-family:monospace">${shortTo}</span>
-          </div>
-        </div>
-      `
+      title = contract.name
+      subtitle = contract.desc
+      contextHtml = ''
     }
 
-    const title = (purchase && purchase.title) ? 'confirm purchase' : (contract ? contract.name : 'confirm transaction')
-
     overlay.innerHTML = `
-      <div class="praxis-modal-dialog" style="max-width:400px;font-family:inherit">
-        <h3 style="color:var(--accent,#fff);margin-bottom:0.75em">${title}</h3>
-        ${bodyHtml}
-        <div style="display:flex;gap:1ch">
-          <button id="tx-confirm" style="flex:1;background:none;border:1px solid var(--green, #4ade80);color:var(--green, #4ade80);font-family:inherit;padding:0.6em;cursor:pointer">confirm</button>
-          <button id="tx-cancel" style="flex:1;background:none;border:1px solid #333;color:#666;font-family:inherit;padding:0.6em;cursor:pointer">cancel</button>
+      <div class="praxis-modal-dialog" style="max-width:380px;font-family:inherit;text-align:center">
+        <div style="margin-bottom:1.5em">
+          <div style="color:var(--muted,#999);font-size:0.8em;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5em">${title}</div>
+          ${fiatHtml}
+          <div style="color:var(--dim,#555);font-size:0.8em;margin-top:0.25em">${ethDisplay} ETH on Optimism</div>
+        </div>
+        <div style="margin-bottom:1.5em;padding:0.75em 1em;border:1px solid var(--border,#333);border-radius:8px;background:rgba(255,255,255,0.02);text-align:left">
+          <div style="color:var(--fg,#c0c0c0);font-size:0.95em">${subtitle}</div>
+          ${isDirectSend ? `<div style="color:var(--dim,#555);font-size:0.7em;font-family:monospace;margin-top:0.25em">${shortTo}</div>` : ''}
+          ${contextHtml}
+        </div>
+        <div style="display:flex;gap:0.75em">
+          <button id="tx-confirm" style="flex:1;background:var(--green,#4ade80);border:none;color:#000;font-family:inherit;font-weight:600;padding:0.7em;cursor:pointer;border-radius:6px;font-size:0.95em">confirm</button>
+          <button id="tx-cancel" style="flex:1;background:none;border:1px solid var(--border,#333);color:var(--muted,#666);font-family:inherit;padding:0.7em;cursor:pointer;border-radius:6px;font-size:0.95em">cancel</button>
         </div>
       </div>
     `
@@ -454,7 +467,7 @@ function confirmTransaction(to, value) {
     overlay.querySelector('#tx-confirm').addEventListener('click', confirm)
     overlay.querySelector('#tx-cancel').addEventListener('click', () => { resolve(false); overlay.remove() })
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { resolve(false); overlay.remove() } })
-  })
+  } catch { resolve(false) } })
 }
 
 // H7: confirmation modal for personal_sign / typed-data signatures. Shows
@@ -635,19 +648,19 @@ function createEmbeddedProvider(account) {
             const ok = await confirmSignature('personal', decoded)
             if (!ok) throw { code: 4001, message: 'user rejected signature' }
           }
-          return await account.signMessage({ message: msg })
+          return await account.signMessage({ message: decoded })
         }
 
         case 'eth_sign': {
           const msg = params[1]
+          const decoded = typeof msg === 'string' && msg.startsWith('0x') ? _hexToUtf8(msg) : String(msg ?? '')
           // H7: eth_sign is always dangerous — require confirmation
           const bypass = _consumeSuppressFlag()
           if (!bypass) {
-            const decoded = typeof msg === 'string' && msg.startsWith('0x') ? _hexToUtf8(msg) : String(msg ?? '')
             const ok = await confirmSignature('personal', decoded)
             if (!ok) throw { code: 4001, message: 'user rejected signature' }
           }
-          return await account.signMessage({ message: msg })
+          return await account.signMessage({ message: decoded })
         }
 
         case 'eth_signTypedData_v4': {
@@ -1080,9 +1093,8 @@ async function showUnlockPrompt() {
         <button id="unlock-cancel-btn" style="background:none;border:1px solid var(--border, #333);color:var(--dim, #666);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">cancel</button>
         <button id="unlock-submit-btn" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">unlock</button>
       </div>
-      <div style="margin-top:1em;border-top:1px solid var(--border, #222);padding-top:0.75em;display:flex;flex-direction:column;gap:0.5em">
-        <button id="unlock-recover-btn" style="background:none;border:none;color:var(--dim, #555);font-family:inherit;font-size:0.8em;padding:0;cursor:pointer;text-decoration:underline;text-align:left">recover with phrase</button>
-        <button id="unlock-switch-btn" style="background:none;border:none;color:var(--dim, #555);font-family:inherit;font-size:0.8em;padding:0;cursor:pointer;text-decoration:underline;text-align:left">use different account</button>
+      <div style="margin-top:1em;border-top:1px solid var(--border, #222);padding-top:0.75em">
+        <button id="unlock-switch-btn" style="background:none;border:none;color:var(--muted, #999);font-family:inherit;font-size:0.85em;padding:0;cursor:pointer;text-decoration:underline">use a different account</button>
       </div>
     `
     overlay.appendChild(dialog)
@@ -1127,10 +1139,6 @@ async function showUnlockPrompt() {
     document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
       overlay.remove()
       resolve(null)
-    })
-    document.getElementById('unlock-recover-btn').addEventListener('click', () => {
-      overlay.remove()
-      showRecoveryPrompt().then(resolve)
     })
     document.getElementById('unlock-switch-btn').addEventListener('click', async () => {
       // Clear current wallet from local storage so user can sign in with a different account
@@ -1416,12 +1424,11 @@ function showSignInPrompt() {
             { domain: lookupDomain }
           )
           found = data?.data?.artists?.items?.[0]?.id
-          // If not found as subdomain and handle doesn't contain a dot, also try as-is
-          // (e.g. user typed "fiction" but their domain is "fiction.bio")
-          if (!found && !handle.includes('.')) {
-            // Search by handle in the domain index — try common TLDs
-            for (const tld of ['bio', 'xyz', 'com', 'space', 'world', 'art', 'me', 'io', 'net', 'org']) {
-              const tryDomain = `${handle.toLowerCase()}.${tld}`
+          if (!found) {
+            const baseHandle = handle.includes('.') ? handle.split('.')[0].toLowerCase() : handle.toLowerCase()
+            for (const tld of ['bio', 'xyz', 'com', 'space', 'world', 'art', 'me', 'io', 'net', 'org', 'haus', 'club', 'live', 'studio', 'music', 'film', 'gallery', 'pub']) {
+              const tryDomain = `${baseHandle}.${tld}`
+              if (tryDomain === lookupDomain) continue
               const d2 = await ponderQuery(
                 `query LookupArtist($domain: String!) { artists(where: { domain: $domain }, limit: 1) { items { id } } }`,
                 { domain: tryDomain }

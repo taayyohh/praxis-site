@@ -103,6 +103,19 @@ export function formatPriceFiatPrimary(wei, prices) {
   return `~${formatFiat(fiatAmount, currency)} <span style="color:var(--dim)">(${ethStr} ETH)</span>`
 }
 
+// Fiat-only price display (no ETH shown)
+export function formatPriceFiatOnly(wei, prices) {
+  const ethNum = Number(wei) / 1e18
+  if (ethNum === 0) return 'free'
+  if (!prices) return formatEthAmount(wei) + ' ETH'
+  const currency = getUserCurrency()
+  const rate = prices[currency]
+  if (!rate) return formatEthAmount(wei) + ' ETH'
+  const fiatAmount = ethNum * rate
+  if (fiatAmount < 0.01) return `<${formatFiat(0.01, currency)}`
+  return `~${formatFiat(fiatAmount, currency)}`
+}
+
 // Post-render enhancement: finds all elements with data-eth-wei="<bigint string>"
 // and appends the fiat approximation to their text. Idempotent — re-applies on
 // currency-changed event so toggling the switcher re-renders live.

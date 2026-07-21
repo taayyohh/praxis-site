@@ -15,21 +15,14 @@ let inboxToAddr = {}
 let addrToDomain = {}
 let panelOpen = false
 
-// --- Worker patching ---
-
-function patchWorker() {
-  if (window._workerPatched) return
-  window._workerPatched = true
-  const Orig = window.Worker
-  window.Worker = function(url, opts) {
-    const s = url instanceof URL ? url.href : url
-    if (typeof s === 'string' && (s.includes('esm.sh') || s.includes('xmtp') || s.includes('workers/client') || s.includes('workers/opfs'))) {
-      if (s.includes('client')) return new Orig('/js/xmtp-workers/client.js', { ...opts, type: 'module' })
-      if (s.includes('opfs')) return new Orig('/js/xmtp-workers/opfs.js', { ...opts, type: 'module' })
-    }
-    return new Orig(url, opts)
-  }
+const ADDR_MAP_MAX = 500
+function boundedAssign(obj, key, value) {
+  const keys = Object.keys(obj)
+  if (keys.length >= ADDR_MAP_MAX) delete obj[keys[0]]
+  obj[key] = value
 }
+
+// patchWorker() imported from xmtp-proxy.js (shared with messages.js + wallet.js)
 
 // --- Panel HTML injection ---
 
@@ -135,9 +128,30 @@ async function initClient() {
   if (window._xmtpClient?.inboxId) {
     client = window._xmtpClient
     sdk = window._xmtpSdk || await import('./vendor-xmtp.js')
-    // start global message stream for unread dot on dock
     startGlobalMessageStream()
-    // show the UI
+    await _initDmUI()
+    return
+  }
+
+  // Only use Client.build (FREE — no identity operation cost).
+  // dm.js loads on every page and must NEVER create new installations.
+  // If no OPFS database exists (user never visited /messages), skip XMTP entirely.
+  const hasRegistered = localStorage.getItem(`xmtp-registered-${address.toLowerCase()}`)
+  if (!hasRegistered) {
+    console.log('praxis: dm.js skipping XMTP — no prior registration (visit /messages first)')
+    return
+  }
+
+  // Cross-tab coordination via xmtp-proxy module
+  const _xmtpLockName = `xmtp-${location.hostname}`
+  const { acquireLeadership, createProxyClient, startLeaderResponder, patchWorker } = await import('./xmtp-proxy.js')
+  const { isLeader, channel, onPromoted, release } = await acquireLeadership(_xmtpLockName)
+
+  if (isLeader) {
+    window._xmtpLockHolder = true
+  }
+
+  async function _initDmUI() {
     document.getElementById('dm-connect-prompt').style.display = 'none'
     document.getElementById('dm-new-section').style.display = 'block'
     document.getElementById('dm-tabs').style.display = 'flex'
@@ -155,48 +169,40 @@ async function initClient() {
     })
     await loadConversations()
     await resolveArtistDomains()
-    await loadConversations() // re-render with resolved names
+    renderConversationList()
     await updateUnreadBadge()
-    return
   }
 
-  // Only use Client.build (FREE — no identity operation cost).
-  // dm.js loads on every page and must NEVER create new installations.
-  // If no OPFS database exists (user never visited /messages), skip XMTP entirely.
-  const hasRegistered = localStorage.getItem(`xmtp-registered-${address.toLowerCase()}`)
-  if (!hasRegistered) {
-    console.log('praxis: dm.js skipping XMTP — no prior registration (visit /messages first)')
-    return
-  }
-
-  // Cross-tab coordination: acquire XMTP lock atomically (no pre-check — avoids stale lock race on refresh)
-  const _xmtpLockName = `xmtp-${location.hostname}`
-  if (navigator.locks) {
-    const lockAcquired = await new Promise(resolve => {
-      navigator.locks.request(_xmtpLockName, { ifAvailable: true }, async (lock) => {
-        if (!lock) { resolve(false); return }
-        resolve(true)
-        await new Promise(() => {}) // hold until tab closes
-      }).catch(() => resolve(false))
-    })
-
-    if (lockAcquired) {
-      window._xmtpLockHolder = true // flag so messages.js knows this tab holds the lock
-    }
-    if (!lockAcquired) {
-      console.log('praxis: dm.js — XMTP lock held by another tab, listening for broadcasts')
+  if (!isLeader) {
+    // Follower: use proxy client for full DM functionality
+    console.log('praxis: dm.js follower — using proxy client')
+    client = createProxyClient(channel)
+    sdk = await import('./vendor-xmtp.js')
+    window._xmtpClient = client
+    window._xmtpSdk = sdk
+    // start global message stream for unread dot (via proxy broadcasts)
+    startGlobalMessageStream()
+    await _initDmUI()
+    // Auto-promote when leader closes
+    onPromoted.then(async () => {
+      console.log('praxis: dm.js promoted to leader')
+      window._xmtpLockHolder = true
       try {
-        const bc = new BroadcastChannel(_xmtpLockName)
-        bc.onmessage = (e) => {
-          if (e.data.type === 'unread') {
-            showMsgDot()
-          }
+        if (client?.close) client.close()
+        patchWorker()
+        const identifier = { identifier: address, identifierKind: sdk.IdentifierKind.Ethereum }
+        client = await sdk.Client.build(identifier, { env: 'production' })
+        if (client?.inboxId) {
+          window._xmtpClient = client
+          startLeaderResponder(channel, () => client, { releaseLock: release })
+          startGlobalMessageStream()
         }
-      } catch {}
-      return
-    }
+      } catch (e) { console.warn('praxis: dm.js leader promotion failed:', e?.message) }
+    })
+    return
   }
 
+  // Leader: initialize real XMTP client
   patchWorker()
   sdk = await import('./vendor-xmtp.js')
 
@@ -221,36 +227,13 @@ async function initClient() {
   window._xmtpClient = client
   window._xmtpSdk = sdk
 
-  // dm.js does NOT manage installations — that is messages.js's responsibility
+  // Start leader responder — releaseLock lets /messages tab take over
+  startLeaderResponder(channel, () => client, { releaseLock: release })
 
   // start global message stream for unread dot on dock
   startGlobalMessageStream()
 
-  // show the UI
-  document.getElementById('dm-connect-prompt').style.display = 'none'
-  document.getElementById('dm-new-section').style.display = 'block'
-  document.getElementById('dm-tabs').style.display = 'flex'
-
-  // setup new message button
-  document.getElementById('dm-new-btn').addEventListener('click', toggleNewPicker)
-
-  // tab switching
-  document.querySelectorAll('.dm-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.dm-tab').forEach(t => t.classList.remove('dm-tab-active'))
-      tab.classList.add('dm-tab-active')
-      const tabName = tab.dataset.tab
-      document.getElementById('dm-convo-list').style.display = tabName === 'dms' ? 'block' : 'none'
-      document.getElementById('dm-project-list').style.display = tabName === 'projects' ? 'block' : 'none'
-      document.getElementById('dm-new-section').style.display = tabName === 'dms' ? 'block' : 'none'
-      if (tabName === 'projects') loadProjectGroups()
-    })
-  })
-
-  await loadConversations()
-  await resolveArtistDomains()
-  renderConversationList() // re-render with resolved names
-  await updateUnreadBadge()
+  await _initDmUI()
 }
 
 // --- Domain resolution ---
@@ -265,8 +248,8 @@ async function resolveArtistDomains() {
       console.log('praxis dm: resolved:', resolved)
       // merge with lowercase keys for consistent lookup
       for (const [addr, domain] of Object.entries(resolved)) {
-        addrToDomain[addr] = domain
-        addrToDomain[addr.toLowerCase()] = domain
+        boundedAssign(addrToDomain, addr, domain)
+        boundedAssign(addrToDomain, addr.toLowerCase(), domain)
       }
     }
   } catch (e) { console.warn("praxis dm resolve error:", e?.message) }
@@ -281,7 +264,7 @@ async function resolveInboxIdForAddr(addr) {
       identifier: addr,
       identifierKind: sdk.IdentifierKind.Ethereum,
     })
-    if (id) { inboxToAddr[id] = addr; inboxToAddr[addr] = id }
+    if (id) { boundedAssign(inboxToAddr, id, addr); boundedAssign(inboxToAddr, addr, id) }
     return id
   } catch (e) { if (e?.message) console.warn("praxis:", e.message); return null }
 }
@@ -348,8 +331,8 @@ async function loadConversations() {
               const mAddr = m.accountAddresses?.[0]?.toLowerCase()
               const mInboxId = m.inboxId
               if (mAddr && mInboxId) {
-                inboxToAddr[mInboxId] = mAddr
-                inboxToAddr[mAddr] = mInboxId
+                boundedAssign(inboxToAddr, mInboxId, mAddr)
+                boundedAssign(inboxToAddr, mAddr, mInboxId)
               }
             }
           } catch {}
@@ -612,7 +595,8 @@ async function toggleNewPicker() {
   try {
     // paginate both directions to avoid silent data loss at 1000+
     async function fetchAllFollows(where, field) {
-      let all = [], cursor = null
+      const MAX_PAGES = 10
+      let all = [], cursor = null, pages = 0
       while (true) {
         const vars = { me: myAddr, ...(cursor ? { after: cursor } : {}) }
         const data = await query(`
@@ -624,7 +608,8 @@ async function toggleNewPicker() {
           }
         `, vars)
         all.push(...data.follows.items)
-        if (!data.follows.pageInfo?.hasNextPage) break
+        pages++
+        if (!data.follows.pageInfo?.hasNextPage || pages >= MAX_PAGES) break
         cursor = data.follows.pageInfo.endCursor
       }
       return all

@@ -1,7 +1,7 @@
 // Collection page — shows soulbound tokens and credentials for connected wallet
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getPublicClient , formatEthAmount, registerPage, openMediaSheet, artPlaceholder } from './utils.js'
+import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getPublicClient , formatEthAmount, registerPage, openMediaSheet, artPlaceholder, resolveContentTypes, classifyContentType as classifyCT } from './utils.js'
 import { t } from './i18n.js'
 import { getCollection, annotateRelistings } from './media.js'
 import { getCached, setCache, TTL } from './cache.js'
@@ -25,6 +25,8 @@ let _credsLoadingMore = false
 let _allMediaPurchases = []
 let _allCredentials = []
 let _allSavedItems = []
+let _selectedArtist = null
+let _artistMap = new Map()
 let _searchQuery = ''
 let _viewMode = localStorage.getItem('praxis:collection-view') || 'grid'
 let _mediaObserver = null
@@ -125,6 +127,8 @@ async function loadCollection(addr, statusEl, contentEl) {
   _allCredentials = []
   _allSavedItems = []
   _searchQuery = ''
+  _selectedArtist = null
+  _artistMap = new Map()
   if (_mediaObserver) { _mediaObserver.disconnect(); _mediaObserver = null }
   if (_credsObserver) { _credsObserver.disconnect(); _credsObserver = null }
 
@@ -236,54 +240,62 @@ async function loadCollection(addr, statusEl, contentEl) {
     }
 
     statusEl.textContent = ''
-    let html = ''
+
+    // Build artist map for sidebar
+    _artistMap = new Map()
+    for (const purchase of mediaPurchases) {
+      const media = _mediaDetails[purchase.mediaId]
+      if (!media?.artist) continue
+      const addr = media.artist.toLowerCase()
+      if (!_artistMap.has(addr)) _artistMap.set(addr, { domain: '', mediaCount: 0, credCount: 0 })
+      _artistMap.get(addr).mediaCount++
+    }
+    for (const cred of allCreds) {
+      const proposer = _projectMap[cred.projectId]?.proposer
+      const addr = (proposer || '').toLowerCase()
+      if (!addr) continue
+      if (!_artistMap.has(addr)) _artistMap.set(addr, { domain: '', mediaCount: 0, credCount: 0 })
+      _artistMap.get(addr).credCount++
+    }
+    for (const [addr, entry] of _artistMap) {
+      // Try to get alias name from album cache
+      const rawDomain = _domainMap[addr] || ''
+      let aliasName = rawDomain
+      for (const info of _albumInfoCache.values()) {
+        if (info.domain === rawDomain && info.aliasName && info.aliasName !== rawDomain) {
+          aliasName = info.aliasName
+          break
+        }
+      }
+      entry.domain = aliasName || rawDomain || `${addr.slice(0,6)}...${addr.slice(-4)}`
+    }
+
+    let mainHtml = ''
 
     // filter pills
     const hasMedia = mediaPurchases.length > 0 || _mediaHasMore
     const hasCreds = allCreds.length > 0 || _credsHasMore
     const hasSaved = savedItems.length > 0
     if (hasMedia || hasCreds || hasSaved) {
-      html += `<div class="collection-filters" style="display:flex;gap:0.5ch;margin-bottom:1.5em;flex-wrap:wrap">`
-      html += `<button class="collection-filter active" data-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">all</button>`
-      if (hasMedia) html += `<button class="collection-filter" data-filter="media" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">media (${mediaPurchases.length}${_mediaHasMore ? '+' : ''})</button>`
-      if (hasCreds) html += `<button class="collection-filter" data-filter="credentials" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">credentials (${allCreds.length}${_credsHasMore ? '+' : ''})</button>`
+      mainHtml += `<div class="collection-filters" style="display:flex;gap:0.5ch;margin-bottom:1.5em;flex-wrap:wrap">`
+      mainHtml += `<button class="collection-filter active" data-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">all</button>`
+      if (hasMedia) mainHtml += `<button class="collection-filter" data-filter="media" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">media (${mediaPurchases.length}${_mediaHasMore ? '+' : ''})</button>`
+      if (hasCreds) mainHtml += `<button class="collection-filter" data-filter="credentials" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">credentials (${allCreds.length}${_credsHasMore ? '+' : ''})</button>`
       const savedPosts = savedItems.filter(i => i.type === 'post')
       const savedLibrary = savedItems.filter(i => i.type !== 'post')
-      if (savedLibrary.length > 0) html += `<button class="collection-filter" data-filter="saved-library" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">saved (${savedLibrary.length})</button>`
-      if (savedPosts.length > 0) html += `<button class="collection-filter" data-filter="saved-posts" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">posts (${savedPosts.length})</button>`
-      html += `</div>`
+      if (savedLibrary.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-library" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">saved (${savedLibrary.length})</button>`
+      if (savedPosts.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-posts" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">posts (${savedPosts.length})</button>`
+      mainHtml += `</div>`
     }
 
     // search input
-    html += `<div id="collection-search" style="margin-bottom:1em">
+    mainHtml += `<div id="collection-search" style="margin-bottom:1em">
       <input type="text" id="collection-search-input" placeholder="${t('collection.searchPlaceholder') || 'search collection...'}" class="project-input" style="max-width:400px;width:100%">
     </div>`
 
-    // Passport stamps — circular, one per artist relationship
-    const artistStamps = buildArtistStamps(mediaPurchases, allCreds)
-    if (artistStamps.length > 0) {
-      html += `<div class="stamps-section">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5em">
-          <h3 style="margin:0;font-size:0.9em">soulbound</h3>
-          <span style="color:var(--dim);font-size:0.7em">${artistStamps.reduce((s, st) => s + st.count, 0)} tokens · ${artistStamps.length} artist${artistStamps.length !== 1 ? 's' : ''} · <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank" style="color:var(--dim)">what is this?</a></span>
-        </div>
-        <div class="stamps-row">`
-      for (const stamp of artistStamps) {
-        const ogImg = stamp.domain.includes('.') ? `https://${escapeHtml(stamp.domain)}/og/index.png` : ''
-        html += `<div class="stamp" data-artist="${escapeHtml(stamp.artistAddr)}" title="${escapeHtml(stamp.name)} · ${stamp.action}">
-          ${ogImg ? `<div class="stamp-bg" style="background-image:url(${ogImg})"></div>` : ''}
-          <div class="stamp-content">
-            <div class="stamp-artist">${escapeHtml(stamp.name.split(' ')[0])}</div>
-            <div class="stamp-action">${stamp.count || ''}</div>
-          </div>
-        </div>`
-      }
-      html += `</div></div>`
-    }
-
     // media section
     if (mediaPurchases.length > 0) {
-      html += `<div class="collection-section" data-section="media">
+      mainHtml += `<div class="collection-section" data-section="media">
         <h3>${t('collection.media')}</h3>
         <div class="collection-toolbar">
           <div class="media-sub-filters" style="display:flex;gap:0.5ch;flex-wrap:wrap">
@@ -299,25 +311,25 @@ async function loadCollection(addr, statusEl, contentEl) {
           </div>
         </div>
         <div class="collection-media ${_viewMode === 'grid' ? 'collection-grid-view' : 'collection-list-view'}" id="collection-media-grid">`
-      html += renderMediaItems(mediaPurchases)
-      html += `</div>`
+      mainHtml += renderMediaItems(mediaPurchases)
+      mainHtml += `</div>`
       if (_mediaHasMore) {
-        html += `<div id="collection-media-sentinel" style="height:1px;margin-top:1em"></div>`
+        mainHtml += `<div id="collection-media-sentinel" style="height:1px;margin-top:1em"></div>`
       }
-      html += `</div>`
+      mainHtml += `</div>`
     }
 
     // credentials section
     if (allCreds.length > 0) {
-      html += `<div class="collection-section" data-section="credentials">
+      mainHtml += `<div class="collection-section" data-section="credentials">
         <h3>${t('collection.credentials')}</h3>
         <div class="collection-grid" id="collection-creds-grid">`
-      html += renderCredentialItems(allCreds)
-      html += `</div>`
+      mainHtml += renderCredentialItems(allCreds)
+      mainHtml += `</div>`
       if (_credsHasMore) {
-        html += `<div id="collection-creds-sentinel" style="height:1px;margin-top:1em"></div>`
+        mainHtml += `<div id="collection-creds-sentinel" style="height:1px;margin-top:1em"></div>`
       }
-      html += `</div>`
+      mainHtml += `</div>`
     }
 
     // saved items — split into library saves and post saves
@@ -339,19 +351,50 @@ async function loadCollection(addr, statusEl, contentEl) {
     }
 
     if (savedLibraryItems.length > 0) {
-      html += `<div class="collection-section" data-section="saved-library" style="display:none">
+      mainHtml += `<div class="collection-section" data-section="saved-library" style="display:none">
         <h3>${t('collection.saved')}</h3>
         <div class="collection-grid">${savedLibraryItems.map(renderSavedItem).join('')}</div>
       </div>`
     }
     if (savedPostItems.length > 0) {
-      html += `<div class="collection-section" data-section="saved-posts" style="display:none">
+      mainHtml += `<div class="collection-section" data-section="saved-posts" style="display:none">
         <h3>saved posts</h3>
         <div class="collection-grid">${savedPostItems.map(renderSavedItem).join('')}</div>
       </div>`
     }
 
-    contentEl.innerHTML = html
+    // Two-column layout: sidebar + main content
+    contentEl.innerHTML = `<div class="collection-container">
+      <div class="collection-sidebar">
+        <input type="text" id="collection-artist-search" placeholder="find in artists" class="project-input">
+        <div id="collection-artist-list"></div>
+      </div>
+      <div class="collection-main">
+        <div class="collection-main-header">
+          <button id="collection-back" class="collection-back-btn"><i class="ph ph-arrow-left"></i></button>
+          <span id="collection-main-title">all</span>
+        </div>
+        <p style="color:var(--dim);font-size:0.85em;max-width:55ch;margin:0 0 1.5em;line-height:1.5">your collection is <a href="https://vitalik.eth.limo/general/2022/01/26/soulbound.html" target="_blank" style="color:var(--accent)">soulbound</a> — permanently yours, can't be sold or transferred. every purchase, contribution, and collaboration lives here forever. <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank" style="color:var(--accent)">learn more</a></p>
+        <div id="collection-main-content">${mainHtml}</div>
+      </div>
+    </div>`
+
+    // Render artist sidebar
+    renderArtistSidebar()
+
+    // Wire sidebar search
+    document.getElementById('collection-artist-search')?.addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase()
+      document.querySelectorAll('.collection-artist-item').forEach(el => {
+        const name = el.querySelector('span')?.textContent?.toLowerCase() || ''
+        el.style.display = !q || name.includes(q) ? '' : 'none'
+      })
+    })
+
+    // Wire back button (mobile)
+    document.getElementById('collection-back')?.addEventListener('click', () => {
+      document.querySelector('.collection-container')?.classList.remove('collection-active')
+    })
 
     // store items for search filtering
     _allMediaPurchases = [...mediaPurchases]
@@ -384,89 +427,7 @@ async function loadCollection(addr, statusEl, contentEl) {
         _viewMode = btn.dataset.view
         localStorage.setItem('praxis:collection-view', _viewMode)
         contentEl.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === _viewMode))
-        const grid = document.getElementById('collection-media-grid')
-        if (grid) {
-          grid.className = `collection-media ${_viewMode === 'grid' ? 'collection-grid-view' : 'collection-list-view'}`
-          grid.innerHTML = renderMediaItems(_allMediaPurchases)
-          detectMediaTypes(_allMediaPurchases, contentEl)
-        }
-      })
-    })
-
-    // Passport stamp click → open artist passport page
-    contentEl.querySelectorAll('.stamp').forEach(stamp => {
-      stamp.addEventListener('click', () => {
-        const artistAddr = stamp.dataset.artist
-        if (!artistAddr) return
-        const domain = _domainMap[artistAddr] || ''
-        const artistPurchases = _allMediaPurchases.filter(p => _mediaDetails[p.mediaId]?.artist?.toLowerCase() === artistAddr)
-        const artistCreds = _allCredentials.filter(c => _projectMap[c.projectId]?.proposer?.toLowerCase() === artistAddr)
-        const mediaAddr = document.body.dataset.media || '0xaF995dB3955419E9E2086FD02891580F8a025481'
-
-        const overlay = document.createElement('div')
-        overlay.className = 'wizard-overlay'
-        overlay.style.cssText = 'z-index:10001;align-items:center;justify-content:center'
-        const ogImg = domain.includes('.') ? `https://${escapeHtml(domain)}/og/index.png` : ''
-        // Find alias name (only entries matching this artist's domain)
-        let aliasName = domain
-        for (const info of _albumInfoCache.values()) {
-          if (info.domain === domain && info.aliasName && info.aliasName !== domain) { aliasName = info.aliasName; break }
-        }
-
-        let html = `<div style="max-width:500px;width:100%;padding:0;margin:0 auto">`
-        // Banner
-        if (ogImg) html += `<div style="height:120px;background:url(${ogImg}) center/cover;opacity:0.6"></div>`
-        html += `<div style="padding:1.5em 2em">`
-        html += `<h2 style="margin:0 0 0.15em;font-size:1.3em">${escapeHtml(aliasName)}</h2>`
-        if (domain.includes('.')) html += `<a href="https://${escapeHtml(domain)}" target="_blank" style="color:var(--muted);font-size:0.85em">${escapeHtml(domain)}</a>`
-
-        // Collected works
-        if (artistPurchases.length > 0) {
-          html += `<div style="margin-top:1.5em"><div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5em">collected · ${artistPurchases.length} work${artistPurchases.length !== 1 ? 's' : ''}</div>`
-          for (const p of artistPurchases) {
-            const m = _mediaDetails[p.mediaId]
-            const title = m ? escapeHtml(m.title) : `#${p.mediaId}`
-            const tokenId = BigInt(p.mediaId).toString(16).padStart(4, '0')
-            html += `<div style="display:flex;align-items:center;gap:0.75ch;padding:0.35em 0;border-bottom:1px solid var(--border);font-size:0.85em">
-              <span style="font-family:monospace;color:var(--dim);font-size:0.75em">0x${tokenId}</span>
-              <a href="/art?media=${p.mediaId}" style="color:var(--fg);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</a>
-            </div>`
-          }
-          html += `</div>`
-        }
-
-        // Project credentials
-        if (artistCreds.length > 0) {
-          html += `<div style="margin-top:1.5em"><div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5em">project credits</div>`
-          for (const c of artistCreds) {
-            const proj = _projectMap[c.projectId]
-            const title = proj ? escapeHtml(proj.title) : `project #${c.projectId}`
-            const role = c.tokenType === 3 ? 'contributor' : 'producer'
-            html += `<div style="display:flex;align-items:center;gap:0.75ch;padding:0.35em 0;border-bottom:1px solid var(--border);font-size:0.85em">
-              <span style="color:${c.tokenType === 2 ? 'var(--green,#4ade80)' : '#a78bfa'};font-size:0.75em">${role}</span>
-              <a href="/project?id=${c.projectId}" style="color:var(--fg);flex:1">${title}</a>
-            </div>`
-          }
-          html += `</div>`
-        }
-
-        // Footer
-        html += `<div style="margin-top:2em;padding-top:1em;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:monospace;font-size:0.65em;color:var(--dim)">contract <a href="https://optimistic.etherscan.io/address/${escapeHtml(mediaAddr)}" target="_blank" style="color:var(--dim)">${mediaAddr.slice(0, 10)}...</a></span>
-          <span style="font-size:0.65em;color:var(--dim)">permanent · non-transferable</span>
-        </div>`
-        html += `</div></div>`
-
-        const dialog = document.createElement('div')
-        dialog.innerHTML = html
-        overlay.appendChild(dialog)
-        const closeBtn = document.createElement('button')
-        closeBtn.className = 'wizard-close'
-        closeBtn.textContent = '\u00d7'
-        closeBtn.addEventListener('click', () => { overlay.classList.add('closing'); overlay.addEventListener('animationend', () => overlay.remove(), { once: true }) })
-        overlay.appendChild(closeBtn)
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.classList.add('closing'); overlay.addEventListener('animationend', () => overlay.remove(), { once: true }) } })
-        document.body.appendChild(overlay)
+        renderFilteredCollection(contentEl)
       })
     })
 
@@ -531,35 +492,17 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
     }
   }
 
-  // only HEAD-request CIDs not already resolved from indexed contentType
+  // Batch-resolve unknown CIDs via server endpoint (persistent cache, no client HEAD)
   const uniqueCids = Object.keys(cidToMediaIds).filter(cid => !_mediaTypeCache[cid])
   if (uniqueCids.length > 0) {
-    // throttled HEAD requests — max 10 concurrent to avoid overwhelming IPFS proxy
-    const CONCURRENCY = 10
-    const results = []
-    for (let i = 0; i < uniqueCids.length; i += CONCURRENCY) {
-      const batch = uniqueCids.slice(i, i + CONCURRENCY)
-      const batchResults = await Promise.all(
-        batch.map(cid =>
-          fetch(ipfsUrl(cid), { method: 'HEAD' })
-            .then(res => {
-              const ct = (res.headers.get('content-type') || '').split(';')[0].trim()
-              return { cid, contentType: ct }
-            })
-            .catch(() => ({ cid, contentType: '' }))
-        )
-      )
-      results.push(...batchResults)
-    }
-
-    for (const { cid, contentType } of results) {
-      // bound _mediaTypeCache to 500 entries max — clear oldest half if exceeded
+    const resolved = await resolveContentTypes(uniqueCids)
+    for (const [cid, ct] of Object.entries(resolved)) {
       const cacheKeys = Object.keys(_mediaTypeCache)
       if (cacheKeys.length > 500) {
         const toRemove = cacheKeys.slice(0, Math.floor(cacheKeys.length / 2))
         for (const k of toRemove) delete _mediaTypeCache[k]
       }
-      _mediaTypeCache[cid] = classifyContentType(contentType)
+      _mediaTypeCache[cid] = classifyContentType(ct)
     }
   }
 
@@ -584,7 +527,10 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
       if (cardArt) {
         const mediaUrl = ipfsUrl(media.ipfsCid)
         const title = escapeHtml(media.title || '')
-        cardArt.innerHTML = `<div class="video-lazy" data-src="${mediaUrl}" data-poster="" data-title="${title}" style="aspect-ratio:16/9;background:#111;position:relative;cursor:pointer;overflow:hidden;border-radius:6px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center"><i class="ph ph-play" style="color:#fff;font-size:18px"></i></div><span style="position:absolute;bottom:0.5em;left:0.75em;color:#999;font-size:0.8em">${title}</span></div>`
+        // Override square aspect-ratio from CSS for widescreen video
+        cardArt.style.aspectRatio = '2/1'
+        const thumbUrl = `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=600`
+        cardArt.innerHTML = `<img src="${thumbUrl}" loading="lazy" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"><div class="video-lazy" data-src="${mediaUrl}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
         // Remove audio play button if present
         const audioBtn = item.querySelector('.track-play-btn')
         if (audioBtn) audioBtn.remove()
@@ -629,6 +575,85 @@ function updateMediaSubFilterCounts(contentEl) {
     const btn = contentEl.querySelector(`.media-sub-filter[data-media-filter="${type}"]`)
     if (btn) btn.style.display = counts[type] > 0 ? '' : 'none'
   }
+}
+
+// Render the artist sidebar from _artistMap
+function renderArtistSidebar() {
+  const list = document.getElementById('collection-artist-list')
+  if (!list) return
+  const totalItems = [..._artistMap.values()].reduce((s, a) => s + a.mediaCount + a.credCount, 0)
+  let html = `<div class="collection-artist-item ${!_selectedArtist ? 'active' : ''}" data-addr="">
+    <span>all</span><span style="color:var(--dim);font-size:0.8em">${totalItems}</span>
+  </div>`
+  const sorted = [..._artistMap.entries()].sort((a, b) => (b[1].mediaCount + b[1].credCount) - (a[1].mediaCount + a[1].credCount))
+  for (const [addr, data] of sorted) {
+    const count = data.mediaCount + data.credCount
+    html += `<div class="collection-artist-item ${_selectedArtist === addr ? 'active' : ''}" data-addr="${addr}">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(data.domain)}</span>
+      <span style="color:var(--dim);font-size:0.8em;flex-shrink:0">${count}</span>
+    </div>`
+  }
+  list.innerHTML = html
+  list.querySelectorAll('.collection-artist-item').forEach(el => {
+    el.addEventListener('click', () => {
+      _selectedArtist = el.dataset.addr || null
+      renderArtistSidebar()
+      const contentEl = document.getElementById('collection-content')
+      if (contentEl) renderFilteredCollection(contentEl)
+      // Update header title
+      const titleEl = document.getElementById('collection-main-title')
+      if (titleEl) {
+        titleEl.textContent = _selectedArtist ? (_artistMap.get(_selectedArtist)?.domain || 'unknown') : 'all'
+      }
+      // Mobile: show main panel
+      document.querySelector('.collection-container')?.classList.add('collection-active')
+    })
+  })
+}
+
+// Re-render the media grid and credentials filtered by _selectedArtist
+function renderFilteredCollection(contentEl) {
+  // Filter purchases by artist
+  const filteredMedia = _selectedArtist
+    ? _allMediaPurchases.filter(p => {
+        const media = _mediaDetails[p.mediaId]
+        return media?.artist?.toLowerCase() === _selectedArtist
+      })
+    : _allMediaPurchases
+
+  // Filter credentials by artist
+  const filteredCreds = _selectedArtist
+    ? _allCredentials.filter(c => {
+        const proj = _projectMap[c.projectId]
+        return proj?.proposer?.toLowerCase() === _selectedArtist
+      })
+    : _allCredentials
+
+  // Re-render the media grid
+  const grid = document.getElementById('collection-media-grid')
+  if (grid) {
+    grid.className = `collection-media ${_viewMode === 'grid' ? 'collection-grid-view' : 'collection-list-view'}`
+    grid.innerHTML = renderMediaItems(filteredMedia)
+    detectMediaTypes(filteredMedia, contentEl)
+  }
+
+  // Re-render the credentials grid
+  const credsGrid = document.getElementById('collection-creds-grid')
+  if (credsGrid) {
+    credsGrid.innerHTML = renderCredentialItems(filteredCreds)
+  }
+
+  // Show/hide sections based on filtered content
+  const mediaSection = contentEl.querySelector('.collection-section[data-section="media"]')
+  if (mediaSection) mediaSection.style.display = filteredMedia.length > 0 ? '' : 'none'
+  const credsSection = contentEl.querySelector('.collection-section[data-section="credentials"]')
+  if (credsSection) credsSection.style.display = filteredCreds.length > 0 ? '' : 'none'
+
+  // Re-apply search filter if active
+  if (_searchQuery) applySearchFilter(contentEl)
+
+  // Reset media sub-filter to "all"
+  resetMediaSubFilter(contentEl)
 }
 
 function attachFilterHandlers(contentEl) {
@@ -794,6 +819,7 @@ function setupInfiniteScroll(contentEl, addr) {
           }
           await fetchCoverArt(result.items, _domainMap)
           _allMediaPurchases.push(...result.items)
+          if (_allMediaPurchases.length > 2000) _allMediaPurchases = _allMediaPurchases.slice(-2000)
           const grid = contentEl.querySelector('#collection-media-grid')
           if (grid) {
             grid.insertAdjacentHTML('beforeend', renderMediaItems(result.items))
@@ -1056,7 +1082,7 @@ function renderMediaItems(mediaPurchases) {
     const queueData = encodeURIComponent(JSON.stringify(queueTracks))
 
     if (_viewMode === 'grid') {
-      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${first.mediaId}" data-media-type="audio">
+      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${first.mediaId}" data-media-type="audio" data-span="2">
         <div class="card-art">
           <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px"></a>
           <span class="card-type-badge">${trackCount} tracks</span>
@@ -1120,16 +1146,28 @@ function renderMediaItems(mediaPurchases) {
 
     if (_viewMode === 'grid') {
       const isVideo = cachedType === 'video'
-      const artHtml = isVideo && mediaUrl
-        ? `<div class="video-lazy" data-src="${mediaUrl}" data-poster="" data-title="${title}" style="aspect-ratio:16/9;background:#111;position:relative;cursor:pointer;overflow:hidden;border-radius:6px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center"><i class="ph ph-play" style="color:#fff;font-size:18px"></i></div><span style="position:absolute;bottom:0.5em;left:0.75em;color:#999;font-size:0.8em">${title}</span></div>`
-        : `<a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px">` : artPlaceholder(title, 180)}</a>`
+      // Art content + play overlay matching feed card pattern
+      let artInner = ''
+      let playOverlay = ''
+      if (isVideo && mediaUrl) {
+        const posterUrl = coverUrl
+          ? `/api/img?url=${encodeURIComponent(coverUrl)}&w=400`
+          : media?.ipfsCid ? `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=600` : ''
+        const posterImg = posterUrl ? `<img loading="lazy" src="${posterUrl}" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''
+        artInner = `${posterImg}<div class="video-lazy" data-src="${mediaUrl}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
+      } else {
+        artInner = `<a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400">` : artPlaceholder(title, 180)}</a>`
+        if (mediaUrl && !isSuperseded && !isVideo) {
+          playOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}"><i class="ph ph-play"></i></button>`
+        }
+      }
+      const artStyle = isVideo ? ' style="aspect-ratio:2/1"' : ''
       html += `<div class="collection-card collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
-        <div class="card-art">${artHtml}</div>
+        <div class="card-art"${artStyle}>${artInner}${playOverlay}</div>
         <div class="card-info">
           <a href="${artDetailUrl}" class="card-title">${title}</a>
           <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
           <div class="card-actions">
-            ${mediaUrl && !isSuperseded && !isVideo ? `<button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>` : ''}
             ${mediaUrl && !isSuperseded ? `<a href="${mediaUrl}" download="${title}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>` : ''}
           </div>
         </div>

@@ -4,6 +4,24 @@ import { query } from './ponder.js'
 import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 
+// Sanitize script HTML: only allow <p> with fountain-*/stageplay-* classes
+function _sanitizeScriptHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const div = doc.body
+  const allowed = /^(fountain|stageplay)-/
+  const out = []
+  for (const node of div.childNodes) {
+    if (node.nodeType === 3) { out.push(escapeHtml(node.textContent)); continue }
+    if (node.nodeType !== 1) continue
+    if (node.tagName === 'P' && allowed.test(node.className)) {
+      out.push(`<p class="${escapeHtml(node.className)}">${escapeHtml(node.textContent)}</p>`)
+    } else {
+      out.push(escapeHtml(node.textContent))
+    }
+  }
+  return out.join('\n')
+}
+
 // --- Bookmark helpers (same localStorage key as feed.js) ---
 function _localBookmarkKey() {
   const addr = window.getWalletAddress?.()?.toLowerCase()
@@ -124,9 +142,8 @@ async function initPost() {
     let body
 
     if (isScript) {
-      // script HTML is already formatted — pass through (pre-rendered by journal.js)
       const markerEnd = displayPost.content.indexOf('\n') + 1
-      body = displayPost.content.slice(markerEnd)
+      body = _sanitizeScriptHtml(displayPost.content.slice(markerEnd))
     } else {
       body = renderMarkdown(displayPost.content)
       // rewrite IPFS URLs (renderMarkdown handles basic rewrite, but rewriteIpfsUrls covers edge cases)
@@ -217,7 +234,11 @@ async function initPost() {
           <a href="/network?artist=${post.author.toLowerCase()}">${escapeHtml(domain)}</a>
           <span style="color:var(--dim)"> · </span>
           <time>${dateStr}</time>
-          <span id="post-actions" style="margin-left:auto;display:flex;gap:0.5ch;align-items:center"></span>
+          <span id="post-edit-slot" style="margin-left:auto"></span>
+        </div>
+        <div class="post-page-actions">
+          <span id="post-actions" style="display:inline-flex;align-items:center"></span>
+          <span id="post-reply-count" style="color:var(--dim);display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-chat-circle"></i></span>
         </div>
       </header>
       <div class="post-page-body">${body}</div>
@@ -285,19 +306,17 @@ function addSaveButton(postId, displayPost, domain) {
   const saveBtn = document.createElement('button')
   saveBtn.id = 'post-save-btn'
   saveBtn.className = 'buy-btn'
-  saveBtn.style.cssText = 'padding:0.2em 0.7ch;font-size:0.75em;display:inline-flex;align-items:center;gap:0.3ch;border-radius:6px;font-weight:normal'
-  saveBtn.innerHTML = saved ? '<i class="ph ph-fill ph-treasure-chest"></i> saved' : '<i class="ph ph-treasure-chest"></i> save'
-  if (saved) {
-    saveBtn.style.borderColor = 'var(--accent)'
-    saveBtn.style.color = 'var(--accent)'
-  }
+  saveBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--dim);display:inline-flex;align-items:center;font-family:inherit;padding:0;font-size:inherit;line-height:1'
+  const heartOutline = '<i class="ph ph-heart"></i>'
+  const heartFilled = '<svg width="1em" height="1em" viewBox="0 0 256 256" fill="currentColor" style="vertical-align:-0.125em"><path d="M240,98a57.63,57.63,0,0,1-17,41L128,233.09,33,139a58,58,0,0,1,82-82.05L128,69.42l13-12.42a58,58,0,0,1,99,41Z"/></svg>'
+  saveBtn.innerHTML = saved ? heartFilled : heartOutline
+  if (saved) saveBtn.style.color = 'var(--accent)'
 
   saveBtn.addEventListener('click', () => {
     if (_isBookmarked(bookmarkId)) {
       _removeBookmark(bookmarkId)
-      saveBtn.innerHTML = '<i class="ph ph-treasure-chest"></i> save'
-      saveBtn.style.borderColor = ''
-      saveBtn.style.color = ''
+      saveBtn.innerHTML = heartOutline
+      saveBtn.style.color = 'var(--dim)'
     } else {
       _saveBookmark({
         id: bookmarkId,
@@ -306,8 +325,7 @@ function addSaveButton(postId, displayPost, domain) {
         author: domain,
         url: `/post?id=${postId}`,
       })
-      saveBtn.innerHTML = '<i class="ph ph-fill ph-treasure-chest"></i> saved'
-      saveBtn.style.borderColor = 'var(--accent)'
+      saveBtn.innerHTML = heartFilled
       saveBtn.style.color = 'var(--accent)'
     }
   })
@@ -316,7 +334,7 @@ function addSaveButton(postId, displayPost, domain) {
 }
 
 function addEditButton(postId, displayPost) {
-  const actionsEl = document.getElementById('post-actions')
+  const actionsEl = document.getElementById('post-edit-slot') || document.getElementById('post-actions')
   if (!actionsEl || document.getElementById('post-edit-btn')) return
 
   const editBtn = document.createElement('button')
@@ -364,7 +382,7 @@ async function renderHistoryView(contentEl, originalPost, amendments, postId) {
     const vIsScript = v.content.startsWith('<!-- screenplay -->') || v.content.startsWith('<!-- stageplay -->')
     if (vIsScript) {
       const markerEnd = v.content.indexOf('\n') + 1
-      body = v.content.slice(markerEnd)
+      body = _sanitizeScriptHtml(v.content.slice(markerEnd))
     } else {
       body = renderMarkdown(v.content)
     }
@@ -439,9 +457,13 @@ async function loadReplies(postId, domainMap) {
 
     await resolveReplyAuthors(replies)
 
+    // Update reply count in the actions row
+    const replyCountEl = document.getElementById('post-reply-count')
+    if (replyCountEl) replyCountEl.innerHTML = `<i class="ph ph-chat-circle"></i> ${totalCount}`
+
     repliesEl.innerHTML = `
-      <div style="margin-top:3em;padding-top:1.5em;border-top:1px solid var(--border)">
-        <h3 id="replies-heading" style="color:var(--dim);font-size:0.8em;font-weight:normal;letter-spacing:0.05em;margin-bottom:0.5em">${totalCount} ${totalCount === 1 ? 'reply' : 'replies'}</h3>
+      <div style="margin-top:3em;padding-top:1.5em">
+        <h3 id="replies-heading" style="color:var(--dim);font-size:0.85em;font-weight:normal;margin-bottom:1em;border:none;padding-bottom:0.5em;border-bottom:1px solid color-mix(in srgb, var(--fg) 8%, transparent)">${totalCount} ${totalCount === 1 ? 'comment' : 'comments'}</h3>
         <div id="replies-list">${replies.map(renderReply).join('')}</div>
       </div>
       ${repliesHasMore ? `<button id="replies-load-more" class="buy-btn" style="margin-top:1em;width:100%">load more replies</button>` : ''}
@@ -758,10 +780,10 @@ function renderReplyForm(blogAddr, postId) {
 
   formEl.innerHTML = `
     <div style="padding-top:1em">
-      <textarea id="reply-content" placeholder="write a reply..." style="width:100%;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.75em 1ch;resize:vertical;min-height:4em;line-height:1.7;border-radius:8px;box-sizing:border-box;transition:border-color 0.15s" onfocus="this.style.borderColor='var(--muted)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <textarea id="reply-content" placeholder="write a comment..." style="width:100%;background:transparent;border:1px solid color-mix(in srgb, var(--fg) 15%, transparent);color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.75em 1ch;resize:vertical;min-height:4em;line-height:1.7;border-radius:10px;box-sizing:border-box;transition:border-color 0.15s" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor=''"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75em">
         <span id="reply-status" style="color:var(--muted);font-size:0.85em"></span>
-        <button class="buy-btn" id="reply-submit" style="font-size:0.85em;padding:0.4em 2ch;border-radius:8px">reply</button>
+        <button class="buy-btn" id="reply-submit" style="font-size:0.85em;padding:0.4em 2ch;border-radius:8px">comment</button>
       </div>
     </div>
   `
@@ -780,7 +802,7 @@ function renderReplyForm(blogAddr, postId) {
       const { optimism } = await import('./vendor.js')
       const publicClient = await getPublicClient()
 
-      await window.ensureOptimism?.()
+      if (!await window.ensureOptimism?.()) return
       const replyAccount = await window.ensureAuthorized?.() || addr
       const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await walletClient.writeContract({

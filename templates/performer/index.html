@@ -1,10 +1,15 @@
 <header class="artist-header">
-  <h1 class="artist-name">{{name}}</h1>
-  <p class="artist-bio" id="bio-short">{{shortBio}}</p>
-  <p class="artist-bio" id="bio-full" style="display:none">{{bio}}</p>
-  <a href="#" id="bio-toggle" style="color:var(--muted);font-size:0.8em;text-decoration:none;display:inline-block;margin-top:0.3em">more</a>
+  <div class="header-row">
+    {{profilePicTag}}
+    <div class="header-text">
+      <h1 class="artist-name">{{name}}</h1>
+      <p class="artist-bio" id="bio-short">{{shortBio}}</p>
+      <p class="artist-bio" id="bio-full" style="display:none">{{bio}}</p>
+      <a href="#" id="bio-toggle" style="color:var(--muted);font-size:0.8em;text-decoration:none;display:inline-block;margin-top:0.3em">more</a>
+      <p class="artist-rep">{{representation}}</p>
+    </div>
+  </div>
   <div id="owner-badges"></div>
-  <p class="artist-rep">{{representation}}</p>
 </header>
 <script>
 (function(){
