@@ -85,31 +85,76 @@ if (typeof document !== 'undefined') {
           const addr = await window.ensureAuthorized?.() || window.getWalletAddress?.()
           if (!addr) throw new Error('wallet not available')
 
-          // Check mainnet ETH balance and bridge if present
-          const { createPublicClient, http } = await import('./vendor.js')
-          const mainnetClient = createPublicClient({ chain: { id: 1, name: 'Ethereum', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
-          const mainnetBal = await mainnetClient.getBalance({ address: addr })
+          const { getPublicClient } = await import('./utils.js')
+          const pc = await getPublicClient()
 
-          if (mainnetBal > 0n) {
-            statusEl.textContent = t('pay.bridging')
-            const { bridgeToOptimism } = await import('./relay-bridge.js')
-            // Reserve gas for the bridge tx itself (~0.001 ETH / 1M gwei buffer)
-            const gasReserve = 1000000000000000n // 0.001 ETH
-            const bridgeAmount = mainnetBal > gasReserve ? mainnetBal - gasReserve : mainnetBal
-            await bridgeToOptimism(1, addr, bridgeAmount, (msg) => { subEl.textContent = msg })
-            statusEl.textContent = t('pay.bridgeComplete')
-            subEl.textContent = t('pay.bridgeWaiting')
-            // Poll until funds arrive
-            for (let i = 0; i < 20; i++) {
-              await new Promise(r => setTimeout(r, 2000))
-              const { getPublicClient } = await import('./utils.js')
-              const pc = await getPublicClient()
-              if (!isFundOnly) {
-                const opBal = await pc.getBalance({ address: addr })
-                if (opBal >= BigInt(priceWei)) break
-              } else {
-                break // fund-only: just wait one poll cycle
+          // Stripe delivers USDC on Optimism — swap to ETH via Relay
+          const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
+          const ERC20_ABI = [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }]
+
+          // Poll for USDC arrival (Stripe can take a few seconds)
+          statusEl.textContent = 'waiting for USDC...'
+          let usdcBal = 0n
+          const start = Date.now()
+          while (Date.now() - start < 120000) {
+            try { usdcBal = await pc.readContract({ address: USDC_OP, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] }) } catch {}
+            if (usdcBal > 0n) break
+            // Also check if ETH already sufficient (user may have funded another way)
+            const ethBal = await pc.getBalance({ address: addr })
+            if (!isFundOnly && ethBal >= BigInt(priceWei)) { usdcBal = 0n; break }
+            if (isFundOnly && ethBal > 0n) { usdcBal = 0n; break }
+            await new Promise(r => setTimeout(r, 5000))
+          }
+
+          if (usdcBal > 0n) {
+            statusEl.textContent = 'swapping USDC → ETH...'
+            subEl.textContent = ''
+
+            const { getQuote, execute } = await import('./vendor-relay.js')
+            const quote = await getQuote({
+              chainId: 10,
+              toChainId: 10,
+              currency: USDC_OP,
+              toCurrency: '0x0000000000000000000000000000000000000000',
+              amount: usdcBal.toString(),
+              user: addr,
+              recipient: addr,
+              tradeType: 'EXACT_INPUT',
+            })
+
+            statusEl.textContent = 'confirm swap in wallet...'
+            const { createWalletClient, http, custom, optimism } = await import('./vendor.js')
+            const embeddedAcct = window.getEmbeddedAccount?.()
+            let walletClient
+            if (embeddedAcct) {
+              walletClient = createWalletClient({ chain: optimism, account: embeddedAcct, transport: http('/api/rpc/10') })
+            } else {
+              const provider = window.getWalletProvider?.() || window.ethereum
+              if (!provider) throw new Error('no wallet available')
+              walletClient = createWalletClient({ chain: optimism, transport: custom(provider) })
+            }
+
+            let swapDone = false
+            await execute({
+              quote,
+              wallet: walletClient,
+              onProgress: ({ currentStep, currentStepItem, error }) => {
+                if (error) { statusEl.textContent = `swap failed: ${error.message || 'unknown'}`; return }
+                if (currentStep?.id === 'approve') statusEl.textContent = 'approving USDC...'
+                else if (currentStepItem?.status === 'complete') { statusEl.textContent = 'swap complete'; swapDone = true }
+                else if (currentStepItem?.status === 'incomplete') statusEl.textContent = 'swapping...'
+              },
+            })
+
+            if (!swapDone) {
+              statusEl.textContent = 'waiting for ETH...'
+              for (let i = 0; i < 30; i++) {
+                await new Promise(r => setTimeout(r, 4000))
+                const ethBal = await pc.getBalance({ address: addr })
+                if (ethBal > 0n) break
               }
+            } else {
+              await new Promise(r => setTimeout(r, 2000))
             }
           }
 
@@ -121,9 +166,9 @@ if (typeof document !== 'undefined') {
             showPurchaseConfirmation(mediaId, priceWei, title)
           }
         } catch (e) {
-          console.error('auto-bridge failed:', e)
-          statusEl.textContent = t('pay.bridgeFailed')
-          subEl.textContent = e.message || t('pay.buy')
+          console.error('usdc-to-eth swap failed:', e)
+          statusEl.textContent = 'swap failed'
+          subEl.textContent = e.message || ''
           setTimeout(() => {
             overlay.remove()
             if (!isFundOnly && mediaId && priceWei) {
