@@ -294,10 +294,10 @@ function showAddress(address) {
 
     // wallet actions below nav links
     topBarWallet.innerHTML = `
-      ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings">${t('earnings.title')}</a>` : ''}
-      <button class="wallet-menu-link" id="dd-fund">${t('wallet.fundWallet')}</button>
-      <button class="wallet-menu-link" id="dd-cashout">${t('wallet.cashOut')}</button>
-      ${isOwnerView ? `<button class="wallet-menu-link" id="dd-settings">${t('dock.settings')}</button>` : ''}
+      ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings" data-i18n="earnings.title">earnings</a>` : ''}
+      <button class="wallet-menu-link" id="dd-fund" data-i18n="wallet.fundWallet">add funds</button>
+      <button class="wallet-menu-link" id="dd-cashout" data-i18n="wallet.cashOut">cash out</button>
+      ${isOwnerView ? `<button class="wallet-menu-link" id="dd-settings" data-i18n="dock.settings">settings</button>` : ''}
       <div class="praxis-menu-divider"></div>
       <button class="wallet-menu-link wallet-menu-signout" id="dd-disconnect">sign out</button>
     `
