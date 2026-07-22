@@ -773,11 +773,17 @@ export function extractIntentHash(receipt) {
 // "Send to: $cashtag". The SDK doesn't expose this; only the v3/intent API response does.
 let _intentFetchDebugInstalled = false
 let _lastIntentDepositData = null
+let _origFetch = null
 export function getLastIntentDepositData() { return _lastIntentDepositData }
+export function _removeIntentFetchDebug() {
+  if (_origFetch) { window.fetch = _origFetch; _origFetch = null }
+  _intentFetchDebugInstalled = false
+}
 function _installIntentFetchDebug() {
   if (_intentFetchDebugInstalled) return
   _intentFetchDebugInstalled = true
-  const origFetch = window.fetch
+  _origFetch = window.fetch
+  const origFetch = _origFetch
   window.fetch = async function (...args) {
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url
     const isIntent = url && (url.includes('/v3/intent') || url.includes('/intent'))
@@ -1263,6 +1269,7 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
     _destroyed = true
     if (_pollTimer) clearTimeout(_pollTimer)
     if (_timerInterval) clearInterval(_timerInterval)
+    _removeIntentFetchDebug()
   }
 
   overlay.addEventListener('click', (e) => {

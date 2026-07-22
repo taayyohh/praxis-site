@@ -26,7 +26,7 @@ const ERC20_ABI = [
 
 const publicClient = createPublicClient({
   chain: optimism,
-  transport: http(),
+  transport: http('/api/rpc/10'),
 })
 
 // Chain metadata for the funding sheet — includes Optimism (destination) + all bridge sources
@@ -71,7 +71,7 @@ async function checkBalance(address, currency, priceRaw) {
   try {
     if (currency === 'ETH') {
       const balance = await publicClient.getBalance({ address })
-      return balance >= parseEther(priceRaw)
+      return { ok: balance >= parseEther(priceRaw), balance }
     }
     const balance = await publicClient.readContract({
       address: currency,
@@ -79,9 +79,10 @@ async function checkBalance(address, currency, priceRaw) {
       functionName: 'balanceOf',
       args: [address],
     })
-    return balance >= BigInt(priceRaw)
-  } catch {
-    return true // if balance check fails, let the tx attempt proceed
+    return { ok: balance >= BigInt(priceRaw), balance }
+  } catch (e) {
+    console.warn('balance check failed:', e.message)
+    return { ok: true, error: true }
   }
 }
 
@@ -592,9 +593,9 @@ async function buyItem(button) {
   button.disabled = true
   button.textContent = 'checking balance...'
 
-  const hasEnough = await checkBalance(address, currency, price)
+  const balCheck = await checkBalance(address, currency, price)
 
-  if (!hasEnough) {
+  if (!balCheck.ok) {
     button.textContent = 'funding wallet...'
     const funded = await showFundingSheet(address, price)
     if (!funded) {

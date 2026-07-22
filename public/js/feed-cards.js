@@ -67,7 +67,9 @@ if (typeof document !== 'undefined') {
       const isFundOnly = parsed.type === 'fund-only'
       const { mediaId, priceWei, title } = parsed
 
-      // Show status overlay while bridging
+      if (window._autoSwapInFlight) return
+      window._autoSwapInFlight = true
+
       const overlay = document.createElement('div')
       overlay.className = 'wizard-overlay'
       overlay.style.cssText = 'z-index:10001;align-items:center;justify-content:center'
@@ -75,10 +77,16 @@ if (typeof document !== 'undefined') {
         <div style="max-width:400px;width:100%;padding:2em;text-align:center">
           <div id="autobridge-status" style="color:var(--fg);font-size:1.1em;margin-bottom:1em">${t('pay.bridging')}</div>
           <div id="autobridge-sub" style="color:var(--muted);font-size:0.8em">${t('pay.bridgingTime')}</div>
+          <button id="autobridge-dismiss" style="margin-top:1.5em;background:none;border:1px solid var(--border);color:var(--muted);padding:0.4em 1.2em;border-radius:4px;cursor:pointer;display:none">dismiss</button>
         </div>`
       document.body.appendChild(overlay)
       const statusEl = overlay.querySelector('#autobridge-status')
       const subEl = overlay.querySelector('#autobridge-sub')
+      const dismissBtn = overlay.querySelector('#autobridge-dismiss')
+
+      let aborted = false
+      dismissBtn.addEventListener('click', () => { aborted = true; overlay.remove(); window._autoSwapInFlight = false })
+      setTimeout(() => { if (dismissBtn) dismissBtn.style.display = 'inline-block' }, 10000)
 
       ;(async () => {
         try {
@@ -88,23 +96,28 @@ if (typeof document !== 'undefined') {
           const { getPublicClient } = await import('./utils.js')
           const pc = await getPublicClient()
 
-          // Stripe delivers USDC on Optimism — swap to ETH via Relay
           const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
           const ERC20_ABI = [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }]
 
-          // Poll for USDC arrival (Stripe can take a few seconds)
           statusEl.textContent = 'waiting for USDC...'
           let usdcBal = 0n
           const start = Date.now()
-          while (Date.now() - start < 120000) {
-            try { usdcBal = await pc.readContract({ address: USDC_OP, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] }) } catch {}
-            if (usdcBal > 0n) break
-            // Also check if ETH already sufficient (user may have funded another way)
-            const ethBal = await pc.getBalance({ address: addr })
-            if (!isFundOnly && ethBal >= BigInt(priceWei)) { usdcBal = 0n; break }
-            if (isFundOnly && ethBal > 0n) { usdcBal = 0n; break }
-            await new Promise(r => setTimeout(r, 5000))
+          let pollInterval = 5000
+          while (Date.now() - start < 120000 && !aborted) {
+            try {
+              usdcBal = await pc.readContract({ address: USDC_OP, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] })
+              if (usdcBal > 0n) break
+              const ethBal = await pc.getBalance({ address: addr })
+              if (!isFundOnly && ethBal >= BigInt(priceWei)) { usdcBal = 0n; break }
+              if (isFundOnly && ethBal > 0n) { usdcBal = 0n; break }
+            } catch (e) {
+              console.warn('balance poll error:', e.message)
+              pollInterval = Math.min(pollInterval * 1.5, 15000)
+            }
+            await new Promise(r => setTimeout(r, pollInterval))
           }
+
+          if (aborted) return
 
           if (usdcBal > 0n) {
             statusEl.textContent = 'swapping USDC → ETH...'
@@ -135,23 +148,30 @@ if (typeof document !== 'undefined') {
             }
 
             let swapDone = false
-            await execute({
-              quote,
-              wallet: walletClient,
-              onProgress: ({ currentStep, currentStepItem, error }) => {
-                if (error) { statusEl.textContent = `swap failed: ${error.message || 'unknown'}`; return }
-                if (currentStep?.id === 'approve') statusEl.textContent = 'approving USDC...'
-                else if (currentStepItem?.status === 'complete') { statusEl.textContent = 'swap complete'; swapDone = true }
-                else if (currentStepItem?.status === 'incomplete') statusEl.textContent = 'swapping...'
-              },
-            })
+            const swapTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('swap timed out')), 300000))
+            await Promise.race([
+              execute({
+                quote,
+                wallet: walletClient,
+                onProgress: ({ currentStep, currentStepItem, error }) => {
+                  if (error) { statusEl.textContent = `swap failed: ${error.message || 'unknown'}`; return }
+                  if (currentStep?.id === 'approve') statusEl.textContent = 'approving USDC...'
+                  else if (currentStepItem?.status === 'complete') { statusEl.textContent = 'swap complete'; swapDone = true }
+                  else if (currentStepItem?.status === 'incomplete') statusEl.textContent = 'swapping...'
+                },
+              }),
+              swapTimeout,
+            ])
 
             if (!swapDone) {
               statusEl.textContent = 'waiting for ETH...'
-              for (let i = 0; i < 30; i++) {
+              const requiredWei = isFundOnly ? 1n : BigInt(priceWei || '1')
+              for (let i = 0; i < 30 && !aborted; i++) {
                 await new Promise(r => setTimeout(r, 4000))
-                const ethBal = await pc.getBalance({ address: addr })
-                if (ethBal > 0n) break
+                try {
+                  const ethBal = await pc.getBalance({ address: addr })
+                  if (ethBal >= requiredWei) break
+                } catch {}
               }
             } else {
               await new Promise(r => setTimeout(r, 2000))
@@ -159,6 +179,7 @@ if (typeof document !== 'undefined') {
           }
 
           overlay.remove()
+          window._autoSwapInFlight = false
           window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
 
           if (!isFundOnly && mediaId && priceWei) {
@@ -169,14 +190,16 @@ if (typeof document !== 'undefined') {
           console.error('usdc-to-eth swap failed:', e)
           statusEl.textContent = 'swap failed'
           subEl.textContent = e.message || ''
+          dismissBtn.style.display = 'inline-block'
           setTimeout(() => {
             overlay.remove()
+            window._autoSwapInFlight = false
             if (!isFundOnly && mediaId && priceWei) {
               import('./pay.js').then(({ showPurchaseConfirmation }) => {
                 showPurchaseConfirmation(mediaId, priceWei, title)
               })
             }
-          }, 2000)
+          }, 3000)
         }
       })()
     }
