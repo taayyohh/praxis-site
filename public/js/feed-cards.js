@@ -67,7 +67,7 @@ if (typeof document !== 'undefined') {
       const isFundOnly = parsed.type === 'fund-only'
       const { mediaId, priceWei, title } = parsed
 
-      if (window._autoSwapInFlight) return
+      if (!window._autoSwapInFlight) {
       window._autoSwapInFlight = true
 
       const overlay = document.createElement('div')
@@ -202,6 +202,7 @@ if (typeof document !== 'undefined') {
           }, 3000)
         }
       })()
+      }
     }
   }
 }
