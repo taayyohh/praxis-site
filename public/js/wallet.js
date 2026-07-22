@@ -247,92 +247,67 @@ function showAddress(address) {
   // Publish to the cross-origin bridge so other Praxis sites can pick it up.
   try { setBridgeAddress(address) } catch {}
 
-  // top bar: balance + address (click either to open wallet menu)
+  // top bar: bell in header bar, wallet actions inline in planet dropdown
   if (topBarWallet) {
-    // Only show the notifications bell on the viewer's OWN site. Showing it on
-    // other artists' sites is confusing — clicking there routes to /notifications
-    // on THAT site, which isn't the signed-in user's notification feed.
     const siteOwner = document.body.dataset.owner?.toLowerCase() || ''
     const isOwnerView = siteOwner && address.toLowerCase() === siteOwner
-    const bellHtml = isOwnerView
-      ? `<a href="/notifications" id="top-notifications" class="dock-btn" title="${t('dock.notifications')}" style="position:relative;font-size:0.9em;margin-right:0.5ch;text-decoration:none"><i class="ph ph-bell"></i><span id="notif-badge" class="notif-badge" style="display:none">0</span></a>`
-      : ''
-    topBarWallet.innerHTML = `${bellHtml}<span class="top-bar-balance" id="top-balance" style="cursor:pointer">${address.slice(0,6)}...${address.slice(-4)}</span>`
 
-    const openWalletMenu = () => {
-      // show disconnect dropdown
-      const existing = document.getElementById('disconnect-dropdown')
-      if (existing) { existing.remove(); document.getElementById('wallet-menu-overlay')?.remove(); return }
-      // overlay backdrop for mobile bottom sheet
-      const overlay = document.createElement('div')
-      overlay.id = 'wallet-menu-overlay'
-      overlay.className = 'wallet-menu-overlay'
-      document.body.appendChild(overlay)
-
-      const dd = document.createElement('div')
-      dd.id = 'disconnect-dropdown'
-      dd.className = 'wallet-menu-sheet'
-      dd.style.cssText = 'position:absolute;top:3em;right:0;background:var(--bg);border:1px solid var(--border);padding:0.5em;z-index:10000;min-width:12ch'
-      const walletLabel = ''
-
-      const _siteOwner = document.body.dataset.owner?.toLowerCase() || ''
-      const _isOwner = _siteOwner && address.toLowerCase() === _siteOwner
-      dd.innerHTML = `
-        <button class="wallet-dd-btn" id="dd-copy" style="display:flex;align-items:center;gap:0.5ch"><span style="color:var(--muted)">${address.slice(0, 6)}...${address.slice(-4)}</span>${walletLabel} <i class="ph ph-copy" style="font-size:1em"></i></button>
-        ${_isOwner ? `<a href="/earnings" class="wallet-dd-btn" id="dd-earnings" style="text-decoration:none;display:block">${t('earnings.title')}</a>` : ''}
-        <button class="wallet-dd-btn" id="dd-fund">${t('wallet.fundWallet')}</button>
-        <button class="wallet-dd-btn" id="dd-cashout">${t('wallet.cashOut')}</button>
-        ${_isOwner ? `<button class="wallet-dd-btn" id="dd-settings">${t('dock.settings')}</button>` : ''}
-        <button class="wallet-dd-btn" id="dd-disconnect" style="color:var(--dim)">sign out</button>
-      `
-      const closeMenu = () => { dd.remove(); overlay.remove() }
-
-      dd.querySelector('#dd-disconnect').addEventListener('click', () => { closeMenu(); disconnect() })
-
-      dd.querySelector('#dd-fund').addEventListener('click', async () => {
-        closeMenu()
-        try {
-          const { showFundingSheet } = await import('./pay.js')
-          await showFundingSheet(address, 0n)
-          loadTopBarBalance(address)
-        } catch (e) { console.warn('fund sheet error:', e) }
-      })
-      dd.querySelector('#dd-cashout').addEventListener('click', () => {
-        closeMenu()
-        window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
-      })
-      dd.querySelector('#dd-copy').addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(address)
-          const icon = dd.querySelector('#dd-copy i')
-          if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
-        } catch { /* fallback: already shows address */ }
-      })
-      dd.querySelector('#dd-settings')?.addEventListener('click', () => {
-        closeMenu()
-        window.dispatchEvent(new CustomEvent('open-settings'))
-      })
-      overlay.addEventListener('click', closeMenu)
-      // On mobile, append to body so the sheet escapes parent stacking contexts
-      if (window.innerWidth <= 480) {
-        document.body.appendChild(dd)
-      } else {
-        topBarWallet.style.position = 'relative'
-        topBarWallet.appendChild(dd)
-      }
-      // trigger slide-up animation on next frame (used by mobile bottom sheet)
-      requestAnimationFrame(() => { dd.classList.add('open'); overlay.classList.add('open') })
-      // delay close listener so the opening click doesn't immediately close it
-      setTimeout(() => {
-        document.addEventListener('click', function close(e) {
-          if (!dd.contains(e.target) && !e.target.closest('#top-bar-wallet') && e.target !== overlay) {
-            closeMenu()
-            document.removeEventListener('click', close)
-          }
-        })
-      }, 10)
+    // bell in the top bar itself (next to planet icon), owner's site only
+    if (isOwnerView && !document.getElementById('top-notifications')) {
+      const bell = document.createElement('a')
+      bell.href = '/notifications'
+      bell.id = 'top-notifications'
+      bell.className = 'top-bar-bell'
+      bell.title = t('dock.notifications')
+      bell.innerHTML = `<i class="ph ph-bell"></i><span id="notif-badge" class="notif-badge" style="display:none">0</span>`
+      const trigger = document.getElementById('praxis-menu-trigger')
+      if (trigger) trigger.parentNode.insertBefore(bell, trigger)
     }
-    topBarWallet.querySelector('.top-bar-balance')?.addEventListener('click', openWalletMenu)
+
+    // populate planet dropdown with wallet items
+    const closeFn = () => {
+      const dd = document.getElementById('praxis-menu-dropdown')
+      const trig = document.getElementById('praxis-menu-trigger')
+      if (dd) dd.classList.add('praxis-dropdown-hidden')
+      if (trig) trig.classList.remove('menu-open')
+    }
+    topBarWallet.innerHTML = `
+      <div class="praxis-menu-divider"></div>
+      <div class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</div>
+      <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
+      <div class="praxis-menu-divider"></div>
+      ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings">${t('earnings.title')}</a>` : ''}
+      <button class="wallet-menu-link" id="dd-fund">${t('wallet.fundWallet')}</button>
+      <button class="wallet-menu-link" id="dd-cashout">${t('wallet.cashOut')}</button>
+      ${isOwnerView ? `<button class="wallet-menu-link" id="dd-settings">${t('dock.settings')}</button>` : ''}
+      <div class="praxis-menu-divider"></div>
+      <button class="wallet-menu-link wallet-menu-signout" id="dd-disconnect">sign out</button>
+    `
+    topBarWallet.querySelector('#dd-disconnect')?.addEventListener('click', () => { closeFn(); disconnect() })
+    topBarWallet.querySelector('#dd-fund')?.addEventListener('click', async () => {
+      closeFn()
+      try {
+        const { showFundingSheet } = await import('./pay.js')
+        await showFundingSheet(address, 0n)
+        loadTopBarBalance(address)
+      } catch (e) { console.warn('fund sheet error:', e) }
+    })
+    topBarWallet.querySelector('#dd-cashout')?.addEventListener('click', () => {
+      closeFn()
+      window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
+    })
+    topBarWallet.querySelector('#dd-copy')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(address)
+        const icon = topBarWallet.querySelector('#dd-copy i')
+        if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
+      } catch {}
+    })
+    topBarWallet.querySelector('#dd-settings')?.addEventListener('click', () => {
+      closeFn()
+      window.dispatchEvent(new CustomEvent('open-settings'))
+    })
+    topBarWallet.querySelector('#dd-earnings')?.addEventListener('click', () => closeFn())
   }
 
   // show floating dock only for site owner
@@ -876,8 +851,10 @@ async function disconnect() {
   }
 
   if (topBarWallet) {
-    topBarWallet.innerHTML = `<button class="top-bar-connect" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
+    topBarWallet.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
     document.getElementById('top-connect')?.addEventListener('click', connect)
+    // remove bell from top bar on disconnect
+    document.getElementById('top-notifications')?.remove()
   }
 
   document.getElementById('owner-dock')?.remove()
@@ -1143,9 +1120,10 @@ async function autoConnect() {
 
 function showConnectButton() {
   if (topBarWallet) {
-    topBarWallet.innerHTML = `<button class="top-bar-connect" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
+    topBarWallet.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
     document.getElementById('top-connect')?.addEventListener('click', connect)
   }
+  document.getElementById('top-notifications')?.remove()
 }
 
 // run auto-connect
@@ -1162,13 +1140,13 @@ async function loadTopBarBalance(address) {
       getEthPrices().catch(() => null),
     ])
     const eth = (Number(balance) / 1e18).toFixed(4)
-    let text = `${eth}Ξ `
+    let text = `${eth}Ξ`
     if (prices) {
       const currency = getUserCurrency()
       const rate = prices[currency]
       if (rate) {
         const fiatVal = Number(balance) / 1e18 * rate
-        text += `<span style="color:var(--dim);font-size:0.85em">(~${formatFiat(fiatVal, currency)})</span> `
+        text += ` <span style="color:var(--muted);font-size:0.85em">(~${formatFiat(fiatVal, currency)})</span>`
       }
     }
     el.innerHTML = text

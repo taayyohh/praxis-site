@@ -1671,7 +1671,7 @@ function renderModulesTab(el) {
   document.getElementById('add-module-btn')?.addEventListener('click', () => {
     const type = document.getElementById('add-module-select')?.value
     if (!type) return
-    siteData.modules.push({ type, enabled: true, order: siteData.modules.length + 1, data: type === 'credits' ? [] : type === 'demos' ? { items: [] } : {} })
+    siteData.modules.push({ type, enabled: true, order: siteData.modules.length + 1, data: type === 'credits' ? { items: [], categoryOrder: [], resumePdf: '', resumeLabel: '' } : type === 'demos' ? { items: [] } : {} })
     renderModulesTab(el)
   })
 }
@@ -2318,15 +2318,50 @@ function renderModuleEditor(el, mod) {
   const data = mod.data
 
   if (type === 'credits') {
-    const items = Array.isArray(data) ? data : []
-    el.innerHTML = items.map((c, i) => {
+    // backward-compat: data can be a flat array (old) or { items, categoryOrder, resumePdf, resumeLabel }
+    if (Array.isArray(data)) mod.data = { items: data, categoryOrder: [], resumePdf: '', resumeLabel: '' }
+    const creditsData = mod.data
+    const items = creditsData.items || []
+    creditsData.items = items
+    if (!creditsData.categoryOrder) creditsData.categoryOrder = []
+    // build global category list from existing credits
+    const _allCats = [...new Set(items.map(c => c.category).filter(Boolean))]
+    // ensure categoryOrder includes all used categories
+    for (const cat of _allCats) { if (!creditsData.categoryOrder.includes(cat)) creditsData.categoryOrder.push(cat) }
+
+    // --- resume PDF section ---
+    const resumeHtml = `<div style="border:1px solid var(--border);padding:0.75em;margin-bottom:1em">
+      <div style="display:flex;align-items:center;gap:0.75em;flex-wrap:wrap">
+        <span style="color:var(--muted);font-size:0.85em">resume PDF</span>
+        <button class="buy-btn credits-upload-resume" style="font-size:0.75em;padding:0.2em 0.8ch">${creditsData.resumePdf ? 'replace PDF' : 'upload PDF'}</button>
+        ${creditsData.resumePdf ? `<button class="credits-remove-resume" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.75em">remove</button>` : ''}
+        <input class="project-input credits-resume-label" value="${escapeHtml(creditsData.resumeLabel || '')}" placeholder="button label (e.g. download resume)" style="flex:1;min-width:120px;font-size:0.85em">
+      </div>
+      ${creditsData.resumePdf ? `<div style="margin-top:0.4em;font-size:0.75em;color:var(--dim)">uploaded: ${escapeHtml(creditsData.resumePdf.split('/').pop())}</div>` : ''}
+    </div>`
+
+    // --- category order section ---
+    const catOrderHtml = creditsData.categoryOrder.length > 1 ? `<div style="border:1px solid var(--border);padding:0.75em;margin-bottom:1em">
+      <span style="color:var(--muted);font-size:0.85em;display:block;margin-bottom:0.4em">category order</span>
+      <div class="credits-cat-order" style="display:flex;flex-direction:column;gap:0.25em">
+        ${creditsData.categoryOrder.map((cat, ci) => `<div style="display:flex;align-items:center;gap:0.5em" data-cat-idx="${ci}">
+          <span style="color:var(--fg);font-size:0.85em;flex:1">${escapeHtml(cat)}</span>
+          <button class="cat-order-up" data-ci="${ci}" style="background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:0.75em;padding:0.1em 0.4ch;line-height:1" ${ci === 0 ? 'disabled' : ''}>\u25B2</button>
+          <button class="cat-order-down" data-ci="${ci}" style="background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:0.75em;padding:0.1em 0.4ch;line-height:1" ${ci === creditsData.categoryOrder.length - 1 ? 'disabled' : ''}>\u25BC</button>
+        </div>`).join('')}
+      </div>
+    </div>` : ''
+
+    // --- credits items ---
+    el.innerHTML = resumeHtml + catOrderHtml + items.map((c, i) => {
       const _exp = _editorExpandedItems.has(`credits-${i}`)
       const _tl = escapeHtml(c.title || c.role || c.org || 'untitled credit')
+      const catLabel = c.category ? ` \u2014 ${escapeHtml(c.category)}` : ''
       return `
       <div class="editor-item" data-index="${i}" data-drag-idx="${i}">
         <div class="editor-collapse-header" data-toggle-idx="${i}" data-toggle-prefix="credits">
           <span class="drag-handle">\u2261</span>
-          <span class="collapse-title">${_tl}${c.year ? ' (' + escapeHtml(String(c.year)) + ')' : ''}</span>
+          <span class="collapse-title">${_tl}${c.year ? ' (' + escapeHtml(String(c.year)) + ')' : ''}${catLabel}</span>
           <span class="collapse-chevron ${_exp ? 'expanded' : ''}">\u25B8</span>
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
@@ -2347,11 +2382,10 @@ function renderModuleEditor(el, mod) {
           <input class="project-input ed-field" data-i="${i}" data-f="press" value="${escapeHtml(c.press || '')}" placeholder="press/review URL">
         </div>
         <textarea class="project-input ed-field" data-i="${i}" data-f="description" placeholder="production notes" style="margin-top:0.25em;font-size:0.85em;min-height:2em;resize:vertical;width:100%;box-sizing:border-box">${escapeHtml(c.description || '')}</textarea>
-        <select class="project-input ed-field" data-i="${i}" data-f="category" style="margin-top:0.25em">
-          ${['theater', 'film', 'tv', 'dance', 'comedy', 'opera', 'music', 'other'].map(cat =>
-            `<option ${c.category === cat ? 'selected' : ''}>${t('settings.credits.' + cat)}</option>`
-          ).join('')}
-        </select>
+        <div style="margin-top:0.25em;position:relative" class="credits-cat-wrap" data-i="${i}">
+          <input class="project-input credits-cat-input" data-i="${i}" value="${escapeHtml(c.category || '')}" placeholder="category (type + tab)" autocomplete="off" style="width:100%">
+          <div class="credits-cat-suggest" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--bg);border:1px solid var(--border);z-index:10;max-height:150px;overflow-y:auto"></div>
+        </div>
         <div style="display:flex;gap:0.5em;margin-top:0.25em;align-items:center">
           <button class="tag-collab-btn" data-type="credits" data-i="${i}" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.7em;padding:0.15em 0.5ch;cursor:pointer">+ collaborator</button>
           ${(c._collabs || []).map(d => `<span class="collab-tag" style="font-size:0.7em;color:var(--accent);border:1px solid var(--accent);padding:0.1em 0.4ch;display:inline-flex;align-items:center;gap:0.3ch">${escapeHtml(d)}<button class="remove-collab-tag" data-domain="${escapeHtml(d)}" data-type="credits" data-title="${(c.title || c.role || 'untitled').replace(/"/g, '&quot;')}" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.9em;padding:0;line-height:1">x</button></span>`).join('')}
@@ -2363,6 +2397,77 @@ function renderModuleEditor(el, mod) {
 
     _wireCollapseAndDrag(el, 'credits', items, mod)
     wireEditorEvents(el, mod, items)
+
+    // --- category autocomplete ---
+    el.querySelectorAll('.credits-cat-input').forEach(input => {
+      const idx = parseInt(input.dataset.i)
+      const suggestEl = input.closest('.credits-cat-wrap').querySelector('.credits-cat-suggest')
+      const showSuggestions = (filter) => {
+        const allCats = [...new Set(items.map(c => c.category).filter(Boolean))]
+        const filtered = filter ? allCats.filter(c => c.toLowerCase().includes(filter.toLowerCase())) : allCats
+        if (!filtered.length) { suggestEl.style.display = 'none'; return }
+        suggestEl.innerHTML = filtered.map(c => `<div class="credits-cat-option" style="padding:0.3em 0.5ch;cursor:pointer;font-size:0.85em;color:var(--fg)" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</div>`).join('')
+        suggestEl.style.display = 'block'
+        suggestEl.querySelectorAll('.credits-cat-option').forEach(opt => {
+          opt.addEventListener('mousedown', (e) => {
+            e.preventDefault()
+            input.value = opt.dataset.cat
+            items[idx].category = opt.dataset.cat
+            if (!creditsData.categoryOrder.includes(opt.dataset.cat)) creditsData.categoryOrder.push(opt.dataset.cat)
+            suggestEl.style.display = 'none'
+          })
+        })
+      }
+      input.addEventListener('focus', () => showSuggestions(input.value))
+      input.addEventListener('input', () => showSuggestions(input.value))
+      input.addEventListener('blur', () => { setTimeout(() => { suggestEl.style.display = 'none' }, 150) })
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          const val = input.value.trim()
+          if (val) {
+            items[idx].category = val
+            if (!creditsData.categoryOrder.includes(val)) creditsData.categoryOrder.push(val)
+          }
+          suggestEl.style.display = 'none'
+        }
+      })
+    })
+
+    // --- category order buttons ---
+    el.querySelectorAll('.cat-order-up').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ci = parseInt(btn.dataset.ci)
+        if (ci <= 0) return
+        const order = creditsData.categoryOrder
+        ;[order[ci - 1], order[ci]] = [order[ci], order[ci - 1]]
+        renderModuleEditor(el, mod)
+      })
+    })
+    el.querySelectorAll('.cat-order-down').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ci = parseInt(btn.dataset.ci)
+        const order = creditsData.categoryOrder
+        if (ci >= order.length - 1) return
+        ;[order[ci], order[ci + 1]] = [order[ci + 1], order[ci]]
+        renderModuleEditor(el, mod)
+      })
+    })
+
+    // --- resume PDF upload ---
+    el.querySelector('.credits-upload-resume')?.addEventListener('click', () => {
+      uploadFile(el.querySelector('.credits-upload-resume'), (url, _poster, filename) => {
+        creditsData.resumePdf = url
+        creditsData.resumeFilename = filename || ''
+        renderModuleEditor(el, mod)
+      }, '.pdf')
+    })
+    el.querySelector('.credits-remove-resume')?.addEventListener('click', () => {
+      creditsData.resumePdf = ''
+      renderModuleEditor(el, mod)
+    })
+    el.querySelector('.credits-resume-label')?.addEventListener('change', (e) => {
+      creditsData.resumeLabel = e.target.value
+    })
   } else if (type === 'music') {
     const aliases = data?.aliases || []
     let html = ''
@@ -3570,13 +3675,14 @@ async function uploadFile(btn, callback, acceptTypes, options) {
 }
 
 function wireEditorEvents(el, mod, items) {
+  const _setData = () => { if (mod.type === 'credits') { mod.data.items = items } else { mod.data = items } }
   // field changes
   el.querySelectorAll('.ed-field').forEach(input => {
     input.addEventListener('change', () => {
       const i = parseInt(input.dataset.i)
       const f = input.dataset.f
       items[i][f] = input.type === 'number' ? (parseInt(input.value) || null) : input.value
-      mod.data = items
+      _setData()
     })
   })
 
@@ -3592,7 +3698,7 @@ function wireEditorEvents(el, mod, items) {
       })
       if (!ok) return
       items.splice(i, 1)
-      mod.data = items
+      _setData()
       renderModuleEditor(el, mod)
       try { await saveSettings() } catch {}
     })
@@ -3601,7 +3707,7 @@ function wireEditorEvents(el, mod, items) {
   // add
   el.querySelector('.ed-add')?.addEventListener('click', () => {
     items.push({})
-    mod.data = items
+    _setData()
     _editorExpandedItems.add(`${mod.type}-${items.length - 1}`)
     renderModuleEditor(el, mod)
   })

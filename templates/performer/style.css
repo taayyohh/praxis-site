@@ -41,12 +41,6 @@ body:has(#write-page) {
 }
 
 /* headshot */
-.headshot {
-  width: 140px;
-  height: 170px;
-  border: 1px solid var(--border);
-  object-fit: cover;
-}
 
 /* credits section — the hero of the portfolio */
 .credits-section {

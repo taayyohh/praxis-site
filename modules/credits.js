@@ -1,27 +1,43 @@
 // Credits module — universal credits with category tags
-// Replaces separate theater/film/tv modules
-// data: [{ title, role, org, year, category, director, venue, url, characterName, startDate, endDate, productionCompany, choreographer, musicDirector, castingDirector, press, description }]
-// category: theater, film, tv, dance, comedy, opera, etc.
+// data: { items: [{ title, role, org, year, category, director, ... }], categoryOrder: [], resumePdf: '', resumeLabel: '' }
+// backward-compat: data can also be a flat array (old format)
 import { esc } from './shared.js'
+
+function normalizeData(data) {
+  if (Array.isArray(data)) return { items: data, categoryOrder: [], resumePdf: '', resumeLabel: '', resumeFilename: '' }
+  return { items: data?.items || [], categoryOrder: data?.categoryOrder || [], resumePdf: data?.resumePdf || '', resumeLabel: data?.resumeLabel || '', resumeFilename: data?.resumeFilename || '' }
+}
+
 export default {
   type: 'credits',
   label: 'credits',
   route: '/credits',
 
   renderSection(data) {
-    if (!data || !Array.isArray(data)) return ''
-    // group by category
+    const d = normalizeData(data)
+    if (!d.items.length) return ''
+    // group by category, respect categoryOrder
     const groups = {}
-    for (const c of data) {
+    for (const c of d.items) {
       const cat = c.category || 'other'
       if (!groups[cat]) groups[cat] = []
       groups[cat].push(c)
     }
+    const orderedCats = [...(d.categoryOrder || [])].filter(c => groups[c])
+    for (const cat of Object.keys(groups)) { if (!orderedCats.includes(cat)) orderedCats.push(cat) }
+
     let html = ''
-    for (const [cat, items] of Object.entries(groups)) {
+
+    if (d.resumePdf) {
+      const label = d.resumeLabel || 'download resume'
+      const dlName = d.resumeFilename || `${label.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').toLowerCase()}.pdf`
+      html += `<div style="margin-bottom:1.5em"><a href="${esc(d.resumePdf)}" download="${esc(dlName)}" class="buy-btn" style="display:inline-block;text-decoration:none">${esc(label)}</a></div>`
+    }
+
+    for (const cat of orderedCats) {
+      const items = groups[cat]
       html += `<h3>${esc(cat)}</h3>`
       for (const c of items.sort((a, b) => (b.year || 0) - (a.year || 0))) {
-        // Acting resume format: Title | Role (Character) | Director/Company
         const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')
         const dirCol = [c.director ? `dir. ${c.director}` : '', c.org, c.productionCompany, c.venue].filter(Boolean).join(', ')
         html += `<div class="credit">`
@@ -32,13 +48,14 @@ export default {
         html += `</div>`
       }
     }
+
     return html
   },
 
   renderHighlights(data) {
-    const items = Array.isArray(data) ? data : []
-    if (!items.length) return ''
-    return items.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(c => {
+    const d = normalizeData(data)
+    if (!d.items.length) return ''
+    return d.items.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(c => {
       const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')
       const dirCol = [c.org, c.director ? `dir. ${c.director}` : ''].filter(Boolean).join(', ')
       return `<div class="credit"><span class="credit-title">${esc(c.title)}</span><span class="credit-role">${esc(roleCol)}</span><span class="credit-dir">${esc(dirCol)}</span></div>`
@@ -46,8 +63,9 @@ export default {
   },
 
   renderCV(data) {
-    if (!data || !Array.isArray(data)) return ''
-    return data
+    const d = normalizeData(data)
+    if (!d.items.length) return ''
+    return d.items
       .sort((a, b) => (b.year || 0) - (a.year || 0))
       .map(c => {
         const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')

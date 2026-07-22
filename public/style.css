@@ -98,6 +98,11 @@ input[type="number"] {
   padding: 0 2em;
   z-index: 100;
 }
+#top-bar > #praxis-menu-dropdown {
+  position: fixed;
+  top: 3em;
+  right: 1em;
+}
 
 .site-identity {
   color: var(--accent);
@@ -110,124 +115,181 @@ input[type="number"] {
   color: var(--fg);
 }
 
-.network-nav {
+/* --- planet menu --- */
+
+#praxis-menu-trigger {
   display: flex;
   align-items: center;
-  gap: 2ch;
-  flex-shrink: 0;
+  gap: 0;
+  cursor: pointer;
+  position: relative;
 }
 
-.network-nav a {
-  color: var(--muted);
-  font-size: 0.9em;
-  text-decoration: none;
+#praxis-menu-btn {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0.3em;
+  display: flex;
+  align-items: center;
+  font-size: 1.2em;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+#praxis-menu-label {
+  color: var(--fg);
+  font-size: 0.85em;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
   white-space: nowrap;
+  transition: opacity 0.25s ease, max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.network-nav a:hover {
-  color: var(--accent);
+#praxis-menu-trigger:hover #praxis-menu-btn,
+#praxis-menu-trigger.menu-open #praxis-menu-btn {
+  opacity: 1;
 }
 
-/* top bar wallet */
+#praxis-menu-trigger:hover #praxis-menu-label,
+#praxis-menu-trigger.menu-open #praxis-menu-label {
+  opacity: 1;
+  max-width: 5em;
+  margin-right: 0.5ch;
+}
 
+/* dropdown */
+#praxis-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 1px);
+  right: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: none;
+  min-width: 180px;
+  padding: 0.5em 0;
+  z-index: 101;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#praxis-menu-dropdown.praxis-dropdown-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+}
+
+#praxis-menu-dropdown a {
+  display: block;
+  padding: 0.5em 1.5ch;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9em;
+  transition: color 0.15s;
+}
+
+#praxis-menu-dropdown a:hover {
+  color: var(--fg);
+}
+
+.praxis-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.4em 1ch;
+}
+
+.praxis-menu-row {
+  display: flex;
+  gap: 4px;
+  padding: 0.4em 1.5ch;
+}
+
+/* hide old network-nav class if any remain */
+.network-nav {
+  display: none;
+}
+
+/* top bar bell (next to planet icon) */
+.top-bar-bell {
+  position: relative;
+  color: var(--fg);
+  font-size: 1.1em;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  margin-right: 0.5ch;
+}
+.top-bar-bell:hover {
+  opacity: 1;
+}
+
+/* sign-in button (solid, full-width in dropdown) */
+#top-bar-wallet .top-bar-signin {
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+  font-size: 0.9em;
+}
+
+/* wallet items inline in planet dropdown */
 #top-bar-wallet {
   display: flex;
-  align-items: center;
-  gap: 0.75ch;
+  flex-direction: column;
 }
 
-.top-bar-balance {
+.wallet-menu-balance {
   color: var(--accent);
-  font-size: 0.85em;
+  font-size: 1.05em;
+  padding: 0.5em 1.5ch 0.2em;
+  font-variant-numeric: tabular-nums;
 }
 
-.top-bar-addr {
-  color: var(--dim);
-  font-size: 0.8em;
-  cursor: pointer;
-}
-
-.top-bar-addr:hover {
-  color: var(--muted);
-}
-
-.top-bar-connect {
+.wallet-menu-addr {
+  display: flex;
+  align-items: center;
+  gap: 0.5ch;
   background: none;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border: none;
+  color: var(--dim);
   font-family: inherit;
   font-size: 0.8em;
-  padding: 0.2em 0.8ch;
+  padding: 0.2em 1.5ch 0.4em;
   cursor: pointer;
+  text-align: left;
+}
+.wallet-menu-addr:hover {
+  color: var(--muted);
+}
+.wallet-menu-addr i {
+  font-size: 0.9em;
 }
 
-.top-bar-connect:hover {
-  color: var(--accent);
-  border-color: var(--muted);
-}
-
-.wallet-dd-btn {
+.wallet-menu-link {
   display: block;
   width: 100%;
   background: none;
   border: none;
   color: var(--muted);
   font-family: inherit;
-  font-size: 0.8em;
-  padding: 0.4em 0.5ch;
+  font-size: 0.9em;
+  padding: 0.5em 1.5ch;
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
+  transition: color 0.15s;
+  box-sizing: border-box;
 }
-
-.wallet-dd-btn:hover {
-  color: var(--accent);
+.wallet-menu-link:hover {
+  color: var(--fg);
 }
-
-/* wallet menu overlay (visible on mobile only) */
-.wallet-menu-overlay {
-  display: none;
-}
-
-@media (max-width: 480px) {
-  .wallet-menu-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0);
-    z-index: 299;
-    transition: background 0.25s ease;
-  }
-  .wallet-menu-overlay.open {
-    background: rgba(0, 0, 0, 0.5);
-  }
-  .wallet-menu-sheet {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    border: none !important;
-    border-top: 1px solid var(--border) !important;
-    border-radius: 12px 12px 0 0;
-    padding: 1em 1.2em 2em !important;
-    z-index: 300 !important;
-    transform: translateY(100%);
-    transition: transform 0.25s ease;
-  }
-  .wallet-menu-sheet.open {
-    transform: translateY(0);
-  }
-  .wallet-menu-sheet .wallet-dd-btn {
-    font-size: 1em;
-    padding: 0.8em 0.5ch;
-    border-bottom: 1px solid var(--border);
-  }
-  .wallet-menu-sheet .wallet-dd-btn:last-child {
-    border-bottom: none;
-  }
+.wallet-menu-signout {
+  color: var(--dim);
 }
 
 /* floating owner dock — left edge */
@@ -432,10 +494,10 @@ footer a {
   gap: 1.5em;
 }
 .header-pic {
-  width: 120px;
-  height: 120px;
+  width: 160px;
+  height: 200px;
   object-fit: cover;
-  border-radius: 50%;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 .header-text {
@@ -443,7 +505,7 @@ footer a {
   min-width: 0;
 }
 @media (max-width: 600px) {
-  .header-pic { width: 80px; height: 80px; }
+  .header-pic { width: 110px; height: 138px; }
   .header-row { gap: 1em; }
 }
 
@@ -1286,10 +1348,13 @@ section img {
     align-items: center;
     font-size: 0.85em;
   }
-  /* mobile: hide nav links + selectors, keep wallet visible and right-aligned */
+  /* mobile: hide planet menu + bell, show hamburger */
+  #praxis-menu-trigger { display: none; }
+  #praxis-menu-dropdown { display: none; }
+  .top-bar-bell { display: none; }
   .network-nav a { display: none; }
   .network-nav .lang-switcher { display: none; }
-  .network-nav > span:last-child { display: none; } /* selectors wrapper */
+  .network-nav > span:last-child { display: none; }
   .network-nav { margin-left: auto; gap: 0.5ch; }
   #mobile-menu-btn { display: flex !important; margin-left: 0.5ch; }
 
@@ -4865,6 +4930,8 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
 /* RTL support */
 [dir="rtl"] #top-bar { flex-direction: row-reverse; }
 [dir="rtl"] .network-nav { flex-direction: row-reverse; }
+[dir="rtl"] #praxis-menu-trigger { flex-direction: row-reverse; }
+[dir="rtl"] #top-bar > #praxis-menu-dropdown { right: auto; left: 1em; }
 [dir="rtl"] .portfolio-nav { direction: rtl; }
 [dir="rtl"] .owner-dock { left: auto; right: 0; }
 [dir="rtl"] .feed-item-header { flex-direction: row-reverse; }

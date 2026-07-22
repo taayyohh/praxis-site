@@ -166,6 +166,14 @@ async function init() {
       await publicClient.waitForTransactionReceipt({ hash })
     } catch (e) {
       const msg = e?.shortMessage || e?.message || ''
+      // session expired — prompt unlock and retry once
+      if (msg.includes('session expired') && window.showUnlockPrompt) {
+        const addr = await window.showUnlockPrompt()
+        if (addr) {
+          if (btn) btn.disabled = false
+          return toggleFollow(targetAddr, btn)
+        }
+      }
       // if "already following" or "not following" — state was stale, correct it
       if (msg.includes('already following')) {
         followState[targetAddr.toLowerCase()] = true
@@ -178,9 +186,8 @@ async function init() {
         followState[targetAddr.toLowerCase()] = isFollowing
         if (btn) { btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow'); btn.classList.toggle('nc-btn-filled', isFollowing) }
       }
-      if (e.code !== 4001 && !msg.includes('already following') && !msg.includes('not following')) {
+      if (e.code !== 4001 && !msg.includes('already following') && !msg.includes('not following') && !msg.includes('session expired')) {
         console.error('follow error:', e)
-        // Show error toast — especially for stuck nonce / underpriced issues
         const errDisplay = msg.includes('underpriced') ? 'transaction stuck — try again in a moment'
           : msg.includes('rejected') || msg.includes('denied') ? 'cancelled'
           : msg.includes('insufficient') ? 'insufficient funds for gas'

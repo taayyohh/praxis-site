@@ -48,44 +48,33 @@
   </script>
   <header id="top-bar">
     <a href="/" class="site-identity">{{domain}}</a>
-    <nav class="network-nav">
+    <div id="praxis-menu-trigger">
+      <span id="praxis-menu-label">praxis</span>
+      <button id="praxis-menu-btn" aria-label="Menu"><i class="ph ph-planet"></i></button>
+    </div>
+    <div id="praxis-menu-dropdown" class="praxis-dropdown-hidden">
       <a href="/network" data-i18n="nav.network">network</a>
       <a href="/projects" data-i18n="nav.projects">projects</a>
       <a href="/library" data-i18n="nav.library">library</a>
-      <span id="top-bar-wallet" style="margin-right:0.5ch"></span>
-      <span style="display:flex;gap:4px;align-items:center"><select id="lang-switcher" class="lang-switcher" style="margin-left:0">
-        <option value="en">EN</option>
-        <option value="es">ES</option>
-        <option value="fr">FR</option>
-        <option value="pt">PT</option>
-        <option value="de">DE</option>
-        <option value="ar">AR</option>
-        <option value="zh">ZH</option>
-        <option value="ja">JA</option>
-        <option value="ko">KO</option>
-        <option value="hi">HI</option>
-        <option value="sw">SW</option>
-        <option value="ru">RU</option>
-        <option value="bn">BN</option>
-        <option value="id">ID</option>
-        <option value="tr">TR</option>
-        <option value="vi">VI</option>
-        <option value="fa">FA</option>
-        <option value="ur">UR</option>
-      </select>
-      <select id="currency-switcher" class="lang-switcher" style="margin-left:0">
-        <option value="usd">USD</option>
-        <option value="eur">EUR</option>
-        <option value="gbp">GBP</option>
-        <option value="jpy">JPY</option>
-        <option value="cny">CNY</option>
-        <option value="brl">BRL</option>
-        <option value="ngn">NGN</option>
-        <option value="kes">KES</option>
-        <option value="inr">INR</option>
-        <option value="krw">KRW</option>
-      </select></span>
-    </nav>
+      <div class="praxis-menu-divider"></div>
+      <span id="top-bar-wallet"></span>
+      <div class="praxis-menu-row">
+        <select id="lang-switcher" class="lang-switcher">
+          <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option>
+          <option value="pt">PT</option><option value="de">DE</option><option value="ar">AR</option>
+          <option value="zh">ZH</option><option value="ja">JA</option><option value="ko">KO</option>
+          <option value="hi">HI</option><option value="sw">SW</option><option value="ru">RU</option>
+          <option value="bn">BN</option><option value="id">ID</option><option value="tr">TR</option>
+          <option value="vi">VI</option><option value="fa">FA</option><option value="ur">UR</option>
+        </select>
+        <select id="currency-switcher" class="lang-switcher">
+          <option value="usd">USD</option><option value="eur">EUR</option><option value="gbp">GBP</option>
+          <option value="jpy">JPY</option><option value="cny">CNY</option><option value="brl">BRL</option>
+          <option value="ngn">NGN</option><option value="kes">KES</option><option value="inr">INR</option>
+          <option value="krw">KRW</option>
+        </select>
+      </div>
+    </div>
     <button id="mobile-menu-btn" style="display:none;background:none;border:none;color:var(--fg);font-size:1.3em;cursor:pointer;padding:0.2em" aria-label="Menu"><i class="ph ph-list"></i></button>
   </header>
 
@@ -173,6 +162,36 @@
       var cached = localStorage.getItem('praxis-wallet')
       if (cached && !sessionStorage.getItem('wallet-disconnected')) checkOwner(cached)
     } catch(e) {}
+
+    // --- planet menu dropdown ---
+    var pmBtn = document.getElementById('praxis-menu-btn')
+    var pmTrigger = document.getElementById('praxis-menu-trigger')
+    var pmDrop = document.getElementById('praxis-menu-dropdown')
+    if (pmBtn && pmDrop && pmTrigger) {
+      pmBtn.addEventListener('click', function(e) {
+        e.stopPropagation()
+        var open = !pmDrop.classList.contains('praxis-dropdown-hidden')
+        if (open) {
+          pmDrop.classList.add('praxis-dropdown-hidden')
+          pmTrigger.classList.remove('menu-open')
+        } else {
+          pmDrop.classList.remove('praxis-dropdown-hidden')
+          pmTrigger.classList.add('menu-open')
+        }
+      })
+      document.addEventListener('click', function(e) {
+        if (!pmTrigger.contains(e.target) && !pmDrop.contains(e.target)) {
+          pmDrop.classList.add('praxis-dropdown-hidden')
+          pmTrigger.classList.remove('menu-open')
+        }
+      })
+      pmDrop.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function() {
+          pmDrop.classList.add('praxis-dropdown-hidden')
+          pmTrigger.classList.remove('menu-open')
+        })
+      })
+    }
   })()
   </script>
 
