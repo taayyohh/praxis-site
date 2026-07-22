@@ -82,7 +82,7 @@ async function checkBalance(address, currency, priceRaw) {
     return { ok: balance >= BigInt(priceRaw), balance }
   } catch (e) {
     console.warn('balance check failed:', e.message)
-    return { ok: true, error: true }
+    return { ok: false, balance: 0n, error: e.message }
   }
 }
 
