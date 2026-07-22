@@ -265,17 +265,35 @@ function showAddress(address) {
     }
 
     // populate planet dropdown with wallet items
+    const dropdown = document.getElementById('praxis-menu-dropdown')
     const closeFn = () => {
-      const dd = document.getElementById('praxis-menu-dropdown')
+      if (dropdown) dropdown.classList.add('praxis-dropdown-hidden')
       const trig = document.getElementById('praxis-menu-trigger')
-      if (dd) dd.classList.add('praxis-dropdown-hidden')
       if (trig) trig.classList.remove('menu-open')
     }
+
+    // balance at the very top of the dropdown (before nav links)
+    document.getElementById('wallet-top-section')?.remove()
+    if (dropdown) {
+      const top = document.createElement('div')
+      top.id = 'wallet-top-section'
+      top.innerHTML = `
+        <div class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</div>
+        <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
+        <div class="praxis-menu-divider"></div>
+      `
+      dropdown.insertBefore(top, dropdown.firstChild)
+      top.querySelector('#dd-copy')?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(address)
+          const icon = top.querySelector('#dd-copy i')
+          if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
+        } catch {}
+      })
+    }
+
+    // wallet actions below nav links
     topBarWallet.innerHTML = `
-      <div class="praxis-menu-divider"></div>
-      <div class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</div>
-      <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
-      <div class="praxis-menu-divider"></div>
       ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings">${t('earnings.title')}</a>` : ''}
       <button class="wallet-menu-link" id="dd-fund">${t('wallet.fundWallet')}</button>
       <button class="wallet-menu-link" id="dd-cashout">${t('wallet.cashOut')}</button>
@@ -295,13 +313,6 @@ function showAddress(address) {
     topBarWallet.querySelector('#dd-cashout')?.addEventListener('click', () => {
       closeFn()
       window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
-    })
-    topBarWallet.querySelector('#dd-copy')?.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(address)
-        const icon = topBarWallet.querySelector('#dd-copy i')
-        if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
-      } catch {}
     })
     topBarWallet.querySelector('#dd-settings')?.addEventListener('click', () => {
       closeFn()
@@ -851,9 +862,21 @@ async function disconnect() {
   }
 
   if (topBarWallet) {
-    topBarWallet.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
-    document.getElementById('top-connect')?.addEventListener('click', connect)
-    // remove bell from top bar on disconnect
+    topBarWallet.innerHTML = ''
+    // remove balance section from dropdown top
+    document.getElementById('wallet-top-section')?.remove()
+    // put sign-in at top of dropdown
+    const dropdown = document.getElementById('praxis-menu-dropdown')
+    if (dropdown) {
+      const existing = document.getElementById('wallet-top-section')
+      if (existing) existing.remove()
+      const top = document.createElement('div')
+      top.id = 'wallet-top-section'
+      top.className = 'wallet-top-signin'
+      top.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button><div class="praxis-menu-divider"></div>`
+      dropdown.insertBefore(top, dropdown.firstChild)
+      top.querySelector('#top-connect')?.addEventListener('click', connect)
+    }
     document.getElementById('top-notifications')?.remove()
   }
 
@@ -1120,8 +1143,17 @@ async function autoConnect() {
 
 function showConnectButton() {
   if (topBarWallet) {
-    topBarWallet.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button>`
-    document.getElementById('top-connect')?.addEventListener('click', connect)
+    topBarWallet.innerHTML = ''
+    document.getElementById('wallet-top-section')?.remove()
+    const dropdown = document.getElementById('praxis-menu-dropdown')
+    if (dropdown) {
+      const top = document.createElement('div')
+      top.id = 'wallet-top-section'
+      top.className = 'wallet-top-signin'
+      top.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button><div class="praxis-menu-divider"></div>`
+      dropdown.insertBefore(top, dropdown.firstChild)
+      top.querySelector('#top-connect')?.addEventListener('click', connect)
+    }
   }
   document.getElementById('top-notifications')?.remove()
 }
