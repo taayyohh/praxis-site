@@ -56,7 +56,7 @@ export async function handleSsr(ctx) {
               return `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" style="max-width:100%;margin:1em 0">`
             })
             body = body.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
-              if (/^(https?:|\/[^\/])/.test(href)) return `<a href="${href}">${text}</a>`
+              if (/^(https?:|\/[^\/])/.test(href)) return `<a href="${esc(href)}">${text}</a>`
               return text
             })
             body = body.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')

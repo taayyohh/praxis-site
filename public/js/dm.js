@@ -851,7 +851,7 @@ async function createProjectGroup(projectId, title) {
     const groupId = convo.id
 
     // store group ID on server
-    await fetch(`https://milesxb.bio/api/project-group?id=${projectId}`, {
+    await fetch(`/api/project-group?id=${projectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ groupId }),

@@ -619,7 +619,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
 
       <div class="project-funding">
         <div class="project-funding-text">
-          <span data-eth-wei="${project.goal || '0'}">${fundedEth} / ${goalEth} ETH</span>
+          <span data-eth-wei="${p.goal || '0'}">${fundedEth} / ${goalEth} ETH</span>
           <span style="color:#666">${pct.toFixed(0)}%</span>
         </div>
         ${progressBar}
@@ -684,7 +684,7 @@ function attachHandlers(container, hubAddress, publicClient) {
       // after funding, try to join the project group chat
       try {
         const projectId = btn.dataset.id
-        const res = await fetch(`https://milesxb.bio/api/project-group?id=${projectId}`)
+        const res = await fetch(`/api/project-group?id=${projectId}`)
         const { groupId } = await res.json()
         if (groupId && window._xmtpClient) {
           // sync to pick up the group invitation
