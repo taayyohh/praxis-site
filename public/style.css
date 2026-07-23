@@ -258,9 +258,9 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-right: 0.75ch;
-  border-right: 1px solid var(--border);
-  margin-right: 0.75ch;
+  padding-left: 0.75ch;
+  border-left: 1px solid var(--border);
+  margin-left: 0.75ch;
   padding-top: 0.1em;
   padding-bottom: 0.1em;
 }

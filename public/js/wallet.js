@@ -311,14 +311,14 @@ function showAddress(address) {
       const langSwitcher = menuRow?.querySelector('#lang-switcher')
       const currSwitcher = menuRow?.querySelector('#currency-switcher')
 
-      // insert switchers into top bar before the planet trigger
+      // insert switchers into top bar after the planet trigger (far right)
       const trigger = document.getElementById('praxis-menu-trigger')
       if (trigger && langSwitcher && !document.getElementById('top-bar-switchers')) {
         const wrap = document.createElement('span')
         wrap.id = 'top-bar-switchers'
         wrap.appendChild(langSwitcher)
         if (currSwitcher) wrap.appendChild(currSwitcher)
-        trigger.parentNode.insertBefore(wrap, trigger)
+        trigger.parentNode.insertBefore(wrap, trigger.nextSibling)
       }
 
       // bottom bar: manage + sign out
