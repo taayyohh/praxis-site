@@ -2,7 +2,7 @@
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
@@ -638,35 +638,40 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
 // Batch-geocode all project card location elements that still show raw coords
 const _geocodeCache = new Map()
 const GEOCODE_CACHE_MAX = 200
+let _geocodeQueue = Promise.resolve()
+function _geocodeLookup(key, lat, lng) {
+  if (_geocodeCache.has(key)) {
+    const val = _geocodeCache.get(key)
+    _geocodeCache.delete(key); _geocodeCache.set(key, val)
+    return Promise.resolve(val)
+  }
+  _geocodeQueue = _geocodeQueue.then(() => new Promise(resolve => setTimeout(resolve, 1100))).then(async () => {
+    if (_geocodeCache.has(key)) return _geocodeCache.get(key)
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+    const data = await res.json()
+    const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || ''
+    const state = data.address?.state || ''
+    const country = data.address?.country || ''
+    const name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || data.display_name?.split(',').slice(0, 2).join(',').trim() || key
+    if (_geocodeCache.size >= GEOCODE_CACHE_MAX) { _geocodeCache.delete(_geocodeCache.keys().next().value) }
+    _geocodeCache.set(key, name)
+    return name
+  })
+  return _geocodeQueue
+}
 function geocodeProjectCards(container) {
   const els = (container || document).querySelectorAll('.project-card-location[data-lat][data-lng]')
-  els.forEach(async (el) => {
+  els.forEach(el => {
     const lat = parseFloat(el.dataset.lat)
     const lng = parseFloat(el.dataset.lng)
     if (isNaN(lat) || isNaN(lng)) return
     const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
-    // skip if already geocoded
     if (el.dataset.geocoded) return
     el.dataset.geocoded = '1'
-    try {
-      let name
-      if (_geocodeCache.has(key)) {
-        name = _geocodeCache.get(key)
-      } else {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
-        const data = await res.json()
-        const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || ''
-        const state = data.address?.state || ''
-        const country = data.address?.country || ''
-        name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || data.display_name?.split(',').slice(0, 2).join(',').trim() || key
-        if (_geocodeCache.size >= GEOCODE_CACHE_MAX) { const first = _geocodeCache.keys().next().value; _geocodeCache.delete(first) }
-        _geocodeCache.set(key, name)
-      }
+    _geocodeLookup(key, lat, lng).then(name => {
       const span = el.querySelector('.location-name')
       if (span) span.textContent = name
-    } catch (e) {
-      console.warn('card geocode error:', e)
-    }
+    }).catch(() => {})
   })
 }
 
@@ -883,6 +888,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                   <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
                 </select>
                 <button type="button" class="remove-tier-btn" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.2em">&times;</button>
+                <div class="tier-event-details">
+                  <input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark">
+                  <input type="text" class="tier-location-input project-input" placeholder="venue / location">
+                </div>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1008,6 +1017,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
         price: row.querySelector('.tier-price-input')?.value || '',
         supply: row.querySelector('.tier-supply-input')?.value || '',
         type: row.querySelector('.tier-type-input')?.value || '',
+        eventDate: row.querySelector('.tier-date-input')?.value || '',
+        location: row.querySelector('.tier-location-input')?.value || '',
       })),
       location: document.getElementById('propose-location')?.value || '',
       locationData: document.getElementById('propose-location-data')?.value || '',
@@ -1053,6 +1064,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
             const p = row.querySelector('.tier-price-input'); if (p) p.value = tier.price || ''
             const s = row.querySelector('.tier-supply-input'); if (s) s.value = tier.supply || '10'
             const t = row.querySelector('.tier-type-input'); if (t) t.value = tier.type || 'ticket'
+            const d = row.querySelector('.tier-date-input'); if (d && tier.eventDate) d.value = tier.eventDate
+            const l = row.querySelector('.tier-location-input'); if (l && tier.location) l.value = tier.location
           }
         })
       }
@@ -1652,11 +1665,13 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     if (!resultsEl) return
     try {
       const safeQ = q.replace(/["\\{}\n\r]/g, '').slice(0, 100)
-      const where = safeQ ? `, where: { title_contains: "${safeQ}" }` : ''
+      const whereClause = safeQ ? ', where: { title_contains: $q }' : ''
+      const varDecl = safeQ ? '($q: String!)' : ''
+      const vars = safeQ ? { q: safeQ } : {}
       const [mediaData, libData, projData] = await Promise.all([
-        query(`{ mediaListings(limit: 10${where}, orderBy: "id", orderDirection: "desc") { items { id title artist ipfsCid metadataCid contentType } } }`),
-        query(`{ libraryItems(limit: 10${where}, orderBy: "timestamp", orderDirection: "desc") { items { ${F.libraryItem} } } }`),
-        query(`{ projects(limit: 10${where}, orderBy: "createdAt", orderDirection: "desc") { items { ${F.projectSummary} } } }`),
+        query(`query${varDecl} { mediaListings(limit: 10${whereClause}, orderBy: "id", orderDirection: "desc") { items { id title artist ipfsCid metadataCid contentType } } }`, vars),
+        query(`query${varDecl} { libraryItems(limit: 10${whereClause}, orderBy: "timestamp", orderDirection: "desc") { items { ${F.libraryItem} } } }`, vars),
+        query(`query${varDecl} { projects(limit: 10${whereClause}, orderBy: "createdAt", orderDirection: "desc") { items { ${F.projectSummary} } } }`, vars),
       ])
       const mediaItems = (mediaData.mediaListings?.items || []).slice(0, 8)
       const libItems = (libData.libraryItems?.items || []).slice(0, 8)
@@ -1796,6 +1811,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
         <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
       </select>
       <button type="button" class="remove-tier-btn" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2em">&times;</button>
+      <div class="tier-event-details">
+        <input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark">
+        <input type="text" class="tier-location-input project-input" placeholder="venue / location">
+      </div>
     </div>`
     document.getElementById('propose-tiers').insertAdjacentHTML('beforeend', row)
     updateTierCalc()
@@ -1856,6 +1875,9 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const tierPrices = []
     const tierSupplies = []
     const tierTransferable = []
+    const tierEventDates = []
+    const tierLocations = []
+    const tierLocStrings = []
     for (const row of tierRows) {
       const name = row.querySelector('.tier-name-input').value.trim()
       const price = row.querySelector('.tier-price-input').value.trim()
@@ -1866,6 +1888,29 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       tierPrices.push(parseEther(price))
       tierSupplies.push(BigInt(supply))
       tierTransferable.push(transfer)
+      const dateVal = row.querySelector('.tier-date-input')?.value
+      tierEventDates.push(dateVal ? BigInt(Math.floor(new Date(dateVal).getTime() / 1000)) : 0n)
+      tierLocStrings.push(row.querySelector('.tier-location-input')?.value.trim() || '')
+    }
+
+    // batch geocode all unique tier locations
+    const uniqueLocs = [...new Set(tierLocStrings.filter(Boolean))]
+    const geoResults = {}
+    await Promise.all(uniqueLocs.map(async loc => {
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(loc)}&limit=1`)
+        const geoData = await geoRes.json()
+        if (geoData[0]) {
+          const lat = Math.round(parseFloat(geoData[0].lat) * 1e7)
+          const lng = Math.round(parseFloat(geoData[0].lon) * 1e7)
+          const latBig = BigInt(lat < 0 ? lat + 2**64 : lat)
+          const lngBig = BigInt(lng < 0 ? lng + 2**64 : lng)
+          geoResults[loc] = (latBig << 64n) | lngBig
+        }
+      } catch {}
+    }))
+    for (const loc of tierLocStrings) {
+      tierLocations.push(loc ? (geoResults[loc] || 0n) : 0n)
     }
 
     if (tierNames.length === 0) { ps.textContent = 'add at least one funding tier'; return }
@@ -1956,7 +2001,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await wc.writeContract({
         address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-        args: [title, desc, typeStr, '', collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
+        args: [title, desc, typeStr, '', collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
         account: proposeAcct,
       })
       ps.textContent = `tx: ${hash.slice(0, 14)}...`
@@ -2111,7 +2156,6 @@ async function loadLeaflet() {
 }
 
 function unpackLocation(packed, locationDisplay) {
-  // try to parse pipe-delimited display format first: "Name|lat,lng,radius"
   if (locationDisplay && typeof locationDisplay === 'string' && locationDisplay.includes('|')) {
     const parts = locationDisplay.split('|')
     if (parts.length >= 2) {
@@ -2126,20 +2170,8 @@ function unpackLocation(packed, locationDisplay) {
       }
     }
   }
-
-  if (!packed || packed === '0' || packed === 0n) return null
-  const val = BigInt(packed)
-  if (val === 0n) return null
-  const lngRaw = val & ((1n << 64n) - 1n)
-  const latRaw = val >> 64n
-  // convert back from uint64 to signed
-  let lat = latRaw >= (1n << 63n) ? Number(latRaw - (1n << 64n)) : Number(latRaw)
-  let lng = lngRaw >= (1n << 63n) ? Number(lngRaw - (1n << 64n)) : Number(lngRaw)
-  lat = lat / 1e7
-  lng = lng / 1e7
-  if (lat === 0 && lng === 0) return null
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
-  return { lat, lng, radius: 5 }
+  const result = unpackLocationBase(packed)
+  return result ? { ...result, radius: 5 } : null
 }
 
 function setupViewToggle(projects, resolve) {

@@ -1416,6 +1416,21 @@ export function boundedSet(map, key, value, cap = 500) {
   map.set(key, value)
 }
 
+export function unpackLocation(packed) {
+  if (!packed || packed === '0' || packed === 0n) return null
+  const val = BigInt(packed)
+  if (val === 0n) return null
+  const lngRaw = val & ((1n << 64n) - 1n)
+  const latRaw = val >> 64n
+  let lat = latRaw >= (1n << 63n) ? Number(latRaw - (1n << 64n)) : Number(latRaw)
+  let lng = lngRaw >= (1n << 63n) ? Number(lngRaw - (1n << 64n)) : Number(lngRaw)
+  lat = lat / 1e7
+  lng = lng / 1e7
+  if (lat === 0 && lng === 0) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { lat, lng }
+}
+
 export function classifyContentType(ct, title) {
   if (ct) {
     const lower = ct.toLowerCase()

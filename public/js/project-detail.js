@@ -1,9 +1,9 @@
 // Project detail page — full view of a single project with lifecycle controls
 import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther, formatEther } from './vendor.js'
-import { scroll } from './vendor.js'
+import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, ensureWallet, rewriteIpfsUrls, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, ensureWallet, rewriteIpfsUrls, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -54,9 +54,8 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
 
   // Resolve inbox IDs helper
   async function resolveInboxIds(addrs) {
-    const ids = []
-    for (const addr of addrs) {
-      if (addr === myAddr) continue // creator auto-added
+    const filtered = addrs.filter(a => a !== myAddr)
+    const results = await Promise.all(filtered.map(async addr => {
       try {
         let id = null
         if (typeof client.findInboxIdByIdentifier === 'function') {
@@ -65,10 +64,10 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
         if (!id && typeof client.fetchInboxIdByIdentifier === 'function') {
           id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
         }
-        if (id) ids.push(id)
-      } catch {}
-    }
-    return ids
+        return id
+      } catch { return null }
+    }))
+    return results.filter(Boolean)
   }
 
   try {
@@ -235,9 +234,16 @@ async function initProjectDetail() {
         ? (remaining > 0 ? `${remaining} spot${remaining !== 1 ? 's' : ''} left` : 'sold out')
         : `${t.sold}/${t.maxSupply} sold`
       const btnLabel = isEvent ? (isFreeRsvp ? 'RSVP' : 'get tickets') : 'fund'
+      const tierDateStr = t.eventDate && BigInt(t.eventDate) > 0n
+        ? new Date(Number(t.eventDate) * 1000).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : ''
+      const tierLoc = unpackLocation(t.location)
+      const tierLocStr = tierLoc ? `${tierLoc.lat.toFixed(4)}, ${tierLoc.lng.toFixed(4)}` : ''
       return `<div style="border:1px solid var(--border);padding:1em">
         <div>${badge}</div>
         <div style="color:var(--accent);margin:0.25em 0">${escapeHtml(t.name)}</div>
+        ${tierDateStr ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.25em"><i class="ph ph-calendar" style="margin-right:0.3ch"></i> ${tierDateStr}</div>` : ''}
+        ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.25em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
         <div style="color:var(--fg);font-size:0.9em">${priceLabel}</div>
         <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
         ${remaining > 0 && p.status <= 1 ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
@@ -250,7 +256,6 @@ async function initProjectDetail() {
     // funders section
     const fundersHtml = data.fundings.items.slice(0, 20).map(f => {
       const domain = resolve(f.funder)
-      const amt = formatEthAmount(f.amount)
       const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatPriceSync(f.amount, ethPrices)
       return `<div style="font-size:0.85em;padding:0.3em 0"><a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${escapeHtml(domain)}</a> <span style="color:#4ade80">${amtLabel}</span></div>`
     }).join('')
@@ -352,26 +357,18 @@ async function initProjectDetail() {
 
     // location display
     let locationHtml = ''
-    if (p.location && BigInt(p.location) !== 0n) {
-      const packed = BigInt(p.location)
-      const lngRaw = packed & ((1n << 64n) - 1n)
-      const latRaw = packed >> 64n
-      let lat = latRaw >= (1n << 63n) ? Number(latRaw - (1n << 64n)) : Number(latRaw)
-      let lng = lngRaw >= (1n << 63n) ? Number(lngRaw - (1n << 64n)) : Number(lngRaw)
-      lat = lat / 1e7
-      lng = lng / 1e7
-      if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0)) {
-        try {
-          const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
-          const geoData = await geoRes.json()
-          const city = geoData.address?.city || geoData.address?.town || geoData.address?.village || geoData.address?.suburb || ''
-          const state = geoData.address?.state || ''
-          const country = geoData.address?.country || ''
-          const name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || geoData.display_name?.split(',').slice(0, 2).join(',').trim() || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
-          locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${escapeHtml(name)}</div>`
-        } catch {
-          locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>`
-        }
+    const projLoc = unpackLocation(p.location)
+    if (projLoc) {
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${projLoc.lat}&lon=${projLoc.lng}&format=json`)
+        const geoData = await geoRes.json()
+        const city = geoData.address?.city || geoData.address?.town || geoData.address?.village || geoData.address?.suburb || ''
+        const state = geoData.address?.state || ''
+        const country = geoData.address?.country || ''
+        const name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || geoData.display_name?.split(',').slice(0, 2).join(',').trim() || `${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}`
+        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${escapeHtml(name)}</div>`
+      } catch {
+        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}</div>`
       }
     }
 
@@ -438,7 +435,7 @@ async function initProjectDetail() {
 
     contentEl.innerHTML = `
       <div style="margin-bottom:1em">
-        <span style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em">${typeName}</span>
+        <span style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em">${escapeHtml(typeName)}</span>
         <span style="color:${statusColor};font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">${statusLabel}</span>
       </div>
       <h1 style="color:var(--accent);font-size:1.8em;font-weight:normal;margin-bottom:0.25em">${escapeHtml(p.title)}</h1>
@@ -501,7 +498,7 @@ async function initProjectDetail() {
       try {
         await window.ensureScroll?.()
         const currentAccount = await window.ensureAuthorized?.() || addr
-        const walletClient = createWalletClient({ chain: scroll, transport: custom(getWalletProvider()) })
+        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const action = walletClient.writeContract({
           address: praxisAddr, abi: PRAXIS_ABI,
           functionName: fn, args, account: currentAccount,
@@ -585,7 +582,7 @@ async function initProjectDetail() {
         const { parseEther } = await import('./vendor.js')
         await window.ensureScroll?.()
         const revAccount = await window.ensureAuthorized?.() || addr
-        const walletClient = createWalletClient({ chain: scroll, transport: custom(getWalletProvider()) })
+        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
           address: praxisAddr, abi: PRAXIS_ABI,
           functionName: 'distributeRevenue', args: [BigInt(projectId)],
@@ -865,28 +862,36 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
 async function loadCommentReplies(commentIds, domainMap, resolve) {
   if (!commentIds.length) return
 
-  for (const commentId of commentIds) {
-    try {
-      const data = await query(`
-        query CommentReplies($refId: BigInt!) {
-          blogPosts(where: { refType: 3, refId: $refId }, orderBy: "timestamp", orderDirection: "asc", limit: 50) {
-            items { ${F.post} }
-          }
+  try {
+    const data = await query(`
+      query CommentReplies($ids: [BigInt!]!) {
+        blogPosts(where: { refType: 3, refId_in: $ids }, orderBy: "timestamp", orderDirection: "asc", limit: 200) {
+          items { ${F.post} }
         }
-      `, { refId: commentId })
-
-      const replies = (data.blogPosts?.items || []).filter(r => !isBlocked(r.author))
-      if (!replies.length) continue
-
-      // resolve reply authors
-      const newAddrs = replies.map(r => r.author).filter(a => !domainMap[a.toLowerCase()])
-      if (newAddrs.length > 0) {
-        try {
-          const newDomains = await resolveAddresses(query, newAddrs)
-          Object.assign(domainMap, newDomains)
-        } catch {}
       }
+    `, { ids: commentIds })
 
+    const allReplies = (data.blogPosts?.items || []).filter(r => !isBlocked(r.author))
+    if (!allReplies.length) return
+
+    const newAddrs = [...new Set(allReplies.map(r => r.author))].filter(a => !domainMap[a.toLowerCase()])
+    if (newAddrs.length > 0) {
+      try {
+        const newDomains = await resolveAddresses(query, newAddrs)
+        Object.assign(domainMap, newDomains)
+      } catch {}
+    }
+
+    const byParent = new Map()
+    for (const r of allReplies) {
+      const pid = String(r.refId)
+      if (!byParent.has(pid)) byParent.set(pid, [])
+      byParent.get(pid).push(r)
+    }
+
+    for (const commentId of commentIds) {
+      const replies = byParent.get(String(commentId)) || []
+      if (!replies.length) continue
       const repliesEl = document.getElementById(`replies-for-${commentId}`)
       if (repliesEl) {
         repliesEl.innerHTML = replies.map(r => {
@@ -901,7 +906,8 @@ async function loadCommentReplies(commentIds, domainMap, resolve) {
           </div>`
         }).join('')
       }
-    } catch (e) { console.warn('comment replies error:', e?.message) }
+    }
+  } catch (e) { console.warn('comment replies error:', e?.message) }
   }
 }
 
@@ -935,7 +941,7 @@ function renderCommentForm(blogAddr, projectId, projectTitle) {
       const title = `comment on ${projectTitle}`
       await window.ensureScroll?.()
       const commentAccount = await window.ensureAuthorized?.() || addr
-      const walletClient = createWalletClient({ chain: scroll, transport: custom(getWalletProvider()) })
+      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await walletClient.writeContract({
         address: blogAddr, abi: BLOG_ABI, functionName: 'postWithRef',
         args: [title, content, 1, BigInt(projectId)],

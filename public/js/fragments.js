@@ -21,7 +21,7 @@ export const F = {
   collaborator: 'projectId artist split',
 
   // tier
-  tier: 'id projectId tierId name price maxSupply sold transferable',
+  tier: 'id projectId tierId name price maxSupply sold transferable eventDate location',
 
   // funding
   funding: 'projectId funder amount timestamp',

@@ -94,7 +94,7 @@ input[type="number"] {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.5ch;
   padding: 0 2em;
   z-index: 100;
 }
@@ -258,9 +258,8 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-left: 0.75ch;
-  margin-left: auto;
-  border-left: 1px solid var(--border);
+  padding-right: 0.75ch;
+  border-right: 1px solid var(--border);
   margin-right: 0.75ch;
   padding-top: 0.1em;
   padding-bottom: 0.1em;
@@ -1920,6 +1919,12 @@ details[open] .propose-settings-chevron {
   transform: rotate(180deg);
 }
 
+.tier-event-details {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5em;
+}
 .propose-tier-row:only-child .remove-tier-btn,
 .propose-team-row:only-child .remove-team-btn {
   opacity: 0.2;
