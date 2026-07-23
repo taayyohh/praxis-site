@@ -51,9 +51,13 @@
       <button id="praxis-menu-btn" aria-label="Menu"><i class="ph ph-planet"></i></button>
     </div>
     <div id="praxis-menu-dropdown" class="praxis-dropdown-hidden">
-      <a href="/network" data-i18n="nav.network">network</a>
-      <a href="/projects" data-i18n="nav.projects">projects</a>
-      <a href="/library" data-i18n="nav.library">library</a>
+      <span id="top-bar-wallet-top"></span>
+      <div class="praxis-menu-section" id="praxis-nav-section">
+        <div class="praxis-menu-section-label">praxis</div>
+        <a href="/network" data-i18n="nav.network">network</a>
+        <a href="/projects" data-i18n="nav.projects">projects</a>
+        <a href="/library" data-i18n="nav.library">library</a>
+      </div>
       <span id="top-bar-wallet"></span>
       <div class="praxis-menu-row">
         <select id="lang-switcher" class="lang-switcher">
@@ -99,10 +103,20 @@
     <a href="/projects" class="mobile-menu-item">projects</a>
     <a href="/library" class="mobile-menu-item">library</a>
     <div class="mobile-menu-section" id="mobile-menu-owner-nav" style="display:none">
-      <div class="mobile-menu-section-title" style="margin-top:1em" data-i18n="menu.account">account</div>
+      <div class="mobile-menu-section-title" style="margin-top:1em">account</div>
+      <div id="mobile-balance" class="mobile-menu-balance"></div>
+      <a href="#" class="mobile-menu-item" id="mobile-manage-btn">manage</a>
       <a href="/notifications" class="mobile-menu-item">notifications</a>
+    </div>
+    <div class="mobile-menu-section" id="mobile-menu-wallet-nav" style="display:none">
+      <div class="mobile-menu-section-title" style="margin-top:1em">wallet</div>
       <a href="/earnings" class="mobile-menu-item">earnings</a>
-      <a href="#" class="mobile-menu-item" id="mobile-settings-btn">settings</a>
+      <button class="mobile-menu-item" id="mobile-fund-btn">add funds</button>
+      <button class="mobile-menu-item" id="mobile-send-btn">send</button>
+      <button class="mobile-menu-item" id="mobile-cashout-btn">cash out</button>
+    </div>
+    <div class="mobile-menu-section" id="mobile-menu-signout-nav" style="display:none">
+      <button class="mobile-menu-item" id="mobile-signout-btn" style="color:var(--dim)">sign out</button>
     </div>
   </div>
   <script>
@@ -144,19 +158,55 @@
 
     var pt = document.getElementById('mobile-portfolio-toggle')
     var mc = document.getElementById('mobile-compose')
-    var ms = document.getElementById('mobile-settings-btn')
+    var mm = document.getElementById('mobile-manage-btn')
     if (pt) pt.addEventListener('click', function() { window.dispatchEvent(new CustomEvent('toggle-portfolio')) })
     if (mc) mc.addEventListener('click', function() { window.dispatchEvent(new CustomEvent('open-compose')) })
-    if (ms) ms.addEventListener('click', function(e) { e.preventDefault(); closeMenu(); window.dispatchEvent(new CustomEvent('open-settings')) })
+    if (mm) mm.addEventListener('click', function(e) { e.preventDefault(); closeMenu(); window.dispatchEvent(new CustomEvent('open-settings')) })
+    var mfund = document.getElementById('mobile-fund-btn')
+    var msend = document.getElementById('mobile-send-btn')
+    var mcash = document.getElementById('mobile-cashout-btn')
+    var msign = document.getElementById('mobile-signout-btn')
+    if (mfund) mfund.addEventListener('click', async function() {
+      closeMenu()
+      try {
+        var pay = await import('/js/pay.js')
+        var addr = localStorage.getItem('praxis-wallet')
+        if (addr) await pay.showFundingSheet(addr, 0n)
+      } catch(e) { console.warn('fund error:', e) }
+    })
+    if (msend) msend.addEventListener('click', async function() {
+      closeMenu()
+      try {
+        var earn = await import('/js/earnings.js')
+        var addr = localStorage.getItem('praxis-wallet')
+        if (addr) earn.showSendModal(addr)
+      } catch(e) { console.warn('send error:', e) }
+    })
+    if (mcash) mcash.addEventListener('click', function() { closeMenu(); window.open('https://www.peer.xyz/swap?tab=sell', '_blank') })
+    if (msign) msign.addEventListener('click', function() { closeMenu(); window.dispatchEvent(new CustomEvent('wallet-disconnect-request')) })
 
     function checkOwner(addr) {
       var owner = document.body.dataset.owner
       var sec = document.getElementById('mobile-menu-owner-nav')
+      var walletSec = document.getElementById('mobile-menu-wallet-nav')
+      var signoutSec = document.getElementById('mobile-menu-signout-nav')
       var portfolioSec = document.getElementById('mobile-portfolio-section')
+      var balEl = document.getElementById('mobile-balance')
       var isOwner = addr && owner && addr.toLowerCase() === owner.toLowerCase()
+      var isLoggedIn = !!addr
       if (sec) sec.style.display = isOwner ? '' : 'none'
-      // Hide portfolio links for owner (they have the ⋯ dock button instead)
+      if (walletSec) walletSec.style.display = isLoggedIn ? '' : 'none'
+      if (signoutSec) signoutSec.style.display = isLoggedIn ? '' : 'none'
       if (portfolioSec) portfolioSec.style.display = isOwner ? 'none' : ''
+      if (balEl && addr) {
+        balEl.textContent = addr.slice(0,6) + '...' + addr.slice(-4)
+        import('/js/utils.js').then(function(u) {
+          u.getCachedBalance(addr).then(function(b) {
+            var eth = (Number(b) / 1e18).toFixed(4)
+            balEl.textContent = eth + 'Ξ'
+          }).catch(function(){})
+        }).catch(function(){})
+      }
     }
     window.addEventListener('wallet-connected', function(e) { checkOwner(e.detail && e.detail.address) })
     window.addEventListener('wallet-disconnected', function() { checkOwner(null) })

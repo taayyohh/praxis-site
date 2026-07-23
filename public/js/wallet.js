@@ -266,38 +266,42 @@ function showAddress(address) {
 
     // populate planet dropdown with wallet items
     const dropdown = document.getElementById('praxis-menu-dropdown')
+    const walletTop = document.getElementById('top-bar-wallet-top')
     const closeFn = () => {
       if (dropdown) dropdown.classList.add('praxis-dropdown-hidden')
       const trig = document.getElementById('praxis-menu-trigger')
       if (trig) trig.classList.remove('menu-open')
     }
 
-    // balance at the very top of the dropdown (before nav links)
-    document.getElementById('wallet-top-section')?.remove()
-    if (dropdown) {
-      const top = document.createElement('div')
-      top.id = 'wallet-top-section'
-      top.innerHTML = `
+    // top section: balance + address + manage
+    if (walletTop) {
+      walletTop.innerHTML = `
         <div class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</div>
         <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
-        <div class="praxis-menu-divider"></div>
+        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage">manage</button>` : ''}
       `
-      dropdown.insertBefore(top, dropdown.firstChild)
-      top.querySelector('#dd-copy')?.addEventListener('click', async () => {
+      walletTop.querySelector('#dd-copy')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(address)
-          const icon = top.querySelector('#dd-copy i')
+          const icon = walletTop.querySelector('#dd-copy i')
           if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
         } catch {}
+      })
+      walletTop.querySelector('#dd-manage')?.addEventListener('click', () => {
+        closeFn()
+        window.dispatchEvent(new CustomEvent('open-settings'))
       })
     }
 
     // wallet actions below nav links
     topBarWallet.innerHTML = `
-      ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings" data-i18n="earnings.title">earnings</a>` : ''}
-      <button class="wallet-menu-link" id="dd-fund" data-i18n="wallet.fundWallet">add funds</button>
-      <button class="wallet-menu-link" id="dd-cashout" data-i18n="wallet.cashOut">cash out</button>
-      ${isOwnerView ? `<button class="wallet-menu-link" id="dd-settings" data-i18n="dock.settings">settings</button>` : ''}
+      <div class="praxis-menu-section">
+        <div class="praxis-menu-section-label">wallet</div>
+        ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings">earnings</a>` : ''}
+        <button class="wallet-menu-link" id="dd-fund">add funds</button>
+        <button class="wallet-menu-link" id="dd-send">send</button>
+        <button class="wallet-menu-link" id="dd-cashout">cash out</button>
+      </div>
       <div class="praxis-menu-divider"></div>
       <button class="wallet-menu-link wallet-menu-signout" id="dd-disconnect">sign out</button>
     `
@@ -314,9 +318,12 @@ function showAddress(address) {
       closeFn()
       window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
     })
-    topBarWallet.querySelector('#dd-settings')?.addEventListener('click', () => {
+    topBarWallet.querySelector('#dd-send')?.addEventListener('click', async () => {
       closeFn()
-      window.dispatchEvent(new CustomEvent('open-settings'))
+      try {
+        const { showSendModal } = await import('./earnings.js')
+        showSendModal(address)
+      } catch (e) { console.warn('send modal error:', e) }
     })
     topBarWallet.querySelector('#dd-earnings')?.addEventListener('click', () => closeFn())
   }
@@ -863,19 +870,10 @@ async function disconnect() {
 
   if (topBarWallet) {
     topBarWallet.innerHTML = ''
-    // remove balance section from dropdown top
-    document.getElementById('wallet-top-section')?.remove()
-    // put sign-in at top of dropdown
-    const dropdown = document.getElementById('praxis-menu-dropdown')
-    if (dropdown) {
-      const existing = document.getElementById('wallet-top-section')
-      if (existing) existing.remove()
-      const top = document.createElement('div')
-      top.id = 'wallet-top-section'
-      top.className = 'wallet-top-signin'
-      top.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button><div class="praxis-menu-divider"></div>`
-      dropdown.insertBefore(top, dropdown.firstChild)
-      top.querySelector('#top-connect')?.addEventListener('click', connect)
+    const walletTop = document.getElementById('top-bar-wallet-top')
+    if (walletTop) {
+      walletTop.innerHTML = `<div class="wallet-top-signin"><button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button></div>`
+      walletTop.querySelector('#top-connect')?.addEventListener('click', connect)
     }
     document.getElementById('top-notifications')?.remove()
   }
@@ -1144,15 +1142,10 @@ async function autoConnect() {
 function showConnectButton() {
   if (topBarWallet) {
     topBarWallet.innerHTML = ''
-    document.getElementById('wallet-top-section')?.remove()
-    const dropdown = document.getElementById('praxis-menu-dropdown')
-    if (dropdown) {
-      const top = document.createElement('div')
-      top.id = 'wallet-top-section'
-      top.className = 'wallet-top-signin'
-      top.innerHTML = `<button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button><div class="praxis-menu-divider"></div>`
-      dropdown.insertBefore(top, dropdown.firstChild)
-      top.querySelector('#top-connect')?.addEventListener('click', connect)
+    const walletTop = document.getElementById('top-bar-wallet-top')
+    if (walletTop) {
+      walletTop.innerHTML = `<div class="wallet-top-signin"><button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button></div>`
+      walletTop.querySelector('#top-connect')?.addEventListener('click', connect)
     }
   }
   document.getElementById('top-notifications')?.remove()
@@ -1453,6 +1446,8 @@ window.addEventListener('currency-changed', () => {
 
 // refresh balance display when other modules report a change (after bridge, ramp, purchase, etc.)
 // emit via: window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
+window.addEventListener('wallet-disconnect-request', () => disconnect())
+
 window.addEventListener('wallet-balance-changed', async () => {
   if (!connectedAddress) return
   try {

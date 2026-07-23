@@ -204,6 +204,20 @@ input[type="number"] {
   margin: 0.4em 1ch;
 }
 
+.praxis-menu-section {
+  border-top: 1px solid var(--border);
+  margin-top: 0.3em;
+  padding-top: 0.3em;
+}
+
+.praxis-menu-section-label {
+  color: var(--dim);
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.3em 1.5ch 0.1em;
+}
+
 .praxis-menu-row {
   display: flex;
   gap: 4px;
@@ -250,11 +264,6 @@ input[type="number"] {
 }
 #top-bar-wallet:empty {
   display: none;
-}
-#top-bar-wallet:not(:empty) {
-  border-top: 1px solid var(--border);
-  margin-top: 0.4em;
-  padding-top: 0.4em;
 }
 
 .wallet-menu-balance {
@@ -1432,6 +1441,12 @@ section img {
   }
   .mobile-menu-item:hover { color: var(--accent); }
   .mobile-menu-item i { font-size: 1em; color: var(--muted); }
+  .mobile-menu-balance {
+    color: var(--accent);
+    font-size: 1em;
+    padding: 0.3em 0;
+    font-variant-numeric: tabular-nums;
+  }
   #mobile-menu-sheet a,
   #mobile-menu-sheet button {
     color: var(--fg);

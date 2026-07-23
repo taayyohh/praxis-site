@@ -1,6 +1,6 @@
 // Earnings — unified financial overview: earned, contributed, unclaimed
 import { F } from './fragments.js'
-import { createWalletClient, custom, formatEther } from './vendor.js'
+import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
 import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals , getWalletProvider } from './utils.js'
@@ -382,5 +382,148 @@ function renderEarnings(el, unclaimed, earned, contributed, addr, mediaAddr, tic
         setTimeout(() => { btn.textContent = t('earnings.claim') }, 2000)
       }
     })
+  })
+}
+
+export async function showSendModal(fromAddress) {
+  const existing = document.getElementById('send-modal-overlay')
+  if (existing) { existing.remove(); return }
+
+  const overlay = document.createElement('div')
+  overlay.id = 'send-modal-overlay'
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10002'
+
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '400px'
+
+  const { getCachedBalance } = await import('./utils.js')
+  const { getUserCurrency, formatFiat } = await import('./fiat.js')
+  const balance = await getCachedBalance(fromAddress).catch(() => 0n)
+  const balEth = (Number(balance) / 1e18).toFixed(4)
+  let prices = await getEthPrices().catch(() => null)
+  const currency = getUserCurrency()
+
+  dialog.innerHTML = `
+    <h3 style="color:var(--accent);margin-bottom:0.5em">send</h3>
+    <div style="color:var(--dim);font-size:0.8em;margin-bottom:1em">on Optimism &middot; balance: ${balEth} ETH</div>
+    <div style="display:flex;flex-direction:column;gap:0.75em">
+      <div>
+        <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">to</label>
+        <input id="send-to" type="text" placeholder="handle, address, or domain" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1ch;width:100%;box-sizing:border-box;margin-top:0.2em">
+        <div id="send-resolved" style="color:var(--dim);font-size:0.8em;min-height:1.2em"></div>
+      </div>
+      <div>
+        <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">amount</label>
+        <div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.2em">
+          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1ch;flex:1;box-sizing:border-box">
+          <span style="color:var(--muted);font-size:0.9em">ETH</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:0.3em">
+          <div id="send-fiat" style="color:var(--dim);font-size:0.8em;min-height:1.2em"></div>
+          <button id="send-max" style="background:none;border:none;color:var(--accent);font-family:inherit;font-size:0.75em;cursor:pointer;padding:0">max</button>
+        </div>
+      </div>
+      <button id="send-confirm" class="buy-btn" style="width:100%;text-align:center;margin-top:0.5em">send on Optimism</button>
+      <div id="send-status" style="color:var(--muted);font-size:0.85em;text-align:center;min-height:1.2em"></div>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+
+  const amountInput = dialog.querySelector('#send-amount')
+  const fiatEl = dialog.querySelector('#send-fiat')
+  const toInput = dialog.querySelector('#send-to')
+  const resolvedEl = dialog.querySelector('#send-resolved')
+
+  dialog.querySelector('#send-max').addEventListener('click', () => {
+    const maxEth = Math.max(0, Number(balance) / 1e18 - 0.0005)
+    amountInput.value = maxEth.toFixed(6)
+    amountInput.dispatchEvent(new Event('input'))
+  })
+
+  amountInput.addEventListener('input', () => {
+    const val = parseFloat(amountInput.value)
+    if (!val || isNaN(val) || !prices) { fiatEl.textContent = ''; return }
+    const rate = prices?.[currency]
+    if (rate) fiatEl.textContent = `~${formatFiat(val * rate, currency)}`
+  })
+
+  let resolvedAddress = null
+  let resolveTimer = null
+  toInput.addEventListener('input', () => {
+    resolvedAddress = null
+    resolvedEl.textContent = ''
+    clearTimeout(resolveTimer)
+    const val = toInput.value.trim()
+    if (val.startsWith('0x') && val.length === 42) {
+      resolvedAddress = val
+      resolvedEl.textContent = ''
+      return
+    }
+    if (val.length < 2) return
+    resolveTimer = setTimeout(async () => {
+      resolvedEl.style.color = 'var(--dim)'
+      resolvedEl.textContent = 'looking up...'
+      try {
+        const res = await fetch(`/api/network/search?q=${encodeURIComponent(val)}&limit=1`)
+        const data = await res.json()
+        const match = data.results?.[0]
+        if (match && match.address) {
+          resolvedAddress = match.address
+          resolvedEl.style.color = 'var(--muted)'
+          resolvedEl.textContent = `${match.name || match.domain} — ${match.address.slice(0,6)}...${match.address.slice(-4)}`
+        } else {
+          resolvedEl.style.color = 'var(--dim)'
+          resolvedEl.textContent = 'not found'
+        }
+      } catch {
+        resolvedEl.textContent = ''
+      }
+    }, 400)
+  })
+
+  dialog.querySelector('#send-confirm').addEventListener('click', async () => {
+    const amountStr = amountInput.value.trim()
+    const status = dialog.querySelector('#send-status')
+    const btn = dialog.querySelector('#send-confirm')
+
+    const toAddr = resolvedAddress || toInput.value.trim()
+    if (!toAddr || !toAddr.startsWith('0x') || toAddr.length !== 42) {
+      status.textContent = 'enter a valid address or handle'
+      return
+    }
+    if (!amountStr) { status.textContent = 'enter an amount'; return }
+    const amount = parseFloat(amountStr)
+    if (isNaN(amount) || amount <= 0) { status.textContent = 'invalid amount'; return }
+
+    btn.disabled = true
+    btn.textContent = 'sending...'
+    status.textContent = ''
+    status.style.color = 'var(--muted)'
+
+    try {
+      const provider = await getWalletProvider()
+      const wc = createWalletClient({ chain: optimism, transport: custom(provider) })
+      await wc.sendTransaction({
+        to: toAddr,
+        value: parseEther(amountStr),
+        account: fromAddress,
+      })
+
+      status.style.color = 'var(--green)'
+      status.textContent = 'sent!'
+      btn.textContent = 'done'
+      window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
+      setTimeout(() => overlay.remove(), 2000)
+    } catch (e) {
+      btn.disabled = false
+      btn.textContent = 'send on Optimism'
+      status.style.color = 'var(--dim)'
+      status.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'error')
+    }
   })
 }

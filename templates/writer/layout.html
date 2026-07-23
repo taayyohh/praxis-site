@@ -52,9 +52,13 @@
       <button id="praxis-menu-btn" aria-label="Menu"><i class="ph ph-planet"></i></button>
     </div>
     <div id="praxis-menu-dropdown" class="praxis-dropdown-hidden">
-      <a href="/network" data-i18n="nav.network">network</a>
-      <a href="/projects" data-i18n="nav.projects">projects</a>
-      <a href="/library" data-i18n="nav.library">library</a>
+      <span id="top-bar-wallet-top"></span>
+      <div class="praxis-menu-section" id="praxis-nav-section">
+        <div class="praxis-menu-section-label">praxis</div>
+        <a href="/network" data-i18n="nav.network">network</a>
+        <a href="/projects" data-i18n="nav.projects">projects</a>
+        <a href="/library" data-i18n="nav.library">library</a>
+      </div>
       <span id="top-bar-wallet"></span>
       <div class="praxis-menu-row">
         <select id="lang-switcher" class="lang-switcher">
@@ -98,10 +102,20 @@
     <a href="/projects" class="mobile-menu-item">projects</a>
     <a href="/library" class="mobile-menu-item">library</a>
     <div class="mobile-menu-section" id="mobile-menu-owner-nav" style="display:none">
-      <div class="mobile-menu-section-title" style="margin-top:1em" data-i18n="menu.account">account</div>
+      <div class="mobile-menu-section-title" style="margin-top:1em">account</div>
+      <div id="mobile-balance" class="mobile-menu-balance"></div>
+      <a href="#" class="mobile-menu-item" id="mobile-manage-btn">manage</a>
       <a href="/notifications" class="mobile-menu-item">notifications</a>
+    </div>
+    <div class="mobile-menu-section" id="mobile-menu-wallet-nav" style="display:none">
+      <div class="mobile-menu-section-title" style="margin-top:1em">wallet</div>
       <a href="/earnings" class="mobile-menu-item">earnings</a>
-      <a href="#" class="mobile-menu-item" id="mobile-settings-btn">settings</a>
+      <button class="mobile-menu-item" id="mobile-fund-btn">add funds</button>
+      <button class="mobile-menu-item" id="mobile-send-btn">send</button>
+      <button class="mobile-menu-item" id="mobile-cashout-btn">cash out</button>
+    </div>
+    <div class="mobile-menu-section" id="mobile-menu-signout-nav" style="display:none">
+      <button class="mobile-menu-item" id="mobile-signout-btn" style="color:var(--dim)">sign out</button>
     </div>
   </div>
   <script>
