@@ -243,15 +243,36 @@ input[type="number"] {
   padding: 0.4em 1.5ch;
 }
 
-/* bottom bar: manage + sign out */
+/* bottom bar: manage · EN GBP · sign out */
 #praxis-menu-bottom {
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0.5em 1.5ch 0.4em;
   white-space: nowrap;
+  gap: 0.3ch;
 }
+#praxis-menu-bottom #bottom-switchers {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+#praxis-menu-bottom .wallet-menu-signout {
+  margin-left: auto;
+}
+#praxis-menu-bottom .lang-switcher {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.75em;
+  color: var(--dim);
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+#praxis-menu-bottom .lang-switcher:hover { color: var(--muted); }
+#praxis-menu-bottom #currency-switcher { margin-left: 0; }
 
 /* hide the standalone .praxis-menu-row when bottom bar is present */
 .menu-logged-in > .praxis-menu-row {

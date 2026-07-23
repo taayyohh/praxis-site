@@ -304,29 +304,25 @@ function showAddress(address) {
       </div>
     `
 
-    // move lang/currency switchers into praxis nav section
+    // bottom bar: manage + switchers + sign out
     document.getElementById('praxis-menu-bottom')?.remove()
     if (dropdown) {
-      const navSection = document.getElementById('praxis-nav-section')
       const menuRow = dropdown.querySelector('.praxis-menu-row')
       const langSwitcher = menuRow?.querySelector('#lang-switcher')
       const currSwitcher = menuRow?.querySelector('#currency-switcher')
-      if (navSection && langSwitcher) {
-        const switcherRow = document.createElement('div')
-        switcherRow.style.cssText = 'display:flex;gap:4px;padding:0.5em 1.5ch 0.2em'
-        switcherRow.appendChild(langSwitcher)
-        if (currSwitcher) switcherRow.appendChild(currSwitcher)
-        navSection.appendChild(switcherRow)
-      }
 
-      // bottom bar: manage + sign out
       const bottom = document.createElement('div')
       bottom.id = 'praxis-menu-bottom'
       bottom.innerHTML = `
         ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0" data-i18n="settings.title">manage</button>` : ''}
+        <span id="bottom-switchers"></span>
         <button class="wallet-menu-signout" id="dd-disconnect">sign out</button>
       `
       dropdown.appendChild(bottom)
+
+      const switcherSlot = bottom.querySelector('#bottom-switchers')
+      if (langSwitcher) switcherSlot.appendChild(langSwitcher)
+      if (currSwitcher) switcherSlot.appendChild(currSwitcher)
 
       bottom.querySelector('#dd-manage')?.addEventListener('click', () => {
         closeFn()
@@ -1173,10 +1169,10 @@ async function autoConnect() {
 
 function _restoreSwitchers() {
   const menuRow = document.querySelector('#praxis-menu-dropdown .praxis-menu-row')
+  const bottomBar = document.getElementById('praxis-menu-bottom')
   if (!menuRow) return
-  const navSection = document.getElementById('praxis-nav-section')
-  const lang = navSection?.querySelector('#lang-switcher') || document.getElementById('praxis-menu-bottom')?.querySelector('#lang-switcher')
-  const curr = navSection?.querySelector('#currency-switcher') || document.getElementById('praxis-menu-bottom')?.querySelector('#currency-switcher')
+  const lang = bottomBar?.querySelector('#lang-switcher')
+  const curr = bottomBar?.querySelector('#currency-switcher')
   if (lang) menuRow.appendChild(lang)
   if (curr) menuRow.appendChild(curr)
 }
