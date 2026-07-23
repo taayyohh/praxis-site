@@ -637,7 +637,7 @@ async function initJournal() {
       const plainText = fountainToPlain(editor)
       if (!plainText?.trim()) return
       if (!confirm(t('journal.publishConfirm'))) return
-      const title = document.getElementById('journal-filename')?.value.trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || ''
+      const title = document.getElementById('journal-filename')?.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || ''
       const htmlBody = fmt.toHtml(plainText)
       const marker = format === 'stageplay' ? '<!-- stageplay -->' : '<!-- screenplay -->'
       const content = `${marker}\n${htmlBody}`
@@ -988,7 +988,7 @@ async function initJournal() {
       // prefix with format marker for mode detection on reload
       const content = fmt.wrap(plainText)
 
-      const newFilename = document.getElementById('journal-filename')?.value.trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const newFilename = document.getElementById('journal-filename')?.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
       if (!newFilename) return
 
       if (plainText === _lastSavedContent && newFilename === (_savedFile || currentFilename)) return

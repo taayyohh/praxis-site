@@ -51,7 +51,7 @@ export async function handleJournal(ctx) {
     const session = getSession(req)
     if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
-    const safe = file.replace(/[^a-z0-9-]/g, '')
+    const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const filePath = join(JOURNAL_DIR, `${safe}.enc`)
     if (!existsSync(filePath)) { json(res, { error: 'not found' }, 404); return true }
     try {
@@ -68,7 +68,7 @@ export async function handleJournal(ctx) {
     const v = validate(JournalPostSchema, raw)
     if (v.error) { json(res, { error: v.error }, v.status); return true }
     const data = v.data
-    const safe = data.filename.replace(/[^a-z0-9-]/g, '')
+    const safe = data.filename.toLowerCase().replace(/[^a-z0-9-]/g, '')
     if (!safe) { json(res, { error: 'invalid filename' }, 400); return true }
     if (!existsSync(JOURNAL_DIR)) mkdirSync(JOURNAL_DIR, { recursive: true })
     const encrypted = encryptEntry(data.content, session.journalKey)
@@ -80,7 +80,7 @@ export async function handleJournal(ctx) {
     const session = getSession(req)
     if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
-    const safe = file.replace(/[^a-z0-9-]/g, '')
+    const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const filePath = join(JOURNAL_DIR, `${safe}.enc`)
     if (!existsSync(filePath)) { json(res, { error: 'not found' }, 404); return true }
     const raw = parseJson(await body(req))
@@ -95,7 +95,7 @@ export async function handleJournal(ctx) {
     const session = getSession(req)
     if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
-    const safe = file.replace(/[^a-z0-9-]/g, '')
+    const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const raw = parseJson(await body(req))
     const v = validate(JournalPatchSchema, raw)
     if (v.error) { json(res, { error: v.error }, v.status); return true }
@@ -114,7 +114,7 @@ export async function handleJournal(ctx) {
     const session = getSession(req)
     if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
-    const safe = file.replace(/[^a-z0-9-]/g, '')
+    const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const archivedPath = join(JOURNAL_DIR, `${safe}.enc.archived`)
     if (!existsSync(archivedPath)) { json(res, { error: 'only archived entries can be deleted' }, 400); return true }
     unlinkSync(archivedPath)
