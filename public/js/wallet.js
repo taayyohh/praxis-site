@@ -304,16 +304,30 @@ function showAddress(address) {
       </div>
     `
 
-    // bottom bar: manage + sign out (full width)
+    // bottom bar: manage + switchers + sign out (full width)
     document.getElementById('praxis-menu-bottom')?.remove()
     if (dropdown) {
+      // steal the lang/currency switchers from the menu row
+      const menuRow = dropdown.querySelector('.praxis-menu-row')
+      const langSwitcher = menuRow?.querySelector('#lang-switcher')
+      const currSwitcher = menuRow?.querySelector('#currency-switcher')
+
       const bottom = document.createElement('div')
       bottom.id = 'praxis-menu-bottom'
       bottom.innerHTML = `
-        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0.3em 0">manage</button>` : '<span></span>'}
+        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0">manage</button>` : ''}
+        <span class="menu-bottom-spacer"></span>
+        <span id="bottom-switchers" style="display:flex;gap:4px"></span>
+        <span class="menu-bottom-spacer"></span>
         <button class="wallet-menu-signout" id="dd-disconnect">sign out</button>
       `
       dropdown.appendChild(bottom)
+
+      // move the actual select elements into the bottom bar
+      const switcherSlot = bottom.querySelector('#bottom-switchers')
+      if (langSwitcher) switcherSlot.appendChild(langSwitcher)
+      if (currSwitcher) switcherSlot.appendChild(currSwitcher)
+
       bottom.querySelector('#dd-manage')?.addEventListener('click', () => {
         closeFn()
         window.dispatchEvent(new CustomEvent('open-settings'))
@@ -886,6 +900,7 @@ async function disconnect() {
     topBarWallet.innerHTML = ''
     const dropdown = document.getElementById('praxis-menu-dropdown')
     if (dropdown) dropdown.classList.remove('menu-logged-in')
+    _restoreSwitchers()
     document.getElementById('praxis-menu-bottom')?.remove()
     const walletTop = document.getElementById('top-bar-wallet-top')
     if (walletTop) {
@@ -1156,11 +1171,23 @@ async function autoConnect() {
   showConnectButton()
 }
 
+function _restoreSwitchers() {
+  const bottomBar = document.getElementById('praxis-menu-bottom')
+  const menuRow = document.querySelector('#praxis-menu-dropdown .praxis-menu-row')
+  if (bottomBar && menuRow) {
+    const lang = bottomBar.querySelector('#lang-switcher')
+    const curr = bottomBar.querySelector('#currency-switcher')
+    if (lang) menuRow.appendChild(lang)
+    if (curr) menuRow.appendChild(curr)
+  }
+}
+
 function showConnectButton() {
   if (topBarWallet) {
     topBarWallet.innerHTML = ''
     const dropdown = document.getElementById('praxis-menu-dropdown')
     if (dropdown) dropdown.classList.remove('menu-logged-in')
+    _restoreSwitchers()
     document.getElementById('praxis-menu-bottom')?.remove()
     const walletTop = document.getElementById('top-bar-wallet-top')
     if (walletTop) {

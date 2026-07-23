@@ -207,10 +207,10 @@ input[type="number"] {
 
 #praxis-menu-dropdown a {
   display: block;
-  padding: 0.4em 1.5ch;
+  padding: 0.3em 1.5ch;
   color: var(--muted);
   text-decoration: none;
-  font-size: 0.9em;
+  font-size: 0.85em;
   transition: color 0.15s;
 }
 
@@ -230,11 +230,11 @@ input[type="number"] {
 }
 
 .praxis-menu-section-label {
-  color: var(--dim);
-  font-size: 0.7em;
+  color: var(--border-hover);
+  font-size: 0.6em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0.3em 1.5ch 0.1em;
+  letter-spacing: 0.12em;
+  padding: 0.4em 1.5ch 0;
 }
 
 .praxis-menu-row {
@@ -243,14 +243,22 @@ input[type="number"] {
   padding: 0.4em 1.5ch;
 }
 
-/* bottom bar: manage + sign out */
+/* bottom bar: manage + switchers + sign out */
 #praxis-menu-bottom {
   border-top: 1px solid var(--border);
-  padding-top: 0.3em;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.3em 1.5ch;
+  gap: 1ch;
+  padding: 0.5em 1.5ch 0.3em;
+  white-space: nowrap;
+}
+#praxis-menu-bottom .menu-bottom-spacer {
+  flex: 1;
+}
+
+/* hide the standalone .praxis-menu-row when bottom bar is present */
+.menu-logged-in > .praxis-menu-row {
+  display: none;
 }
 
 /* hide old network-nav class if any remain */
@@ -335,8 +343,8 @@ input[type="number"] {
   border: none;
   color: var(--muted);
   font-family: inherit;
-  font-size: 0.9em;
-  padding: 0.4em 1.5ch;
+  font-size: 0.85em;
+  padding: 0.3em 1.5ch;
   cursor: pointer;
   text-align: left;
   text-decoration: none;
