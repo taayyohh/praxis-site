@@ -3,10 +3,10 @@
 
 // --- Contract Addresses (Optimism L2, chain 10) ---
 // All 9 contracts redeployed to Optimism 2026-04-10.
-export const PRAXIS_ADDR = '0xF6BffdfB24101577b6697fC73811086135a52133'
-export const INVITES_ADDR = '0xbC74c3D815beC49507826A6b9e07E7f086FB744D'
-export const TICKET_MARKET_ADDR = '0x0ea62A91acE3D77Bc96d77f1B05Ff3C1C60aF74c'
-export const ARTIST_SPONSOR_ADDR = '0x15F5f22F130ecEF5eee15d9BA90bB73B287a4F6A'
+export const PRAXIS_ADDR = '0x8b8243033C74195bF834664D28D4bFAec899b600'
+export const INVITES_ADDR = '0x10E4EEe065fD2008E754EdF317c74deb8a25d208'
+export const TICKET_MARKET_ADDR = '0xfB9A48e324904aA69786084aF876F00e3b2Cc6cF'
+export const ARTIST_SPONSOR_ADDR = '0xF032BD2EBfa4082Fe708142487E7064823e9D768'
 
 // Dynamic addresses (from HTML data attributes)
 export function getMediaAddress() {

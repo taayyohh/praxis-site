@@ -407,11 +407,11 @@ function confirmTransaction(to, value) {
     // Human-readable context
     const KNOWN_CONTRACTS = {
       '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'one-time network registration fee' },
-      '0xf6bffdfb24101577b6697fc73811086135a52133': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
+      '0x8b8243033c74195bf834664d28d4bfaec899b600': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
       '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
-      '0xbc74c3d815bec49507826a6b9e07e7f086fb744d': { name: 'use invite', desc: 'activating your invite code' },
-      '0x15f5f22f130ecef5eee15d9ba90bb73b287a4f6a': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
-      '0x0ea62a91ace3d77bc96d77f1b05ff3c1c60af74c': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
+      '0x10e4eee065fd2008e754edf317c74deb8a25d208': { name: 'use invite', desc: 'activating your invite code' },
+      '0xf032bd2ebfa4082fe708142487e7064823e9d768': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
+      '0xfb9a48e324904aa69786084af876f00e3b2cc6cf': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
       '0x5cddd64f20c69fc2007868476788bc3766c28a0a': { name: 'add to library', desc: 'adding to the shared knowledge base' },
       '0x5cf9e88417a7ce08028d32c44f9b63bc3d960b21': { name: 'treasury', desc: 'interacting with the network treasury' },
     }
