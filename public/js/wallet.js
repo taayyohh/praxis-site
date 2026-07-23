@@ -273,12 +273,16 @@ function showAddress(address) {
       if (trig) trig.classList.remove('menu-open')
     }
 
-    // top section: balance + address + manage
+    // enable two-column grid layout
+    if (dropdown) dropdown.classList.add('menu-logged-in')
+
+    // top section: balance + address on one row
     if (walletTop) {
       walletTop.innerHTML = `
-        <div class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</div>
-        <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
-        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage">manage</button>` : ''}
+        <div class="wallet-top-row">
+          <span class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</span>
+          <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
+        </div>
       `
       walletTop.querySelector('#dd-copy')?.addEventListener('click', async () => {
         try {
@@ -287,13 +291,9 @@ function showAddress(address) {
           if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
         } catch {}
       })
-      walletTop.querySelector('#dd-manage')?.addEventListener('click', () => {
-        closeFn()
-        window.dispatchEvent(new CustomEvent('open-settings'))
-      })
     }
 
-    // wallet actions below nav links
+    // wallet actions (right column, alongside praxis nav)
     topBarWallet.innerHTML = `
       <div class="praxis-menu-section">
         <div class="praxis-menu-section-label">wallet</div>
@@ -302,10 +302,24 @@ function showAddress(address) {
         <button class="wallet-menu-link" id="dd-send">send</button>
         <button class="wallet-menu-link" id="dd-cashout">cash out</button>
       </div>
-      <div class="praxis-menu-divider"></div>
-      <button class="wallet-menu-link wallet-menu-signout" id="dd-disconnect">sign out</button>
     `
-    topBarWallet.querySelector('#dd-disconnect')?.addEventListener('click', () => { closeFn(); disconnect() })
+
+    // bottom bar: manage + sign out (full width)
+    document.getElementById('praxis-menu-bottom')?.remove()
+    if (dropdown) {
+      const bottom = document.createElement('div')
+      bottom.id = 'praxis-menu-bottom'
+      bottom.innerHTML = `
+        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0.3em 0">manage</button>` : '<span></span>'}
+        <button class="wallet-menu-signout" id="dd-disconnect">sign out</button>
+      `
+      dropdown.appendChild(bottom)
+      bottom.querySelector('#dd-manage')?.addEventListener('click', () => {
+        closeFn()
+        window.dispatchEvent(new CustomEvent('open-settings'))
+      })
+      bottom.querySelector('#dd-disconnect')?.addEventListener('click', () => { closeFn(); disconnect() })
+    }
     topBarWallet.querySelector('#dd-fund')?.addEventListener('click', async () => {
       closeFn()
       try {
@@ -870,6 +884,9 @@ async function disconnect() {
 
   if (topBarWallet) {
     topBarWallet.innerHTML = ''
+    const dropdown = document.getElementById('praxis-menu-dropdown')
+    if (dropdown) dropdown.classList.remove('menu-logged-in')
+    document.getElementById('praxis-menu-bottom')?.remove()
     const walletTop = document.getElementById('top-bar-wallet-top')
     if (walletTop) {
       walletTop.innerHTML = `<div class="wallet-top-signin"><button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button></div>`
@@ -1142,6 +1159,9 @@ async function autoConnect() {
 function showConnectButton() {
   if (topBarWallet) {
     topBarWallet.innerHTML = ''
+    const dropdown = document.getElementById('praxis-menu-dropdown')
+    if (dropdown) dropdown.classList.remove('menu-logged-in')
+    document.getElementById('praxis-menu-bottom')?.remove()
     const walletTop = document.getElementById('top-bar-wallet-top')
     if (walletTop) {
       walletTop.innerHTML = `<div class="wallet-top-signin"><button class="buy-btn top-bar-signin" id="top-connect" data-i18n="wallet.connectShort">sign in</button></div>`
