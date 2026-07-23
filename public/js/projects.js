@@ -851,7 +851,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
           <!-- TEAM -->
           <div style="border-top:1px solid var(--border);padding-top:1.5em">
-            <label class="project-label">${t('projects.team')}</label>
+            <label class="project-label" data-i18n="projects.team">team</label>
             <div id="propose-team">
               <div class="propose-team-row">
                 <input type="text" class="team-domain-input project-input" placeholder="artist domain" autocomplete="off">
@@ -862,7 +862,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <button type="button" id="add-team-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.85em">+ add member</button>
-              <span id="split-total" style="color:var(--dim);font-size:0.8em">${t('projects.total', { pct: 50 })}</span>
+              <span id="split-total" style="color:var(--dim);font-size:0.8em">total: 50%</span>
             </div>
           </div>
 
@@ -879,15 +879,15 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                 <input type="text" class="tier-price-input project-input" placeholder="ETH">
                 <input type="number" class="tier-supply-input project-input" placeholder="cap" min="1" value="10">
                 <select class="tier-type-input project-input">
-                  <option value="ticket">${t('projects.ticketTransferable')}</option>
-                  <option value="backer">${t('projects.backerCredit')}</option>
+                  <option value="ticket" data-i18n="projects.ticketTransferable">ticket</option>
+                  <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
                 </select>
                 <button type="button" class="remove-tier-btn" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.2em">&times;</button>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <button type="button" id="add-tier-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.85em">+ add tier</button>
-              <span id="tier-calc" style="color:var(--dim);font-size:0.8em">${t('projects.fundingGoal', { eth: '0' })}</span>
+              <span id="tier-calc" style="color:var(--dim);font-size:0.8em">funding goal: 0 ETH</span>
             </div>
           </div>
 
@@ -899,10 +899,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                 <input type="text" id="propose-location" class="project-input" placeholder=" " autocomplete="off">
                 <label>city or neighborhood (optional)</label>
               </div>
-              <button type="button" id="detect-location-btn" class="buy-btn" style="font-size:0.8em;padding:0.4em 1ch;white-space:nowrap;border-radius:8px">${t('projects.detectLocation')}</button>
+              <button type="button" id="detect-location-btn" class="buy-btn" style="font-size:0.8em;padding:0.4em 1ch;white-space:nowrap;border-radius:8px" data-i18n="projects.detectLocation">detect</button>
               <button type="button" id="choose-on-map-btn" class="buy-btn" style="font-size:0.8em;padding:0.4em 1ch;white-space:nowrap;border-radius:8px">choose on map</button>
             </div>
-            <p id="detect-location-status" style="color:var(--dim);font-size:0.8em;margin-top:0.25em">${t('projects.locationHelp')}</p>
+            <p id="detect-location-status" style="color:var(--dim);font-size:0.8em;margin-top:0.25em" data-i18n="projects.locationHelp">optional — helps people find local projects</p>
             <div id="propose-location-map" style="height:200px;border:1px solid var(--border);margin-top:0.5em;display:none"></div>
             <div id="propose-radius-row" style="display:none;margin-top:0.5em">
               <input type="range" id="propose-radius" min="1" max="50" value="5" style="width:100%">
@@ -973,7 +973,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
           <!-- SUBMIT -->
           <div style="text-align:center;padding:1.5em 0">
-            <button id="propose-btn" style="font-size:1em;padding:0.75em 0;width:100%;max-width:400px;border-radius:8px;background:var(--fg);color:var(--bg);border:none;font-family:inherit;cursor:pointer;font-weight:600;transition:opacity 0.15s">${t('projects.propose')}</button>
+            <button id="propose-btn" style="font-size:1em;padding:0.75em 0;width:100%;max-width:400px;border-radius:8px;background:var(--fg);color:var(--bg);border:none;font-family:inherit;cursor:pointer;font-weight:600;transition:opacity 0.15s" data-i18n="projects.propose">propose</button>
             <p id="propose-status" style="color:var(--dim);margin-top:0.75em;font-size:0.85em"></p>
             <p style="color:var(--dim);font-size:0.7em;margin-top:0.5em">proposed on Ethereum via praxis</p>
           </div>
@@ -1507,7 +1507,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const total = [...inputs].reduce((sum, el) => sum + (parseFloat(el.value) || 0), 0)
     const el = document.getElementById('split-total')
     if (el) {
-      el.textContent = t('projects.total', { pct: total })
+      el.textContent = t('projects.total', { pct: total }) || `total: ${total}%`
       el.style.color = total === 100 ? '#4ade80' : '#ef4444'
     }
   }
@@ -1780,7 +1780,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
         el.style.color = 'var(--green, #4ade80)'
         import('./fiat.js').then(({ enhanceEthLabels }) => enhanceEthLabels(el)).catch(() => {})
       } else {
-        el.textContent = t('projects.fundingGoal', { eth: '0' })
+        el.textContent = t('projects.fundingGoal', { eth: '0' }) || 'funding goal: 0 ETH'
         el.style.color = 'var(--dim)'
       }
     }
@@ -1792,8 +1792,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       <input type="text" class="tier-price-input project-input" placeholder="ETH">
       <input type="number" class="tier-supply-input project-input" placeholder="cap" min="1" value="10">
       <select class="tier-type-input project-input">
-        <option value="ticket">${t('projects.ticket')}</option>
-        <option value="backer">${t('projects.backerCredit')}</option>
+        <option value="ticket" data-i18n="projects.ticketTransferable">ticket</option>
+        <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
       </select>
       <button type="button" class="remove-tier-btn" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2em">&times;</button>
     </div>`

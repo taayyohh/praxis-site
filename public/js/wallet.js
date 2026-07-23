@@ -304,25 +304,31 @@ function showAddress(address) {
       </div>
     `
 
-    // bottom bar: manage + switchers + sign out
+    // move switchers to top bar (next to planet icon, with separator)
     document.getElementById('praxis-menu-bottom')?.remove()
     if (dropdown) {
       const menuRow = dropdown.querySelector('.praxis-menu-row')
       const langSwitcher = menuRow?.querySelector('#lang-switcher')
       const currSwitcher = menuRow?.querySelector('#currency-switcher')
 
+      // insert switchers into top bar before the planet trigger
+      const trigger = document.getElementById('praxis-menu-trigger')
+      if (trigger && langSwitcher && !document.getElementById('top-bar-switchers')) {
+        const wrap = document.createElement('span')
+        wrap.id = 'top-bar-switchers'
+        wrap.appendChild(langSwitcher)
+        if (currSwitcher) wrap.appendChild(currSwitcher)
+        trigger.parentNode.insertBefore(wrap, trigger)
+      }
+
+      // bottom bar: manage + sign out
       const bottom = document.createElement('div')
       bottom.id = 'praxis-menu-bottom'
       bottom.innerHTML = `
         ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0" data-i18n="settings.title">manage</button>` : ''}
-        <span id="bottom-switchers"></span>
         <button class="wallet-menu-signout" id="dd-disconnect">sign out</button>
       `
       dropdown.appendChild(bottom)
-
-      const switcherSlot = bottom.querySelector('#bottom-switchers')
-      if (langSwitcher) switcherSlot.appendChild(langSwitcher)
-      if (currSwitcher) switcherSlot.appendChild(currSwitcher)
 
       bottom.querySelector('#dd-manage')?.addEventListener('click', () => {
         closeFn()
@@ -1169,12 +1175,13 @@ async function autoConnect() {
 
 function _restoreSwitchers() {
   const menuRow = document.querySelector('#praxis-menu-dropdown .praxis-menu-row')
-  const bottomBar = document.getElementById('praxis-menu-bottom')
   if (!menuRow) return
-  const lang = bottomBar?.querySelector('#lang-switcher')
-  const curr = bottomBar?.querySelector('#currency-switcher')
+  const topWrap = document.getElementById('top-bar-switchers')
+  const lang = topWrap?.querySelector('#lang-switcher')
+  const curr = topWrap?.querySelector('#currency-switcher')
   if (lang) menuRow.appendChild(lang)
   if (curr) menuRow.appendChild(curr)
+  topWrap?.remove()
 }
 
 function showConnectButton() {
