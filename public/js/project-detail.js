@@ -453,6 +453,7 @@ async function initProjectDetail() {
         </div>
       `}
       ${(isEvent ? cleanDescription : p.description) ? `<p style="color:var(--fg);line-height:1.7;max-width:65ch;margin-bottom:1em">${escapeHtml(isEvent ? cleanDescription : p.description)}</p>` : ''}
+      <div id="project-gallery" style="display:none;margin-bottom:1.5em"></div>
       ${locationHtml}
 
       ${isEvent ? '' : `
@@ -597,6 +598,25 @@ async function initProjectDetail() {
         statusEl.textContent = formatTxError(e)
       }
     })
+
+    // --- project image gallery ---
+    if (p.metadataCid) {
+      const galleryEl = document.getElementById('project-gallery')
+      if (galleryEl) {
+        try {
+          const metaRes = await fetch(`/api/ipfs-proxy/${p.metadataCid}`)
+          const metadata = await metaRes.json()
+          if (metadata.images?.length) {
+            const imgs = metadata.images
+            const isSingle = imgs.length === 1
+            galleryEl.style.display = ''
+            galleryEl.innerHTML = `<div style="display:${isSingle ? 'block' : 'grid'};${isSingle ? '' : 'grid-template-columns:repeat(auto-fill,minmax(200px,1fr));'}gap:0.5em">${
+              imgs.map(img => `<a href="/api/ipfs-proxy/${escapeHtml(img.cid)}" target="_blank" style="display:block;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><img src="/api/ipfs-proxy/${escapeHtml(img.cid)}" loading="lazy" style="width:100%;${isSingle ? 'max-height:400px;object-fit:cover' : 'height:200px;object-fit:cover'};display:block" alt="${escapeHtml(img.name || '')}"></a>`).join('')
+            }</div>`
+          }
+        } catch (e) { console.warn('gallery load error:', e) }
+      }
+    }
 
     // --- resale tickets section ---
     const resaleEl = document.getElementById('resale-tickets-section')

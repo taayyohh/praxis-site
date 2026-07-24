@@ -14,8 +14,8 @@ export const F = {
 
   // project (from project table)
   projectSummary: 'id proposer title projectType status fundingGoal totalFunded deadline createdAt location',
-  projectDetail: 'id proposer title description projectType status fundingGoal totalFunded deadline createdAt completedAt location disputeDeadline',
-  projectFull: 'id proposer title description projectType status fundingGoal totalFunded deadline createdAt completedAt revenueShareBps totalRevenue location disputeDeadline',
+  projectDetail: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt location disputeDeadline',
+  projectFull: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt revenueShareBps totalRevenue location disputeDeadline',
 
   // collaborator
   collaborator: 'projectId artist split',

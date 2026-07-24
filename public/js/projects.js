@@ -854,6 +854,17 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
             <div id="propose-type-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg,#111);border:1px solid var(--border);border-radius:10px;max-height:150px;overflow-y:auto;z-index:10"></div>
           </div>
 
+          <!-- IMAGES -->
+          <div style="border-top:1px solid var(--border);padding-top:1.5em">
+            <label class="project-label">images</label>
+            <span style="color:var(--dim);font-size:0.8em;display:block;margin:-0.5em 0 0.75em">add a cover image or gallery (optional)</span>
+            <div id="propose-images" style="display:flex;gap:0.5em;flex-wrap:wrap;margin-bottom:0.5em"></div>
+            <label id="propose-image-add" style="display:inline-flex;align-items:center;justify-content:center;width:5em;height:5em;border:1px dashed var(--border);border-radius:6px;cursor:pointer;color:var(--dim);font-size:1.5em;transition:border-color 0.15s">
+              <i class="ph ph-plus"></i>
+              <input type="file" accept="image/*" multiple style="display:none" id="propose-image-input">
+            </label>
+          </div>
+
           <!-- TEAM -->
           <div style="border-top:1px solid var(--border);padding-top:1.5em">
             <label class="project-label" data-i18n="projects.team">team</label>
@@ -1244,6 +1255,81 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       }
     })
   })
+
+  // --- Project image uploads ---
+  const _projectImages = [] // { file, previewUrl, cid? }
+  document.getElementById('propose-image-input')?.addEventListener('change', (e) => {
+    for (const file of e.target.files) {
+      if (!file.type.startsWith('image/')) continue
+      if (_projectImages.length >= 10) break
+      const previewUrl = URL.createObjectURL(file)
+      _projectImages.push({ file, previewUrl, cid: null })
+    }
+    e.target.value = ''
+    _renderImagePreviews()
+  })
+
+  function _renderImagePreviews() {
+    const container = document.getElementById('propose-images')
+    if (!container) return
+    container.innerHTML = _projectImages.map((img, i) => `
+      <div class="propose-image-thumb" data-idx="${i}" style="position:relative;width:5em;height:5em;border-radius:6px;overflow:hidden;border:1px solid var(--border)">
+        <img src="${img.previewUrl}" style="width:100%;height:100%;object-fit:cover" alt="">
+        <button type="button" class="remove-image-btn" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);border:none;color:#fff;width:1.4em;height:1.4em;border-radius:50%;cursor:pointer;font-size:0.75em;display:flex;align-items:center;justify-content:center">&times;</button>
+      </div>
+    `).join('')
+  }
+
+  document.getElementById('propose-images')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-image-btn')
+    if (!btn) return
+    const idx = parseInt(btn.closest('.propose-image-thumb')?.dataset.idx)
+    if (!isNaN(idx) && _projectImages[idx]) {
+      URL.revokeObjectURL(_projectImages[idx].previewUrl)
+      _projectImages.splice(idx, 1)
+      _renderImagePreviews()
+    }
+  })
+
+  async function _uploadProjectImages(statusEl) {
+    if (_projectImages.length === 0) return ''
+    const imageCids = []
+    for (let i = 0; i < _projectImages.length; i++) {
+      const img = _projectImages[i]
+      if (img.cid) { imageCids.push({ cid: img.cid, name: img.file.name, type: img.file.type }); continue }
+      if (statusEl) statusEl.textContent = `uploading image ${i + 1}/${_projectImages.length}...`
+      const res = await fetch(`/api/ipfs?name=${encodeURIComponent(img.file.name)}`, {
+        method: 'POST', body: img.file,
+        headers: { 'Content-Length': img.file.size.toString() },
+      })
+      if (!res.ok) throw new Error('image upload failed')
+      const { jobId } = await res.json()
+      const cid = await _pollUploadJob(jobId)
+      img.cid = cid
+      imageCids.push({ cid, name: img.file.name, type: img.file.type })
+    }
+    if (statusEl) statusEl.textContent = 'uploading metadata...'
+    const metadata = JSON.stringify({ images: imageCids })
+    const metaBlob = new Blob([metadata], { type: 'application/json' })
+    const metaRes = await fetch('/api/ipfs?name=project-metadata.json', {
+      method: 'POST', body: metaBlob,
+      headers: { 'Content-Length': metaBlob.size.toString() },
+    })
+    if (!metaRes.ok) throw new Error('metadata upload failed')
+    const { jobId: metaJobId } = await metaRes.json()
+    return _pollUploadJob(metaJobId)
+  }
+
+  async function _pollUploadJob(jobId) {
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000))
+      const res = await fetch(`/api/ipfs/status/${jobId}`)
+      const data = await res.json()
+      if (data.status === 'done') return data.cid
+      if (data.status === 'error') throw new Error(data.error || 'upload failed')
+    }
+    throw new Error('upload timed out')
+  }
 
   // --- Category tag input ---
   const _categoryTags = []
@@ -2009,11 +2095,18 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     ps.textContent = t('projects.confirming')
 
     try {
+      // upload project images to IPFS if any
+      let metadataCid = ''
+      if (_projectImages.length > 0) {
+        metadataCid = await _uploadProjectImages(ps)
+      }
+
+      ps.textContent = t('projects.confirming')
       const proposeAcct = await window.ensureAuthorized?.() || window.getWalletAddress()
       const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await wc.writeContract({
         address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-        args: [title, desc, typeStr, '', collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
+        args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
         account: proposeAcct,
       })
       ps.textContent = `tx: ${hash.slice(0, 14)}...`

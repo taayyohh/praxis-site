@@ -1950,6 +1950,10 @@ section img {
   font-size: 0.75em;
   color: var(--muted);
 }
+#propose-image-add:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
 /* Settings chevron rotation */
 .propose-settings-chevron {
   transition: transform 0.2s;
