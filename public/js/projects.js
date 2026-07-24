@@ -887,7 +887,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                     <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
                     <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
                     <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
-                    <div class="field-group"><select class="tier-type-input project-input"><option value="backer">producer credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
+                    <div class="field-group"><select class="tier-type-input project-input"><option value="backer">credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
                   </div>
                   <div class="tier-event-details" style="display:none">
                     <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
@@ -1812,7 +1812,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
           <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
           <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
-          <div class="field-group"><select class="tier-type-input project-input"><option value="backer">producer credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
+          <div class="field-group"><select class="tier-type-input project-input"><option value="backer">credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
         </div>
         <div class="tier-event-details" style="display:none">
           <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
