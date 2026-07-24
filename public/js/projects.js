@@ -945,22 +945,23 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
                 <!-- completion mode -->
                 <div>
-                  <label class="project-label">who confirms completion?</label>
+                  <label class="project-label">how are funds released?</label>
+                  <span style="color:var(--dim);font-size:0.8em;display:block;margin:-0.5em 0 0.75em">funds are held until the project is marked complete</span>
                   <div style="display:grid;gap:0.5em">
                     <label class="project-option">
                       <input type="radio" name="confirm-mode" value="0" checked>
-                      <span class="project-option-title">you confirm</span>
-                      <span class="project-option-desc">fastest — you mark it complete</span>
+                      <span class="project-option-title">you release</span>
+                      <span class="project-option-desc">you mark it complete and funds go to the team</span>
                     </label>
                     <label class="project-option">
                       <input type="radio" name="confirm-mode" value="1">
                       <span class="project-option-title">team majority</span>
-                      <span class="project-option-desc">more than half sign off</span>
+                      <span class="project-option-desc">more than half the team signs off to release funds</span>
                     </label>
                     <label class="project-option">
                       <input type="radio" name="confirm-mode" value="2">
-                      <span class="project-option-title">everyone</span>
-                      <span class="project-option-desc">all collaborators must agree</span>
+                      <span class="project-option-title">unanimous</span>
+                      <span class="project-option-desc">every collaborator must agree before funds are released</span>
                     </label>
                   </div>
                 </div>
@@ -968,14 +969,14 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                 <!-- auto-complete -->
                 <label class="project-option">
                   <input type="checkbox" id="auto-complete-check">
-                  <span class="project-option-title">auto-complete when fully funded</span>
-                  <span class="project-option-desc">no confirmation needed</span>
+                  <span class="project-option-title">auto-release when fully funded</span>
+                  <span class="project-option-desc">funds go to the team immediately — no confirmation needed</span>
                 </label>
 
                 <!-- dispute window -->
                 <div style="display:flex;align-items:center;gap:0.75ch">
                   <input type="number" id="propose-dispute-days" class="project-input" value="3" min="0" max="30" style="width:6ch;text-align:center">
-                  <span style="color:var(--muted);font-size:0.85em">day dispute window after completion</span>
+                  <span style="color:var(--muted);font-size:0.85em">day window for backers to dispute after release</span>
                 </div>
 
               </div>
