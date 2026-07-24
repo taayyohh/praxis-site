@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'praxis-v135'
+const CACHE_VERSION = 'praxis-v136'
 const IMMUTABLE = /\.[a-f0-9]{8}\.(js|css|woff2?|png|jpg|svg)$/
 const FONTS = /\.(woff2?|ttf|otf)$/i
 const IMAGES = /\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i
