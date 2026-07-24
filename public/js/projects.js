@@ -887,9 +887,9 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                     <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
                     <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
                     <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
-                    <div class="field-group"><select class="tier-type-input project-input"><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option><option value="backer" data-i18n="projects.backerCredit">backer credit</option></select><label class="select-label">type</label></div>
+                    <div class="field-group"><select class="tier-type-input project-input"><option value="backer">producer credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
                   </div>
-                  <div class="tier-event-details">
+                  <div class="tier-event-details" style="display:none">
                     <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
                     <div class="field-group"><input type="text" class="tier-location-input project-input" placeholder=" "><label>venue / location (optional)</label></div>
                   </div>
@@ -1065,7 +1065,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
             const n = row.querySelector('.tier-name-input'); if (n) n.value = tier.name || ''
             const p = row.querySelector('.tier-price-input'); if (p) p.value = tier.price || ''
             const s = row.querySelector('.tier-supply-input'); if (s) s.value = tier.supply || '10'
-            const t = row.querySelector('.tier-type-input'); if (t) t.value = tier.type || 'ticket'
+            const t = row.querySelector('.tier-type-input'); if (t) { t.value = tier.type || 'backer'; const det = row.querySelector('.tier-event-details'); if (det) det.style.display = t.value === 'ticket' ? '' : 'none' }
             const d = row.querySelector('.tier-date-input'); if (d && tier.eventDate) d.value = tier.eventDate
             const l = row.querySelector('.tier-location-input'); if (l && tier.location) l.value = tier.location
           }
@@ -1811,9 +1811,9 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
           <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
           <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
-          <div class="field-group"><select class="tier-type-input project-input"><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option><option value="backer" data-i18n="projects.backerCredit">backer credit</option></select><label class="select-label">type</label></div>
+          <div class="field-group"><select class="tier-type-input project-input"><option value="backer">producer credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
         </div>
-        <div class="tier-event-details">
+        <div class="tier-event-details" style="display:none">
           <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
           <div class="field-group"><input type="text" class="tier-location-input project-input" placeholder=" "><label>venue / location (optional)</label></div>
         </div>
@@ -1831,6 +1831,14 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
   })
 
   document.getElementById('propose-tiers').addEventListener('input', () => updateTierCalc())
+
+  document.getElementById('propose-tiers').addEventListener('change', (e) => {
+    if (e.target.classList.contains('tier-type-input')) {
+      const card = e.target.closest('.propose-tier-card')
+      const details = card?.querySelector('.tier-event-details')
+      if (details) details.style.display = e.target.value === 'ticket' ? '' : 'none'
+    }
+  })
 
   // Auto-save draft on any form input
   panel.addEventListener('input', scheduleDraftSave)
