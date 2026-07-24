@@ -1903,13 +1903,52 @@ section img {
   margin-bottom: 0;
 }
 
-/* Consistent tier grid */
+/* Tier card layout */
 .propose-tier-row {
+  margin-bottom: 0.75em;
+}
+.propose-tier-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.25em 1em 0.75em;
+}
+.propose-tier-card .remove-tier-btn {
+  position: absolute;
+  top: 0.4em;
+  right: 0.5em;
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 1.2em;
+  line-height: 1;
+  z-index: 1;
+}
+.propose-tier-card .remove-tier-btn:hover {
+  color: var(--red);
+}
+.tier-main-fields {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1.2fr 1.5em;
+  grid-template-columns: 2fr 1fr 1fr 1.2fr;
   gap: 0.5em;
+  margin-bottom: 0.25em;
+}
+.tier-main-fields .field-group {
   margin-bottom: 0.5em;
-  align-items: center;
+}
+.tier-event-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5em;
+}
+.tier-event-details .field-group {
+  margin-bottom: 0.5em;
+}
+.field-group .select-label {
+  top: -0.75em;
+  font-size: 0.75em;
+  color: var(--muted);
 }
 /* Settings chevron rotation */
 .propose-settings-chevron {
@@ -1917,13 +1956,6 @@ section img {
 }
 details[open] .propose-settings-chevron {
   transform: rotate(180deg);
-}
-
-.tier-event-details {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5em;
 }
 .propose-tier-row:only-child .remove-tier-btn,
 .propose-team-row:only-child .remove-team-btn {

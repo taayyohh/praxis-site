@@ -878,19 +878,21 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
               <input type="date" id="propose-deadline" class="project-input" placeholder=" " style="color-scheme:dark">
               <label>deadline</label>
             </div>
+            <label style="color:var(--dim);font-size:0.85em;display:block;margin-bottom:0.5em">tiers</label>
             <div id="propose-tiers">
               <div class="propose-tier-row">
-                <input type="text" class="tier-name-input project-input" placeholder="tier name">
-                <input type="text" class="tier-price-input project-input" placeholder="ETH">
-                <input type="number" class="tier-supply-input project-input" placeholder="cap" min="1" value="10">
-                <select class="tier-type-input project-input">
-                  <option value="ticket" data-i18n="projects.ticketTransferable">ticket</option>
-                  <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
-                </select>
-                <button type="button" class="remove-tier-btn" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.2em">&times;</button>
-                <div class="tier-event-details">
-                  <input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark">
-                  <input type="text" class="tier-location-input project-input" placeholder="venue / location">
+                <div class="propose-tier-card">
+                  <button type="button" class="remove-tier-btn">&times;</button>
+                  <div class="tier-main-fields">
+                    <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
+                    <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
+                    <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
+                    <div class="field-group"><select class="tier-type-input project-input"><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option><option value="backer" data-i18n="projects.backerCredit">backer credit</option></select><label class="select-label">type</label></div>
+                  </div>
+                  <div class="tier-event-details">
+                    <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
+                    <div class="field-group"><input type="text" class="tier-location-input project-input" placeholder=" "><label>venue / location (optional)</label></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1803,17 +1805,18 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
   document.getElementById('add-tier-btn').addEventListener('click', () => {
     const row = `<div class="propose-tier-row">
-      <input type="text" class="tier-name-input project-input" placeholder="tier name">
-      <input type="text" class="tier-price-input project-input" placeholder="ETH">
-      <input type="number" class="tier-supply-input project-input" placeholder="cap" min="1" value="10">
-      <select class="tier-type-input project-input">
-        <option value="ticket" data-i18n="projects.ticketTransferable">ticket</option>
-        <option value="backer" data-i18n="projects.backerCredit">backer credit</option>
-      </select>
-      <button type="button" class="remove-tier-btn" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2em">&times;</button>
-      <div class="tier-event-details">
-        <input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark">
-        <input type="text" class="tier-location-input project-input" placeholder="venue / location">
+      <div class="propose-tier-card">
+        <button type="button" class="remove-tier-btn">&times;</button>
+        <div class="tier-main-fields">
+          <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
+          <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
+          <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
+          <div class="field-group"><select class="tier-type-input project-input"><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option><option value="backer" data-i18n="projects.backerCredit">backer credit</option></select><label class="select-label">type</label></div>
+        </div>
+        <div class="tier-event-details">
+          <div class="field-group"><input type="datetime-local" class="tier-date-input project-input" placeholder=" " style="color-scheme:dark"><label>event date (optional)</label></div>
+          <div class="field-group"><input type="text" class="tier-location-input project-input" placeholder=" "><label>venue / location (optional)</label></div>
+        </div>
       </div>
     </div>`
     document.getElementById('propose-tiers').insertAdjacentHTML('beforeend', row)
