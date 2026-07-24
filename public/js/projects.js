@@ -1699,7 +1699,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
   let _descEditor = null
   if (editorContainer) {
     import('./markdown-editor.js').then(({ createMarkdownEditor }) => {
-      _descEditor = createMarkdownEditor(editorContainer, { placeholder: t('projects.descPlaceholder'), rows: 6 })
+      _descEditor = createMarkdownEditor(editorContainer, { placeholder: 'describe your project — what are you making, why, and what do you need?', rows: 6 })
       // Inject reference button into the markdown toolbar
       const toolbar = editorContainer.querySelector('.md-editor-toolbar > div')
       if (toolbar) {
@@ -1717,7 +1717,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       }
     }).catch(() => {
       // fallback: plain textarea
-      editorContainer.innerHTML = `<textarea id="propose-desc" placeholder="${t('projects.descPlaceholder')}" rows="6" class="project-input" style="resize:vertical;width:100%"></textarea>`
+      editorContainer.innerHTML = `<textarea id="propose-desc" placeholder="${'describe your project — what are you making, why, and what do you need?'}" rows="6" class="project-input" style="resize:vertical;width:100%"></textarea>`
     })
   }
   // Make desc value accessible for submit
