@@ -964,7 +964,9 @@ function showRecoveryPhraseUI(mnemonic, address, onComplete) {
   dialog.style.cssText = 'max-width:500px;max-height:90vh;overflow-y:auto'
   dialog.innerHTML = `
     <h3 style="color:var(--accent, #00ff41);margin-bottom:0.5em">recovery phrase</h3>
-    <p style="color:#c0c0c0;font-size:0.9em;line-height:1.5;margin-bottom:1em">write these 12 words down and store them safely. this is the only way to recover your account if you forget your password. praxis cannot recover it for you.</p>
+    <div style="background:#ef4444;color:#fff;padding:0.75em 1em;border-radius:6px;margin-bottom:1em;font-size:0.9em;line-height:1.5">
+      <strong>if you lose your password, this is the only way to recover your account.</strong> there is no reset email, no support team, no other option. write these 12 words down and store them somewhere safe — offline, on paper, not in a screenshot.
+    </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5em;margin-bottom:1.5em">${wordGrid}</div>
     <div style="display:flex;flex-direction:column;gap:0.75em">
       <p style="color:#ef4444;font-size:0.85em;line-height:1.4">anyone with these words can access your account and funds. never share them. never enter them on any website except praxis.</p>
