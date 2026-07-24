@@ -221,7 +221,7 @@
     var pmTrigger = document.getElementById('praxis-menu-trigger')
     var pmDrop = document.getElementById('praxis-menu-dropdown')
     if (pmBtn && pmDrop && pmTrigger) {
-      pmBtn.addEventListener('click', function(e) {
+      pmTrigger.addEventListener('click', function(e) {
         e.stopPropagation()
         var open = !pmDrop.classList.contains('praxis-dropdown-hidden')
         if (open) {
