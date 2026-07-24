@@ -247,6 +247,9 @@ function showAddress(address) {
   // Publish to the cross-origin bridge so other Praxis sites can pick it up.
   try { setBridgeAddress(address) } catch {}
 
+  // remove logged-out sign-in button from top bar
+  document.getElementById('top-bar-signin-btn')?.remove()
+
   // top bar: bell in header bar, wallet actions inline in planet dropdown
   if (topBarWallet) {
     const siteOwner = document.body.dataset.owner?.toLowerCase() || ''
@@ -1198,6 +1201,19 @@ function showConnectButton() {
     }
   }
   document.getElementById('top-notifications')?.remove()
+
+  // add a visible sign-in button to the top bar itself
+  const topBar = document.getElementById('top-bar')
+  const trigger = document.getElementById('praxis-menu-trigger')
+  if (topBar && trigger && !document.getElementById('top-bar-signin-btn')) {
+    const btn = document.createElement('button')
+    btn.id = 'top-bar-signin-btn'
+    btn.className = 'buy-btn top-bar-signin'
+    btn.textContent = 'sign in'
+    btn.style.cssText = 'margin-left:auto;font-size:0.8em;padding:0.35em 1.2ch;white-space:nowrap'
+    btn.addEventListener('click', connect)
+    topBar.insertBefore(btn, trigger)
+  }
 }
 
 // run auto-connect
