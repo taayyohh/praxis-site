@@ -78,6 +78,14 @@ async function checkOnce(customDomain) {
 }
 
 export function initDnsBanner() {
+  // Pick up pending-domain from URL param (cross-subdomain handoff from landing page)
+  try {
+    const params = new URLSearchParams(location.search)
+    const pd = params.get('pending-domain')
+    if (pd && !localStorage.getItem(FLAG_KEY)) {
+      localStorage.setItem(FLAG_KEY, pd)
+    }
+  } catch {}
   let customDomain
   try { customDomain = localStorage.getItem(FLAG_KEY) } catch { return }
   if (!customDomain) return

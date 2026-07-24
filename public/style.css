@@ -289,7 +289,7 @@ input[type="number"] {
   text-decoration: none;
   display: flex;
   align-items: center;
-  margin-right: 0.75ch;
+  margin-left: 0.75ch;
 }
 .top-bar-bell:hover {
   opacity: 1;
