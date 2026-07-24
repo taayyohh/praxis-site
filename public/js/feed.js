@@ -170,6 +170,7 @@ function renderItem(item, domainMap, resolve) {
   if (item.type === 'project') return renderProjectCard(item.data, resolve)
   if (item.type === 'funded') return renderFundedCard(item.data, resolve)
   if (item.type === 'follow') return renderFollowCard(item.data, resolve)
+  if (item.type === 'joined') return renderJoinedCard(item.data, resolve)
   if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
   if (item.type === 'supporter') return renderSupporterCard(item.data, resolve)
   if (item.type === 'purchase') return renderPurchaseCard(item.data, resolve)
