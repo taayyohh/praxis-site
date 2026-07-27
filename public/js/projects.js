@@ -990,6 +990,21 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                   <span style="color:var(--muted);font-size:0.85em">day window for backers to dispute after release</span>
                 </div>
 
+                <!-- milestones -->
+                <div>
+                  <label class="project-option">
+                    <input type="checkbox" id="milestones-check">
+                    <span class="project-option-title">release funds in stages</span>
+                    <span class="project-option-desc">define milestones — funds release as each one is completed and approved</span>
+                  </label>
+                  <div id="milestones-section" style="display:none;margin-top:0.75em">
+                    <p style="color:var(--dim);font-size:0.8em;margin:0 0 0.75em;line-height:1.5">each milestone releases a percentage of total funds. backers can dispute during the review window.</p>
+                    <div id="milestones-list" style="display:grid;gap:0.5em"></div>
+                    <button type="button" id="add-milestone-btn" style="margin-top:0.5em;background:none;border:1px dashed color-mix(in srgb, var(--fg) 20%, transparent);color:var(--muted);padding:0.5em 1em;border-radius:6px;cursor:pointer;font-family:inherit;font-size:0.85em;width:100%">+ add milestone</button>
+                    <p id="milestones-total" style="color:var(--dim);font-size:0.75em;margin-top:0.5em;text-align:right"></p>
+                  </div>
+                </div>
+
               </div>
             </details>
           </div>
@@ -1138,7 +1153,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     select.innerHTML = '<option value="new">new proposal</option>' + existingDrafts.map(d => {
       const title = d.title || 'untitled'
       const ago = _relativeTime(d.updatedAt)
-      return `<option value="${d.id}">${title.slice(0, 30)} (${ago})</option>`
+      return `<option value="${d.id}">${escapeHtml(title.slice(0, 30))} (${ago})</option>`
     }).join('')
 
     const label = document.createElement('span')
@@ -1241,7 +1256,48 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       if (disputeRow) disputeRow.style.opacity = '1'
     }
   }
-  _autoCheck?.addEventListener('change', (e) => _toggleAutoComplete(e.target.checked))
+  _autoCheck?.addEventListener('change', (e) => {
+    if (e.target.checked && _msCheck?.checked) { e.target.checked = false; return }
+    _toggleAutoComplete(e.target.checked)
+  })
+
+  // Milestone toggle + management
+  const _msCheck = document.getElementById('milestones-check')
+  const _msList = document.getElementById('milestones-list')
+  const _msTotal = document.getElementById('milestones-total')
+  function _addMilestoneRow(desc = '', pct = '') {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;gap:0.5ch;align-items:center'
+    row.innerHTML = `<input type="text" class="project-input ms-desc" placeholder="milestone description" style="flex:1">
+      <input type="number" class="project-input ms-pct" placeholder="%" min="1" max="100" style="width:6ch;text-align:center">
+      <span style="color:var(--dim);font-size:0.8em">%</span>
+      <button type="button" class="ms-remove" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1em;padding:0 0.25em">&times;</button>`
+    if (desc) row.querySelector('.ms-desc').value = desc
+    if (pct) row.querySelector('.ms-pct').value = pct
+    row.querySelector('.ms-remove').addEventListener('click', () => { row.remove(); _updateMsTotal() })
+    row.querySelector('.ms-pct').addEventListener('input', _updateMsTotal)
+    _msList.appendChild(row)
+    _updateMsTotal()
+  }
+  function _updateMsTotal() {
+    const pcts = [..._msList.querySelectorAll('.ms-pct')].map(i => parseInt(i.value) || 0)
+    const total = pcts.reduce((a, b) => a + b, 0)
+    _msTotal.textContent = total === 100 ? 'total: 100%' : `total: ${total}% (must equal 100%)`
+    _msTotal.style.color = total === 100 ? 'var(--dim)' : 'var(--accent, #c44)'
+  }
+  _msCheck?.addEventListener('change', (e) => {
+    document.getElementById('milestones-section').style.display = e.target.checked ? 'block' : 'none'
+    if (e.target.checked && _msList.children.length === 0) {
+      _addMilestoneRow('', '50')
+      _addMilestoneRow('', '50')
+    }
+    // Milestones are incompatible with auto-complete
+    if (e.target.checked && _autoCheck?.checked) {
+      _autoCheck.checked = false
+      _toggleAutoComplete(false)
+    }
+  })
+  document.getElementById('add-milestone-btn')?.addEventListener('click', () => _addMilestoneRow())
 
   // Clicking a confirmation mode label while auto-complete is on → switch back
   document.querySelectorAll('input[name="confirm-mode"]').forEach(r => {
@@ -2092,6 +2148,24 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const autoComplete = document.getElementById('auto-complete-check')?.checked || false
     const disputeWindowDays = autoComplete ? 0n : BigInt(parseInt(document.getElementById('propose-dispute-days')?.value) || 3)
 
+    // milestones
+    const milestoneDescs = []
+    const milestoneBps = []
+    if (_msCheck?.checked) {
+      const descInputs = [..._msList.querySelectorAll('.ms-desc')]
+      const pctInputs = [..._msList.querySelectorAll('.ms-pct')]
+      let total = 0
+      for (let i = 0; i < descInputs.length; i++) {
+        const d = descInputs[i].value.trim()
+        const pct = parseInt(pctInputs[i].value) || 0
+        if (!d || pct <= 0) continue
+        milestoneDescs.push(d)
+        milestoneBps.push(BigInt(pct * 100))
+        total += pct
+      }
+      if (total !== 100) { ps.textContent = 'milestone percentages must total 100%'; return }
+    }
+
     ps.textContent = t('projects.confirming')
 
     try {
@@ -2106,7 +2180,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await wc.writeContract({
         address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-        args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode],
+        args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
         account: proposeAcct,
       })
       ps.textContent = `tx: ${hash.slice(0, 14)}...`

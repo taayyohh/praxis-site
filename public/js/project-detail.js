@@ -1,9 +1,9 @@
 // Project detail page — full view of a single project with lifecycle controls
 import { F } from './fragments.js'
-import { createWalletClient, custom, parseEther, formatEther } from './vendor.js'
+import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, ensureWallet, rewriteIpfsUrls, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -15,8 +15,13 @@ let _countdownInterval = null
 import { PRAXIS_ABI, BLOG_ABI } from './contracts.js'
 
 const PROJECT_TYPE_PRESETS = ['show', 'film', 'theater', 'recording', 'workshop', 'installation', 'other']
+const PROPOSED = 0, FUNDED = 1, CONFIRMED = 2, COMPLETING = 3, COMPLETED = 4, CANCELLED = 5
 const STATUS_LABELS = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
 const STATUS_COLORS = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
+const MS_LABELS = ['pending', 'submitted', 'released', 'disputed']
+const MS_COLORS = ['var(--dim)', '#fbbf24', '#4ade80', '#ef4444']
+const RELOAD_DELAY = 2000
+function reloadAfterTx() { setTimeout(() => location.reload(), RELOAD_DELAY) }
 
 /**
  * Auto-create TWO XMTP group chats for a project after first funding:
@@ -161,8 +166,7 @@ async function initProjectDetail() {
     const isCollaborator = data.collaborators.items.some(c => c.artist.toLowerCase() === myAddr)
     const isFunder = data.fundings.items.some(f => f.funder.toLowerCase() === myAddr)
 
-    const publicClient = await getPublicClient()
-    const ethPrices = await getEthPrices().catch(() => null)
+    const [publicClient, ethPrices] = await Promise.all([getPublicClient(), getEthPrices().catch(() => null)])
 
     const goalEth = formatEthAmount(p.fundingGoal)
     const fundedEth = formatEthAmount(p.totalFunded)
@@ -188,7 +192,7 @@ async function initProjectDetail() {
     const allParticipants = [p.proposer, ...collabAddrs.filter(a => a.toLowerCase() !== p.proposer.toLowerCase())]
     const confirmedSet = new Set()
     let confirmCount = 0
-    if (p.status >= 1) {
+    if (p.status >= FUNDED) {
       try {
         const confirmCalls = allParticipants.map(addr => ({
           address: praxisAddr, abi: PRAXIS_ABI,
@@ -210,7 +214,7 @@ async function initProjectDetail() {
       const domain = resolve(c.artist)
       const splitPct = (Number(c.split) / 100).toFixed(0)
       const isConfirmed = confirmedSet.has(c.artist.toLowerCase())
-      const confirmLabel = p.status >= 1
+      const confirmLabel = p.status >= FUNDED
         ? (isConfirmed
           ? '<span style="color:#4ade80;font-size:0.8em;margin-left:0.5ch">confirmed</span>'
           : '<span style="color:var(--dim);font-size:0.8em;margin-left:0.5ch">pending</span>')
@@ -246,7 +250,7 @@ async function initProjectDetail() {
         ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.25em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
         <div style="color:var(--fg);font-size:0.9em">${priceLabel}</div>
         <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
-        ${remaining > 0 && p.status <= 1 ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
+        ${remaining > 0 && p.status <= FUNDED ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
           <input type="number" class="fund-qty" data-tier-id="${t.tierId}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
           <button class="buy-btn fund-tier-btn" data-tier-id="${t.tierId}" data-price="${t.price}" style="font-size:0.85em;padding:0.3em 1ch">${btnLabel}</button>
         </div>` : ''}
@@ -260,16 +264,22 @@ async function initProjectDetail() {
       return `<div style="font-size:0.85em;padding:0.3em 0"><a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${escapeHtml(domain)}</a> <span style="color:#4ade80">${amtLabel}</span></div>`
     }).join('')
 
+    // milestone count — needed before actions block to gate "mark complete"
+    let msCount = 0
+    try {
+      msCount = Number(await publicClient.readContract({ address: praxisAddr, abi: PRAXIS_ABI, functionName: 'milestoneCount', args: [BigInt(projectId)] }))
+    } catch {}
+
     // lifecycle actions
     let actionsHtml = '<div id="project-actions" style="margin-top:1.5em;padding-top:1em;border-top:1px solid var(--border)">'
 
-    if ((p.status == 1 || p.status == 2) && (isProposer || isCollaborator)) {
+    if ((p.status == FUNDED || p.status == CONFIRMED) && (isProposer || isCollaborator)) {
       // FUNDED or CONFIRMED — show confirmation progress
       const myConfirmed = myAddr ? confirmedSet.has(myAddr) : false
 
       actionsHtml += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">${confirmCount} of ${totalParticipants} confirmed</div>`
 
-      if (p.status == 2) {
+      if (p.status == CONFIRMED) {
         actionsHtml += '<span style="color:#4ade80;font-size:0.85em">all confirmed</span> '
       } else if (myConfirmed) {
         actionsHtml += '<span style="color:var(--muted);font-size:0.85em">you confirmed -- waiting for team</span> '
@@ -278,13 +288,13 @@ async function initProjectDetail() {
       }
     }
 
-    if (p.status == 2 && isProposer) {
-      // CONFIRMED — proposer can complete
+    if (p.status == CONFIRMED && isProposer && msCount === 0) {
+      // CONFIRMED non-milestone — proposer can complete
       actionsHtml += '<button class="buy-btn" id="action-complete">mark complete</button> '
       actionsHtml += '<span style="color:var(--dim);font-size:0.8em">all confirmed -- proposer can mark complete (starts dispute window)</span> '
     }
 
-    if (p.status == 3) {
+    if (p.status == COMPLETING) {
       // COMPLETING — dispute window with live countdown
       // Use disputeDeadline from Ponder (set by ProjectCompleting event), fallback to completedAt + 3 days
       const disputeEndsAt = p.disputeDeadline
@@ -338,17 +348,17 @@ async function initProjectDetail() {
       }
     }
 
-    if (p.status == 4 && (isProposer || isCollaborator)) {
+    if (p.status == COMPLETED && (isProposer || isCollaborator)) {
       // COMPLETED — claim funds
       actionsHtml += '<button class="buy-btn" id="action-claim" style="border-color:#4ade80;color:#4ade80">claim funds</button> '
     }
 
-    if ((p.status == 0 || p.status == 1) && isProposer) {
+    if ((p.status == PROPOSED || p.status == FUNDED) && isProposer) {
       // PROPOSED or FUNDED — proposer can cancel
       actionsHtml += '<button class="buy-btn" id="action-cancel" style="border-color:#ef4444;color:#ef4444">cancel project</button> '
     }
 
-    if (p.status == 5 && isFunder) {
+    if (p.status == CANCELLED && isFunder) {
       // CANCELLED — claim refund
       actionsHtml += '<button class="buy-btn" id="action-refund">claim refund</button> '
     }
@@ -370,6 +380,79 @@ async function initProjectDetail() {
       } catch {
         locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}</div>`
       }
+    }
+
+    // milestones section — read from contract (msCount already loaded above)
+    let milestonesHtml = ''
+    let milestones = []
+    let disputeWindowDays = 0
+
+    if (msCount > 0) {
+      const msCalls = [
+        { address: praxisAddr, abi: PRAXIS_ABI, functionName: 'getDisputeWindowDays', args: [BigInt(projectId)] },
+        { address: praxisAddr, abi: PRAXIS_ABI, functionName: 'releasedFunds', args: [BigInt(projectId)] },
+        ...Array.from({ length: msCount }, (_, i) => ({
+          address: praxisAddr, abi: PRAXIS_ABI, functionName: 'getMilestone', args: [BigInt(projectId), BigInt(i)],
+        })),
+      ]
+      const msMulti = await publicClient.multicall({ contracts: msCalls, allowFailure: true })
+      disputeWindowDays = msMulti[0].status === 'success' ? Number(msMulti[0].result) : 3
+      const releasedWei = msMulti[1].status === 'success' ? msMulti[1].result : 0n
+      milestones = msMulti.slice(2).map((r, i) => {
+        const v = r.status === 'success' ? r.result : ['' , 0n, 0, 0n]
+        return { index: i, description: v[0], bps: Number(v[1]), status: Number(v[2]), submittedAt: Number(v[3]) }
+      })
+
+      const releasedCount = milestones.filter(m => m.status === 2).length
+      const progressPct = msCount > 0 ? Math.round(releasedCount * 100 / msCount) : 0
+      const releasedEth = formatEthAmount(releasedWei)
+
+      milestonesHtml = `<div style="margin-bottom:2em;padding-top:1em;border-top:1px solid var(--border)">
+        <h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">milestones — ${releasedCount}/${msCount} released · ${releasedEth} ETH distributed</h3>
+        <div style="margin-bottom:1em"><div class="project-progress-bar"><div class="project-progress-fill" style="width:${progressPct}%;background:#4ade80"></div></div></div>
+        <div style="display:grid;gap:0.75em">${milestones.map((m, i) => {
+          const pct = (m.bps / 100).toFixed(0)
+          const statusLabel = MS_LABELS[m.status] || 'unknown'
+          const statusColor = MS_COLORS[m.status] || 'var(--dim)'
+          const nowSec = Math.floor(Date.now() / 1000)
+          const windowEnd = m.submittedAt + disputeWindowDays * 86400
+          const windowActive = m.status === 1 && nowSec < windowEnd
+
+          let actionHtml = ''
+          if (m.status === 0 && isProposer && p.status == CONFIRMED) {
+            const prevOk = i === 0 || milestones[i - 1].status === 2
+            if (prevOk) actionHtml = `<button class="buy-btn ms-submit-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch">submit</button>`
+          } else if (m.status === 1 && windowActive && isFunder) {
+            actionHtml = `<button class="buy-btn ms-dispute-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444">dispute</button>`
+          } else if (m.status === 1 && !windowActive) {
+            actionHtml = `<button class="buy-btn ms-release-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#4ade80;color:#4ade80">release</button>`
+          }
+
+          let countdownHtml = ''
+          if (windowActive) {
+            const left = windowEnd - nowSec
+            const d = Math.floor(left / 86400)
+            const h = Math.floor((left % 86400) / 3600)
+            const m2 = Math.floor((left % 3600) / 60)
+            countdownHtml = `<span class="ms-countdown" data-ms-end="${windowEnd}" style="color:var(--accent);font-size:0.8em;margin-left:1ch">${d}d ${h}h ${m2}m</span>`
+          }
+
+          return `<div style="padding:0.75em 1em;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1em">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">
+                <span style="color:var(--fg);font-size:0.9em">${escapeHtml(m.description)}</span>
+                <span style="color:var(--dim);font-size:0.75em">${pct}%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.5ch;margin-top:0.25em">
+                <span style="color:${statusColor};font-size:0.75em;text-transform:uppercase">${statusLabel}</span>
+                ${countdownHtml}
+              </div>
+            </div>
+            ${actionHtml}
+          </div>`
+        }).join('')}</div>
+        <p id="ms-action-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
+      </div>`
     }
 
     // revenue sharing section — batch all RPC reads
@@ -419,7 +502,7 @@ async function initProjectDetail() {
       }
 
       // team view: send revenue form
-      if (myAddr && (isProposer || isCollaborator) && p.status == 4) {
+      if (myAddr && (isProposer || isCollaborator) && p.status == COMPLETED) {
         revenueHtml += `<div style="padding:1em;border:1px solid var(--border)">
           <div style="display:flex;gap:0.5ch;align-items:center">
             <input type="text" id="revenue-amount" placeholder="0.1" class="project-input" style="width:10ch">
@@ -477,6 +560,7 @@ async function initProjectDetail() {
 
       ${fundersHtml ? `<div style="margin-bottom:2em"><h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${isEvent ? 'attendees' : 'backers'}</h3>${fundersHtml}</div>` : ''}
 
+      ${milestonesHtml}
       ${actionsHtml}
       ${revenueHtml}
 
@@ -488,14 +572,13 @@ async function initProjectDetail() {
 
     // wire up actions
 
-    async function execAction(fn, args, value, meta) {
-      const statusEl = document.getElementById('action-status')
+    async function execAction(fn, args, value, meta, { statusId = 'action-status', btnSelector = '#project-actions .buy-btn' } = {}) {
+      const statusEl = document.getElementById(statusId)
       const addr = window.getWalletAddress?.()
-      if (!addr) { statusEl.textContent = 'connect wallet'; return }
-      // disable all action buttons during execution
-      const actionBtns = contentEl.querySelectorAll('#project-actions .buy-btn')
+      if (!addr) { if (statusEl) statusEl.textContent = 'connect wallet'; return }
+      const actionBtns = contentEl.querySelectorAll(btnSelector)
       actionBtns.forEach(b => b.disabled = true)
-      statusEl.textContent = 'confirm in wallet...'
+      if (statusEl) statusEl.textContent = 'confirm in wallet...'
       try {
         await window.ensureScroll?.()
         const currentAccount = await window.ensureAuthorized?.() || addr
@@ -507,11 +590,10 @@ async function initProjectDetail() {
         })
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('transaction timed out')), 15000))
         const hash = await Promise.race([action, timeout])
-        statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
+        if (statusEl) statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
         await publicClient.waitForTransactionReceipt({ hash })
-        statusEl.textContent = 'done — reloading...'
+        if (statusEl) statusEl.textContent = 'done — reloading...'
 
-        // After successful fundTier — send auto-DM to proposer
         if (fn === 'fundTier') {
           try {
             const proposerAddr = p.proposer
@@ -523,19 +605,19 @@ async function initProjectDetail() {
                 detail: { to: proposerAddr, message: msg }
               }))
             }
-          } catch {} // non-blocking
+          } catch (e) { console.warn('auto-dm failed:', e?.message) }
 
-          // Auto-create XMTP project group chat on first funding
           maybeCreateProjectGroup(projectId, p, data, addr).catch(() => {})
         }
 
-        setTimeout(() => location.reload(), 2000)
+        reloadAfterTx()
       } catch (e) {
-        statusEl.textContent = formatTxError(e)
+        if (statusEl) statusEl.textContent = formatTxError(e)
       } finally {
         actionBtns.forEach(b => b.disabled = false)
       }
     }
+    const msOpts = { statusId: 'ms-action-status', btnSelector: '.ms-submit-btn,.ms-dispute-btn,.ms-release-btn' }
 
     document.getElementById('action-cancel')?.addEventListener('click', () => {
       if (!confirm('cancel this project? all funders will be refunded')) return
@@ -550,6 +632,47 @@ async function initProjectDetail() {
     document.getElementById('action-dispute')?.addEventListener('click', () => execAction('dispute', [BigInt(projectId)]))
     document.getElementById('action-claim')?.addEventListener('click', () => execAction('claimFunds', []))
     document.getElementById('action-refund')?.addEventListener('click', () => execAction('claimRefund', [BigInt(projectId)]))
+
+    // milestone actions
+    contentEl.querySelectorAll('.ms-submit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!confirm('submit this milestone for review?')) return
+        execAction('submitMilestone', [BigInt(projectId), BigInt(btn.dataset.msIdx)], null, null, msOpts)
+      })
+    })
+    contentEl.querySelectorAll('.ms-dispute-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!confirm('dispute this milestone? if enough backers dispute (≥50% by value), the project is cancelled and all remaining funds are refundable.')) return
+        execAction('disputeMilestone', [BigInt(projectId), BigInt(btn.dataset.msIdx)], null, null, msOpts)
+      })
+    })
+    contentEl.querySelectorAll('.ms-release-btn').forEach(btn => {
+      btn.addEventListener('click', () => execAction('releaseMilestone', [BigInt(projectId), BigInt(btn.dataset.msIdx)], null, null, msOpts))
+    })
+
+    // milestone countdown timers
+    const msCountdownEls = contentEl.querySelectorAll('.ms-countdown')
+    if (msCountdownEls.length > 0) {
+      const msInterval = setInterval(() => {
+        const now = Math.floor(Date.now() / 1000)
+        let anyActive = false
+        msCountdownEls.forEach(el => {
+          const end = parseInt(el.dataset.msEnd)
+          const left = end - now
+          if (left <= 0) {
+            el.textContent = 'window closed — release available'
+            return
+          }
+          anyActive = true
+          const d = Math.floor(left / 86400)
+          const h = Math.floor((left % 86400) / 3600)
+          const m = Math.floor((left % 3600) / 60)
+          el.textContent = `${d}d ${h}h ${m}m`
+        })
+        if (!anyActive) clearInterval(msInterval)
+      }, 60000)
+      window.addEventListener('spa-navigate', () => clearInterval(msInterval), { once: true })
+    }
 
     // fund tier buttons
     contentEl.querySelectorAll('.fund-tier-btn').forEach(btn => {
@@ -580,7 +703,6 @@ async function initProjectDetail() {
       if (!addr) { statusEl.textContent = 'connect wallet'; return }
       statusEl.textContent = 'confirm in wallet...'
       try {
-        const { parseEther } = await import('./vendor.js')
         await window.ensureScroll?.()
         const revAccount = await window.ensureAuthorized?.() || addr
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
@@ -593,7 +715,7 @@ async function initProjectDetail() {
         statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
         await publicClient.waitForTransactionReceipt({ hash })
         statusEl.textContent = 'revenue distributed'
-        setTimeout(() => location.reload(), 2000)
+        reloadAfterTx()
       } catch (e) {
         statusEl.textContent = formatTxError(e)
       }
@@ -704,7 +826,7 @@ async function initProjectDetail() {
               try {
                 await purchaseTicket(btn.dataset.tokenId, btn.dataset.price)
                 statusEl.textContent = t('tickets.purchased')
-                setTimeout(() => location.reload(), 2000)
+                reloadAfterTx()
               } catch (e) {
                 statusEl.textContent = formatTxError(e)
               }
@@ -719,7 +841,7 @@ async function initProjectDetail() {
               try {
                 await cancelTicketListing(btn.dataset.tokenId)
                 statusEl.textContent = 'cancelled'
-                setTimeout(() => location.reload(), 2000)
+                reloadAfterTx()
               } catch (e) {
                 statusEl.textContent = formatTxError(e)
               }
@@ -738,7 +860,7 @@ async function initProjectDetail() {
                 const priceWei = parseEther(priceStr)
                 await listTicket(btn.dataset.tokenId, priceWei)
                 statusEl.textContent = t('tickets.listed')
-                setTimeout(() => location.reload(), 2000)
+                reloadAfterTx()
               } catch (e) {
                 statusEl.textContent = formatTxError(e)
               }
@@ -970,7 +1092,7 @@ function renderCommentForm(blogAddr, projectId, projectTitle) {
       statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
       await publicClient.waitForTransactionReceipt({ hash })
       statusEl.textContent = 'comment posted'
-      setTimeout(() => location.reload(), 2000)
+      reloadAfterTx()
     } catch (e) {
       statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message).slice(0, 60)}`
     }

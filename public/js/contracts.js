@@ -3,10 +3,10 @@
 
 // --- Contract Addresses (Optimism L2, chain 10) ---
 // All 9 contracts redeployed to Optimism 2026-04-10.
-export const PRAXIS_ADDR = '0x8b8243033C74195bF834664D28D4bFAec899b600'
-export const INVITES_ADDR = '0x10E4EEe065fD2008E754EdF317c74deb8a25d208'
-export const TICKET_MARKET_ADDR = '0xfB9A48e324904aA69786084aF876F00e3b2Cc6cF'
-export const ARTIST_SPONSOR_ADDR = '0xF032BD2EBfa4082Fe708142487E7064823e9D768'
+export const PRAXIS_ADDR = '0x8f5B0D0f0073a1573f17e37746811672aeDDE2F8'
+export const INVITES_ADDR = '0x23289c228cA0867122dC8855613858C8C3dc707c'
+export const TICKET_MARKET_ADDR = '0x1781666673b6fB22f59229fb120F14bD97d2EdC6'
+export const ARTIST_SPONSOR_ADDR = '0xb7A66e7ad464495D22B3A39140BD8d7F10Afb3f7'
 
 // Dynamic addresses (from HTML data attributes)
 export function getMediaAddress() {
@@ -54,6 +54,8 @@ export const PRAXIS_ABI = [
     { name: 'disputeWindowDays', type: 'uint256' },
     { name: 'autoComplete', type: 'bool' },
     { name: 'confirmationMode', type: 'uint8' },
+    { name: 'milestoneDescriptions', type: 'string[]' },
+    { name: 'milestoneBps', type: 'uint256[]' },
   ]}], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'nonpayable' },
   // v2: pull-pattern invite claim — replaces auto-push on finalize/autoComplete
   { name: 'claimCompletionInvites', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
@@ -64,6 +66,14 @@ export const PRAXIS_ABI = [
   { name: 'completeProject', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'finalizeProject', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'dispute', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'submitMilestone', type: 'function', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'disputeMilestone', type: 'function', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'releaseMilestone', type: 'function', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'milestoneCount', type: 'function', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+  { name: 'getMilestone', type: 'function', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [{ name: 'description', type: 'string' }, { name: 'bps', type: 'uint256' }, { name: 'status', type: 'uint8' }, { name: 'submittedAt', type: 'uint256' }], stateMutability: 'view' },
+  { name: 'releasedFunds', type: 'function', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+  { name: 'getDisputeWindowDays', type: 'function', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+  { name: 'deployerCancel', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'fundTier', type: 'function', inputs: [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }], outputs: [], stateMutability: 'payable' },
   { name: 'claimFunds', type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' },
   { name: 'claimRefund', type: 'function', inputs: [{ type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },

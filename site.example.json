@@ -45,14 +45,14 @@
     "registryV1Address": "0x8dd62a4d204fc963c248724725a0c9de680e4068",
     "registryAddress": "0x4bC73F9CC7C7a84B5Cf20e1469Ad65f8b5448336",
     "blogRegistryAddress": "0x839505786d0438848F5EAdBDfD11D693A3D01002",
-    "praxisAddress": "0x8b8243033C74195bF834664D28D4bFAec899b600",
+    "praxisAddress": "0x8f5B0D0f0073a1573f17e37746811672aeDDE2F8",
     "libraryRegistryAddress": "0x5CdDD64f20C69fC2007868476788BC3766C28A0A",
     "chain": "optimism",
-    "invitesAddress": "0x10E4EEe065fD2008E754EdF317c74deb8a25d208",
+    "invitesAddress": "0x23289c228cA0867122dC8855613858C8C3dc707c",
     "mediaAddress": "0xaF995dB3955419E9E2086FD02891580F8a025481",
-    "ticketMarketAddress": "0xfB9A48e324904aA69786084aF876F00e3b2Cc6cF",
+    "ticketMarketAddress": "0x1781666673b6fB22f59229fb120F14bD97d2EdC6",
     "libraryAddress": "0x5CdDD64f20C69fC2007868476788BC3766C28A0A",
-    "sponsoredInvitesAddress": "0xF032BD2EBfa4082Fe708142487E7064823e9D768",
+    "sponsoredInvitesAddress": "0xb7A66e7ad464495D22B3A39140BD8d7F10Afb3f7",
     "treasuryAddress": "0x5CF9E88417A7cE08028D32C44F9b63bc3d960b21"
   },
   "theme": {
