@@ -239,7 +239,7 @@
     if (!main) return
     const playing = main.querySelector('video')
     if (playing && !playing.paused && !playing.closest('#mini-player-container')) {
-      activate(playing)
+      createMiniPlayer(playing)
       if (active) active.sourceUrl = location.pathname + location.search
     }
   })
