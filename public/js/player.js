@@ -166,6 +166,13 @@ function toggleQueue() {
 }
 queueBtn.addEventListener('click', toggleQueue)
 queueSheet.querySelector('#gp-queue-close').addEventListener('click', toggleQueue)
+document.addEventListener('click', e => {
+  if (_queueOpen && !queueSheet.contains(e.target) && !queueBtn.contains(e.target)) {
+    _queueOpen = false
+    queueSheet.style.transform = 'translateX(100%)'
+    queueBtn.style.color = 'var(--dim)'
+  }
+})
 queueSheet.querySelector('#gp-queue-clear').addEventListener('click', () => {
   _queue = []; _queueIdx = -1
   audio.pause(); video.pause()
@@ -919,34 +926,40 @@ document.addEventListener('click', (e) => {
 
 // --- Cross-domain player sync ---
 // Pauses local playback when another Praxis site tab starts playing.
-// Uses a hidden iframe on ourpraxis.network as a BroadcastChannel relay.
+// Uses SSE relay through ourpraxis.network so it works across all artist domains.
 ;(() => {
   const syncId = Math.random().toString(36).slice(2)
-  let syncFrame = null
+  let _sse = null
 
-  try {
-    const iframe = document.createElement('iframe')
-    iframe.src = 'https://ourpraxis.network/player-sync.html'
-    iframe.style.cssText = 'display:none;width:0;height:0;border:0'
-    iframe.setAttribute('aria-hidden', 'true')
-    document.body.appendChild(iframe)
-    syncFrame = iframe
-  } catch {}
+  function connectSync() {
+    const wallet = window.getWalletAddress?.()?.toLowerCase()
+    if (!wallet || !/^0x[0-9a-f]{40}$/.test(wallet)) return
+    if (_sse) { _sse.close(); _sse = null }
+    _sse = new EventSource(`https://ourpraxis.network/api/player-sync/stream?wallet=${wallet}&id=${syncId}`)
+    _sse.onmessage = e => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.action === 'playing' && data.id !== syncId) {
+          if (!audio.paused) { audio.pause(); playBtn.innerHTML = '<i class="ph ph-play"></i>'; saveState(); syncTrackButtons() }
+          if (!video.paused) video.pause()
+        }
+      } catch {}
+    }
+    _sse.onerror = () => { _sse?.close(); _sse = null; setTimeout(connectSync, 5000) }
+  }
 
   function notifyPlaying() {
-    if (!syncFrame?.contentWindow) return
-    syncFrame.contentWindow.postMessage({ type: 'praxis-player-sync', action: 'playing', id: syncId }, '*')
+    const wallet = window.getWalletAddress?.()?.toLowerCase()
+    if (!wallet) return
+    fetch(`https://ourpraxis.network/api/player-sync/playing?wallet=${wallet}&id=${syncId}`, { method: 'POST', mode: 'cors' }).catch(() => {})
   }
 
   audio.addEventListener('play', () => notifyPlaying())
   video.addEventListener('play', () => notifyPlaying())
 
-  window.addEventListener('message', e => {
-    if (e.origin !== 'https://ourpraxis.network' && !e.origin.endsWith('.ourpraxis.network')) return
-    if (e.data?.type !== 'praxis-player-sync') return
-    if (e.data.action === 'playing' && e.data.id !== syncId) {
-      if (!audio.paused) { audio.pause(); playBtn.innerHTML = '<i class="ph ph-play"></i>'; saveState() }
-      if (!video.paused) video.pause()
-    }
-  })
+  // Connect once wallet is available
+  if (window.getWalletAddress?.()) connectSync()
+  window.addEventListener('wallet-connected', () => connectSync())
+  // Retry connection periodically if wallet wasn't ready
+  setTimeout(() => { if (!_sse && window.getWalletAddress?.()) connectSync() }, 3000)
 })()
