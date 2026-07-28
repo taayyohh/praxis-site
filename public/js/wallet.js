@@ -261,7 +261,7 @@ function showAddress(address) {
       bell.title = t('dock.notifications')
       bell.innerHTML = `<i class="ph ph-bell"></i><span id="notif-badge" class="notif-badge" style="display:none">0</span>`
       const trigger = document.getElementById('praxis-menu-trigger')
-      if (trigger) trigger.parentNode.insertBefore(bell, trigger.nextSibling)
+      if (trigger) trigger.parentNode.insertBefore(bell, trigger)
     }
 
     // populate planet dropdown with wallet items
