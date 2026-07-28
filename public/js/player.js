@@ -627,6 +627,8 @@ audio.addEventListener('play', () => {
   syncTrackButtons()
 })
 
+window.addEventListener('spa-navigate', () => setTimeout(syncTrackButtons, 300))
+
 playBtn.addEventListener('click', () => {
   if (activeMediaType === 'video') return // handled by capture-phase listener
   if (audio.paused && audio.src) {
@@ -655,10 +657,13 @@ progressWrap.addEventListener('click', (e) => {
 
 function syncTrackButtons() {
   document.querySelectorAll('.track-play-btn[data-track-src]').forEach(btn => {
+    const row = btn.closest('.album-track')
     if (btn.dataset.trackSrc === currentSrc && !audio.paused) {
       btn.innerHTML = '<i class="ph ph-pause"></i>'
+      row?.classList.add('playing')
     } else {
       btn.innerHTML = '<i class="ph ph-play"></i>'
+      row?.classList.remove('playing')
     }
   })
   updateNavButtons()

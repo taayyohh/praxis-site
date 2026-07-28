@@ -4822,6 +4822,10 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
   margin-left: auto;
 }
 .track-play-btn:hover { border-color: var(--accent); color: var(--accent); }
+.album-track.playing { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 4px; }
+.album-track.playing .track-title { color: var(--accent); }
+.album-track.playing .track-num { color: var(--accent); }
+.album-track.playing .track-play-btn { border-color: var(--accent); color: var(--accent); }
 .album-links {
   display: flex;
   gap: 1.5ch;
