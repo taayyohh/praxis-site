@@ -931,11 +931,14 @@ document.addEventListener('click', (e) => {
   const syncId = Math.random().toString(36).slice(2)
   let _sse = null
 
+  function walletParam() {
+    const w = window.getWalletAddress?.()?.toLowerCase()
+    return (w && /^0x[0-9a-f]{40}$/.test(w)) ? `wallet=${w}&` : ''
+  }
+
   function connectSync() {
-    const wallet = window.getWalletAddress?.()?.toLowerCase()
-    if (!wallet || !/^0x[0-9a-f]{40}$/.test(wallet)) return
     if (_sse) { _sse.close(); _sse = null }
-    _sse = new EventSource(`https://ourpraxis.network/api/player-sync/stream?wallet=${wallet}&id=${syncId}`)
+    _sse = new EventSource(`https://ourpraxis.network/api/player-sync/stream?${walletParam()}id=${syncId}`)
     _sse.onmessage = e => {
       try {
         const data = JSON.parse(e.data)
@@ -949,17 +952,12 @@ document.addEventListener('click', (e) => {
   }
 
   function notifyPlaying() {
-    const wallet = window.getWalletAddress?.()?.toLowerCase()
-    if (!wallet) return
-    fetch(`https://ourpraxis.network/api/player-sync/playing?wallet=${wallet}&id=${syncId}`, { method: 'POST', mode: 'cors' }).catch(() => {})
+    fetch(`https://ourpraxis.network/api/player-sync/playing?${walletParam()}id=${syncId}`, { method: 'POST', mode: 'cors' }).catch(() => {})
   }
 
   audio.addEventListener('play', () => notifyPlaying())
   video.addEventListener('play', () => notifyPlaying())
 
-  // Connect once wallet is available
-  if (window.getWalletAddress?.()) connectSync()
+  connectSync()
   window.addEventListener('wallet-connected', () => connectSync())
-  // Retry connection periodically if wallet wasn't ready
-  setTimeout(() => { if (!_sse && window.getWalletAddress?.()) connectSync() }, 3000)
 })()
