@@ -122,7 +122,7 @@ async function renderVanityItem(vanity, loadingEl, contentEl) {
         }
       }
     }
-    if (!_trySlugRedirect(site, type)) loadingEl.textContent = 'album not found'
+    if (!_trySlugRedirect(site)) loadingEl.textContent = 'album not found'
   } else {
     const slug = slugs[0]
     const items = type === 'gallery' ? (mod.data?.images || [])
@@ -130,7 +130,7 @@ async function renderVanityItem(vanity, loadingEl, contentEl) {
       : type === 'writing' ? (mod.data?.publications || [])
       : Array.isArray(mod.data) ? mod.data : (mod.data?.items || [])
     const idx = items.findIndex(it => slugify(it.title) === slug)
-    if (idx === -1) { if (!_trySlugRedirect(site, type)) loadingEl.textContent = 'item not found'; return }
+    if (idx === -1) { if (!_trySlugRedirect(site)) loadingEl.textContent = 'item not found'; return }
     loadingEl.style.display = 'none'
     if (type === 'gallery') renderGalleryImage(contentEl, items[idx], idx)
     else if (type === 'film') renderFilmWork(contentEl, items[idx])
@@ -141,11 +141,10 @@ async function renderVanityItem(vanity, loadingEl, contentEl) {
   }
 }
 
-function _trySlugRedirect(site, type) {
+function _trySlugRedirect(site) {
   const key = window.location.pathname.slice(1)
   const target = site?._slugRedirects?.[key]
   if (target) {
-    window.history.replaceState(null, '', '/' + target)
     window.location.replace('/' + target)
     return true
   }
