@@ -49,6 +49,8 @@ async function loadRouteModules(pathname) {
     if (_VANITY_MEDIA_TYPES.has(seg)) modules = ROUTE_MODULES['/art']
     // Blog post vanity: /post/<slug>
     if (seg === 'post' && path.indexOf('/', 2) > 0) modules = ROUTE_MODULES['/post']
+    // Project vanity: /project/<slug>
+    if (seg === 'project' && path.indexOf('/', 2) > 0) modules = ROUTE_MODULES['/project']
   }
   if (!modules) return
   const loads = []

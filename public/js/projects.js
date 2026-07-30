@@ -2,7 +2,7 @@
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase, slugify } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
@@ -599,10 +599,10 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
   }
 
   return `
-    <div class="project-card" data-id="${p.id}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a,.tier-card')){location.href='/project?id=${p.id}'}">
+    <div class="project-card" data-id="${p.id}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a,.tier-card')){location.href='/project/${slugify(p.title)}'}">
       <div class="project-card-header">
         <div>
-          <h3 class="project-card-title"><a href="/project?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.title)}</a></h3>
+          <h3 class="project-card-title"><a href="/project/${slugify(p.title)}" style="color:inherit;text-decoration:none">${escapeHtml(p.title)}</a></h3>
           <span class="project-type-badge">${escapeHtml(p.type) || 'other'}</span>
           <span class="project-status-badge" style="color:${STATUS_COLORS[p.status]}">${STATUS_LABELS[p.status]?.() || ''}</span>
         </div>
@@ -629,7 +629,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
       ${actions}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5em">
         <p class="collab-tx-status" data-id="${p.id}" style="color:#666;margin:0"></p>
-        <a href="/project?id=${p.id}" style="color:var(--muted);font-size:0.8em">view details</a>
+        <a href="/project/${slugify(p.title)}" style="color:var(--muted);font-size:0.8em">view details</a>
       </div>
     </div>
   `
@@ -2431,7 +2431,7 @@ async function initMap(projects, resolve) {
       const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
       const popupHtml = `
         <div style="font-family:inherit;font-size:13px;min-width:150px">
-          <strong><a href="/project?id=${p.id}" style="color:inherit">${escapeHtml(p.title)}</a></strong><br>
+          <strong><a href="/project/${slugify(p.title)}" style="color:inherit">${escapeHtml(p.title)}</a></strong><br>
           <span style="opacity:0.7">${escapeHtml(p.type) || 'other'}</span>
           <span style="margin-left:0.5em;color:${STATUS_COLORS[p.status]}">${STATUS_LABELS[p.status]?.() || ''}</span><br>
           <span>${pct.toFixed(0)}% ${t('feed.funded').toLowerCase()}</span>
@@ -2491,14 +2491,14 @@ async function initMap(projects, resolve) {
           ? `<h4 style="color:var(--muted);margin-bottom:0.5em">${t('projects.noLocation')} (${withoutLocation.length})</h4>` +
             withoutLocation.map(p => {
               const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
-              return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
+              return `<div class="project-no-loc-item"><a href="/project/${slugify(p.title)}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
             }).join('')
           : '')
     } else if (withoutLocation.length > 0) {
       noLocationEl.innerHTML = `<h4 style="color:var(--muted);margin-bottom:0.5em">${t('projects.noLocation')} (${withoutLocation.length})</h4>` +
         withoutLocation.map(p => {
           const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
-          return `<div class="project-no-loc-item"><a href="/project?id=${p.id}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
+          return `<div class="project-no-loc-item"><a href="/project/${slugify(p.title)}">${escapeHtml(p.title)}</a> <span style="color:var(--muted)">${escapeHtml(p.type) || 'other'} -- ${pct.toFixed(0)}% funded</span></div>`
         }).join('')
     } else {
       noLocationEl.innerHTML = ''

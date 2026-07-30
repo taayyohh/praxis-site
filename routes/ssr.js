@@ -307,6 +307,46 @@ export async function handleSsr(ctx) {
     } catch (e) { console.warn('SSR vanity error:', e?.message) }
   }
 
+  // --- SSR for project vanity URLs: /project/<slug> ---
+  if (path.startsWith('/project/') && method === 'GET') {
+    const slug = decodeURIComponent(path.split('/')[2] || '')
+    if (slug) {
+      try {
+        const site = getSiteJson(SITE_JSON)
+        const wallet = site.wallet?.toLowerCase()
+        if (wallet) {
+          const data = await cachedPonderQuery(
+            `ssr:projects:${wallet}`,
+            `query SSRProjects($proposer: String!) { projects(where: { proposer: $proposer }, orderBy: "createdAt", orderDirection: "desc", limit: 200) { items { id title description status } } }`,
+            { proposer: wallet },
+            30000
+          )
+          const projects = data?.projects?.items || []
+          const matched = projects.find(p => slugify(p.title) === slug)
+          if (matched) {
+            const esc = escapeHtml
+            const statusLabels = { 0: 'proposed', 1: 'funded', 2: 'confirmed', 3: 'completing', 4: 'completed', 5: 'cancelled' }
+            const statusLabel = statusLabels[matched.status] || 'proposed'
+            const ogTitle = `${matched.title} — ${site.name || 'praxis'}`
+            const ogDescription = esc((matched.description || '').slice(0, 160))
+            const ogImage = `https://${site.domain}/api/og?type=project&title=${encodeURIComponent(matched.title)}&status=${encodeURIComponent(statusLabel)}`
+            const canonical = `https://${site.domain}/project/${slug}`
+
+            const projectHtmlFile = join(DIR, 'project', 'index.html')
+            if (cachedExists(projectHtmlFile)) {
+              let html = await getSsrTemplate(projectHtmlFile)
+              if (!html) { res.writeHead(500); res.end('template read error'); return true }
+              html = injectOgTags(html, { title: ogTitle, description: ogDescription, image: ogImage, url: canonical })
+              const buf = Buffer.from(html)
+              compressedSend(req, res, buf, 'text/html', { 'Cache-Control': 'public, max-age=10, must-revalidate' })
+              return true
+            }
+          }
+        }
+      } catch (e) { console.warn('SSR project slug error:', e?.message) }
+    }
+  }
+
   // --- SSR for project pages (SEO: dynamic OG for project details) ---
   if (path === '/project' && method === 'GET') {
     const projectId = url.searchParams.get('id')

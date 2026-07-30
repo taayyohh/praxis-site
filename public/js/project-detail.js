@@ -3,7 +3,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -103,15 +103,46 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
   }
 }
 
+async function _resolveProjectSlug(slug) {
+  try {
+    const siteResp = await fetch('/site.json')
+    if (!siteResp.ok) return null
+    const site = await siteResp.json()
+    const wallet = site.wallet?.toLowerCase()
+    if (!wallet) return null
+    const data = await query(`
+      query SlugProjects($proposer: String!) {
+        projects(where: { proposer: $proposer }, orderBy: "createdAt", orderDirection: "desc", limit: 200) {
+          items { id title }
+        }
+      }
+    `, { proposer: wallet })
+    const projects = data?.projects?.items || []
+    const matched = projects.find(p => slugify(p.title) === slug)
+    return matched ? String(matched.id) : null
+  } catch (e) {
+    console.warn('project slug resolve error:', e)
+    return null
+  }
+}
+
 async function initProjectDetail() {
   const el = document.getElementById('project-detail-page')
   if (!el) return
   const params = new URLSearchParams(window.location.search)
-  const projectId = params.get('id')
+  let projectId = params.get('id')
   const loadingEl = document.getElementById('project-detail-loading')
   const contentEl = document.getElementById('project-detail-content')
   const praxisAddr = el.dataset.praxis
   const registryAddr = el.dataset.registry
+
+  // Vanity slug: /project/<slug>
+  if (!projectId) {
+    const segs = window.location.pathname.split('/').filter(Boolean)
+    if (segs.length >= 2 && segs[0] === 'project') {
+      projectId = await _resolveProjectSlug(decodeURIComponent(segs[1]))
+    }
+  }
 
   if (!projectId) { loadingEl.textContent = 'no project id'; return }
 
