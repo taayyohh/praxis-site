@@ -229,6 +229,15 @@ export async function handleSsr(ctx) {
           return true
         }
       }
+
+      // Slug redirect: old vanity slug -> 301 to new URL
+      const redirectKey = path.slice(1)
+      const redirectTarget = site?._slugRedirects?.[redirectKey]
+      if (redirectTarget) {
+        res.writeHead(301, { Location: '/' + redirectTarget })
+        res.end()
+        return true
+      }
     } catch (e) { console.warn('SSR vanity error:', e?.message) }
   }
 
