@@ -206,7 +206,7 @@ function renderGalleryItem(img) {
   if (img.mediaId !== undefined && img.mediaId !== null) {
     const priceEth = img.mediaPrice ? (Number(img.mediaPrice) / 1e18) : 0
     const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'free'
-    captionExtra = ` <button class="track-buy-btn" data-media-id="${img.mediaId}" data-price="${img.mediaPrice || '0'}" data-eth-wei="${img.mediaPrice || '0'}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
+    captionExtra = ` <button class="track-buy-btn" data-media-id="${esc(String(img.mediaId))}" data-price="${esc(String(img.mediaPrice || '0'))}" data-eth-wei="${esc(String(img.mediaPrice || '0'))}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
   }
   let captionMeta = ''
   if (img.dimensions || img.materials) captionMeta += `<div style="color:var(--muted);font-size:0.75em">${escapeHtml(img.dimensions || '')}${img.dimensions && img.materials ? ' · ' : ''}${escapeHtml(img.materials || '')}</div>`
@@ -230,7 +230,7 @@ function renderLoadMore(images, pageSize, seriesId) {
   <script>
   (function() {
     function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
-    function slugify(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'; }
+    function slugify(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'; }
     var btn = document.querySelector('.gallery-load-more-${safeId}');
     if (!btn) return;
     var remaining = JSON.parse(btn.getAttribute('data-images'));

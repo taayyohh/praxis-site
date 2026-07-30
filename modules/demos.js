@@ -43,7 +43,7 @@ function buyBtnSmall(item) {
   if (item.mediaId === undefined || item.mediaId === null) return ''
   const priceEth = item.mediaPrice ? (Number(item.mediaPrice) / 1e18) : 0
   const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'free'
-  return ` <button class="track-buy-btn" data-media-id="${item.mediaId}" data-price="${item.mediaPrice || '0'}" data-eth-wei="${item.mediaPrice || '0'}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
+  return ` <button class="track-buy-btn" data-media-id="${esc(String(item.mediaId))}" data-price="${esc(String(item.mediaPrice || '0'))}" data-eth-wei="${esc(String(item.mediaPrice || '0'))}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer;margin-left:0.5ch">${priceLabel}</button>`
 }
 
 function metaBlock(item) {

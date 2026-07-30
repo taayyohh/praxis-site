@@ -93,7 +93,7 @@ async function renderVanityItem(vanity, loadingEl, contentEl) {
   let site = null
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const resp = await fetch('/site.json')
+      const resp = await fetch('/site.json', { signal: _artAbortController?.signal })
       if (!resp.ok) continue
       site = await resp.json()
       break

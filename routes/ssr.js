@@ -5,6 +5,8 @@ function slugify(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
 }
 
+const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
+
 /** @param {object} ctx @returns {Promise<boolean>} */
 export async function handleSsr(ctx) {
   const { req, res, url, path, method,
@@ -163,9 +165,8 @@ export async function handleSsr(ctx) {
   }
 
   // --- SSR for vanity media URLs: /music/alias/album, /gallery/slug, etc. ---
-  const vanityTypes = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
   const segs = path.split('/').filter(Boolean)
-  if (segs.length >= 2 && vanityTypes.has(segs[0]) && method === 'GET') {
+  if (segs.length >= 2 && _VANITY_TYPES.has(segs[0]) && method === 'GET') {
     try {
       const site = getSiteJson(SITE_JSON)
       const modules = site.modules || []
