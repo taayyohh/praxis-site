@@ -105,6 +105,72 @@ export async function handleSsr(ctx) {
     }
   }
 
+  // --- SSR for blog post vanity URLs: /post/<slug> ---
+  if (path.startsWith('/post/') && method === 'GET') {
+    const slug = decodeURIComponent(path.split('/')[2] || '')
+    if (slug) {
+      try {
+        const site = getSiteJson(SITE_JSON)
+        const wallet = site.wallet?.toLowerCase()
+        if (wallet) {
+          const data = await cachedPonderQuery(
+            `ssr:posts:${wallet}`,
+            `query SSRPosts($author: String!) { blogPosts(where: { author: $author, refType: 0 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) { items { id title content timestamp } } }`,
+            { author: wallet },
+            30000
+          )
+          const posts = data?.blogPosts?.items || []
+          let matched = null, displayPost = null
+          // Match slug against original titles first, then check amendments
+          for (const p of posts) {
+            const amendData = await cachedPonderQuery(
+              `ssr:amend:${p.id}`,
+              `query SSRAmend($refId: BigInt!) { blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) { items { id title content timestamp } } }`,
+              { refId: p.id },
+              60000
+            )
+            const amended = amendData?.blogPosts?.items?.[0]
+            const current = amended || p
+            const currentSlug = slugify(current.title)
+            const origSlug = slugify(p.title)
+            if (origSlug === slug || currentSlug === slug) {
+              // Old slug -> 301 to current slug
+              if (currentSlug !== slug) {
+                res.writeHead(301, { Location: '/post/' + currentSlug })
+                res.end()
+                return true
+              }
+              matched = p
+              displayPost = current
+              break
+            }
+          }
+          if (matched && displayPost) {
+            const esc = escapeHtml
+            const plain = displayPost.content.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '')
+              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+              .replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\n+/g, ' ').trim()
+            const description = esc(plain.slice(0, 160))
+            const currentSlug = slugify(displayPost.title)
+            const ogTitle = `${displayPost.title} — ${site.name || site.handle}`
+            const ogImage = `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(site.name || site.handle)}`
+            const canonical = `https://${site.domain}/post/${currentSlug}`
+
+            const postHtmlFile = join(DIR, 'post', 'index.html')
+            if (cachedExists(postHtmlFile)) {
+              let html = await getSsrTemplate(postHtmlFile)
+              if (!html) { res.writeHead(500); res.end('template read error'); return true }
+              html = injectOgTags(html, { title: ogTitle, description, image: ogImage, url: canonical })
+              const buf = Buffer.from(html)
+              compressedSend(req, res, buf, 'text/html', { 'Cache-Control': 'public, max-age=10, must-revalidate' })
+              return true
+            }
+          }
+        }
+      } catch (e) { console.warn('SSR post slug error:', e?.message) }
+    }
+  }
+
   // --- SSR for art pages (SEO: album artwork as OG image) ---
   if (path === '/art' && method === 'GET') {
     const type = url.searchParams.get('type')

@@ -1,7 +1,7 @@
 // Post page — renders a single on-chain blog post from Ponder
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider } from './utils.js'
+import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider, slugify } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 
 // Sanitize script HTML: only allow <p> with fountain-*/stageplay-* classes
@@ -58,6 +58,63 @@ function _removeBookmark(itemId) {
 
 registerPage('post-page', initPost)
 
+async function _resolvePostSlug(slug, loadingEl) {
+  try {
+    const siteResp = await fetch('/site.json')
+    if (!siteResp.ok) { loadingEl.textContent = 'could not load site data'; return null }
+    const site = await siteResp.json()
+    const wallet = site.wallet?.toLowerCase()
+    if (!wallet) { loadingEl.textContent = 'post not found'; return null }
+    const data = await query(`
+      query SlugPosts($author: String!) {
+        blogPosts(where: { author: $author, refType: 0 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
+          items { id title }
+        }
+      }
+    `, { author: wallet })
+    const posts = data?.blogPosts?.items || []
+    for (const p of posts) {
+      if (slugify(p.title) === slug) {
+        // Check for amendment (title may have changed)
+        const amendData = await query(`
+          query Amend($refId: BigInt!) {
+            blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) {
+              items { title }
+            }
+          }
+        `, { refId: p.id })
+        const amended = amendData?.blogPosts?.items?.[0]
+        if (amended) {
+          const currentSlug = slugify(amended.title)
+          if (currentSlug !== slug) {
+            window.location.replace('/post/' + currentSlug)
+            return null
+          }
+        }
+        return String(p.id)
+      }
+    }
+    // Check amended titles (slug matches a post's latest amendment)
+    for (const p of posts) {
+      const amendData = await query(`
+        query Amend($refId: BigInt!) {
+          blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) {
+            items { title }
+          }
+        }
+      `, { refId: p.id })
+      const amended = amendData?.blogPosts?.items?.[0]
+      if (amended && slugify(amended.title) === slug) return String(p.id)
+    }
+    loadingEl.textContent = 'post not found'
+    return null
+  } catch (e) {
+    console.warn('post slug resolve error:', e)
+    loadingEl.textContent = 'post not found'
+    return null
+  }
+}
+
 async function initPost() {
   const el = document.getElementById('post-page')
   if (!el) return
@@ -66,6 +123,16 @@ async function initPost() {
   const url = new URL(window.location.href)
   let postId = url.searchParams.get('id')
   const showHistory = url.searchParams.get('history') === '1'
+
+  // Vanity slug: /post/<slug> — resolve to post ID
+  if (!postId) {
+    const segs = window.location.pathname.split('/').filter(Boolean)
+    if (segs.length >= 2 && segs[0] === 'post') {
+      const slug = decodeURIComponent(segs[1])
+      postId = await _resolvePostSlug(slug, loadingEl)
+      if (!postId) return
+    }
+  }
 
   if (!postId) {
     loadingEl.textContent = 'no post id'
@@ -633,7 +700,7 @@ async function initOnchainPosts() {
     }
 
     return `<li style="list-style:none;margin-bottom:0.75em">
-      <a href="/post?id=${p.id}" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--muted)'" onmouseout="this.style.borderColor='var(--border)'">
+      <a href="/post/${slugify(p.title)}" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--muted)'" onmouseout="this.style.borderColor='var(--border)'">
         ${mediaTopHtml}
         <div style="padding:0.75em 1em">
           <div style="font-weight:700;font-size:1.4em;line-height:1.25;letter-spacing:-0.01em;color:var(--fg)">${escapeHtml(p.title)}</div>
