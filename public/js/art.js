@@ -11,6 +11,7 @@ import { t } from './i18n.js'
 import './feed-cards.js' // registers global .feed-buy-btn click delegation
 
 let _artAbortController = null
+const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
 
 registerPage('art-page', initArt)
 
@@ -44,8 +45,6 @@ function wireRefButtons(container) {
     })
   })
 }
-
-const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
 
 function parseVanityPath() {
   const segs = window.location.pathname.split('/').filter(Boolean)
