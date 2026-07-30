@@ -10,6 +10,12 @@ function avatarOverlay(addr, explicitPic) {
   return `<img src="${esc(pic)}" class="feed-card-avatar" style="position:absolute;bottom:-14px;left:10px;width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--bg,#111);z-index:1" loading="lazy" onerror="this.style.display='none'">`
 }
 
+function inlineAvatar(addr, explicitPic) {
+  const pic = explicitPic || getProfilePic(addr)
+  if (!pic) return ''
+  return `<img src="${esc(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`
+}
+
 function resolveDisplay(addr, resolve, explicitName) {
   return explicitName || getArtistName(addr) || resolve(addr)
 }
@@ -259,7 +265,7 @@ export function renderMediaCard(d, resolve) {
         <div class="feed-pdf-thumb-slot" style="display:none"></div>
         <div style="padding:0.75em 1em">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
-            <span class="feed-author">${esc(displayName)}</span>
+            <span class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.artist, aPic)}${esc(displayName)}</span>
             <span style="color:var(--dim);font-size:0.8em">for sale</span>
           </div>
           <a href="#" class="feed-library-open" data-media-url="${esc(mediaSrc)}" data-title="${esc(title)}" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:block">${esc(title)}</a>
@@ -387,7 +393,8 @@ export function renderFollowCard(d, resolve, opts = {}) {
   return `
     <a href="${followedLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
-      <div style="padding:0.6em 1em">
+      <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.5ch">
+        ${inlineAvatar(d.follower || d.author)}
         <span style="color:var(--muted);font-size:0.85em"><span style="color:var(--fg)">${esc(follower)}</span> followed <span style="color:var(--fg);font-weight:500">${esc(followed)}</span></span>
       </div>
     </a>
@@ -413,7 +420,7 @@ export function renderProjectCard(p, resolve, opts = {}) {
       <div style="padding:0.4em 1em 0.75em">
         <a href="/project?id=${p.id}"${linkTarget} style="color:var(--fg);font-weight:700;font-size:1.05em;text-decoration:none;display:block">${esc(p.title)}</a>
         <div style="color:var(--muted);font-size:0.8em;margin-top:0.2em">
-          by <span style="color:var(--fg)">${esc(domain)}</span>${deadlineStr ? ` · deadline ${deadlineStr}` : ''}
+          <span style="display:inline-flex;align-items:center;gap:0.4ch">by ${inlineAvatar(p.proposer)}<span style="color:var(--fg)">${esc(domain)}</span></span>${deadlineStr ? ` · deadline ${deadlineStr}` : ''}
         </div>
         ${p.description ? `<p style="color:var(--muted);font-size:0.85em;margin:0.5em 0 0;line-height:1.4">${esc(p.description).slice(0, 200)}${p.description.length > 200 ? '...' : ''}</p>` : ''}
         <div style="margin-top:0.6em">
@@ -434,7 +441,7 @@ export function renderFundedCard(d, resolve, opts = {}) {
   return `
     <a href="/project?id=${d.projectId}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        <div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>
+        ${getProfilePic(d.funder) ? `<img src="${esc(getProfilePic(d.funder))}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>`}
         <div style="flex:1;min-width:0">
           <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--fg);font-weight:500">${esc(d.projectTitle)}</span></div>
           <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${d.amount || '0'}" data-fiat-primary="true"></span></div>
@@ -465,9 +472,10 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
         <div class="video-lazy" data-src="${esc(videoSrc)}" data-poster="${esc(artSrc)}" data-title="${esc(title)}" style="aspect-ratio:16/9;background:#000;position:relative;cursor:pointer;overflow:hidden">
           <img src="${esc(artSrc)}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;pointer-events:none"><i class="ph ph-play" style="color:#fff;font-size:22px"></i></div>
+          ${avatarOverlay(d.buyer)}
         </div>
         <div class="feed-media-card-info">
-          <div style="color:var(--muted);font-size:0.8em"><span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
+          <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
           <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(title)}</a>
           <div class="feed-collected-actions">
             <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} class="feed-card-btn" style="text-decoration:none"><i class="ph ph-arrow-right"></i> view</a>
@@ -484,9 +492,10 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
       <div class="feed-collected-art-wrap">
         ${artSrc ? `<a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : ''}
         ${playOverlay}
+        ${avatarOverlay(d.buyer)}
       </div>
       <div class="feed-collected-body">
-        <div style="color:var(--muted);font-size:0.8em"><span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
+        <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
         <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${esc(title)}</a>
         <div class="feed-collected-actions">
           <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} class="feed-card-btn" style="text-decoration:none"><i class="ph ph-arrow-right"></i> view</a>
@@ -537,9 +546,10 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
       <div class="feed-collected-art-wrap">
         ${artSrc ? `<a href="${esc(artLink)}"${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : ''}
         ${playOverlay}
+        ${avatarOverlay(d.buyer)}
       </div>
       <div class="feed-collected-body">
-        <div style="color:var(--muted);font-size:0.8em"><span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
+        <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
         <a href="${esc(artLink)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${esc(headline)}</a>
         ${displayArtist ? `<a href="${artistLink}"${linkTarget} style="color:var(--muted);font-size:0.8em;text-decoration:none">${esc(displayArtist)}</a>` : ''}
         <div class="feed-collected-actions">
@@ -561,7 +571,7 @@ export function renderSupporterCard(d, resolve, opts = {}) {
     <a href="${link}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
       <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.6em">
-        <div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-user-plus" style="font-size:0.9em"></i></div>
+        ${getProfilePic(d.wallet) ? `<img src="${esc(getProfilePic(d.wallet))}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-user-plus" style="font-size:0.9em"></i></div>`}
         <div>
           <span style="color:var(--fg);font-weight:500">${esc(displayName)}</span>
           <span style="color:var(--muted);font-size:0.85em"> joined the audience</span>
@@ -580,7 +590,8 @@ export function renderJoinedCard(d, resolve, opts = {}) {
   return `
     <a href="${domainLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
-      <div style="padding:0.6em 1em">
+      <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.5ch">
+        ${inlineAvatar(d.wallet || d.artist)}
         <span style="color:var(--fg);font-weight:500">${esc(domain)}</span>
         <span style="color:var(--muted);font-size:0.85em"> joined the network</span>
       </div>

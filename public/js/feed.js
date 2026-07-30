@@ -25,7 +25,7 @@ _ensureSiteModules()
 
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown } from './utils.js'
+import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown, getProfilePic } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
@@ -644,7 +644,7 @@ function renderPost(p, domainMap) {
       ${mediaHtml ? `<div class="feed-media-wrap">${mediaHtml}</div>` : ''}
       <div style="padding:0.75em 1em">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
-          <a href="/network?artist=${p.author.toLowerCase()}" class="feed-author">${escapeHtml(domain)}</a>
+          <a href="/network?artist=${p.author.toLowerCase()}" class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${(() => { const pic = getProfilePic(p.author); return pic ? `<img src="${escapeHtml(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : '' })()}${escapeHtml(domain)}</a>
           <time class="feed-time" style="color:var(--dim);font-size:0.85em">${timeStr}</time>
         </div>
         <a href="/post?id=${p.id}" style="color:inherit;text-decoration:none;display:block">
@@ -723,7 +723,7 @@ function renderLibraryActivity(item, resolve) {
       ${iconSlot}
       <div style="padding:0.75em 1em">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
-          <a href="/network?artist=${item.contributor.toLowerCase()}" class="feed-author">${escapeHtml(domain)}</a>
+          <a href="/network?artist=${item.contributor.toLowerCase()}" class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${(() => { const pic = getProfilePic(item.contributor); return pic ? `<img src="${escapeHtml(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : '' })()}${escapeHtml(domain)}</a>
           <span style="color:var(--dim);font-size:0.8em">${t('feed.addedToLibrary')}</span>
         </div>
         ${titleLink}
