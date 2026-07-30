@@ -65,46 +65,36 @@ async function _resolvePostSlug(slug, loadingEl) {
     const site = await siteResp.json()
     const wallet = site.wallet?.toLowerCase()
     if (!wallet) { loadingEl.textContent = 'post not found'; return null }
-    const data = await query(`
-      query SlugPosts($author: String!) {
+    // Batch: fetch posts + all amendments in 2 parallel queries
+    const [postsData, amendsData] = await Promise.all([
+      query(`query SlugPosts($author: String!) {
         blogPosts(where: { author: $author, refType: 0 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
           items { id title }
         }
-      }
-    `, { author: wallet })
-    const posts = data?.blogPosts?.items || []
+      }`, { author: wallet }),
+      query(`query SlugAmends($author: String!) {
+        blogPosts(where: { author: $author, refType: 5 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
+          items { title refId }
+        }
+      }`, { author: wallet })
+    ])
+    const posts = postsData?.blogPosts?.items || []
+    const amendMap = new Map()
+    for (const a of (amendsData?.blogPosts?.items || [])) {
+      const key = String(a.refId)
+      if (!amendMap.has(key)) amendMap.set(key, a)
+    }
     for (const p of posts) {
-      if (slugify(p.title) === slug) {
-        // Check for amendment (title may have changed)
-        const amendData = await query(`
-          query Amend($refId: BigInt!) {
-            blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) {
-              items { title }
-            }
-          }
-        `, { refId: p.id })
-        const amended = amendData?.blogPosts?.items?.[0]
-        if (amended) {
-          const currentSlug = slugify(amended.title)
-          if (currentSlug !== slug) {
-            window.location.replace('/post/' + currentSlug)
-            return null
-          }
+      const amended = amendMap.get(String(p.id))
+      const currentTitle = amended?.title || p.title
+      const currentSlug = slugify(currentTitle)
+      if (slugify(p.title) === slug || currentSlug === slug) {
+        if (currentSlug !== slug) {
+          window.location.replace('/post/' + currentSlug)
+          return null
         }
         return String(p.id)
       }
-    }
-    // Check amended titles (slug matches a post's latest amendment)
-    for (const p of posts) {
-      const amendData = await query(`
-        query Amend($refId: BigInt!) {
-          blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) {
-            items { title }
-          }
-        }
-      `, { refId: p.id })
-      const amended = amendData?.blogPosts?.items?.[0]
-      if (amended && slugify(amended.title) === slug) return String(p.id)
     }
     loadingEl.textContent = 'post not found'
     return null

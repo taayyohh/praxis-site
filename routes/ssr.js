@@ -71,7 +71,7 @@ export async function handleSsr(ctx) {
           const plain = displayPost.content.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '')
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
             .replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\n+/g, ' ').trim()
-          const description = esc(plain.slice(0, 160))
+          const description = plain.slice(0, 160)
 
           const site = getSiteJson(SITE_JSON)
           const postHtmlFile = join(DIR, 'post', 'index.html')
@@ -91,7 +91,8 @@ export async function handleSsr(ctx) {
 
             html = injectOgTags(html, { title: ogTitle, description, image: ogImage, url: canonical })
 
-            const jsonLd = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"${esc(displayPost.title).replace(/"/g, '\\"')}","author":{"@type":"Person","name":"${esc(authorDomain).replace(/"/g, '\\"')}"},"datePublished":"${date.toISOString()}","description":"${description.replace(/"/g, '\\"')}","url":"${canonical}"}</script>`
+            const escJson = s => esc(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+            const jsonLd = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"${escJson(displayPost.title)}","author":{"@type":"Person","name":"${escJson(authorDomain)}"},"datePublished":"${date.toISOString()}","description":"${escJson(description)}","url":"${canonical}"}</script>`
             html = html.replace('</head>', `${jsonLd}\n</head>`)
 
             const buf = Buffer.from(html)
@@ -113,28 +114,32 @@ export async function handleSsr(ctx) {
         const site = getSiteJson(SITE_JSON)
         const wallet = site.wallet?.toLowerCase()
         if (wallet) {
-          const data = await cachedPonderQuery(
-            `ssr:posts:${wallet}`,
-            `query SSRPosts($author: String!) { blogPosts(where: { author: $author, refType: 0 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) { items { id title content timestamp } } }`,
-            { author: wallet },
-            30000
-          )
-          const posts = data?.blogPosts?.items || []
-          let matched = null, displayPost = null
-          // Match slug against original titles first, then check amendments
-          for (const p of posts) {
-            const amendData = await cachedPonderQuery(
-              `ssr:amend:${p.id}`,
-              `query SSRAmend($refId: BigInt!) { blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 1) { items { id title content timestamp } } }`,
-              { refId: p.id },
-              60000
+          // Batch: fetch posts (titles only) + all amendments in 2 queries, not N+1
+          const [postsData, amendsData] = await Promise.all([
+            cachedPonderQuery(
+              `ssr:posts:${wallet}`,
+              `query SSRPosts($author: String!) { blogPosts(where: { author: $author, refType: 0 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) { items { id title } } }`,
+              { author: wallet }, 30000
+            ),
+            cachedPonderQuery(
+              `ssr:amends:${wallet}`,
+              `query SSRAmends($author: String!) { blogPosts(where: { author: $author, refType: 5 }, orderBy: "timestamp", orderDirection: "desc", limit: 200) { items { title content timestamp refId } } }`,
+              { author: wallet }, 30000
             )
-            const amended = amendData?.blogPosts?.items?.[0]
+          ])
+          const posts = postsData?.blogPosts?.items || []
+          // Build map: postId -> latest amendment
+          const amendMap = new Map()
+          for (const a of (amendsData?.blogPosts?.items || [])) {
+            const key = String(a.refId)
+            if (!amendMap.has(key)) amendMap.set(key, a)
+          }
+          let matched = null, displayPost = null
+          for (const p of posts) {
+            const amended = amendMap.get(String(p.id))
             const current = amended || p
             const currentSlug = slugify(current.title)
-            const origSlug = slugify(p.title)
-            if (origSlug === slug || currentSlug === slug) {
-              // Old slug -> 301 to current slug
+            if (slugify(p.title) === slug || currentSlug === slug) {
               if (currentSlug !== slug) {
                 res.writeHead(301, { Location: '/post/' + currentSlug })
                 res.end()
@@ -146,11 +151,20 @@ export async function handleSsr(ctx) {
             }
           }
           if (matched && displayPost) {
-            const esc = escapeHtml
-            const plain = displayPost.content.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '')
+            // Fetch content only for the matched post if not in amendment
+            let content = displayPost.content
+            if (!content) {
+              const fullData = await cachedPonderQuery(
+                `ssr:post:${matched.id}`,
+                `query SSRPost($id: BigInt!) { blogPost(id: $id) { id title content timestamp } }`,
+                { id: matched.id }, 60000
+              )
+              content = fullData?.blogPost?.content || ''
+            }
+            const plain = content.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '')
               .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
               .replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\n+/g, ' ').trim()
-            const description = esc(plain.slice(0, 160))
+            const description = plain.slice(0, 160)
             const currentSlug = slugify(displayPost.title)
             const ogTitle = `${displayPost.title} — ${site.name || site.handle}`
             const ogImage = `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(site.name || site.handle)}`
@@ -324,11 +338,10 @@ export async function handleSsr(ctx) {
           const projects = data?.projects?.items || []
           const matched = projects.find(p => slugify(p.title) === slug)
           if (matched) {
-            const esc = escapeHtml
             const statusLabels = { 0: 'proposed', 1: 'funded', 2: 'confirmed', 3: 'completing', 4: 'completed', 5: 'cancelled' }
             const statusLabel = statusLabels[matched.status] || 'proposed'
             const ogTitle = `${matched.title} — ${site.name || 'praxis'}`
-            const ogDescription = esc((matched.description || '').slice(0, 160))
+            const ogDescription = (matched.description || '').slice(0, 160)
             const ogImage = `https://${site.domain}/api/og?type=project&title=${encodeURIComponent(matched.title)}&status=${encodeURIComponent(statusLabel)}`
             const canonical = `https://${site.domain}/project/${slug}`
 
@@ -361,12 +374,11 @@ export async function handleSsr(ctx) {
         const project = data?.project
         if (project) {
           const site = getSiteJson(SITE_JSON)
-          const esc = escapeHtml
 
           const statusLabels = { 0: 'proposed', 1: 'funded', 2: 'confirmed', 3: 'completing', 4: 'completed', 5: 'cancelled' }
           const statusLabel = statusLabels[project.status] || 'proposed'
           const ogTitle = `${project.title} — ${site.name || 'praxis'}`
-          const ogDescription = esc((project.description || '').slice(0, 160))
+          const ogDescription = (project.description || '').slice(0, 160)
           const ogImage = `https://${site.domain}/api/og?type=project&title=${encodeURIComponent(project.title)}&status=${encodeURIComponent(statusLabel)}`
           const canonical = `https://${site.domain}/project?id=${projectId}`
 
