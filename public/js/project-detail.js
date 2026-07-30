@@ -139,7 +139,7 @@ async function initProjectDetail() {
   // Vanity slug: /project/<slug>
   if (!projectId) {
     const segs = window.location.pathname.split('/').filter(Boolean)
-    if (segs.length >= 2 && segs[0] === 'project') {
+    if (segs.length >= 2 && (segs[0] === 'project' || segs[0] === 'event')) {
       projectId = await _resolveProjectSlug(decodeURIComponent(segs[1]))
     }
   }

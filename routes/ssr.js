@@ -321,8 +321,8 @@ export async function handleSsr(ctx) {
     } catch (e) { console.warn('SSR vanity error:', e?.message) }
   }
 
-  // --- SSR for project vanity URLs: /project/<slug> ---
-  if (path.startsWith('/project/') && method === 'GET') {
+  // --- SSR for project/event vanity URLs: /project/<slug>, /event/<slug> ---
+  if ((path.startsWith('/project/') || path.startsWith('/event/')) && method === 'GET') {
     const slug = decodeURIComponent(path.split('/')[2] || '')
     if (slug) {
       try {
@@ -343,7 +343,8 @@ export async function handleSsr(ctx) {
             const ogTitle = `${matched.title} — ${site.name || 'praxis'}`
             const ogDescription = (matched.description || '').slice(0, 160)
             const ogImage = `https://${site.domain}/api/og?type=project&title=${encodeURIComponent(matched.title)}&status=${encodeURIComponent(statusLabel)}`
-            const canonical = `https://${site.domain}/project/${slug}`
+            const routePrefix = path.startsWith('/event/') ? 'event' : 'project'
+            const canonical = `https://${site.domain}/${routePrefix}/${slug}`
 
             const projectHtmlFile = join(DIR, 'project', 'index.html')
             if (cachedExists(projectHtmlFile)) {
@@ -360,8 +361,8 @@ export async function handleSsr(ctx) {
     }
   }
 
-  // --- SSR for project pages (SEO: dynamic OG for project details) ---
-  if (path === '/project' && method === 'GET') {
+  // --- SSR for project/event pages (SEO: dynamic OG for project details) ---
+  if ((path === '/project' || path === '/event') && method === 'GET') {
     const projectId = url.searchParams.get('id')
     if (projectId) {
       try {
