@@ -1,7 +1,7 @@
 // Film module — video uploads, reels, festival credits, shorts
 // For filmmakers, directors, cinematographers, editors, animators
 // data: { works: [{ title, role, director, year, video, poster, description, cast, genre, runtime, mediaId, mediaPrice, cinematographer, composer, editor, writer, productionCompany, synopsis, distributor, trailer }], festivals: [{ festival, film, year, result }] }
-import { esc, batchBuyScript } from './shared.js'
+import { esc, batchBuyScript, slugify } from './shared.js'
 function safeUrl(u) {
   if (!u || typeof u !== 'string') return '#'
   try {
@@ -25,7 +25,7 @@ export default {
     function renderWork(w) {
       let out = ''
       const workIdx = works.indexOf(w)
-      const artUrl = `/art?type=film&amp;work=${workIdx}`
+      const artUrl = `/film/${slugify(w.title)}`
       out += `<div class="credit"><a href="${artUrl}" style="color:inherit;text-decoration:none"><span class="credit-title">${esc(w.title)}</span></a> <span class="credit-detail">-- ${esc(w.role)}${w.director ? `, dir. ${esc(w.director)}` : ''}${w.year ? `, ${esc(w.year)}` : ''}</span>`
       if (w.runtime) out += ` <span class="film-runtime" style="font-size:0.7em;padding:0.1em 0.6ch;border:1px solid var(--border);color:var(--muted)">${esc(w.runtime)}</span>`
       if (w.productionCompany) out += `<br><span style="color:var(--muted);font-size:0.85em">${esc(w.productionCompany)}</span>`

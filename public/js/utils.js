@@ -1449,3 +1449,20 @@ export function classifyContentType(ct, title) {
   }
   return 'other'
 }
+
+export function slugify(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
+}
+
+export function mediaUrl(type, item, mod) {
+  if (type === 'music') {
+    const aliasSlug = slugify(item.aliasName)
+    const albumSlug = slugify(item.albumTitle)
+    return `/music/${aliasSlug}/${albumSlug}`
+  }
+  return `/${type}/${slugify(item.title)}`
+}
+
+export function mediaUrlHtml(type, item, mod) {
+  return escapeHtml(mediaUrl(type, item, mod))
+}

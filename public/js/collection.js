@@ -1,7 +1,7 @@
 // Collection page — shows soulbound tokens and credentials for connected wallet
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getPublicClient , formatEthAmount, registerPage, openMediaSheet, artPlaceholder, resolveContentTypes, classifyContentType as classifyCT } from './utils.js'
+import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getPublicClient , formatEthAmount, registerPage, openMediaSheet, artPlaceholder, resolveContentTypes, classifyContentType as classifyCT, slugify } from './utils.js'
 import { t } from './i18n.js'
 import { getCollection, annotateRelistings } from './media.js'
 import { getCached, setCache, TTL } from './cache.js'
@@ -1072,7 +1072,7 @@ function renderMediaItems(mediaPurchases) {
     const albumName = info.name || `${trackCount} tracks`
     const aliasName = info.aliasName || artistDomain
     const albumPath = info.path
-    const albumLink = albumPath ? `https://${escapeHtml(artistDomain)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?media=${first.mediaId}`
+    const albumLink = (info.aliasName && info.name) ? `https://${escapeHtml(artistDomain)}/music/${slugify(info.aliasName)}/${slugify(info.name)}` : `/art?media=${first.mediaId}`
 
     // Build play-all queue
     const queueTracks = sorted.filter(p => _mediaDetails[p.mediaId]?.ipfsCid).map(p => {

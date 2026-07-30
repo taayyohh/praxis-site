@@ -1,7 +1,7 @@
 // Video module — music videos, live performances, reels, visual art videos
 // Generic video content for any artist type (distinct from film module which is for filmmakers)
 // data: { items: [{ title, year, src, poster, description, collaborators, mediaId, mediaPrice, director, cast, cinematographer, editor, runtime, genre, location }] }
-import { esc, batchBuyScript } from './shared.js'
+import { esc, batchBuyScript, slugify } from './shared.js'
 export default {
   type: 'video',
   label: 'video',
@@ -35,7 +35,7 @@ export default {
         </div>`
       }
       html += `<div class="video-caption">`
-      const artUrl = `/art?type=video&amp;item=${idx}`
+      const artUrl = `/video/${slugify(v.title)}`
       html += `<a href="${artUrl}" class="video-detail-link" style="color:inherit;text-decoration:none"><span class="video-title">${esc(v.title)}</span></a>`
       if (v.year) html += ` <span class="video-year">(${esc(v.year)})</span>`
       if (v.runtime) html += ` <span class="video-runtime" style="font-size:0.7em;padding:0.1em 0.6ch;border:1px solid var(--border);color:var(--muted)">${esc(v.runtime)}</span>`
@@ -151,7 +151,7 @@ export default {
         const cidMatch = v.src.match(/\/api\/ipfs-proxy\/([A-Za-z0-9]+)/)
         if (cidMatch) posterUrl = `/api/video-thumb?cid=${cidMatch[1]}&w=640`
       }
-      const artUrl = `/art?type=video&amp;item=${idx}`
+      const artUrl = `/video/${slugify(v.title)}`
       let html = `<div class="video-item">`
       if (v.src) {
         html += `<div class="video-player">

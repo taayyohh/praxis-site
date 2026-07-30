@@ -1,6 +1,10 @@
 // SSR routes — server-side rendering for blog posts, art pages, project pages
 import { join } from 'path'
 
+function slugify(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
+}
+
 /** @param {object} ctx @returns {Promise<boolean>} */
 export async function handleSsr(ctx) {
   const { req, res, url, path, method,
@@ -156,6 +160,75 @@ export async function handleSsr(ctx) {
         }
       }
     } catch (e) { console.warn('SSR art error:', e?.message) }
+  }
+
+  // --- SSR for vanity media URLs: /music/alias/album, /gallery/slug, etc. ---
+  const vanityTypes = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
+  const segs = path.split('/').filter(Boolean)
+  if (segs.length >= 2 && vanityTypes.has(segs[0]) && method === 'GET') {
+    try {
+      const site = getSiteJson(SITE_JSON)
+      const modules = site.modules || []
+      const type = segs[0]
+      const mod = modules.find(m => m.type === type)
+      let ogTitle, ogImage, ogDescription
+
+      if (mod?.data && type === 'music' && segs.length >= 3) {
+        const aliasSlug = decodeURIComponent(segs[1])
+        const albumSlug = decodeURIComponent(segs[2])
+        for (const alias of (mod.data.aliases || [])) {
+          if (slugify(alias.name) !== aliasSlug) continue
+          for (const album of (alias.albums || [])) {
+            if (slugify(album.title) === albumSlug) {
+              ogTitle = `${album.title} — ${alias.name || site.name}`
+              ogImage = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=1200&fmt=jpg` : null
+              ogDescription = `${alias.name || ''} (${album.year || ''})`
+              break
+            }
+          }
+          if (ogTitle) break
+        }
+      } else if (mod?.data && type === 'gallery') {
+        const slug = decodeURIComponent(segs[1])
+        const img = (mod.data.images || []).find(i => slugify(i.title) === slug)
+        if (img) {
+          ogTitle = `${img.title} — ${site.name}`
+          ogImage = img.src ? `/api/img?url=${encodeURIComponent(img.src)}&w=1200&fmt=jpg` : null
+          ogDescription = [img.medium, img.year].filter(Boolean).join(', ')
+        }
+      } else if (mod?.data && (type === 'film' || type === 'video')) {
+        const slug = decodeURIComponent(segs[1])
+        const items = type === 'film' ? (mod.data.works || []) : (Array.isArray(mod.data) ? mod.data : (mod.data.items || []))
+        const item = items.find(i => slugify(i.title) === slug)
+        if (item) {
+          ogTitle = `${item.title} — ${site.name}`
+          ogImage = item.poster ? `/api/img?url=${encodeURIComponent(item.poster)}&w=1200&fmt=jpg` : null
+          ogDescription = [item.role, item.director ? `dir. ${item.director}` : '', item.year].filter(Boolean).join(', ')
+        }
+      } else if (mod?.data && (type === 'audio' || type === 'writing')) {
+        const slug = decodeURIComponent(segs[1])
+        const items = type === 'writing' ? (mod.data.publications || []) : (Array.isArray(mod.data) ? mod.data : (mod.data.items || []))
+        const item = items.find(i => slugify(i.title) === slug)
+        if (item) {
+          ogTitle = `${item.title} — ${site.name}`
+          ogDescription = item.description?.slice(0, 160) || ''
+        }
+      }
+
+      if (ogTitle) {
+        const artHtmlFile = join(DIR, 'art', 'index.html')
+        if (cachedExists(artHtmlFile)) {
+          let html = await getSsrTemplate(artHtmlFile)
+          if (!html) { res.writeHead(500); res.end('template read error'); return true }
+          const canonical = `https://${site.domain}${path}`
+          const absImage = ogImage ? (ogImage.startsWith('http') ? ogImage : `https://${site.domain}${ogImage}`) : undefined
+          html = injectOgTags(html, { title: ogTitle, description: ogDescription, image: absImage, url: canonical })
+          const buf = Buffer.from(html)
+          compressedSend(req, res, buf, 'text/html', { 'Cache-Control': 'public, max-age=10, must-revalidate' })
+          return true
+        }
+      }
+    } catch (e) { console.warn('SSR vanity error:', e?.message) }
   }
 
   // --- SSR for project pages (SEO: dynamic OG for project details) ---

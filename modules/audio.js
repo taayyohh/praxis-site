@@ -1,6 +1,6 @@
 // Audio module — podcasts, sound design, voiceover, audio essays
 // For podcasters, sound designers, voice actors, audio engineers
-import { esc, batchBuyScript } from './shared.js'
+import { esc, batchBuyScript, slugify } from './shared.js'
 function safeUrl(u) {
   if (!u || typeof u !== 'string') return '#'
   try {
@@ -25,7 +25,7 @@ export default {
       let out = ''
       out += `<div class="audio-item" style="margin-bottom:1.5em">`
       if (item.coverArt || item.art) {
-        const artSrc = `/art?type=audio&amp;work=${items.indexOf(item)}`
+        const artSrc = `/audio/${slugify(item.title)}`
         const cover = `/api/img?url=${encodeURIComponent(item.coverArt || item.art)}&w=120`
         out += `<div style="display:flex;gap:0.75em;align-items:flex-start">`
         out += `<img src="${esc(cover)}" alt="" loading="lazy" style="width:60px;height:60px;object-fit:cover;flex-shrink:0">`

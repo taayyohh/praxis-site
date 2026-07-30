@@ -8,7 +8,7 @@
 // the cycle-2 patch that exposed album.description on click-through made the
 // vulnerability newly reachable for any owner.
 
-import { esc, batchBuyScript, artPlaceholder } from './shared.js'
+import { esc, batchBuyScript, artPlaceholder, slugify } from './shared.js'
 
 // Validate a URL is safe to use as an `<a href>` target. Rejects javascript:,
 // data:, vbscript:, file: and any non-http(s) scheme. Returns the original URL
@@ -73,7 +73,7 @@ export default {
       let out = ''
       const hasTracksOrLinks = (album.tracks?.length > 0) || album.links || album.description
       const albumId = `album-${(aliasName + album.title).replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
-      const artDetailUrl = `/art?type=music&amp;alias=${ai}&amp;album=${ali}`
+      const artDetailUrl = `/music/${slugify(aliasName)}/${slugify(album.title)}`
       out += `<div class="album${hasTracksOrLinks ? ' album-clickable' : ''}" data-album-id="${esc(albumId)}">`
       const artThumb = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=800` : ''
       const albumPlayable = (album.tracks || []).filter(t => t.src)
@@ -333,7 +333,7 @@ export default {
         ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(queueData)}"><i class="ph ph-play"></i></button>`
         : ''
       const thumbUrl = al.art ? `/api/img?url=${encodeURIComponent(al.art)}&w=480` : ''
-      const artUrl = `/art?type=music&amp;alias=${al.aliasIdx}&amp;album=${al.albumIdx}`
+      const artUrl = `/music/${slugify(al.alias)}/${slugify(al.title)}`
       const safeImg = thumbUrl || (al.art ? esc(al.art) : '')
       return `<div class="album album-highlight"><div style="position:relative"><a href="${artUrl}" style="display:block;cursor:pointer"><img src="${safeImg}" alt="${esc(al.title)}" loading="lazy" onerror="this.style.display='none'"></a>${playOverlay}</div><div class="album-info"><a href="${artUrl}" style="color:var(--accent);text-decoration:none"><span class="album-title">${esc(al.title)}</span></a> <span class="album-year">(${esc(al.year)})</span><br><span style="color:var(--muted)">${esc(al.artist || al.alias)}</span></div></div>`
     }

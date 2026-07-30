@@ -1,5 +1,5 @@
 // Shared feed card renderers — used by both artist feed (feed.js) and landing (landing.js)
-import { escapeHtml as esc, getProfilePic, getArtistName } from './utils.js'
+import { escapeHtml as esc, getProfilePic, getArtistName, slugify } from './utils.js'
 const DELIST_PRICE_SENTINEL = 2n ** 128n
 let t = (k) => k // fallback
 try { const i18n = await import('./i18n.js'); t = i18n.t } catch {}
@@ -309,7 +309,7 @@ export function renderBatchCard(d, resolve, opts = {}) {
           const matches = albumTitles.filter(t => trackTitles.has(t)).length
           if (matches >= Math.min(trackTitles.size, albumTitles.length) * 0.5 && matches >= 2) {
             headline = album.title || headline
-            albumPath = { alias: ai, album: bi }
+            albumPath = { alias: ai, album: bi, aliasName: mod.data.aliases[ai].name, albumTitle: album.title }
           }
         }
       }
@@ -317,8 +317,9 @@ export function renderBatchCard(d, resolve, opts = {}) {
   }
 
   const firstItem = d.items?.[0]
-  const artLink = albumPath
-    ? (artist.includes('.') ? `https://${esc(artist)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
+  const slugUrl = albumPath?.aliasName ? `/music/${slugify(albumPath.aliasName)}/${slugify(albumPath.albumTitle)}` : null
+  const artLink = slugUrl
+    ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl}` : slugUrl)
     : (firstItem ? `/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#')
 
   const metaCid = firstItem?.metadataCid || ''
@@ -501,8 +502,9 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   const artist = d.artist ? resolve(d.artist) : ''
   const headline = d.headline || 'untitled'
   const albumPath = d.albumPath
-  const artLink = albumPath
-    ? (artist.includes('.') ? `https://${esc(artist)}/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}` : `/art?type=music&alias=${albumPath.alias}&album=${albumPath.album}`)
+  const slugUrl2 = albumPath?.aliasName ? `/music/${slugify(albumPath.aliasName)}/${slugify(albumPath.albumTitle || headline)}` : null
+  const artLink = slugUrl2
+    ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl2}` : slugUrl2)
     : '#'
   const firstItem = d.items?.[0]
   const metaCid = firstItem?.metadataCid || ''

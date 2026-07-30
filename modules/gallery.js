@@ -1,7 +1,7 @@
 // Gallery module — images, exhibitions, series/collections
 // For photographers, painters, sculptors, visual artists
 // data: { images: [{ src, title, medium, year, series, description, dimensions, materials, edition, location }], exhibitions: [{ title, venue, year, startDate, endDate, curator, coArtists, url }] }
-import { esc, batchBuyScript } from './shared.js'
+import { esc, batchBuyScript, slugify } from './shared.js'
 export default {
   type: 'gallery',
   label: 'visual',
@@ -200,7 +200,7 @@ const escapeAttr = esc
 function renderGalleryItem(img) {
   const gridThumb = img.src ? `/api/img?url=${encodeURIComponent(img.src)}&w=800` : img.src
   const fullSrc = img.src ? `/api/img?url=${encodeURIComponent(img.src)}&w=2400` : img.src
-  const artUrl = `/art?type=gallery&amp;image=${img._idx}`
+  const artUrl = `/gallery/${slugify(img.title)}`
   const captionText = [escapeHtml(img.title || ''), img.year ? `(${img.year})` : '', img.medium ? escapeHtml(img.medium) : ''].filter(Boolean).join(' ')
   let captionExtra = ''
   if (img.mediaId !== undefined && img.mediaId !== null) {
@@ -230,6 +230,7 @@ function renderLoadMore(images, pageSize, seriesId) {
   <script>
   (function() {
     function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+    function slugify(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'; }
     var btn = document.querySelector('.gallery-load-more-${safeId}');
     if (!btn) return;
     var remaining = JSON.parse(btn.getAttribute('data-images'));
@@ -242,7 +243,7 @@ function renderLoadMore(images, pageSize, seriesId) {
         for (var i = shown; i < end; i++) {
           var img = remaining[i];
           var thumb = img.s ? '/api/img?url=' + encodeURIComponent(img.s) + '&w=800' : img.s;
-          var artUrl = '/art?type=gallery&amp;image=' + img.i;
+          var artUrl = '/gallery/' + slugify(img.t);
           var extra = '';
           if (img.mi !== undefined && img.mi !== null) {
             var pe = img.mp ? (Number(img.mp) / 1e18) : 0;

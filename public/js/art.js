@@ -1,7 +1,7 @@
 // Art detail page — universal portfolio item viewer
 // Routes: /art?type=music&alias=0&album=1 (local) or /art?media=0 (on-chain)
 import { query } from './ponder.js'
-import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, formatEthAmount, getPublicClient, registerPage } from './utils.js'
+import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, formatEthAmount, getPublicClient, registerPage, slugify } from './utils.js'
 import { purchaseMedia, getArtistMedia, annotateRelistings } from './media.js'
 import { resolveContentTypes, classifyContentType } from './utils.js'
 import { formatEther } from './vendor.js'
@@ -45,6 +45,16 @@ function wireRefButtons(container) {
   })
 }
 
+const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
+
+function parseVanityPath() {
+  const segs = window.location.pathname.split('/').filter(Boolean)
+  if (segs.length >= 2 && _VANITY_TYPES.has(segs[0])) {
+    return { type: segs[0], slugs: segs.slice(1).map(decodeURIComponent) }
+  }
+  return null
+}
+
 async function initArt() {
   _artAbortController?.abort()
   _artAbortController = new AbortController()
@@ -60,10 +70,13 @@ async function initArt() {
   const params = new URLSearchParams(window.location.search)
   const mediaId = params.get('media')
   const type = params.get('type')
+  const vanity = parseVanityPath()
 
   try {
     if (mediaId !== null) {
       await renderOnChainMedia(mediaId, loadingEl, contentEl)
+    } else if (vanity) {
+      await renderVanityItem(vanity, loadingEl, contentEl)
     } else if (type) {
       await renderLocalItem(params, loadingEl, contentEl)
     } else {
@@ -72,6 +85,60 @@ async function initArt() {
   } catch (e) {
     console.warn('art page error:', e)
     loadingEl.textContent = 'could not load item'
+  }
+}
+
+// --- Vanity URL: /music/alias-slug/album-slug, /gallery/slug, etc. ---
+
+async function renderVanityItem(vanity, loadingEl, contentEl) {
+  let site = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch('/site.json')
+      if (!resp.ok) continue
+      site = await resp.json()
+      break
+    } catch (e) {
+      if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+    }
+  }
+  if (!site) { loadingEl.textContent = 'could not load site data'; return }
+
+  const { type, slugs } = vanity
+  const modules = site.modules || []
+  const mod = modules.find(m => m.type === type)
+  if (!mod) { loadingEl.textContent = 'module not found'; return }
+
+  if (type === 'music') {
+    const aliasSlug = slugs[0]
+    const albumSlug = slugs[1]
+    const aliases = mod.data?.aliases || []
+    for (let ai = 0; ai < aliases.length; ai++) {
+      if (slugify(aliases[ai].name) !== aliasSlug) continue
+      const albums = aliases[ai].albums || []
+      for (let ali = 0; ali < albums.length; ali++) {
+        if (slugify(albums[ali].title) === albumSlug) {
+          loadingEl.style.display = 'none'
+          return renderMusicAlbum(contentEl, aliases[ai], albums[ali], ai, ali)
+        }
+      }
+    }
+    loadingEl.textContent = 'album not found'
+  } else {
+    const slug = slugs[0]
+    const items = type === 'gallery' ? (mod.data?.images || [])
+      : type === 'film' ? (mod.data?.works || [])
+      : type === 'writing' ? (mod.data?.publications || [])
+      : Array.isArray(mod.data) ? mod.data : (mod.data?.items || [])
+    const idx = items.findIndex(it => slugify(it.title) === slug)
+    if (idx === -1) { loadingEl.textContent = 'item not found'; return }
+    loadingEl.style.display = 'none'
+    if (type === 'gallery') renderGalleryImage(contentEl, items[idx], idx)
+    else if (type === 'film') renderFilmWork(contentEl, items[idx])
+    else if (type === 'video') renderVideoItem(contentEl, items[idx])
+    else if (type === 'audio') renderAudioItem(contentEl, items[idx], idx)
+    else if (type === 'writing') renderWritingItem(contentEl, items[idx], idx)
+    else loadingEl.textContent = 'unsupported type'
   }
 }
 

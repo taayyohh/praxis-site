@@ -14,6 +14,10 @@ export function esc(s) {
     .replace(/'/g, '&#39;')
 }
 
+export function slugify(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
+}
+
 export function artPlaceholder(title, size = 240) {
   const t = (title || 'untitled').slice(0, 30)
   const escaped = esc(t)

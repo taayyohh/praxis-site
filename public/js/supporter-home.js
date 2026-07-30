@@ -1,7 +1,7 @@
 // Supporter homepage — masonry grid of collected art + "my artists" section
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, registerPage } from './utils.js'
+import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, registerPage, slugify } from './utils.js'
 import { getCollection } from './media.js'
 
 const MEDIA_CACHE_MAX = 500
@@ -253,6 +253,7 @@ async function resolveAlbumArt(albumEntries) {
                   lruSet(_albumArtCache, mcid, {
                     artUrl: album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=400` : '',
                     albumName: album.title || '',
+                    aliasName: alias.name || '',
                     artistName: alias.name || siteData.name || domain,
                     domain, mediaType: 'album',
                     aliasIdx: ai, albumIdx: ali,
@@ -309,8 +310,8 @@ function renderAlbumTile(mcid, items) {
   const artistAddr = (firstMedia.artist || '').toLowerCase()
   const domain = cached?.domain || _domainMap.get(artistAddr)
   const artistLink = domain
-    ? (cached?.aliasIdx != null && cached?.albumIdx != null
-      ? `https://${escapeHtml(domain)}/art?type=music&alias=${cached.aliasIdx}&album=${cached.albumIdx}`
+    ? (cached?.aliasName && cached?.albumName
+      ? `https://${escapeHtml(domain)}/music/${slugify(cached.aliasName)}/${slugify(cached.albumName)}`
       : `https://${escapeHtml(domain)}/art?media=${items[0].mediaId}`)
     : '#'
   const albumName = escapeHtml(cached?.albumName || firstMedia.title || 'untitled')

@@ -37,10 +37,17 @@ const ROUTE_MODULES = {
 
 const _loadedModules = new Set()
 
+const _VANITY_MEDIA_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
+
 async function loadRouteModules(pathname) {
   // normalize: strip trailing slash, default to '/'
   const path = pathname === '/' ? '/' : pathname.replace(/\/$/, '')
-  const modules = ROUTE_MODULES[path]
+  let modules = ROUTE_MODULES[path]
+  // Vanity media URLs: /music/alias/album, /gallery/slug, /film/slug, etc.
+  if (!modules) {
+    const seg = path.split('/')[1]
+    if (_VANITY_MEDIA_TYPES.has(seg)) modules = ROUTE_MODULES['/art']
+  }
   if (!modules) return
   const loads = []
   for (const mod of modules) {
