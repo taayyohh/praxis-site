@@ -292,6 +292,9 @@ input[type="number"] {
   margin-left: auto;
   margin-right: 0.75ch;
 }
+.top-bar-bell + #praxis-menu-trigger {
+  margin-left: 0;
+}
 .top-bar-bell:hover {
   opacity: 1;
 }
