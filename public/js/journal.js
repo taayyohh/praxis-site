@@ -12,6 +12,7 @@ import {
   isStagePlayContent, extractStagePlayBody,
   detectScriptFormat, getFormatFunctions,
   shouldAutoUppercase, extractCharacterNames, extractSceneLocations,
+  looksLikeFountain,
 } from './fountain.js'
 
 let journalToken = sessionStorage.getItem('praxis:journal-token') || ''
@@ -357,6 +358,8 @@ async function initJournal() {
               showScriptEditor(file, extractFountainBody(data.content), 'screenplay')
             } else if (hasTypedScriptLines(data.content)) {
               showScriptEditor(file, data.content, 'screenplay')
+            } else if (looksLikeFountain(data.content)) {
+              showScriptEditor(file, data.content, 'screenplay')
             } else {
               showEditor(file, data.content)
             }
@@ -540,7 +543,7 @@ async function initJournal() {
       const saveStatus = document.getElementById('journal-save-status')
       let content = mdEditor.getValue()
       if (!content?.trim()) return
-      if (hasTypedScriptLines(content)) content = FOUNTAIN_MARKER + content
+      if (hasTypedScriptLines(content) || looksLikeFountain(content)) content = FOUNTAIN_MARKER + content
 
       const newFilename = filenameInput.value.trim()
       if (!newFilename) {

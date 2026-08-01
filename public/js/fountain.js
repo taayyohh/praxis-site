@@ -313,6 +313,30 @@ export function fountainToHtml(text) {
   return lines.join('\n')
 }
 
+/**
+ * Heuristic: does plain text look like a Fountain screenplay?
+ * Checks for scene headings (INT./EXT.) and all-caps character names followed by dialogue.
+ */
+export function looksLikeFountain(text) {
+  if (!text || typeof text !== 'string') return false
+  const lines = text.split('\n')
+  let scenes = 0
+  let charDialoguePairs = 0
+  const sceneRe = /^(INT\.|EXT\.|INT\/EXT\.|I\/E\.)[\s.]/i
+  const charRe = /^[A-Z][A-Z0-9 .'-]{1,}(\s*\([A-Z.'\s]+\))?$/
+  const transRe = /^[A-Z\s]+TO:$/
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim()
+    if (sceneRe.test(t)) { scenes++; continue }
+    if (transRe.test(t)) continue
+    if (charRe.test(t) && t.length <= 40) {
+      const next = lines[i + 1]?.trim()
+      if (next && !charRe.test(next) && !sceneRe.test(next)) charDialoguePairs++
+    }
+  }
+  return scenes >= 1 && charDialoguePairs >= 1
+}
+
 export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition', 'act', 'shot'])
 
 export function shouldAutoUppercase(type) {
