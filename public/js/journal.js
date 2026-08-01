@@ -104,7 +104,7 @@ function hasTypedScriptLines(text) {
   let count = 0
   for (const l of lines) {
     const colon = l.indexOf(':')
-    if (colon > 0 && _SCRIPT_TYPES.has(l.slice(0, colon))) count++
+    if (colon > 0 && colon <= 10 && _SCRIPT_TYPES.has(l.slice(0, colon).toLowerCase())) count++
     if (count >= 3) return true
   }
   return false
@@ -1193,18 +1193,24 @@ async function initJournal() {
       el.innerHTML = ''
       const allTypes = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES])
       const rawLines = text.split('\n')
-      const hasTypePrefixes = rawLines.some(l => {
-        const colon = l.indexOf(':')
-        return colon > 0 && allTypes.has(l.slice(0, colon))
-      })
 
-      if (hasTypePrefixes) {
+      // detect if content uses type:text prefix format
+      let prefixCount = 0
+      for (const l of rawLines) {
+        const colon = l.indexOf(':')
+        if (colon > 0 && colon <= 10 && allTypes.has(l.slice(0, colon).toLowerCase())) prefixCount++
+      }
+
+      if (prefixCount >= 2) {
         for (const line of rawLines) {
           const colon = line.indexOf(':')
           let type = 'action', content = line
-          if (colon > 0 && allTypes.has(line.slice(0, colon))) {
-            type = line.slice(0, colon)
-            content = line.slice(colon + 1)
+          if (colon > 0 && colon <= 10) {
+            const prefix = line.slice(0, colon).toLowerCase()
+            if (allTypes.has(prefix)) {
+              type = prefix
+              content = line.slice(colon + 1)
+            }
           }
           const div = makeLine(type, content)
           if (type !== 'action' || !content.trim()) div.dataset.manual = '1'
