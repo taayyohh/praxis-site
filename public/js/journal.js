@@ -351,6 +351,7 @@ async function initJournal() {
             headers: { 'Authorization': `Bearer ${journalToken}` },
           })
           const data = await res.json()
+          console.log('[journal] open entry:', file, 'content length:', data.content?.length, 'fountain:', isFountainContent(data.content), 'typed:', hasTypedScriptLines(data.content), 'looks:', looksLikeFountain(data.content), 'first 300:', JSON.stringify(data.content?.slice(0, 300)))
           if (data.content) {
             if (isStagePlayContent(data.content)) {
               showScriptEditor(file, extractStagePlayBody(data.content), 'stageplay')
