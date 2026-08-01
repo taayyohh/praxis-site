@@ -715,6 +715,13 @@ const earningsHtml = `<div id="earnings-page" style="max-width:680px;margin:0 au
 </div>`
 out('earnings', wrap(earningsHtml, 'earnings', '/earnings', '/og/index.png', { noindex: true }))
 
+// cashout guide page
+const cashoutHtml = `<div id="cashout-page" style="max-width:680px;margin:0 auto">
+<h2>cash out</h2>
+<div id="cashout-content"><span class="praxis-loader"></span></div>
+</div>`
+out('cashout', wrap(cashoutHtml, 'cash out', '/cashout', '/og/index.png', { noindex: true }))
+
 // write page (full-page compose editor)
 const writeHtml = `<div id="write-page">
 <div class="write-inner">

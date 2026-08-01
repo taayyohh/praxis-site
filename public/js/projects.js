@@ -356,8 +356,7 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
             const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: cashAcct })
             await publicClient.waitForTransactionReceipt({ hash })
             cs.textContent = t('projects.claimedOfframp')
-            // open peer.xyz for off-ramp
-            window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
+            window.location.href = '/cashout'
           } catch (e) {
             cs.textContent = e.code === 4001 ? t('status.cancelled') : `error: ${e.shortMessage || e.message}`
           }

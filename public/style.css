@@ -5570,6 +5570,31 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
   resize: none;
 }
 
+/* cash out guide — exchange region cards */
+.cashout-region {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.75em;
+  overflow: hidden;
+}
+.cashout-region-label {
+  background: var(--surface);
+  padding: 0.5em 1ch;
+  font-size: 0.85em;
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.cashout-region-body {
+  padding: 0.75em 1ch;
+  font-size: 0.85em;
+  color: var(--dim);
+  line-height: 1.8;
+}
+.cashout-region-body strong {
+  color: var(--fg);
+}
+
 /* screenplay rendering in blog posts */
 .post-page-body .fountain-scene {
   text-transform: uppercase;

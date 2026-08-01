@@ -346,7 +346,7 @@ function showAddress(address) {
     })
     topBarWallet.querySelector('#dd-cashout')?.addEventListener('click', () => {
       closeFn()
-      window.open('https://www.peer.xyz/swap?tab=sell', '_blank')
+      window.location.href = '/cashout'
     })
     topBarWallet.querySelector('#dd-send')?.addEventListener('click', async () => {
       closeFn()

@@ -33,6 +33,7 @@ const ROUTE_MODULES = {
   '/gallery': ['/js/gallery-ui.js'],
   '/org': ['/js/org.js'],
   '/write': ['/js/write.js'],
+  '/cashout': ['/js/cashout.js'],
 }
 
 const _loadedModules = new Set()
