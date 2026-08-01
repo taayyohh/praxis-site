@@ -1,7 +1,7 @@
 // Cash out guide — how to convert ETH on Optimism to local currency
 import { escapeHtml, registerPage, getWalletAddress } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
-import { formatFiat } from './fiat.js'
+import { formatPriceWithFiat } from './fiat.js'
 
 registerPage('cashout-page', initCashout)
 
@@ -10,28 +10,8 @@ async function initCashout() {
   const el = document.getElementById('cashout-content')
   if (!el) return
 
-  const addr = getWalletAddress?.()
-  let balanceHtml = ''
-
-  if (addr) {
-    try {
-      const { getPublicClient } = await import('./utils.js')
-      const pc = await getPublicClient()
-      const bal = await pc.getBalance({ address: addr })
-      const eth = Number(bal) / 1e18
-      const fiat = formatFiat(eth)
-      balanceHtml = `
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5em;margin-bottom:2em">
-          <div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">your balance on Optimism</div>
-          <div style="font-size:1.4em;color:var(--fg)">${eth.toFixed(6)} ETH</div>
-          <div style="color:var(--dim);font-size:0.9em">${escapeHtml(fiat)}</div>
-        </div>
-      `
-    } catch {}
-  }
-
   el.innerHTML = `
-    ${balanceHtml}
+    <div id="cashout-balance"></div>
 
     <div style="margin-bottom:2.5em">
       <h3 style="color:var(--fg);font-size:1em;margin:0 0 0.75em">how it works</h3>
@@ -152,4 +132,24 @@ async function initCashout() {
       </ul>
     </div>
   `
+
+  // load balance async so page renders immediately
+  const addr = getWalletAddress?.()
+  if (addr) {
+    try {
+      const { getPublicClient } = await import('./utils.js')
+      const pc = await getPublicClient()
+      const bal = await pc.getBalance({ address: addr })
+      const fiatStr = await formatPriceWithFiat(bal)
+      const balEl = document.getElementById('cashout-balance')
+      if (balEl) {
+        balEl.innerHTML = `
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5em;margin-bottom:2em">
+            <div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">your balance on Optimism</div>
+            <div style="font-size:1.4em;color:var(--fg)">${fiatStr}</div>
+          </div>
+        `
+      }
+    } catch {}
+  }
 }
