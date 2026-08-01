@@ -1,12 +1,10 @@
 // Cash out guide — how to convert ETH on Optimism to local currency
-import { escapeHtml, registerPage, getWalletAddress } from './utils.js'
-import { t, whenReady as i18nReady } from './i18n.js'
+import { registerPage } from './utils.js'
 import { formatPriceWithFiat } from './fiat.js'
 
 registerPage('cashout-page', initCashout)
 
 async function initCashout() {
-  await i18nReady()
   const el = document.getElementById('cashout-content')
   if (!el) return
 
@@ -133,8 +131,7 @@ async function initCashout() {
     </div>
   `
 
-  // load balance async so page renders immediately
-  const addr = getWalletAddress?.()
+  const addr = window.getWalletAddress?.()
   if (addr) {
     try {
       const { getPublicClient } = await import('./utils.js')
