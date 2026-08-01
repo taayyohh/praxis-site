@@ -5421,6 +5421,30 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
   min-height: 1.5em;
 }
 
+.script-page-break {
+  height: 0;
+  border: none;
+  border-top: 1px dashed var(--border-hover);
+  margin: 1.5em -1em;
+  padding: 0;
+  position: relative;
+  pointer-events: none;
+  user-select: none;
+}
+.script-page-break::after {
+  content: "page " attr(data-page);
+  position: absolute;
+  right: 0;
+  top: -0.7em;
+  font-family: var(--font);
+  font-size: 0.65em;
+  color: var(--border-hover);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--bg);
+  padding: 0 0.5ch;
+}
+
 .script-scene {
   text-transform: uppercase;
   font-weight: bold;

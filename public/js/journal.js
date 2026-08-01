@@ -102,6 +102,7 @@ registerPage('journal-page', initJournal)
 function fountainToPlain(editorEl) {
   const lines = []
   for (const child of editorEl.children) {
+    if (child.classList.contains('script-page-break')) continue
     const type = child.dataset?.type || 'action'
     let text = child.textContent || ''
     if (shouldAutoUppercase(type)) text = text.toUpperCase()
@@ -113,6 +114,7 @@ function fountainToPlain(editorEl) {
 function editorToHtml(editorEl, prefix) {
   const lines = []
   for (const child of editorEl.children) {
+    if (child.classList.contains('script-page-break')) continue
     const type = child.dataset?.type || 'action'
     let text = child.textContent || ''
     if (!text.trim()) {
@@ -751,7 +753,8 @@ async function initJournal() {
         }
         if (atStart) {
           e.preventDefault()
-          const prev = line.previousElementSibling
+          let prev = line.previousElementSibling
+          while (prev && prev.classList.contains('script-page-break')) prev = prev.previousElementSibling
           if (!prev) return
           const prevText = prev.textContent || ''
           const lineText = line.textContent || ''
@@ -908,7 +911,7 @@ async function initJournal() {
         if (child.nodeType === 3) {
           const div = makeLine('action', child.textContent)
           editor.replaceChild(div, child)
-        } else if (child.nodeType === 1 && !child.classList?.contains('script-line') && !child.classList?.contains('script-autocomplete')) {
+        } else if (child.nodeType === 1 && !child.classList?.contains('script-line') && !child.classList?.contains('script-autocomplete') && !child.classList?.contains('script-page-break')) {
           const div = makeLine('action', child.textContent)
           editor.replaceChild(div, child)
         }
@@ -922,7 +925,8 @@ async function initJournal() {
       if (!line) return
 
       const text = line.textContent || ''
-      const prevLine = line.previousElementSibling
+      let prevLine = line.previousElementSibling
+      while (prevLine && prevLine.classList.contains('script-page-break')) prevLine = prevLine.previousElementSibling
       const prevType = prevLine?.dataset.type || 'action'
       const detected = fmt.detect(text, prevType)
 
@@ -1007,8 +1011,9 @@ async function initJournal() {
         if (node.nodeType === 1 && node.classList?.contains('script-line')) return node
         node = node.parentNode
       }
-      // fallback: last child
-      return editor.lastElementChild
+      // fallback: last script-line
+      const all = editor.querySelectorAll('.script-line')
+      return all.length ? all[all.length - 1] : null
     }
 
     function setCurrentLineType(type) {
@@ -1041,10 +1046,38 @@ async function initJournal() {
       })
     }
 
+    const PAGE_HEIGHT_PT = 648 // 9 inches usable at 72 dpi (11" - 1" top - 1" bottom)
+    const PRINT_LINE_HEIGHT = 12 // 12pt Courier single-spaced
+    const LINES_PER_PAGE = Math.floor(PAGE_HEIGHT_PT / PRINT_LINE_HEIGHT) // 54
+
     function updatePageCount() {
-      // rough estimate: ~56 lines per page (industry standard)
-      const lineCount = editor.children.length
-      const pages = Math.max(1, Math.ceil(lineCount / 56))
+      const editorStyle = getComputedStyle(editor)
+      const lineH = parseFloat(editorStyle.lineHeight) || parseFloat(editorStyle.fontSize) * 1.5
+      const editorPageH = lineH * LINES_PER_PAGE
+
+      // remove old page breaks
+      editor.querySelectorAll('.script-page-break').forEach(el => el.remove())
+
+      // measure cumulative height and insert breaks
+      let cumH = 0
+      let pageNum = 1
+      let nextBreakAt = editorPageH
+      const children = [...editor.children]
+
+      for (const child of children) {
+        cumH += child.offsetHeight
+        if (cumH >= nextBreakAt) {
+          pageNum++
+          nextBreakAt = pageNum * editorPageH
+          const br = document.createElement('div')
+          br.className = 'script-page-break'
+          br.setAttribute('contenteditable', 'false')
+          br.dataset.page = pageNum
+          child.after(br)
+        }
+      }
+
+      const pages = Math.max(1, pageNum)
       if (pageCount) pageCount.textContent = `~${pages} ${pages === 1 ? t('journal.scriptPage') : t('journal.scriptPages')}`
     }
 
