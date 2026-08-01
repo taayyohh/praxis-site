@@ -97,6 +97,18 @@ ${css}
 <body><div class="title-page"><h1>${escapeHtml(title)}</h1><div class="by">by</div>${author ? `<div class="author">${escapeHtml(author)}</div>` : ''}</div>${body}</body></html>`
 }
 
+const _SCRIPT_TYPES = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES])
+function hasTypedScriptLines(text) {
+  const lines = text.split('\n')
+  let count = 0
+  for (const l of lines) {
+    const colon = l.indexOf(':')
+    if (colon > 0 && _SCRIPT_TYPES.has(l.slice(0, colon))) count++
+    if (count >= 3) return true
+  }
+  return false
+}
+
 registerPage('journal-page', initJournal)
 
 function fountainToPlain(editorEl) {
@@ -343,6 +355,8 @@ async function initJournal() {
               showScriptEditor(file, extractStagePlayBody(data.content), 'stageplay')
             } else if (isFountainContent(data.content)) {
               showScriptEditor(file, extractFountainBody(data.content), 'screenplay')
+            } else if (hasTypedScriptLines(data.content)) {
+              showScriptEditor(file, data.content, 'screenplay')
             } else {
               showEditor(file, data.content)
             }
@@ -524,8 +538,9 @@ async function initJournal() {
 
     async function autoSave() {
       const saveStatus = document.getElementById('journal-save-status')
-      const content = mdEditor.getValue()
+      let content = mdEditor.getValue()
       if (!content?.trim()) return
+      if (hasTypedScriptLines(content)) content = FOUNTAIN_MARKER + content
 
       const newFilename = filenameInput.value.trim()
       if (!newFilename) {
