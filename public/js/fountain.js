@@ -296,7 +296,7 @@ export function fountainToHtml(text) {
   return lines.join('\n')
 }
 
-export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition'])
+export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition', 'act'])
 
 export function shouldAutoUppercase(type) {
   return AUTO_UPPERCASE_TYPES.has(type)

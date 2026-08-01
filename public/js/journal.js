@@ -82,12 +82,15 @@ function scriptPrintHtml(title, body, format) {
 <html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
 @page { size: letter; margin: 1in 1in 1in 1.5in; }
+@page:first { margin: 0; }
 body { font-family: 'Courier New', Courier, monospace; font-size: 12pt; line-height: 1; color: #000; }
-h1 { text-align: center; font-size: 14pt; margin-bottom: 2em; text-transform: uppercase; }
 p { margin: 0; padding: 0; }
+.title-page { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; page-break-after: always; }
+.title-page h1 { font-size: 24pt; text-transform: uppercase; margin: 0 0 0.5em; border-bottom: none; }
+.title-page .by { font-size: 12pt; font-style: italic; }
 ${css}
 </style></head>
-<body><h1>${escapeHtml(title)}</h1>${body}</body></html>`
+<body><div class="title-page"><h1>${escapeHtml(title)}</h1><div class="by">by</div></div>${body}</body></html>`
 }
 
 registerPage('journal-page', initJournal)
@@ -95,7 +98,10 @@ registerPage('journal-page', initJournal)
 function fountainToPlain(editorEl) {
   const lines = []
   for (const child of editorEl.children) {
-    lines.push(child.textContent)
+    const type = child.dataset?.type
+    let text = child.textContent
+    if (shouldAutoUppercase(type)) text = text.toUpperCase()
+    lines.push(text)
   }
   return lines.join('\n')
 }
@@ -586,7 +592,10 @@ async function initJournal() {
       <div style="max-width:680px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1em">
           <span style="color:var(--muted);font-size:0.85em;text-transform:uppercase;letter-spacing:0.1em">${existingFile ? t('journal.editEntry') : SCRIPT_FORMATS[format].label}</span>
-          <button class="buy-btn" id="journal-back" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.back')}</button>
+          <div style="display:flex;gap:0.5ch">
+            <button class="buy-btn" id="journal-publish" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.publishToBlog')}</button>
+            <button class="buy-btn" id="journal-back" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.back')}</button>
+          </div>
         </div>
         <input type="text" id="journal-filename" placeholder="${today}-untitled" value="${currentFilename}" style="width:100%;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.5em 1ch;margin-bottom:0">
         <div class="script-toolbar">
@@ -627,8 +636,9 @@ async function initJournal() {
 
     updatePageCount()
 
-    document.getElementById('journal-back').addEventListener('click', () => {
+    document.getElementById('journal-back').addEventListener('click', async () => {
       if (_autosaveTimer) clearTimeout(_autosaveTimer)
+      await autoSave()
       loadEntries()
     })
 
@@ -680,6 +690,49 @@ async function initJournal() {
         if (e.key === 'Escape') { e.preventDefault(); dismissAutocomplete(); return }
       }
 
+      if (e.key === 'Backspace') {
+        const line = getCurrentLine()
+        if (!line) return
+        const sel = window.getSelection()
+        if (!sel.rangeCount) return
+        const range = sel.getRangeAt(0)
+        // check if cursor is at position 0
+        let atStart = false
+        if (range.collapsed) {
+          if (range.startOffset === 0) {
+            let node = range.startContainer
+            while (node && node !== line) {
+              if (node.previousSibling) { atStart = false; break }
+              node = node.parentNode
+              atStart = true
+            }
+            if (node === line) atStart = true
+          }
+        }
+        if (atStart) {
+          e.preventDefault()
+          const prev = line.previousElementSibling
+          if (!prev) return
+          const prevText = prev.textContent || ''
+          const lineText = line.textContent || ''
+          prev.textContent = prevText + lineText
+          line.remove()
+          // place cursor at join point
+          if (prev.firstChild) {
+            const newRange = document.createRange()
+            newRange.setStart(prev.firstChild, prevText.length)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+          }
+          updateTypeIndicator(prev.dataset.type)
+          updateToolbarActive(prev.dataset.type)
+          scheduleAutosave()
+          updatePageCount()
+          return
+        }
+      }
+
       if (e.key === 'Tab') {
         e.preventDefault()
         const line = getCurrentLine()
@@ -706,16 +759,43 @@ async function initJournal() {
         e.preventDefault()
         const line = getCurrentLine()
         const currentType = line?.dataset.type || 'action'
-        const isEmpty = !line?.textContent?.trim()
+        const fullText = line?.textContent || ''
+        const isEmpty = !fullText.trim()
+
+        // split text at cursor position
+        let beforeText = fullText
+        let afterText = ''
+        const sel = window.getSelection()
+        if (sel.rangeCount && line) {
+          const range = sel.getRangeAt(0)
+          let offset = 0
+          const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
+          let node
+          while ((node = walker.nextNode())) {
+            if (node === range.startContainer) { offset += range.startOffset; break }
+            offset += node.length
+          }
+          beforeText = fullText.slice(0, offset)
+          afterText = fullText.slice(offset)
+        }
 
         // empty line + enter = reset to action
         const nextType = isEmpty ? 'action' : fmt.nextAfterEnter(currentType)
 
+        // update current line with text before cursor
+        if (afterText) {
+          line.textContent = beforeText
+          if (!beforeText) line.innerHTML = '<br>'
+        }
+
         const newLine = document.createElement('div')
         newLine.className = `script-line script-${nextType}`
         newLine.dataset.type = nextType
-        newLine.dataset.manual = '1' // lock inferred type — auto-detect won't override
-        newLine.innerHTML = '<br>'
+        if (afterText.trim()) {
+          newLine.textContent = afterText
+        } else {
+          newLine.innerHTML = '<br>'
+        }
 
         if (line && line.nextSibling) {
           editor.insertBefore(newLine, line.nextSibling)
@@ -724,12 +804,12 @@ async function initJournal() {
         }
 
         // move cursor to new line
-        const sel = window.getSelection()
-        const range = document.createRange()
-        range.setStart(newLine, 0)
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
+        const newSel = window.getSelection()
+        const newRange = document.createRange()
+        newRange.setStart(newLine, 0)
+        newRange.collapse(true)
+        newSel.removeAllRanges()
+        newSel.addRange(newRange)
 
         updateTypeIndicator(nextType)
         updateToolbarActive(nextType)
@@ -738,9 +818,84 @@ async function initJournal() {
       }
     })
 
-    // auto-detect type on input — only on lines without data-manual flag
-    // lines created by Enter get auto-detection; Tab/toolbar-set lines keep their type
+    // paste handler — convert pasted text into proper script-line divs
+    editor.addEventListener('paste', (e) => {
+      e.preventDefault()
+      const text = e.clipboardData.getData('text/plain')
+      if (!text) return
+      const lines = text.split(/\r?\n/)
+      const line = getCurrentLine()
+      const currentType = line?.dataset.type || 'action'
+
+      // if pasting into an existing line, append first pasted line to it
+      if (line && lines.length > 0) {
+        const sel = window.getSelection()
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0)
+          range.deleteContents()
+          range.insertNode(document.createTextNode(lines[0]))
+          range.collapse(false)
+        }
+      }
+
+      // remaining lines become new script-line divs
+      let prevType = currentType
+      let insertAfter = line
+      for (let i = 1; i < lines.length; i++) {
+        const detected = fmt.detect(lines[i], prevType)
+        const div = document.createElement('div')
+        div.className = `script-line script-${detected}`
+        div.dataset.type = detected
+        if (lines[i].trim()) {
+          div.textContent = lines[i]
+        } else {
+          div.innerHTML = '<br>'
+        }
+        if (insertAfter && insertAfter.nextSibling) {
+          editor.insertBefore(div, insertAfter.nextSibling)
+        } else {
+          editor.appendChild(div)
+        }
+        insertAfter = div
+        prevType = lines[i].trim() ? detected : 'action'
+      }
+
+      // place cursor at end of last inserted line
+      if (insertAfter) {
+        const sel = window.getSelection()
+        const range = document.createRange()
+        range.selectNodeContents(insertAfter)
+        range.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+
+      scheduleAutosave()
+      updatePageCount()
+    })
+
+    // normalize bare text nodes or browser-injected elements into script-line divs
+    function normalizeEditorChildren() {
+      for (const child of [...editor.childNodes]) {
+        if (child.nodeType === 3) {
+          const div = document.createElement('div')
+          div.className = 'script-line script-action'
+          div.dataset.type = 'action'
+          div.textContent = child.textContent
+          editor.replaceChild(div, child)
+        } else if (child.nodeType === 1 && !child.classList?.contains('script-line') && !child.classList?.contains('script-autocomplete')) {
+          const div = document.createElement('div')
+          div.className = 'script-line script-action'
+          div.dataset.type = 'action'
+          div.textContent = child.textContent
+          editor.replaceChild(div, child)
+        }
+      }
+    }
+
+    // auto-detect type on input
     editor.addEventListener('input', () => {
+      normalizeEditorChildren()
       const line = getCurrentLine()
       if (!line) return
 
@@ -759,34 +914,6 @@ async function initJournal() {
       const lineType = line.dataset.type || 'action'
       updateTypeIndicator(lineType)
       updateToolbarActive(lineType)
-
-      // Auto-capitalize scene headings, character names, transitions
-      if (shouldAutoUppercase(lineType)) {
-        const text = line.textContent
-        const upper = text.toUpperCase()
-        if (text !== upper) {
-          const sel = window.getSelection()
-          if (sel.rangeCount) {
-            const range = sel.getRangeAt(0)
-            let absoluteOffset = 0
-            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
-            let node
-            while ((node = walker.nextNode())) {
-              if (node === range.startContainer) { absoluteOffset += range.startOffset; break }
-              absoluteOffset += node.length
-            }
-            line.textContent = upper
-            const newNode = line.firstChild
-            if (newNode) {
-              const newRange = document.createRange()
-              newRange.setStart(newNode, Math.min(absoluteOffset, newNode.length))
-              newRange.collapse(true)
-              sel.removeAllRanges()
-              sel.addRange(newRange)
-            }
-          }
-        }
-      }
 
       // Auto-complete for character names and scene locations
       if (lineType === 'character') {
