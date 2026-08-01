@@ -777,6 +777,7 @@ async function initJournal() {
       if (e.key === 'Enter') {
         e.preventDefault()
         const line = getCurrentLine()
+        if (line) applyContd(line)
         const currentType = line?.dataset.type || 'action'
         const fullText = line?.textContent || ''
         const isEmpty = !fullText.trim()
@@ -808,6 +809,7 @@ async function initJournal() {
         }
 
         const newLine = makeLine(nextType, afterText.trim() ? afterText : '')
+        newLine.dataset.manual = '1'
 
         if (line && line.nextSibling) {
           editor.insertBefore(newLine, line.nextSibling)
@@ -898,13 +900,17 @@ async function initJournal() {
       const line = getCurrentLine()
       if (!line) return
 
-      // skip auto-detection on manually-typed lines (Tab or toolbar set the type)
-      if (!line.dataset.manual) {
-        const text = line.textContent || ''
-        const prevLine = line.previousElementSibling
-        const prevType = prevLine?.dataset.type || 'action'
-        const detected = fmt.detect(text, prevType)
+      const text = line.textContent || ''
+      const prevLine = line.previousElementSibling
+      const prevType = prevLine?.dataset.type || 'action'
+      const detected = fmt.detect(text, prevType)
 
+      if (line.dataset.manual) {
+        // clear manual lock when detection agrees with the set type
+        if (detected === (line.dataset.type || 'action')) {
+          delete line.dataset.manual
+        }
+      } else {
         if (detected !== (line.dataset.type || 'action')) {
           applyTypeToLine(line, detected)
         }
@@ -1047,8 +1053,37 @@ async function initJournal() {
       if (_autocompleteDropdown) { _autocompleteDropdown.remove(); _autocompleteDropdown = null; _autocompleteIndex = -1 }
     }
 
+    function findPrevCharacterName(line) {
+      let el = line.previousElementSibling
+      while (el) {
+        const t = el.dataset.type
+        if (t === 'character') return el.textContent.trim().replace(/\s*\(CONT'D\)$/i, '').toUpperCase()
+        if (t !== 'dialogue' && t !== 'paren') return null
+        el = el.previousElementSibling
+      }
+      return null
+    }
+
+    function applyContd(line) {
+      if (line.dataset.type !== 'character') return
+      const raw = line.textContent.trim()
+      const name = raw.replace(/\s*\(CONT'D\)$/i, '').toUpperCase()
+      if (!name) return
+      const prev = findPrevCharacterName(line)
+      if (prev && prev === name && !/\(CONT'D\)$/i.test(raw)) {
+        line.textContent = name + " (CONT'D)"
+        const sel = window.getSelection()
+        const range = document.createRange()
+        range.selectNodeContents(line)
+        range.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    }
+
     function selectAutocomplete(line, name) {
       line.textContent = name
+      applyContd(line)
       dismissAutocomplete()
       const sel = window.getSelection()
       const range = document.createRange()

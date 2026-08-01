@@ -51,8 +51,8 @@ export function detectLineType(text, prevType) {
   // parenthetical — line in parens after character or dialogue
   if (/^\(.*\)$/.test(trimmed) && (prevType === 'character' || prevType === 'dialogue')) return 'paren'
 
-  // character — all-caps line (min 2 chars, no lowercase) after blank or action
-  if (/^[A-Z][A-Z0-9 .'-]{1,}$/.test(trimmed) && prevType !== 'character' && prevType !== 'dialogue' && prevType !== 'paren') return 'character'
+  // character — all-caps line (min 2 chars, no lowercase), optional extension like (V.O.), (O.S.), (CONT'D)
+  if (/^[A-Z][A-Z0-9 .'-]{1,}(\s*\([A-Z.'\s]+\))?$/.test(trimmed) && prevType !== 'character' && prevType !== 'dialogue' && prevType !== 'paren') return 'character'
 
   // dialogue follows character or paren
   if (prevType === 'character' || prevType === 'paren') return 'dialogue'
@@ -322,8 +322,8 @@ export function shouldAutoUppercase(type) {
 export function extractCharacterNames(editorEl) {
   const names = new Set()
   editorEl.querySelectorAll('div.script-line[data-type="character"]').forEach(el => {
-    const name = el.textContent.trim()
-    if (name) names.add(name.toUpperCase())
+    const name = el.textContent.trim().replace(/\s*\(CONT'D\)$/i, '').toUpperCase()
+    if (name) names.add(name)
   })
   return names
 }
