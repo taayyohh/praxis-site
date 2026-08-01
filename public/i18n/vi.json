@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "kich ban truyen hinh",
   "journal.formatStageplay": "kich ban san khau",
   "journal.scriptAct": "man",
+  "journal.scriptShot": "cảnh quay",
+  "journal.scriptText": "văn bản",
   "journal.scriptDirection": "chi dan san khau",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "tin nhắn",

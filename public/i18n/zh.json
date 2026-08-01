@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "电视剧本",
   "journal.formatStageplay": "舞台剧本",
   "journal.scriptAct": "幕",
+  "journal.scriptShot": "镜头",
+  "journal.scriptText": "文本",
   "journal.scriptDirection": "舞台指示",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "消息",

@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "سيناريو تلفزيوني",
   "journal.formatStageplay": "مسرحية",
   "journal.scriptAct": "فصل",
+  "journal.scriptShot": "لقطة",
+  "journal.scriptText": "نص",
   "journal.scriptDirection": "توجيه مسرحي",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "الرسائل",

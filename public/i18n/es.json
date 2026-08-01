@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "guion de television",
   "journal.formatStageplay": "obra de teatro",
   "journal.scriptAct": "acto",
+  "journal.scriptShot": "toma",
+  "journal.scriptText": "texto",
   "journal.scriptDirection": "direccion escenica",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "mensajes",

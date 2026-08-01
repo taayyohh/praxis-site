@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "टीवी पटकथा",
   "journal.formatStageplay": "नाटक",
   "journal.scriptAct": "अंक",
+  "journal.scriptShot": "शॉट",
+  "journal.scriptText": "टेक्स्ट",
   "journal.scriptDirection": "मंच निर्देश",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "संदेश",

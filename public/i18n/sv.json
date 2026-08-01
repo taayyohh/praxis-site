@@ -124,6 +124,8 @@
   "journal.formatTeleplay": "tv-manus",
   "journal.formatStageplay": "scenpjas",
   "journal.scriptAct": "akt",
+  "journal.scriptShot": "bild",
+  "journal.scriptText": "text",
   "journal.scriptDirection": "scenanvisning",
   "journal.stageplayPlaceholder": "AKT ETT",
   "messages.title": "meddelanden",

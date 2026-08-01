@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "skenario TV",
   "journal.formatStageplay": "naskah panggung",
   "journal.scriptAct": "babak",
+  "journal.scriptShot": "shot",
+  "journal.scriptText": "teks",
   "journal.scriptDirection": "arahan panggung",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "pesan",

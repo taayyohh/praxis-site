@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "テレビ脚本",
   "journal.formatStageplay": "戯曲",
   "journal.scriptAct": "幕",
+  "journal.scriptShot": "ショット",
+  "journal.scriptText": "テキスト",
   "journal.scriptDirection": "ト書き",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "メッセージ",

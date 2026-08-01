@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "TV senaryosu",
   "journal.formatStageplay": "tiyatro oyunu",
   "journal.scriptAct": "perde",
+  "journal.scriptShot": "çekim",
+  "journal.scriptText": "metin",
   "journal.scriptDirection": "sahne yonergeleri",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "mesajlar",

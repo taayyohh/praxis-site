@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "roteiro de TV",
   "journal.formatStageplay": "peca de teatro",
   "journal.scriptAct": "ato",
+  "journal.scriptShot": "plano",
+  "journal.scriptText": "texto",
   "journal.scriptDirection": "direcao cenica",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "mensagens",

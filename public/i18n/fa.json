@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "فیلمنامه تلویزیونی",
   "journal.formatStageplay": "نمایشنامه",
   "journal.scriptAct": "پرده",
+  "journal.scriptShot": "شات",
+  "journal.scriptText": "متن",
   "journal.scriptDirection": "دستور صحنه",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "پیام‌ها",

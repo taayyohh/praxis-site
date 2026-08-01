@@ -124,6 +124,8 @@
   "journal.formatTeleplay": "teleplay",
   "journal.formatStageplay": "stage play",
   "journal.scriptAct": "act",
+  "journal.scriptShot": "shot",
+  "journal.scriptText": "text",
   "journal.scriptDirection": "stage direction",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "messages",

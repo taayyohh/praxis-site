@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "ٹی وی اسکرپٹ",
   "journal.formatStageplay": "اسٹیج ڈرامہ",
   "journal.scriptAct": "ایکٹ",
+  "journal.scriptShot": "شاٹ",
+  "journal.scriptText": "متن",
   "journal.scriptDirection": "اسٹیج ہدایت",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "پیغامات",

@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "scenario TV",
   "journal.formatStageplay": "piece de theatre",
   "journal.scriptAct": "acte",
+  "journal.scriptShot": "plan",
+  "journal.scriptText": "texte",
   "journal.scriptDirection": "indication scenique",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "messages",

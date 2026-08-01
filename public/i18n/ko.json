@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "TV 대본",
   "journal.formatStageplay": "연극 대본",
   "journal.scriptAct": "막",
+  "journal.scriptShot": "쇼트",
+  "journal.scriptText": "텍스트",
   "journal.scriptDirection": "지문",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "메시지",

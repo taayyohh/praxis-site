@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "hati ya TV",
   "journal.formatStageplay": "mchezo wa jukwaa",
   "journal.scriptAct": "sehemu",
+  "journal.scriptShot": "picha",
+  "journal.scriptText": "maandishi",
   "journal.scriptDirection": "mwongozo wa jukwaa",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "ujumbe",

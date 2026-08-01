@@ -4,9 +4,23 @@
 export const FOUNTAIN_MARKER = '<!-- fountain -->\n'
 export const STAGEPLAY_MARKER = '<!-- stageplay -->\n'
 
-// Element types in Tab-cycle order — per format
-export const ELEM_TYPES = ['action', 'scene', 'character', 'dialogue', 'paren', 'transition']
+// Element types in Tab-cycle order — per format (matches Celtx tab order)
+export const ELEM_TYPES = ['scene', 'action', 'character', 'dialogue', 'paren', 'transition', 'shot', 'text', 'act']
 export const STAGE_ELEM_TYPES = ['action', 'act', 'scene', 'character', 'dialogue', 'paren', 'direction']
+
+// Per-line placeholder text — shown as ghost text on empty lines (matches Celtx)
+export const LINE_PLACEHOLDERS = {
+  scene: 'INT./EXT. PLACE - TIME OF DAY',
+  action: 'Describe what the audience sees: the setting, the characters present, and what\'s happening.',
+  character: 'CHARACTER NAME',
+  dialogue: 'Write some dialog for your character to say.',
+  paren: '(parenthetical - e.g. excitedly)',
+  transition: 'TRANSITION (E.G. CUT TO:)',
+  shot: 'SHOT (E.G. ZOOM IN ON CROWD)',
+  text: 'Other text. For example, production notes, song lyrics, etc.',
+  act: 'ACT (E.G. TEASER, ACT 1, ETC.)',
+  direction: '[Stage direction]',
+}
 
 // Format definitions
 export const SCRIPT_FORMATS = {
@@ -86,6 +100,9 @@ export function nextTypeAfterEnter(currentType) {
   if (currentType === 'dialogue') return 'character'
   if (currentType === 'paren') return 'dialogue'
   if (currentType === 'transition') return 'action'
+  if (currentType === 'shot') return 'action'
+  if (currentType === 'act') return 'action'
+  if (currentType === 'text') return 'text'
   return 'action'
 }
 
@@ -296,7 +313,7 @@ export function fountainToHtml(text) {
   return lines.join('\n')
 }
 
-export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition', 'act'])
+export const AUTO_UPPERCASE_TYPES = new Set(['scene', 'character', 'transition', 'act', 'shot'])
 
 export function shouldAutoUppercase(type) {
   return AUTO_UPPERCASE_TYPES.has(type)

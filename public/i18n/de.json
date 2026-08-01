@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "Fernsehskript",
   "journal.formatStageplay": "Buehnenstueck",
   "journal.scriptAct": "Akt",
+  "journal.scriptShot": "Einstellung",
+  "journal.scriptText": "Text",
   "journal.scriptDirection": "Buehnenanweisung",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "nachrichten",

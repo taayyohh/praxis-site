@@ -4,7 +4,7 @@ import { escapeHtml, registerPage, getWalletProvider } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { createMarkdownEditor } from './markdown-editor.js'
 import {
-  FOUNTAIN_MARKER, ELEM_TYPES, STAGE_ELEM_TYPES, SCRIPT_FORMATS,
+  FOUNTAIN_MARKER, ELEM_TYPES, STAGE_ELEM_TYPES, SCRIPT_FORMATS, LINE_PLACEHOLDERS,
   detectLineType, parseFountain, stripForcedMarker,
   nextTypeAfterEnter, cycleType, cycleTypePrev,
   isFountainContent, extractFountainBody,
@@ -64,7 +64,10 @@ function scriptPrintHtml(title, body, format) {
 .fountain-character { text-transform: uppercase; margin-left: 2.2in; margin-top: 1em; }
 .fountain-dialogue { margin-left: 1.0in; margin-right: 1.5in; }
 .fountain-paren { margin-left: 1.6in; margin-right: 1.9in; font-style: italic; }
-.fountain-transition { text-align: right; text-transform: uppercase; margin-top: 1em; }`
+.fountain-transition { text-align: right; text-transform: uppercase; margin-top: 1em; }
+.fountain-shot { text-transform: uppercase; margin-top: 1em; }
+.fountain-text { margin-top: 0.5em; color: #555; }
+.fountain-act { text-transform: uppercase; font-weight: bold; text-decoration: underline; text-align: center; font-size: 14pt; margin-top: 2em; margin-bottom: 0.5em; }`
 
   // Stage play formatting (Samuel French style)
   const stageplayCSS = `
@@ -620,17 +623,33 @@ async function initJournal() {
     const typeLabel = document.getElementById('script-type-label')
     const pageCount = document.getElementById('script-page-count')
 
+    function makeLine(type, text) {
+      const div = document.createElement('div')
+      div.className = `script-line script-${type}${text ? '' : ' line-empty'}`
+      div.dataset.type = type
+      div.dataset.placeholder = LINE_PLACEHOLDERS[type] || ''
+      if (text) {
+        div.textContent = text
+      } else {
+        div.innerHTML = '<br>'
+      }
+      return div
+    }
+
+    function updateEmptyState() {
+      for (const line of editor.querySelectorAll('.script-line')) {
+        line.classList.toggle('line-empty', !line.textContent.trim())
+      }
+    }
+
     // populate editor from existing content
     const startType = fmt.types.includes('scene') ? 'scene' : fmt.types[0]
     if (existingContent) {
       renderContentInEditor(editor, existingContent, fmt)
     } else {
       // start with one empty line of the first meaningful type
-      const line = document.createElement('div')
-      line.className = `script-line script-${startType}`
-      line.dataset.type = startType
+      const line = makeLine(startType, '')
       line.dataset.manual = '1'
-      line.innerHTML = '<br>'
       editor.appendChild(line)
     }
 
@@ -788,14 +807,7 @@ async function initJournal() {
           if (!beforeText) line.innerHTML = '<br>'
         }
 
-        const newLine = document.createElement('div')
-        newLine.className = `script-line script-${nextType}`
-        newLine.dataset.type = nextType
-        if (afterText.trim()) {
-          newLine.textContent = afterText
-        } else {
-          newLine.innerHTML = '<br>'
-        }
+        const newLine = makeLine(nextType, afterText.trim() ? afterText : '')
 
         if (line && line.nextSibling) {
           editor.insertBefore(newLine, line.nextSibling)
@@ -843,14 +855,7 @@ async function initJournal() {
       let insertAfter = line
       for (let i = 1; i < lines.length; i++) {
         const detected = fmt.detect(lines[i], prevType)
-        const div = document.createElement('div')
-        div.className = `script-line script-${detected}`
-        div.dataset.type = detected
-        if (lines[i].trim()) {
-          div.textContent = lines[i]
-        } else {
-          div.innerHTML = '<br>'
-        }
+        const div = makeLine(detected, lines[i].trim() ? lines[i] : '')
         if (insertAfter && insertAfter.nextSibling) {
           editor.insertBefore(div, insertAfter.nextSibling)
         } else {
@@ -878,16 +883,10 @@ async function initJournal() {
     function normalizeEditorChildren() {
       for (const child of [...editor.childNodes]) {
         if (child.nodeType === 3) {
-          const div = document.createElement('div')
-          div.className = 'script-line script-action'
-          div.dataset.type = 'action'
-          div.textContent = child.textContent
+          const div = makeLine('action', child.textContent)
           editor.replaceChild(div, child)
         } else if (child.nodeType === 1 && !child.classList?.contains('script-line') && !child.classList?.contains('script-autocomplete')) {
-          const div = document.createElement('div')
-          div.className = 'script-line script-action'
-          div.dataset.type = 'action'
-          div.textContent = child.textContent
+          const div = makeLine('action', child.textContent)
           editor.replaceChild(div, child)
         }
       }
@@ -932,6 +931,7 @@ async function initJournal() {
         } else { dismissAutocomplete() }
       } else { dismissAutocomplete() }
 
+      updateEmptyState()
       scheduleAutosave()
       updatePageCount()
     })
@@ -996,10 +996,10 @@ async function initJournal() {
     }
 
     function applyTypeToLine(line, type) {
-      // remove old type classes — clear both screenplay and stage play types
       for (const t of [...ELEM_TYPES, ...STAGE_ELEM_TYPES]) line.classList.remove(`script-${t}`)
       line.classList.add(`script-${type}`)
       line.dataset.type = type
+      line.dataset.placeholder = LINE_PLACEHOLDERS[type] || ''
     }
 
     function updateTypeIndicator(type) {
@@ -1086,11 +1086,7 @@ async function initJournal() {
       el.innerHTML = ''
       const parsed = fmtFns.parse(text)
       for (const item of parsed) {
-        const div = document.createElement('div')
-        div.className = `script-line script-${item.type}`
-        div.dataset.type = item.type
-        div.textContent = item.text || ''
-        if (!div.textContent) div.innerHTML = '<br>'
+        const div = makeLine(item.type, item.text || '')
         el.appendChild(div)
       }
     }

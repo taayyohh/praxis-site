@@ -124,6 +124,8 @@
   "journal.formatTeleplay": "tv-manuskript",
   "journal.formatStageplay": "scenestykke",
   "journal.scriptAct": "akt",
+  "journal.scriptShot": "skud",
+  "journal.scriptText": "tekst",
   "journal.scriptDirection": "sceneanvisning",
   "journal.stageplayPlaceholder": "AKT ET",
   "messages.title": "beskeder",

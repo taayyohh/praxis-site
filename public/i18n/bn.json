@@ -122,6 +122,8 @@
   "journal.formatTeleplay": "টিভি নাটক",
   "journal.formatStageplay": "মঞ্চনাটক",
   "journal.scriptAct": "অঙ্ক",
+  "journal.scriptShot": "শট",
+  "journal.scriptText": "টেক্সট",
   "journal.scriptDirection": "মঞ্চ নির্দেশ",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "বার্তা",

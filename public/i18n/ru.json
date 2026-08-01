@@ -101,6 +101,8 @@
   "journal.formatTeleplay": "телесценарий",
   "journal.formatStageplay": "пьеса",
   "journal.scriptAct": "акт",
+  "journal.scriptShot": "кадр",
+  "journal.scriptText": "текст",
   "journal.scriptDirection": "ремарка",
   "journal.stageplayPlaceholder": "ACT ONE",
   "messages.title": "сообщения",
