@@ -279,7 +279,7 @@ export function renderMediaCard(d, resolve) {
   return `
     <div class="feed-item feed-collected-card">
       <div class="feed-collected-art-wrap" style="position:relative${!artSrc ? ';display:flex;align-items:center;justify-content:center;background:var(--surface)' : ''}">
-        ${artSrc ? `<a href="${esc(artLink)}" ${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : `<a href="${esc(artLink)}" ${linkTarget} style="display:flex;align-items:center;justify-content:center;width:100%;height:100%"><i class="ph ph-file" style="font-size:2em;color:var(--muted)"></i></a>`}
+        ${artSrc ? `<a href="${esc(artLink)}" ${linkTarget}><img src="${esc(artSrc)}" alt="" loading="lazy"></a>` : `<a href="${esc(artLink)}" ${linkTarget} style="display:flex;align-items:center;justify-content:center;width:100%;height:100%"><i class="ph ph-file" style="font-size:2em;color:var(--muted)"></i></a>`}
         ${audioPlayOverlay}
         ${avatarOverlay(d.artist, aPic)}
       </div>
@@ -365,7 +365,7 @@ export function renderBatchCard(d, resolve, opts = {}) {
   const linkTarget = d.external ? ' target="_blank"' : ''
   return `
     <div class="feed-item feed-media-card feed-batch-card">
-      ${artSrc ? `<a href="${esc(artLink)}"${linkTarget} class="feed-media-card-art" style="position:relative"><img src="${artSrc}" alt="" loading="lazy">${avatarOverlay(d.artist, d.artistPic)}</a>` : ''}
+      ${artSrc ? `<a href="${esc(artLink)}"${linkTarget} class="feed-media-card-art" style="position:relative"><img src="${esc(artSrc)}" alt="" loading="lazy">${avatarOverlay(d.artist, d.artistPic)}</a>` : ''}
       <div class="feed-media-card-info">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span class="feed-author">${esc(aliasName || (getArtistName(d.artist) || artist))}</span>
@@ -441,7 +441,7 @@ export function renderFundedCard(d, resolve, opts = {}) {
   return `
     <a href="/project?id=${d.projectId}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${getProfilePic(d.funder) ? `<img src="${esc(getProfilePic(d.funder))}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>`}
+        ${(() => { const pic = getProfilePic(d.funder); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>` })()}
         <div style="flex:1;min-width:0">
           <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--fg);font-weight:500">${esc(d.projectTitle)}</span></div>
           <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${d.amount || '0'}" data-fiat-primary="true"></span></div>
@@ -571,7 +571,7 @@ export function renderSupporterCard(d, resolve, opts = {}) {
     <a href="${link}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
       <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.6em">
-        ${getProfilePic(d.wallet) ? `<img src="${esc(getProfilePic(d.wallet))}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-user-plus" style="font-size:0.9em"></i></div>`}
+        ${(() => { const pic = getProfilePic(d.wallet); return pic ? `<img src="${esc(pic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-user-plus" style="font-size:0.9em"></i></div>` })()}
         <div>
           <span style="color:var(--fg);font-weight:500">${esc(displayName)}</span>
           <span style="color:var(--muted);font-size:0.85em"> joined the audience</span>
