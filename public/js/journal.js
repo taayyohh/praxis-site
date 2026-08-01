@@ -102,10 +102,10 @@ registerPage('journal-page', initJournal)
 function fountainToPlain(editorEl) {
   const lines = []
   for (const child of editorEl.children) {
-    const type = child.dataset?.type
-    let text = child.textContent
+    const type = child.dataset?.type || 'action'
+    let text = child.textContent || ''
     if (shouldAutoUppercase(type)) text = text.toUpperCase()
-    lines.push(text)
+    lines.push(`${type}:${text}`)
   }
   return lines.join('\n')
 }
@@ -1140,10 +1140,30 @@ async function initJournal() {
 
     function renderContentInEditor(el, text, fmtFns) {
       el.innerHTML = ''
-      const parsed = fmtFns.parse(text)
-      for (const item of parsed) {
-        const div = makeLine(item.type, item.text || '')
-        el.appendChild(div)
+      const allTypes = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES])
+      const rawLines = text.split('\n')
+      const hasTypePrefixes = rawLines.some(l => {
+        const colon = l.indexOf(':')
+        return colon > 0 && allTypes.has(l.slice(0, colon))
+      })
+
+      if (hasTypePrefixes) {
+        for (const line of rawLines) {
+          const colon = line.indexOf(':')
+          let type = 'action', content = line
+          if (colon > 0 && allTypes.has(line.slice(0, colon))) {
+            type = line.slice(0, colon)
+            content = line.slice(colon + 1)
+          }
+          const div = makeLine(type, content)
+          if (type !== 'action' || !content.trim()) div.dataset.manual = '1'
+          el.appendChild(div)
+        }
+      } else {
+        const parsed = fmtFns.parse(text)
+        for (const item of parsed) {
+          el.appendChild(makeLine(item.type, item.text || ''))
+        }
       }
     }
 
