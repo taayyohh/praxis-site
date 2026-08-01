@@ -1055,30 +1055,30 @@ async function initJournal() {
       const lineH = parseFloat(editorStyle.lineHeight) || parseFloat(editorStyle.fontSize) * 1.5
       const editorPageH = lineH * LINES_PER_PAGE
 
-      // remove old page breaks
       editor.querySelectorAll('.script-page-break').forEach(el => el.remove())
 
-      // measure cumulative height and insert breaks
-      let cumH = 0
-      let pageNum = 1
-      let nextBreakAt = editorPageH
-      const children = [...editor.children]
+      try {
+        let cumH = 0
+        let pageNum = 1
+        let nextBreakAt = editorPageH
+        const children = [...editor.querySelectorAll('.script-line')]
 
-      for (const child of children) {
-        cumH += child.offsetHeight
-        if (cumH >= nextBreakAt) {
-          pageNum++
-          nextBreakAt = pageNum * editorPageH
-          const br = document.createElement('div')
-          br.className = 'script-page-break'
-          br.setAttribute('contenteditable', 'false')
-          br.dataset.page = pageNum
-          child.after(br)
+        for (const child of children) {
+          cumH += child.offsetHeight || 0
+          if (cumH >= nextBreakAt) {
+            pageNum++
+            nextBreakAt = pageNum * editorPageH
+            const br = document.createElement('div')
+            br.className = 'script-page-break'
+            br.setAttribute('contenteditable', 'false')
+            br.dataset.page = pageNum
+            child.after(br)
+          }
         }
-      }
 
-      const pages = Math.max(1, pageNum)
-      if (pageCount) pageCount.textContent = `~${pages} ${pages === 1 ? t('journal.scriptPage') : t('journal.scriptPages')}`
+        const pages = Math.max(1, pageNum)
+        if (pageCount) pageCount.textContent = `~${pages} ${pages === 1 ? t('journal.scriptPage') : t('journal.scriptPages')}`
+      } catch {}
     }
 
     function showAutocomplete(line, matches) {
