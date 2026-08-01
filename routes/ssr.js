@@ -58,11 +58,11 @@ export async function handleSsr(ctx) {
           } else {
             body = esc(displayPost.content)
             body = body.replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, (_, alt, imgUrl) => {
-              const src = imgUrl.includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgUrl)}&w=1200` : imgUrl
-              return `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" style="max-width:100%;margin:1em 0">`
+              const src = imgUrl.includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgUrl)}&amp;w=1200` : imgUrl
+              return `<img src="${src}" alt="${alt}" loading="lazy" style="max-width:100%;margin:1em 0">`
             })
             body = body.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
-              if (/^(https?:|\/[^\/])/.test(href)) return `<a href="${esc(href)}">${text}</a>`
+              if (/^(https?:|\/[^\/])/.test(href)) return `<a href="${href}">${text}</a>`
               return text
             })
             body = body.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')

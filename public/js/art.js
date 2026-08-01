@@ -713,8 +713,10 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
     })
   }
   syncPlayState()
-  const _artSyncInterval = setInterval(syncPlayState, 2000)
-  window.addEventListener('spa-navigate', () => clearInterval(_artSyncInterval), { once: true })
+  const signal = _artAbortController?.signal
+  window.addEventListener('player-play', syncPlayState, { signal })
+  window.addEventListener('player-pause', syncPlayState, { signal })
+  window.addEventListener('player-ended', syncPlayState, { signal })
 
   // wire lazy video player (click poster to play inline)
   contentEl.querySelectorAll('.video-lazy').forEach(lazy => {
@@ -743,42 +745,44 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 // Wire buy buttons for local portfolio items on art detail pages
 function wireArtDetailBuyButtons(container) {
   const signal = _artAbortController?.signal
-  container.querySelectorAll('.track-buy-btn[data-media-id]').forEach(buyBtn => {
-    const mediaId = buyBtn.dataset.mediaId
-    const price = buyBtn.dataset.price || '0'
+  const buyBtns = [...container.querySelectorAll('.track-buy-btn[data-media-id]')]
 
-    // check ownership now and again when wallet connects
-    checkOwnership(mediaId, buyBtn)
-
+  buyBtns.forEach(buyBtn => {
     buyBtn.addEventListener('click', async () => {
       if (buyBtn.disabled) return
       const title = buyBtn.dataset.title || 'untitled'
       const { showPurchaseConfirmation } = await import('./pay.js')
-      showPurchaseConfirmation(mediaId, price, title)
+      showPurchaseConfirmation(buyBtn.dataset.mediaId, buyBtn.dataset.price || '0', title)
     }, { signal })
   })
 
-  // Re-check ownership when wallet connects (user may sign in after page load)
+  batchCheckOwnership(buyBtns)
+
   window.addEventListener('wallet-connected', () => {
-    container.querySelectorAll('.track-buy-btn[data-media-id]').forEach(buyBtn => {
-      if (!buyBtn.disabled) checkOwnership(buyBtn.dataset.mediaId, buyBtn)
-    })
+    const unchecked = buyBtns.filter(b => !b.disabled)
+    if (unchecked.length) batchCheckOwnership(unchecked)
   }, { signal })
 }
 
-async function checkOwnership(mediaId, buyBtn) {
+async function batchCheckOwnership(buyBtns) {
+  if (!buyBtns.length) return
   const addr = window.getWalletAddress?.()
   if (!addr) return
   const mediaAddr = getMediaAddress()
   if (!mediaAddr) return
   try {
     const pc = await getPublicClient()
-    const balance = await pc.readContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'balanceOf', args: [addr, BigInt(mediaId)] })
-    if (balance > 0n) {
-      buyBtn.textContent = t('art.owned')
-      buyBtn.style.borderColor = 'var(--accent)'
-      buyBtn.style.color = 'var(--accent)'
-      buyBtn.disabled = true
+    const calls = buyBtns.map(btn => ({
+      address: mediaAddr, abi: MEDIA_ABI, functionName: 'balanceOf', args: [addr, BigInt(btn.dataset.mediaId)],
+    }))
+    const results = await pc.multicall({ contracts: calls })
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'success' && results[i].result > 0n) {
+        buyBtns[i].textContent = t('art.owned')
+        buyBtns[i].style.borderColor = 'var(--accent)'
+        buyBtns[i].style.color = 'var(--accent)'
+        buyBtns[i].disabled = true
+      }
     }
   } catch {}
 }

@@ -166,14 +166,21 @@ async function initPost() {
       }
     }
 
-    // Check for amendments (refType=5 pointing to this post)
-    const amendData = await query(`
-      query Amendments($refId: BigInt!) {
-        blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
-          items { ${F.post} }
+    // Parallel: fetch amendments + parent post (if reply) in one round-trip
+    const isReplyPost = post.refType > 0 && post.refType !== 5 && post.refId
+    const isReply = isReplyPost && post.refType === 3
+    const [amendData, parentData] = await Promise.all([
+      query(`
+        query Amendments($refId: BigInt!) {
+          blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
+            items { ${F.post} }
+          }
         }
-      }
-    `, { refId: postId })
+      `, { refId: postId }),
+      isReply
+        ? query(`query ParentPost($id: BigInt!) { blogPost(id: $id) { ${F.post} } }`, { id: String(post.refId) }).catch(() => null)
+        : Promise.resolve(null)
+    ])
 
     const amendments = amendData?.blogPosts?.items || []
     const latestAmendment = amendments[0] || null
@@ -187,7 +194,13 @@ async function initPost() {
       return
     }
 
-    const domainMap = await resolveAddresses(query, [post.author]).catch(() => ({}))
+    // Batch resolve: post author + parent author (if reply) in one call
+    const parent = parentData?.blogPost || null
+    const addressesToResolve = [post.author]
+    if (parent && parent.author.toLowerCase() !== post.author.toLowerCase()) {
+      addressesToResolve.push(parent.author)
+    }
+    const domainMap = await resolveAddresses(query, addressesToResolve).catch(() => ({}))
     const domain = domainMap[post.author.toLowerCase()] || `${post.author.slice(0, 6)}...${post.author.slice(-4)}`
     const date = new Date(Number(displayPost.timestamp) * 1000)
     const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -213,42 +226,30 @@ async function initPost() {
       editedHtml = ` <a href="/post?id=${postId}&history=1" style="color:var(--dim);font-size:0.55em;font-weight:700;text-decoration:none;vertical-align:middle">${t('post.edited')}</a>`
     }
 
-    // reply-in-context: fetch parent post for replies (refType 3 = reply)
+    // reply-in-context: render parent quote for replies (parent already fetched in parallel above)
     let parentQuoteHtml = ''
     let replySeparatorHtml = ''
-    const isReplyPost = post.refType > 0 && post.refType !== 5 && post.refId
-    if (isReplyPost && post.refType === 3) {
-      try {
-        const parentData = await query(`
-          query ParentPost($id: BigInt!) {
-            blogPost(id: $id) { ${F.post} }
-          }
-        `, { id: String(post.refId) })
-        const parent = parentData?.blogPost
-        if (parent) {
-          const parentDomainMap = await resolveAddresses(query, [parent.author]).catch(() => ({}))
-          const parentDomain = parentDomainMap[parent.author.toLowerCase()] || `${parent.author.slice(0, 6)}...${parent.author.slice(-4)}`
-          // strip markdown for preview
-          const parentRaw = (parent.content || '')
-            .replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '$1')
-            .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
-            .replace(/\*\*(.+?)\*\*/g, '$1')
-            .replace(/\*(.+?)\*/g, '$1')
-            .replace(/^#{1,6}\s+/gm, '')
-            .replace(/^>\s+/gm, '')
-            .replace(/\n{2,}/g, ' ')
-            .replace(/\n/g, ' ')
-            .trim()
-          const parentPreview = parentRaw.length > 300 ? parentRaw.slice(0, 300) + '...' : parentRaw
-          parentQuoteHtml = `<div class="post-parent-quote">
+    if (isReply && parent) {
+      const parentDomain = domainMap[parent.author.toLowerCase()] || `${parent.author.slice(0, 6)}...${parent.author.slice(-4)}`
+      // strip markdown for preview
+      const parentRaw = (parent.content || '')
+        .replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '$1')
+        .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/^>\s+/gm, '')
+        .replace(/\n{2,}/g, ' ')
+        .replace(/\n/g, ' ')
+        .trim()
+      const parentPreview = parentRaw.length > 300 ? parentRaw.slice(0, 300) + '...' : parentRaw
+      parentQuoteHtml = `<div class="post-parent-quote">
             <div class="parent-meta"><a href="/network?artist=${parent.author.toLowerCase()}">${escapeHtml(parentDomain)}</a></div>
             <div class="parent-title">${escapeHtml(parent.title)}</div>
             <div class="parent-preview">${escapeHtml(parentPreview)}</div>
             <a href="/post?id=${parent.id}" class="parent-link">view full post \u2192</a>
           </div>`
-          replySeparatorHtml = `<div class="post-reply-separator">\u21a9 reply by <a href="/network?artist=${post.author.toLowerCase()}" style="color:var(--muted)">${escapeHtml(domain)}</a></div>`
-        }
-      } catch (e) { console.warn('parent post fetch error:', e) }
+      replySeparatorHtml = `<div class="post-reply-separator">\u21a9 reply by <a href="/network?artist=${post.author.toLowerCase()}" style="color:var(--muted)">${escapeHtml(domain)}</a></div>`
     }
 
     // reference footer (skip for amendments — refType=5 is internal, skip for replies — shown above)

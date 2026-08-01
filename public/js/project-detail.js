@@ -282,8 +282,8 @@ async function initProjectDetail() {
         <div style="color:var(--fg);font-size:0.9em">${priceLabel}</div>
         <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
         ${remaining > 0 && p.status <= FUNDED ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
-          <input type="number" class="fund-qty" data-tier-id="${t.tierId}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
-          <button class="buy-btn fund-tier-btn" data-tier-id="${t.tierId}" data-price="${t.price}" style="font-size:0.85em;padding:0.3em 1ch">${btnLabel}</button>
+          <input type="number" class="fund-qty" data-tier-id="${escapeHtml(t.tierId)}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
+          <button class="buy-btn fund-tier-btn" data-tier-id="${escapeHtml(t.tierId)}" data-price="${escapeHtml(t.price)}" style="font-size:0.85em;padding:0.3em 1ch">${btnLabel}</button>
         </div>` : ''}
       </div>`
     }).join('')
@@ -812,8 +812,8 @@ async function initProjectDetail() {
               </div>
               <div>
                 ${isMine
-                  ? `<button class="buy-btn cancel-ticket-btn" data-token-id="${listing.tokenId}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444">${t('tickets.cancel')}</button>`
-                  : `<button class="buy-btn buy-ticket-btn" data-token-id="${listing.tokenId}" data-price="${listing.price}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.buy')}</button>`
+                  ? `<button class="buy-btn cancel-ticket-btn" data-token-id="${escapeHtml(listing.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444">${t('tickets.cancel')}</button>`
+                  : `<button class="buy-btn buy-ticket-btn" data-token-id="${escapeHtml(listing.tokenId)}" data-price="${escapeHtml(listing.price)}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.buy')}</button>`
                 }
               </div>
             </div>`
@@ -829,9 +829,9 @@ async function initProjectDetail() {
           for (const ticket of unlistedTickets) {
             resaleHtml += `<div style="display:flex;gap:0.5ch;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);font-size:0.9em">
               <span style="color:var(--fg)">ticket #${ticket.tokenId}</span>
-              <input type="text" class="ticket-price-input project-input" data-token-id="${ticket.tokenId}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto">
+              <input type="text" class="ticket-price-input project-input" data-token-id="${escapeHtml(ticket.tokenId)}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto">
               <span style="color:var(--dim);font-size:0.85em">ETH</span>
-              <button class="buy-btn list-ticket-btn" data-token-id="${ticket.tokenId}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.listForSale')}</button>
+              <button class="buy-btn list-ticket-btn" data-token-id="${escapeHtml(ticket.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.listForSale')}</button>
             </div>`
           }
         }
@@ -944,13 +944,13 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
     const d = new Date(Number(c.timestamp) * 1000)
     const timeStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     const indent = isReply ? 'margin-left:2ch;' : ''
-    return `<div class="project-comment" data-comment-id="${c.id}" style="${indent}padding:1em 0;border-top:1px solid var(--border)">
+    return `<div class="project-comment" data-comment-id="${escapeHtml(c.id)}" style="${indent}padding:1em 0;border-top:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;margin-bottom:0.5em">
         <a href="/network?artist=${c.author.toLowerCase()}" style="color:var(--fg);font-size:0.85em">${escapeHtml(resolve(c.author))}</a>
         <time style="color:var(--dim);font-size:0.8em">${timeStr}</time>
       </div>
       <div style="color:var(--fg);font-size:0.95em;line-height:1.6">${renderMarkdown(c.content)}</div>
-      <div class="comment-replies" id="replies-for-${c.id}"></div>
+      <div class="comment-replies" id="replies-for-${escapeHtml(c.id)}"></div>
     </div>`
   }
 

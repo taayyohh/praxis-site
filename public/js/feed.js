@@ -201,8 +201,10 @@ function renderCachedFeed(feedItems, domainMap, postsEl) {
   // Inject reply sections under their parent post cards. Each post card
   // has data-post-id="<id>". Replies are grouped in a scrollable mini-box
   // (max-height 120px) so 100 replies don't blow up the feed layout.
+  const postEls = new Map()
+  postsEl.querySelectorAll('.feed-article[data-post-id]').forEach(el => postEls.set(el.dataset.postId, el))
   for (const [parentId, replies] of Object.entries(_replyMap)) {
-    const parentCard = postsEl.querySelector(`.feed-article[data-post-id="${parentId}"]`)
+    const parentCard = postEls.get(parentId)
     if (!parentCard) continue
     const replyHtml = replies.map((r, i) =>
       `<div style="padding:0.4em 0;${i > 0 ? 'border-top:1px solid var(--border);' : ''}font-size:0.8em">
@@ -640,7 +642,7 @@ function renderPost(p, domainMap) {
   const displayTitle = p.title || ''
 
   return `
-    <div class="feed-item feed-article" data-post-id="${p.id}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
+    <div class="feed-item feed-article" data-post-id="${escapeHtml(p.id)}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
       ${mediaHtml ? `<div class="feed-media-wrap">${mediaHtml}</div>` : ''}
       <div style="padding:0.75em 1em">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
