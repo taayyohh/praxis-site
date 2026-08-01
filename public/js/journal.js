@@ -52,7 +52,7 @@ async function reauthJournal() {
   } catch { return false }
 }
 
-function scriptPrintHtml(title, body, format) {
+function scriptPrintHtml(title, body, format, author) {
   // Industry-standard screenplay margins (8.5"x11", 1.5" left page margin)
   // Character: 3.7" from page left = 2.2" into 6" text area
   // Dialogue:  2.5" from page left = 1.0" into text, right edge at 6.0"
@@ -91,9 +91,10 @@ p { margin: 0; padding: 0; }
 .title-page { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; page-break-after: always; }
 .title-page h1 { font-size: 24pt; text-transform: uppercase; margin: 0 0 0.5em; border-bottom: none; }
 .title-page .by { font-size: 12pt; font-style: italic; }
+.title-page .author { font-size: 12pt; margin-top: 0.25em; }
 ${css}
 </style></head>
-<body><div class="title-page"><h1>${escapeHtml(title)}</h1><div class="by">by</div></div>${body}</body></html>`
+<body><div class="title-page"><h1>${escapeHtml(title)}</h1><div class="by">by</div>${author ? `<div class="author">${escapeHtml(author)}</div>` : ''}</div>${body}</body></html>`
 }
 
 registerPage('journal-page', initJournal)
@@ -105,6 +106,22 @@ function fountainToPlain(editorEl) {
     let text = child.textContent
     if (shouldAutoUppercase(type)) text = text.toUpperCase()
     lines.push(text)
+  }
+  return lines.join('\n')
+}
+
+function editorToHtml(editorEl, prefix) {
+  const lines = []
+  for (const child of editorEl.children) {
+    const type = child.dataset?.type || 'action'
+    let text = child.textContent || ''
+    if (!text.trim()) {
+      lines.push(`<p class="${prefix}-blank">&nbsp;</p>`)
+      continue
+    }
+    if (shouldAutoUppercase(type)) text = text.toUpperCase()
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    lines.push(`<p class="${prefix}-${type}">${escaped}</p>`)
   }
   return lines.join('\n')
 }
@@ -663,11 +680,12 @@ async function initJournal() {
 
     // publish script to blog — renders as formatted screenplay/stage play
     document.getElementById('journal-publish')?.addEventListener('click', () => {
-      const plainText = fountainToPlain(editor)
-      if (!plainText?.trim()) return
+      const hasContent = [...editor.children].some(c => c.textContent?.trim())
+      if (!hasContent) return
       if (!confirm(t('journal.publishConfirm'))) return
       const title = document.getElementById('journal-filename')?.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || ''
-      const htmlBody = fmt.toHtml(plainText)
+      const prefix = format === 'stageplay' ? 'stageplay' : 'fountain'
+      const htmlBody = editorToHtml(editor, prefix)
       const marker = format === 'stageplay' ? '<!-- stageplay -->' : '<!-- screenplay -->'
       const content = `${marker}\n${htmlBody}`
       const params = new URLSearchParams()
@@ -678,12 +696,15 @@ async function initJournal() {
 
     // export PDF via print
     document.getElementById('script-export-pdf').addEventListener('click', () => {
-      const plainText = fountainToPlain(editor)
-      if (!plainText?.trim()) return
-      const title = document.getElementById('journal-filename')?.value.trim() || 'untitled'
-      const htmlBody = fmt.toHtml(plainText)
+      const hasContent = [...editor.children].some(c => c.textContent?.trim())
+      if (!hasContent) return
+      const rawTitle = document.getElementById('journal-filename')?.value.trim() || 'untitled'
+      const title = rawTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      const prefix = format === 'stageplay' ? 'stageplay' : 'fountain'
+      const htmlBody = editorToHtml(editor, prefix)
+      const author = document.querySelector('meta[property="og:site_name"]')?.content || ''
       const printWindow = window.open('', '_blank')
-      printWindow.document.write(scriptPrintHtml(title, htmlBody, format))
+      printWindow.document.write(scriptPrintHtml(title, htmlBody, format, author))
       printWindow.document.close()
       printWindow.focus()
       printWindow.print()
