@@ -11,7 +11,7 @@ export const STAGE_ELEM_TYPES = ['action', 'act', 'scene', 'character', 'dialogu
 // Per-line placeholder text — shown as ghost text on empty lines (matches Celtx)
 export const LINE_PLACEHOLDERS = {
   scene: 'INT./EXT. PLACE - TIME OF DAY',
-  action: 'Describe what the audience sees: the setting, the characters present, and what\'s happening.',
+  action: 'Describe what the audience sees: your setting, the characters present, and what\'s happening. Keep it short! Typically 3 or 4 sentences.',
   character: 'CHARACTER NAME',
   dialogue: 'Write some dialog for your character to say.',
   paren: '(parenthetical - e.g. excitedly)',

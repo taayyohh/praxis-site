@@ -61,9 +61,9 @@ function scriptPrintHtml(title, body, format) {
 .fountain-blank { height: 12pt; }
 .fountain-scene { text-transform: uppercase; font-weight: bold; margin-top: 1em; text-align: left; }
 .fountain-action { margin-top: 0.5em; text-align: left; }
-.fountain-character { text-transform: uppercase; margin-left: 2.2in; margin-top: 1em; }
-.fountain-dialogue { margin-left: 1.0in; margin-right: 1.5in; }
-.fountain-paren { margin-left: 1.6in; margin-right: 1.9in; font-style: italic; }
+.fountain-character { text-transform: uppercase; text-align: center; margin-top: 1em; }
+.fountain-dialogue { margin-left: 1.0in; margin-right: 1.0in; }
+.fountain-paren { margin-left: 1.5in; margin-right: 1.5in; text-align: center; font-style: italic; }
 .fountain-transition { text-align: right; text-transform: uppercase; margin-top: 1em; }
 .fountain-shot { text-transform: uppercase; margin-top: 1em; }
 .fountain-text { margin-top: 0.5em; color: #555; }
