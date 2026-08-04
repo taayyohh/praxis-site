@@ -58,7 +58,7 @@ export async function handleJournal(ctx) {
       const raw = await readFileAsync(filePath, 'utf8')
       const content = decryptEntry(raw, session.journalKey)
       json(res, { file: safe, content }); return true
-    } catch { json(res, { file: safe, content: '[decryption failed]' }); return true }
+    } catch (e) { console.error('[journal] decrypt error:', safe, e.message); json(res, { file: safe, error: 'decryption failed — re-enter your journal password' }, 500); return true }
   }
 
   if (path === '/api/journal' && method === 'POST') {

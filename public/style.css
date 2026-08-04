@@ -5520,6 +5520,94 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
   margin-top: 0.5em;
 }
 
+/* title page fields — centered, vertically spaced like Celtx */
+.script-tp-title {
+  text-align: center;
+  margin-top: 30vh;
+  font-size: 1.1em;
+}
+.script-tp-credit {
+  text-align: center;
+  margin-top: 0.5em;
+  color: var(--dim);
+  font-style: italic;
+}
+.script-tp-author {
+  text-align: center;
+}
+.script-tp-source {
+  text-align: center;
+  margin-top: 4em;
+  color: var(--dim);
+}
+
+/* zen mode — full-page distraction-free editing */
+body.zen-mode #top-bar,
+body.zen-mode #owner-dock,
+body.zen-mode .owner-dock,
+body.zen-mode footer,
+body.zen-mode .portfolio-nav,
+body.zen-mode #mobile-menu-btn,
+body.zen-mode #journal-save-status,
+body.zen-mode #script-page-count,
+body.zen-mode #script-export-pdf,
+body.zen-mode #script-zen,
+body.zen-mode #journal-publish,
+body.zen-mode #journal-back,
+body.zen-mode #journal-filename,
+body.zen-mode .script-toolbar,
+body.zen-mode .script-outline-panel {
+  display: none !important;
+}
+body.zen-mode main {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+body.zen-mode main > div {
+  max-width: none !important;
+  padding: 0;
+}
+body.zen-mode .script-editor {
+  min-height: 100vh;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 3em 1em;
+  box-sizing: border-box;
+}
+.zen-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 1em;
+  padding: 0.2em 0.5ch;
+  opacity: 0.5;
+}
+.zen-toggle:hover { opacity: 1; }
+.zen-exit {
+  display: none;
+}
+body.zen-mode .zen-exit {
+  display: block;
+  position: fixed;
+  top: 0.8em;
+  right: 0.8em;
+  z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--dim);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.7em;
+  padding: 0.2em 0.8ch;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+body.zen-mode:hover .zen-exit { opacity: 0.4; }
+body.zen-mode .zen-exit:hover { opacity: 1; }
+
 .script-type-indicator {
   display: inline-block;
   color: var(--dim);

@@ -8,6 +8,9 @@ export const STAGEPLAY_MARKER = '<!-- stageplay -->\n'
 export const ELEM_TYPES = ['scene', 'action', 'character', 'dialogue', 'paren', 'transition', 'shot', 'text', 'act']
 export const STAGE_ELEM_TYPES = ['action', 'act', 'scene', 'character', 'dialogue', 'paren', 'direction']
 
+// Title page field types (not in Tab cycle, but recognized in save/load)
+export const TITLE_PAGE_TYPES = ['tp-title', 'tp-credit', 'tp-author', 'tp-source']
+
 // Per-line placeholder text — shown as ghost text on empty lines (matches Celtx)
 export const LINE_PLACEHOLDERS = {
   scene: 'INT./EXT. PLACE - TIME OF DAY',
@@ -20,6 +23,10 @@ export const LINE_PLACEHOLDERS = {
   text: 'Other text. For example, production notes, song lyrics, etc.',
   act: 'ACT (E.G. TEASER, ACT 1, ETC.)',
   direction: '[Stage direction]',
+  'tp-title': 'Title',
+  'tp-credit': 'Written by',
+  'tp-author': 'Author',
+  'tp-source': 'Based on',
 }
 
 // Format definitions

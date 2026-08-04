@@ -4,7 +4,7 @@ import { escapeHtml, registerPage, getWalletProvider } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { createMarkdownEditor } from './markdown-editor.js'
 import {
-  FOUNTAIN_MARKER, ELEM_TYPES, STAGE_ELEM_TYPES, SCRIPT_FORMATS, LINE_PLACEHOLDERS,
+  FOUNTAIN_MARKER, ELEM_TYPES, STAGE_ELEM_TYPES, TITLE_PAGE_TYPES, SCRIPT_FORMATS, LINE_PLACEHOLDERS,
   detectLineType, parseFountain, stripForcedMarker,
   nextTypeAfterEnter, cycleType, cycleTypePrev,
   isFountainContent, extractFountainBody,
@@ -26,21 +26,19 @@ async function reauthJournal() {
   if (!addr || !getWalletProvider()) return false
   try {
     await window.ensureAuthorized?.()
-    const authMsg = `admin:${location.hostname}:${Date.now()}`
-    const authSig = await getWalletProvider().request({ method: 'personal_sign', params: [authMsg, addr] })
+    const normalAddr = addr.toLowerCase()
+    const keyMsg = `praxis:journal-key:v1:${normalAddr}`
+    const keySig = await getWalletProvider().request({ method: 'personal_sign', params: [keyMsg, normalAddr] })
     const authRes = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: addr, signature: authSig, message: authMsg }),
+      body: JSON.stringify({ address: normalAddr, signature: keySig, message: keyMsg }),
     })
     const authData = await authRes.json()
     if (authData.error) return false
     journalToken = authData.token
     sessionStorage.setItem('praxis:journal-token', journalToken)
 
-    // re-derive and set journal key
-    const keyMsg = `praxis:journal-key:v1:${addr.toLowerCase()}`
-    const keySig = await getWalletProvider().request({ method: 'personal_sign', params: [keyMsg, addr.toLowerCase()] })
     const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
     const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
     const keyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -87,9 +85,9 @@ function scriptPrintHtml(title, body, format, author) {
 <style>
 @page { size: letter; margin: 1in 1in 1in 1.5in; }
 @page:first { margin: 0; }
-body { font-family: 'Courier New', Courier, monospace; font-size: 12pt; line-height: 1; color: #000; }
+body { font-family: 'Courier New', Courier, monospace; font-size: 12pt; line-height: 1; color: #000; margin: 0; }
 p { margin: 0; padding: 0; }
-.title-page { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; page-break-after: always; }
+.title-page { display: flex; flex-direction: column; justify-content: center; align-items: center; break-after: page; min-height: calc(100vh - 2px); box-sizing: border-box; }
 .title-page h1 { font-size: 24pt; text-transform: uppercase; margin: 0 0 0.5em; border-bottom: none; }
 .title-page .by { font-size: 12pt; font-style: italic; }
 .title-page .author { font-size: 12pt; margin-top: 0.25em; }
@@ -98,8 +96,9 @@ ${css}
 <body><div class="title-page"><h1>${escapeHtml(title)}</h1><div class="by">by</div>${author ? `<div class="author">${escapeHtml(author)}</div>` : ''}</div>${body}</body></html>`
 }
 
-const _SCRIPT_TYPES = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES])
+const _SCRIPT_TYPES = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES, ...TITLE_PAGE_TYPES])
 function hasTypedScriptLines(text) {
+  if (!text || typeof text !== 'string') return false
   const lines = text.split('\n')
   let count = 0
   for (const l of lines) {
@@ -114,10 +113,22 @@ registerPage('journal-page', initJournal)
 
 function fountainToPlain(editorEl) {
   const lines = []
+  const allTypes = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES, ...TITLE_PAGE_TYPES])
   for (const child of editorEl.children) {
     if (child.classList.contains('script-page-break')) continue
     const type = child.dataset?.type || 'action'
     let text = child.textContent || ''
+    // only strip if line fell to default 'action' but text starts with a different type prefix
+    // (indicates renderContentInEditor failed to strip the prefix on load)
+    if (type === 'action') {
+      const colon = text.indexOf(':')
+      if (colon > 0 && colon <= 10) {
+        const textPrefix = text.slice(0, colon).toLowerCase()
+        if (allTypes.has(textPrefix) && textPrefix !== 'action') {
+          text = text.slice(colon + 1)
+        }
+      }
+    }
     if (shouldAutoUppercase(type)) text = text.toUpperCase()
     lines.push(`${type}:${text}`)
   }
@@ -129,6 +140,7 @@ function editorToHtml(editorEl, prefix) {
   for (const child of editorEl.children) {
     if (child.classList.contains('script-page-break')) continue
     const type = child.dataset?.type || 'action'
+    if (type.startsWith('tp-')) continue
     let text = child.textContent || ''
     if (!text.trim()) {
       lines.push(`<p class="${prefix}-blank">&nbsp;</p>`)
@@ -216,15 +228,17 @@ async function initJournal() {
       if (unlockBtn) unlockBtn.style.display = 'none'
 
       if (unlockStatus) unlockStatus.textContent = t('journal.authenticating')
-      const authMsg = `admin:${location.hostname}:${Date.now()}`
-      const authSig = await getWalletProvider().request({
+      const normalAddr = addr.toLowerCase()
+      // single signature: deterministic key message, also used for auth
+      const keyMsg = `praxis:journal-key:v1:${normalAddr}`
+      const keySig = await getWalletProvider().request({
         method: 'personal_sign',
-        params: [authMsg, addr],
+        params: [keyMsg, normalAddr],
       })
       const authRes = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: addr, signature: authSig, message: authMsg }),
+        body: JSON.stringify({ address: normalAddr, signature: keySig, message: keyMsg }),
       })
       const authData = await authRes.json()
       if (authData.error) { if (unlockStatus) unlockStatus.textContent = authData.error; return }
@@ -232,13 +246,6 @@ async function initJournal() {
       sessionStorage.setItem('praxis:journal-token', journalToken)
 
       if (unlockStatus) unlockStatus.textContent = t('journal.derivingKey')
-      // always use lowercase address for deterministic key (wallet-agnostic)
-      const normalAddr = addr.toLowerCase()
-      const keyMsg = `praxis:journal-key:v1:${normalAddr}`
-      const keySig = await getWalletProvider().request({
-        method: 'personal_sign',
-        params: [keyMsg, normalAddr],
-      })
 
       const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
       const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
@@ -351,7 +358,6 @@ async function initJournal() {
             headers: { 'Authorization': `Bearer ${journalToken}` },
           })
           const data = await res.json()
-          console.log('[journal] open entry:', file, 'content length:', data.content?.length, 'fountain:', isFountainContent(data.content), 'typed:', hasTypedScriptLines(data.content), 'looks:', looksLikeFountain(data.content), 'first 300:', JSON.stringify(data.content?.slice(0, 300)))
           if (data.content) {
             if (isStagePlayContent(data.content)) {
               showScriptEditor(file, extractStagePlayBody(data.content), 'stageplay')
@@ -365,10 +371,9 @@ async function initJournal() {
               showEditor(file, data.content)
             }
           } else if (data.error) {
-            const el = contentEl.querySelector('.journal-entry-preview')
-            if (el) el.textContent = data.error
+            contentEl.innerHTML = `<div style="max-width:680px;padding:2em 0"><p style="color:var(--muted)">${escapeHtml(data.error)}</p><button class="buy-btn" style="margin-top:1em;font-size:0.8em;padding:0.3em 1ch" onclick="loadEntries()">back</button></div>`
           }
-        } catch { showEditor(file, '') }
+        } catch (e) { console.error('[journal] open error:', e); showEditor(file, '') }
       })
     })
 
@@ -544,7 +549,7 @@ async function initJournal() {
       const saveStatus = document.getElementById('journal-save-status')
       let content = mdEditor.getValue()
       if (!content?.trim()) return
-      if (hasTypedScriptLines(content) || looksLikeFountain(content)) content = FOUNTAIN_MARKER + content
+      if (!isFountainContent(content) && !isStagePlayContent(content) && (hasTypedScriptLines(content) || looksLikeFountain(content))) content = FOUNTAIN_MARKER + content
 
       const newFilename = filenameInput.value.trim()
       if (!newFilename) {
@@ -645,11 +650,12 @@ async function initJournal() {
           <button id="script-outline-toggle" title="scene outline" style="margin-left:auto"><i class="ph ph-list-bullets"></i></button>
         </div>
         <div id="script-outline-panel" class="script-outline-panel" style="display:none"></div>
-        <div class="script-editor" id="script-editor" contenteditable="true" data-placeholder="${format === 'stageplay' ? t('journal.stageplayPlaceholder') : t('journal.scriptPlaceholder')}"></div>
+        <div class="script-editor" id="script-editor" contenteditable="true" spellcheck="true" lang="${document.documentElement.lang || 'en'}" data-placeholder="${format === 'stageplay' ? t('journal.stageplayPlaceholder') : t('journal.scriptPlaceholder')}"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding-top:1em;border-top:1px solid var(--border)">
           <span id="journal-save-status" style="color:var(--dim);font-size:0.85em"></span>
           <div style="display:flex;align-items:center;gap:1ch">
             <span id="script-page-count" style="color:var(--dim);font-size:0.85em"></span>
+            <button class="zen-toggle" id="script-zen" title="zen mode (Esc to exit)"><i class="ph ph-arrows-out-simple"></i></button>
             <button class="buy-btn" id="script-export-pdf" style="font-size:0.8em;padding:0.2em 1ch">${t('journal.exportPdf')}</button>
           </div>
         </div>
@@ -680,12 +686,28 @@ async function initJournal() {
       }
     }
 
+    const PAGE_HEIGHT_PT = 648
+    const PRINT_LINE_HEIGHT = 12
+    const LINES_PER_PAGE = Math.floor(PAGE_HEIGHT_PT / PRINT_LINE_HEIGHT)
+
     // populate editor from existing content
     const startType = fmt.types.includes('scene') ? 'scene' : fmt.types[0]
     if (existingContent) {
       renderContentInEditor(editor, existingContent, fmt)
     } else {
-      // start with one empty line of the first meaningful type
+      // title page (matches Celtx default)
+      for (const tp of TITLE_PAGE_TYPES) {
+        const line = makeLine(tp, '')
+        line.dataset.manual = '1'
+        editor.appendChild(line)
+      }
+      // page break after title page
+      const br = document.createElement('div')
+      br.className = 'script-page-break'
+      br.setAttribute('contenteditable', 'false')
+      br.dataset.page = '2'
+      editor.appendChild(br)
+      // first script line
       const line = makeLine(startType, '')
       line.dataset.manual = '1'
       editor.appendChild(line)
@@ -695,6 +717,8 @@ async function initJournal() {
 
     document.getElementById('journal-back').addEventListener('click', async () => {
       if (_autosaveTimer) clearTimeout(_autosaveTimer)
+      toggleZen(false)
+      zenExit.remove()
       await autoSave()
       loadEntries()
     })
@@ -719,17 +743,33 @@ async function initJournal() {
     document.getElementById('script-export-pdf').addEventListener('click', () => {
       const hasContent = [...editor.children].some(c => c.textContent?.trim())
       if (!hasContent) return
-      const rawTitle = document.getElementById('journal-filename')?.value.trim() || 'untitled'
-      const title = rawTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      // pull title/author from title page fields if present, fall back to filename
+      const tpTitle = editor.querySelector('.script-tp-title')?.textContent.trim()
+      const tpAuthor = editor.querySelector('.script-tp-author')?.textContent.trim()
+      const rawTitle = tpTitle || document.getElementById('journal-filename')?.value.trim() || 'untitled'
+      const title = tpTitle ? rawTitle : rawTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
       const prefix = format === 'stageplay' ? 'stageplay' : 'fountain'
       const htmlBody = editorToHtml(editor, prefix)
-      const author = document.querySelector('meta[property="og:site_name"]')?.content || ''
+      const author = tpAuthor || document.querySelector('meta[property="og:site_name"]')?.content || ''
       const printWindow = window.open('', '_blank')
       printWindow.document.write(scriptPrintHtml(title, htmlBody, format, author))
       printWindow.document.close()
       printWindow.focus()
       printWindow.print()
     })
+
+    // zen mode — full-page distraction-free editing
+    const zenExit = document.createElement('button')
+    zenExit.className = 'zen-exit'
+    zenExit.textContent = 'esc'
+    zenExit.addEventListener('click', () => toggleZen(false))
+    document.body.appendChild(zenExit)
+    function toggleZen(on) {
+      const isZen = on ?? !document.body.classList.contains('zen-mode')
+      document.body.classList.toggle('zen-mode', isZen)
+      if (isZen) editor.focus()
+    }
+    document.getElementById('script-zen')?.addEventListener('click', () => toggleZen())
 
     // toolbar type buttons
     document.querySelectorAll('.script-toolbar button[data-type]').forEach(btn => {
@@ -747,9 +787,10 @@ async function initJournal() {
         const items = _autocompleteDropdown.querySelectorAll('.script-autocomplete-item')
         if (e.key === 'ArrowDown') { e.preventDefault(); _autocompleteIndex = Math.min(_autocompleteIndex + 1, items.length - 1); items.forEach((el, i) => el.classList.toggle('active', i === _autocompleteIndex)); return }
         if (e.key === 'ArrowUp') { e.preventDefault(); _autocompleteIndex = Math.max(_autocompleteIndex - 1, 0); items.forEach((el, i) => el.classList.toggle('active', i === _autocompleteIndex)); return }
-        if ((e.key === 'Enter' || e.key === 'Tab') && _autocompleteIndex >= 0) { e.preventDefault(); const sel = items[_autocompleteIndex]?.textContent; if (sel) selectAutocomplete(getCurrentLine(), sel); return }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const idx = _autocompleteIndex >= 0 ? _autocompleteIndex : 0; const sel = items[idx]?.textContent; if (sel) selectAutocomplete(getCurrentLine(), sel); return }
         if (e.key === 'Escape') { e.preventDefault(); dismissAutocomplete(); return }
       }
+      if (e.key === 'Escape' && document.body.classList.contains('zen-mode')) { toggleZen(false); return }
 
       if (e.key === 'Backspace') {
         const line = getCurrentLine()
@@ -1065,10 +1106,6 @@ async function initJournal() {
       })
     }
 
-    const PAGE_HEIGHT_PT = 648 // 9 inches usable at 72 dpi (11" - 1" top - 1" bottom)
-    const PRINT_LINE_HEIGHT = 12 // 12pt Courier single-spaced
-    const LINES_PER_PAGE = Math.floor(PAGE_HEIGHT_PT / PRINT_LINE_HEIGHT) // 54
-
     function updatePageCount() {
       const editorStyle = getComputedStyle(editor)
       const lineH = parseFloat(editorStyle.lineHeight) || parseFloat(editorStyle.fontSize) * 1.5
@@ -1108,7 +1145,9 @@ async function initJournal() {
       const rect = line.getBoundingClientRect()
       const editorRect = editor.getBoundingClientRect()
       dropdown.style.top = (rect.bottom - editorRect.top + editor.scrollTop) + 'px'
-      dropdown.style.left = (rect.left - editorRect.left) + 'px'
+      const lineCenter = rect.left + rect.width / 2 - editorRect.left
+      dropdown.style.left = lineCenter + 'px'
+      dropdown.style.transform = 'translateX(-50%)'
       matches.forEach((name) => {
         const item = document.createElement('div')
         item.className = 'script-autocomplete-item'
@@ -1192,7 +1231,7 @@ async function initJournal() {
 
     function renderContentInEditor(el, text, fmtFns) {
       el.innerHTML = ''
-      const allTypes = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES])
+      const allTypes = new Set([...ELEM_TYPES, ...STAGE_ELEM_TYPES, ...TITLE_PAGE_TYPES])
       const rawLines = text.split('\n')
 
       // detect if content uses type:text prefix format
