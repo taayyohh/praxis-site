@@ -521,7 +521,7 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
         // Override square aspect-ratio from CSS for widescreen video
         cardArt.style.aspectRatio = '2/1'
         const thumbUrl = `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=600`
-        cardArt.innerHTML = `<img src="${thumbUrl}" loading="lazy" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"><div class="video-lazy" data-src="${mediaUrl}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
+        cardArt.innerHTML = `<img src="${thumbUrl}" loading="lazy" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"><div class="video-lazy" data-src="${escapeHtml(mediaUrl)}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
         // Remove audio play button if present
         const audioBtn = item.querySelector('.track-play-btn')
         if (audioBtn) audioBtn.remove()
@@ -1073,7 +1073,7 @@ function renderMediaItems(mediaPurchases) {
     const queueData = encodeURIComponent(JSON.stringify(queueTracks))
 
     if (_viewMode === 'grid') {
-      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${first.mediaId}" data-media-type="audio" data-span="2">
+      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${escapeHtml(String(first.mediaId))}" data-media-type="audio" data-span="2">
         <div class="card-art">
           <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px"></a>
           <span class="card-type-badge">${trackCount} tracks</span>
@@ -1083,13 +1083,13 @@ function renderMediaItems(mediaPurchases) {
           <a href="${artistLink}" class="card-artist">${escapeHtml(aliasName)}</a>
           <div class="card-actions">
             <button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>
-            <a href="${queueTracks[0]?.src || '#'}" download="${escapeHtml(albumName)}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>
+            <a href="${escapeHtml(queueTracks[0]?.src || '#')}" download="${escapeHtml(albumName)}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>
           </div>
         </div>
       </div>`
     } else {
       // Album in list view — iTunes style
-      html += `<div class="collection-album-list collection-item" data-media-id="${first.mediaId}" data-media-type="audio">
+      html += `<div class="collection-album-list collection-item" data-media-id="${escapeHtml(String(first.mediaId))}" data-media-type="audio">
         <div class="album-list-header">
           <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=200" class="album-list-art"></a>
           <div class="album-list-info">
@@ -1109,11 +1109,11 @@ function renderMediaItems(mediaPurchases) {
         const trackUrl = m?.ipfsCid ? ipfsUrl(m.ipfsCid) : ''
         html += `<div class="album-track">
           <span class="track-num">${i + 1}</span>
-          ${trackUrl ? `<button class="track-play-btn" data-track-src="${trackUrl}" data-track-title="${trackTitle}" data-track-artist="${escapeHtml(aliasName)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : '<span style="width:22px"></span>'}
+          ${trackUrl ? `<button class="track-play-btn" data-track-src="${escapeHtml(trackUrl)}" data-track-title="${trackTitle}" data-track-artist="${escapeHtml(aliasName)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : '<span style="width:22px"></span>'}
           <span class="track-title">${trackTitle}</span>
           <div style="display:flex;gap:0.5ch;align-items:center;flex-shrink:0;margin-left:auto;padding-right:0.5em">
-            ${trackUrl ? `<button class="track-queue-btn" data-src="${trackUrl}" data-title="${trackTitle}" data-artist="${escapeHtml(aliasName)}" data-art="${queueTracks[0]?.art || ''}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.15em" title="add to queue"><i class="ph ph-plus"></i></button>` : ''}
-            ${trackUrl ? `<a href="${trackUrl}" download="${trackTitle}" style="color:var(--dim);font-size:0.85em;padding:0.15em" title="download"><i class="ph ph-download-simple"></i></a>` : ''}
+            ${trackUrl ? `<button class="track-queue-btn" data-src="${escapeHtml(trackUrl)}" data-title="${trackTitle}" data-artist="${escapeHtml(aliasName)}" data-art="${escapeHtml(queueTracks[0]?.art || '')}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.15em" title="add to queue"><i class="ph ph-plus"></i></button>` : ''}
+            ${trackUrl ? `<a href="${escapeHtml(trackUrl)}" download="${trackTitle}" style="color:var(--dim);font-size:0.85em;padding:0.15em" title="download"><i class="ph ph-download-simple"></i></a>` : ''}
           </div>
         </div>`
       }
@@ -1145,33 +1145,33 @@ function renderMediaItems(mediaPurchases) {
           ? `/api/img?url=${encodeURIComponent(coverUrl)}&w=400`
           : media?.ipfsCid ? `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=600` : ''
         const posterImg = posterUrl ? `<img loading="lazy" src="${posterUrl}" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''
-        artInner = `${posterImg}<div class="video-lazy" data-src="${mediaUrl}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
+        artInner = `${posterImg}<div class="video-lazy" data-src="${escapeHtml(mediaUrl)}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
       } else {
         artInner = `<a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400">` : artPlaceholder(title, 180)}</a>`
         if (mediaUrl && !isSuperseded && !isVideo) {
-          playOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}"><i class="ph ph-play"></i></button>`
+          playOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${title}" data-track-artist="${escapedArtist}"><i class="ph ph-play"></i></button>`
         }
       }
       const artStyle = isVideo ? ' style="aspect-ratio:2/1"' : ''
-      html += `<div class="collection-card collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
+      html += `<div class="collection-card collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${escapeHtml(String(purchase.mediaId))}" data-media-type="${escapeHtml(cachedType)}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
         <div class="card-art"${artStyle}>${artInner}${playOverlay}</div>
         <div class="card-info">
           <a href="${artDetailUrl}" class="card-title">${title}</a>
           <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
           <div class="card-actions">
-            ${mediaUrl && !isSuperseded ? `<a href="${mediaUrl}" download="${title}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>` : ''}
+            ${mediaUrl && !isSuperseded ? `<a href="${escapeHtml(mediaUrl)}" download="${title}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>` : ''}
           </div>
         </div>
       </div>`
     } else {
-      html += `<div class="collection-row collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${purchase.mediaId}" data-media-type="${cachedType}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
+      html += `<div class="collection-row collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${escapeHtml(String(purchase.mediaId))}" data-media-type="${escapeHtml(cachedType)}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
         <a href="${artDetailUrl}" class="row-art">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=120">` : artPlaceholder(title, 48)}</a>
         <div class="row-info">
           <a href="${artDetailUrl}" class="card-title">${title}</a>
           <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
         </div>
         <div class="card-actions">
-          ${mediaUrl && !isSuperseded ? `<button class="track-play-btn" data-track-src="${mediaUrl}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em"><i class="ph ph-play"></i></button><a href="${mediaUrl}" download="${title}" class="track-dl"><i class="ph ph-download-simple"></i></a>` : ''}
+          ${mediaUrl && !isSuperseded ? `<button class="track-play-btn" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em"><i class="ph ph-play"></i></button><a href="${escapeHtml(mediaUrl)}" download="${title}" class="track-dl"><i class="ph ph-download-simple"></i></a>` : ''}
         </div>
       </div>`
     }

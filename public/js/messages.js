@@ -2719,7 +2719,7 @@ function renderMessages(messages) {
     // No per-message receipt indicator anymore. We render a single
     // "sent" / "read" status only on the LAST outgoing bubble after
     // the loop, see updateLastReceiptIndicator() below.
-    return `<div class="dm-msg ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}" data-msg-id="${m.id || ''}" data-sender-inbox="${m.senderInboxId || ''}" data-my-reaction="${myReactedMsgs.has(m.id) ? '1' : '0'}" data-sent-ns="${sentNs}">
+    return `<div class="dm-msg ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}" data-msg-id="${escapeHtml(m.id || '')}" data-sender-inbox="${escapeHtml(m.senderInboxId || '')}" data-my-reaction="${myReactedMsgs.has(m.id) ? '1' : '0'}" data-sent-ns="${escapeHtml(sentNs)}">
       ${senderHtml}
       ${replyHtml}
       <div class="dm-bubble">${renderMessageContent(displayText)}</div>${reactionHtml}

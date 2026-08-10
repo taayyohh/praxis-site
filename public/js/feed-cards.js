@@ -32,7 +32,7 @@ function buyBtnHtml(mediaId, price, title, opts = {}) {
 function priceLabelHtml(price) {
   let pw = 0n; try { pw = BigInt(price || '0') } catch {}
   if (pw <= 0n) return ''
-  return ` — <span class="feed-price-label" data-eth-wei="${price}" data-fiat-primary="true"></span>`
+  return ` — <span class="feed-price-label" data-eth-wei="${esc(price)}" data-fiat-primary="true"></span>`
 }
 
 // Global buy button delegation — any page importing this module gets buy button handling
@@ -342,7 +342,7 @@ export function renderBatchCard(d, resolve, opts = {}) {
     const cid = it.ipfsCid || ''
     let pw = 0n; try { pw = BigInt(it.price || '0') } catch {}
     const playBtn = cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
-    const buyBtn = pw > 0n ? `<button class="feed-buy-btn feed-card-btn green" data-media-id="${it.mediaId}" data-price="${it.price}" data-title="${esc(it.title || '')}" style="font-size:0.7em;padding:0.2em 0.6ch"><span data-eth-wei="${it.price}" data-fiat-primary="true"></span></button>` : ''
+    const buyBtn = pw > 0n ? `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}" style="font-size:0.7em;padding:0.2em 0.6ch"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>` : ''
     return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${playBtn}<a href="/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
   }).join('')
 
@@ -426,7 +426,7 @@ export function renderProjectCard(p, resolve, opts = {}) {
         <div style="margin-top:0.6em">
           <div style="background:var(--border);height:4px;border-radius:2px;overflow:hidden"><div style="background:var(--green);height:100%;width:${Math.min(pct, 100)}%;transition:width 0.3s"></div></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4em">
-            <span style="font-size:0.8em;color:var(--dim)">${pct}% funded · <span data-eth-wei="${p.fundingGoal || '0'}" data-fiat-primary="true"></span> goal</span>
+            <span style="font-size:0.8em;color:var(--dim)">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</span>
             <a href="/project?id=${p.id}"${linkTarget} style="font-size:0.75em;color:var(--fg);border:1px solid var(--border);padding:0.25em 1ch;text-decoration:none">view</a>
           </div>
         </div>
@@ -444,7 +444,7 @@ export function renderFundedCard(d, resolve, opts = {}) {
         ${(() => { const pic = getProfilePic(d.funder); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>` })()}
         <div style="flex:1;min-width:0">
           <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--fg);font-weight:500">${esc(d.projectTitle)}</span></div>
-          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${d.amount || '0'}" data-fiat-primary="true"></span></div>
+          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${esc(d.amount || '0')}" data-fiat-primary="true"></span></div>
         </div>
       </div>
     </a>

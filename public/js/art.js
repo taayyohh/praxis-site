@@ -24,7 +24,7 @@ function refButtonHtml(item, opts = {}) {
   const art = escapeHtml(opts.art || item.art || '')
   const src = escapeHtml(opts.src || '')
   const type = opts.type || ''
-  return `<button class="media-ref-btn" data-ref-media="${item.mediaId}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${type}" title="${t('music.writeAbout')}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.85em;cursor:pointer;padding:0.25em 0.8ch;border-radius:3px;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-note-pencil"></i></button>`
+  return `<button class="media-ref-btn" data-ref-media="${escapeHtml(String(item.mediaId))}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${escapeHtml(type)}" title="${t('music.writeAbout')}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.85em;cursor:pointer;padding:0.25em 0.8ch;border-radius:3px;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-note-pencil"></i></button>`
 }
 
 // Wire all reference buttons in a container
@@ -240,7 +240,7 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
 
   if (album.art) {
     const artUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=600`
-    html += `<div style="flex-shrink:0;width:min(300px, 45%)"><img src="${artUrl}" alt="${escapeHtml(album.title)}" style="width:100%;display:block;border-radius:6px" loading="lazy"></div>`
+    html += `<div style="flex-shrink:0;width:min(300px, 45%)"><img src="${escapeHtml(artUrl)}" alt="${escapeHtml(album.title)}" style="width:100%;display:block;border-radius:6px" loading="lazy"></div>`
   }
 
   html += `<div style="flex:1;min-width:0">`
@@ -269,7 +269,7 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     let totalWei = 0n
     for (const t of buyableTracks) { try { totalWei += BigInt(Math.round(Number(t.mediaPrice))) } catch {} }
     const allMediaIds = buyableTracks.map(t => t.mediaId).join(',')
-    html += `<button class="feed-buy-btn feed-card-btn green" data-media-id="${allMediaIds}" data-price="${String(totalWei)}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)">${t('art.buy')} <span data-eth-wei="${String(totalWei)}" data-fiat-primary="true"></span></button>`
+    html += `<button class="feed-buy-btn feed-card-btn green" data-media-id="${escapeHtml(allMediaIds)}" data-price="${escapeHtml(String(totalWei))}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)">${t('art.buy')} <span data-eth-wei="${escapeHtml(String(totalWei))}" data-fiat-primary="true"></span></button>`
   }
   // Overflow menu for queue + reference
   const firstListedTrack = (album.tracks || []).find(t => t.mediaId != null)
@@ -313,18 +313,18 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
         html += `<span style="color:var(--dim);font-size:0.85em">${m}:${s}</span>`
       }
       if (track.src) {
-        html += `<button class="track-play-btn" data-track-src="${track.src}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0.2em 0.35ch;font-size:1.1em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-play"></i></button>`
+        html += `<button class="track-play-btn" data-track-src="${escapeHtml(track.src)}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0.2em 0.35ch;font-size:1.1em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-play"></i></button>`
       }
       if (track.mediaId !== undefined && track.mediaId !== null) {
         const priceWei = track.mediaPrice || '0'
-        html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${track.mediaId}" data-price="${priceWei}" data-title="${escapeHtml(track.title || '')}" style="font-size:0.7em">${t('art.buy')} <span data-eth-wei="${priceWei}" data-fiat-primary="true"></span></button>`
+        html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(track.mediaId))}" data-price="${escapeHtml(priceWei)}" data-title="${escapeHtml(track.title || '')}" style="font-size:0.7em">${t('art.buy')} <span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span></button>`
       }
       if (track.src || track.mediaId != null) {
         html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
         html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
         html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3em 0;z-index:100;min-width:160px;box-shadow:0 -2px 8px rgba(0,0,0,0.3)">`
         if (track.src) {
-          html += `<button class="track-queue-btn track-overflow-item" data-src="${track.src}" data-title="${escapeHtml(track.title)}" data-artist="${escapeHtml(album.artist || alias.name)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+          html += `<button class="track-queue-btn track-overflow-item" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title)}" data-artist="${escapeHtml(album.artist || alias.name)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
         }
         if (track.mediaId != null) {
           html += `<button class="track-ref-btn track-overflow-item" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
@@ -370,7 +370,7 @@ function renderGalleryImage(el, image, idx) {
 
   if (image.src) {
     const fullUrl = image.src.includes('/api/') ? image.src : `/api/img?url=${encodeURIComponent(image.src)}&w=1200`
-    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${fullUrl}" alt="${escapeHtml(image.title || '')}" style="max-width:100%" loading="lazy"></div>`
+    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(image.title || '')}" style="max-width:100%" loading="lazy"></div>`
   }
 
   if (image.title) html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(image.title)}</h1>`
@@ -384,7 +384,7 @@ function renderGalleryImage(el, image, idx) {
   if (image.mediaId !== undefined && image.mediaId !== null) {
     const priceWei = image.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
-    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${image.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(image.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
   }
 
   el.innerHTML = html
@@ -406,13 +406,13 @@ function renderFilmWork(el, work) {
   if (work.mediaId !== undefined && work.mediaId !== null) {
     const priceWei = work.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
-    html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${work.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(work.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>`
+    html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(work.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(work.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>`
   }
   html += refButtonHtml(work, { src: work.video || '', type: 'film' })
   html += `</div>`
 
   if (work.video) {
-    html += `<div style="margin-bottom:1.5em"><video src="${work.video}" controls preload="none" style="max-width:100%"></video></div>`
+    html += `<div style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" style="max-width:100%"></video></div>`
   }
 
   el.innerHTML = html
@@ -433,7 +433,7 @@ function renderVideoItem(el, item) {
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
-    html += `<div style="margin-bottom:1em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { art: item.poster || item.thumbnail || '', type: 'video' })}</div>`
+    html += `<div style="margin-bottom:1em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { art: item.poster || item.thumbnail || '', type: 'video' })}</div>`
   }
 
   // video player — same lazy pattern as /video page with auto-generated thumbnail
@@ -444,8 +444,8 @@ function renderVideoItem(el, item) {
       if (cidMatch) posterUrl = `/api/video-thumb?cid=${cidMatch[1]}&w=960`
     }
     html += `<div style="margin-bottom:1.5em">
-      <div class="video-lazy" data-src="${item.src}" data-poster="${posterUrl}" data-title="${escapeHtml(item.title || '')}">
-        ${posterUrl ? `<img src="${posterUrl}" alt="" loading="lazy" style="width:100%;cursor:pointer">` : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
+      <div class="video-lazy" data-src="${escapeHtml(item.src)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(item.title || '')}">
+        ${posterUrl ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy" style="width:100%;cursor:pointer">` : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
       </div>
     </div>`
   }
@@ -460,15 +460,15 @@ function renderAudioItem(el, item, idx) {
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title || 'untitled')}</h1>`
   if (item.description) html += `<p style="color:var(--fg);margin-bottom:1em">${escapeHtml(item.description)}</p>`
   if (item.year) html += `<div style="color:var(--muted);margin-bottom:1em">${item.year}</div>`
-  if (item.src) html += `<audio src="${item.src}" controls preload="none" style="width:100%;margin-bottom:1.5em"></audio>`
+  if (item.src) html += `<audio src="${escapeHtml(item.src)}" controls preload="none" style="width:100%;margin-bottom:1.5em"></audio>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
-    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { src: item.src || '', type: 'audio' })}</div>`
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { src: item.src || '', type: 'audio' })}</div>`
   }
 
-  if (item.url) html += `<div style="margin-bottom:1.5em"><a href="${item.url}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.9em">listen</a></div>`
+  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.9em">listen</a></div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
@@ -483,13 +483,13 @@ function renderWritingItem(el, item, idx) {
   if (item.year) meta.push(String(item.year))
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
 
-  if (item.url) html += `<div style="margin-bottom:1.5em"><a href="${item.url}" target="_blank" rel="noopener" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;text-decoration:none;display:inline-block">read</a></div>`
+  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;text-decoration:none;display:inline-block">read</a></div>`
   if (item.excerpt) html += `<div style="margin-bottom:1.5em;color:var(--fg);line-height:1.6">${escapeHtml(item.excerpt)}</div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
-    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${item.mediaId}" data-price="${priceWei}" data-eth-wei="${priceWei}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${priceWei}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { type: 'writing' })}</div>`
+    html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { type: 'writing' })}</div>`
   }
 
   el.innerHTML = html
@@ -590,13 +590,13 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   if (coverUrl) {
     html += `<div class="art-cover" style="margin-bottom:1.5em;position:relative;display:inline-block">
       <img src="/api/img?url=${encodeURIComponent(coverUrl)}&w=600" alt="${escapeHtml(title)}" style="max-width:100%;max-height:400px;display:block" loading="lazy">
-      ${isAudioContent && mediaUrl ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="${mediaUrl}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artistDomain)}" style="width:56px;height:56px;font-size:20px"><i class="ph ph-play"></i></button>` : ''}
+      ${isAudioContent && mediaUrl ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artistDomain)}" style="width:56px;height:56px;font-size:20px"><i class="ph ph-play"></i></button>` : ''}
     </div>`
   }
 
   // title + artist + price
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(title)}</h1>`
-  html += `<div style="color:var(--muted);margin-bottom:0.75em">${t('art.by')} <a href="https://${escapeHtml(artistDomain)}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a>${priceNum > 0 ? ` — <span data-eth-wei="${price.toString()}" data-fiat-primary="true" style="color:var(--fg)"></span>` : ''}</div>`
+  html += `<div style="color:var(--muted);margin-bottom:0.75em">${t('art.by')} <a href="https://${escapeHtml(artistDomain)}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a>${priceNum > 0 ? ` — <span data-eth-wei="${escapeHtml(price.toString())}" data-fiat-primary="true" style="color:var(--fg)"></span>` : ''}</div>`
 
   // action row
   html += `<div style="display:flex;gap:0.6em;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
@@ -608,11 +608,11 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
     html += `<span style="color:var(--muted);font-size:0.85em">this listing has been updated</span>`
     html += `<a href="/art?media=${activeListingId}" style="color:var(--accent);font-size:0.85em;margin-left:1ch">view current listing</a>`
   } else {
-    html += `<button id="art-buy-btn" class="feed-card-btn green" data-media-id="${mediaId}" data-price="${price.toString()}">${priceNum > 0 ? t('art.buy') : t('art.collectFree')}</button>`
+    html += `<button id="art-buy-btn" class="feed-card-btn green" data-media-id="${escapeHtml(String(mediaId))}" data-price="${escapeHtml(price.toString())}">${priceNum > 0 ? t('art.buy') : t('art.collectFree')}</button>`
   }
 
   if (mediaUrl) {
-    html += `<a href="${mediaUrl}" download="${escapeHtml(title)}" class="feed-card-btn" style="text-decoration:none"><i class="ph ph-download-simple"></i> download</a>`
+    html += `<a href="${escapeHtml(mediaUrl)}" download="${escapeHtml(title)}" class="feed-card-btn" style="text-decoration:none"><i class="ph ph-download-simple"></i> download</a>`
   }
 
   html += `</div>`
@@ -627,17 +627,17 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
     const posterUrl = cidMatch ? `/api/video-thumb?cid=${cidMatch[1]}&w=960` : ''
     html += `<div style="margin-bottom:1.5em">
       <div class="video-player" style="max-width:100%">
-        <div class="video-lazy" data-src="${mediaUrl}" data-poster="${posterUrl}" data-title="${escapeHtml(title)}">
+        <div class="video-lazy" data-src="${escapeHtml(mediaUrl)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(title)}">
           ${posterUrl
-            ? `<img src="${posterUrl}" alt="" loading="lazy" style="cursor:pointer;width:100%;aspect-ratio:16/9;object-fit:cover">`
+            ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy" style="cursor:pointer;width:100%;aspect-ratio:16/9;object-fit:cover">`
             : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
         </div>
-        <button class="track-queue-btn" data-src="${mediaUrl}" data-title="${escapeHtml(title)}" data-type="video" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.9em;padding:0.2em 0.5ch;margin-top:0.25em" title="add to queue"><i class="ph ph-plus"></i> queue</button>
+        <button class="track-queue-btn" data-src="${escapeHtml(mediaUrl)}" data-title="${escapeHtml(title)}" data-type="video" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.9em;padding:0.2em 0.5ch;margin-top:0.25em" title="add to queue"><i class="ph ph-plus"></i> queue</button>
       </div>
     </div>`
   } else if (mediaUrl && contentType.startsWith('image/')) {
     const imgSrc = mediaUrl.includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(mediaUrl)}&w=1200` : mediaUrl
-    html += `<div style="margin-bottom:1.5em"><img src="${imgSrc}" alt="${escapeHtml(title)}" style="max-width:100%" loading="lazy"></div>`
+    html += `<div style="margin-bottom:1.5em"><img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(title)}" style="max-width:100%" loading="lazy"></div>`
   }
 
   // collaborators + splits
