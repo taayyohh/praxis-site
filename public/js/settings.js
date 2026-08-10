@@ -2495,16 +2495,16 @@ function renderModuleEditor(el, mod) {
           <div class="editor-collapse-body ${_albumExp ? 'expanded' : ''}">
           <div style="display:flex;flex-direction:column;gap:0.75em">
             <div style="display:grid;gap:0.75em;grid-template-columns:1fr 1fr">
-              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="title" value="${album.title || ''}" placeholder="${t('settings.music.albumTitle')}" style="font-size:0.95em;padding:0.5em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="title" value="${escapeHtml(album.title || '')}" placeholder="${t('settings.music.albumTitle')}" style="font-size:0.95em;padding:0.5em 0.75ch">
               <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="year" type="number" value="${album.year || ''}" placeholder="${t('settings.credits.year')}" style="font-size:0.95em;padding:0.5em 0.75ch">
               <select class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="collectionType" style="font-size:0.9em;padding:0.45em 0.5ch">
                 ${['album', 'podcast', 'playlist', 'mixtape'].map(ct => `<option value="${ct}" ${(album.collectionType || 'album') === ct ? 'selected' : ''}>${ct}</option>`).join('')}
               </select>
-              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="genre" value="${album.genre || ''}" placeholder="genre (e.g. hip-hop, jazz)" style="font-size:0.9em;padding:0.45em 0.75ch">
-              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="artist" value="${album.artist || ''}" placeholder="artist (defaults to ${escapeHtml(alias.name || 'alias name')})" style="font-size:0.9em;padding:0.45em 0.75ch">
-              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="producer" value="${album.producer || ''}" placeholder="producer" style="font-size:0.9em;padding:0.45em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="genre" value="${escapeHtml(album.genre || '')}" placeholder="genre (e.g. hip-hop, jazz)" style="font-size:0.9em;padding:0.45em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="artist" value="${escapeHtml(album.artist || '')}" placeholder="artist (defaults to ${escapeHtml(alias.name || 'alias name')})" style="font-size:0.9em;padding:0.45em 0.75ch">
+              <input class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="producer" value="${escapeHtml(album.producer || '')}" placeholder="producer" style="font-size:0.9em;padding:0.45em 0.75ch">
             </div>
-            <textarea class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="description" placeholder="album notes / concept" style="font-size:0.9em;min-height:3em;resize:vertical;width:100%;box-sizing:border-box;padding:0.5em 0.75ch">${album.description || ''}</textarea>
+            <textarea class="project-input album-field" data-alias="${a}" data-album="${b}" data-f="description" placeholder="album notes / concept" style="font-size:0.9em;min-height:3em;resize:vertical;width:100%;box-sizing:border-box;padding:0.5em 0.75ch">${escapeHtml(album.description || '')}</textarea>
           </div>
           <div style="display:flex;gap:1em;margin-top:1em;align-items:center">
             ${album.art ? `<img loading="lazy" src="${album.art}" style="width:80px;height:80px;object-fit:cover;border:1px solid var(--border)">` : ''}
@@ -2519,7 +2519,7 @@ function renderModuleEditor(el, mod) {
                   <span class="drag-handle" style="font-size:1.1em;color:var(--dim)">\u2261</span>
                   <span style="color:var(--dim);font-size:0.8em;min-width:2ch">${ti + 1}</span>
                   ${tr.src ? `<button class="track-play-btn" data-track-src="${tr.src}" data-track-title="${escapeHtml(tr.title || '')}" data-track-artist="${escapeHtml(alias?.name || siteData?.name || '')}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>` : '<span style="width:28px;height:28px;flex-shrink:0"></span>'}
-                  <input class="project-input track-field" data-alias="${a}" data-album="${b}" data-track="${ti}" data-f="title" value="${tr.title || ''}" placeholder="${t('settings.music.trackTitle')}" style="flex:1;font-size:0.9em">
+                  <input class="project-input track-field" data-alias="${a}" data-album="${b}" data-track="${ti}" data-f="title" value="${escapeHtml(tr.title || '')}" placeholder="${t('settings.music.trackTitle')}" style="flex:1;font-size:0.9em">
                   <button class="buy-btn upload-track" data-alias="${a}" data-album="${b}" data-track="${ti}" style="font-size:0.8em;padding:0.3em 1ch">${tr.src ? t('settings.music.uploaded') : t('settings.music.upload')}</button>
                   <button class="ed-remove-track" data-alias="${a}" data-album="${b}" data-track="${ti}" title="remove track" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.8em;padding:0.3em 0.6ch;cursor:pointer">\u00d7</button>
                 </div>
@@ -2886,8 +2886,8 @@ function renderModuleEditor(el, mod) {
         </div>
         <div class="editor-collapse-body ${_exp ? 'expanded' : ''}">
         <div style="display:grid;gap:0.5em;grid-template-columns:1fr 1fr">
-          <input class="project-input ed-img" data-i="${i}" data-f="title" value="${img.title || ''}" placeholder="${t('settings.credits.title')}">
-          <input class="project-input ed-img" data-i="${i}" data-f="series" value="${img.series || ''}" placeholder="series / collection">
+          <input class="project-input ed-img" data-i="${i}" data-f="title" value="${escapeHtml(img.title || '')}" placeholder="${t('settings.credits.title')}">
+          <input class="project-input ed-img" data-i="${i}" data-f="series" value="${escapeHtml(img.series || '')}" placeholder="series / collection">
           <input class="project-input ed-img" data-i="${i}" data-f="medium" value="${img.medium || ''}" placeholder="${t('settings.gallery.medium')}">
           <input class="project-input ed-img" data-i="${i}" data-f="year" type="number" value="${img.year || ''}" placeholder="${t('settings.credits.year')}">
           <input class="project-input ed-img" data-i="${i}" data-f="dimensions" value="${img.dimensions || ''}" placeholder="dimensions (e.g. 24 x 36 inches)">

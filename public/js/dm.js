@@ -167,9 +167,8 @@ async function initClient() {
         if (tabName === 'projects') loadProjectGroups()
       })
     })
-    await loadConversations()
     await resolveArtistDomains()
-    renderConversationList()
+    await loadConversations()
     await updateUnreadBadge()
   }
 

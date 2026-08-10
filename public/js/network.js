@@ -399,7 +399,7 @@ async function init() {
         listEl.querySelector('#supporter-sentinel')?.remove()
 
         const myAddr = window.getWalletAddress?.()?.toLowerCase()
-        listEl.innerHTML += supItems.map(s => {
+        const supHtml = supItems.map(s => {
           const addr = s.id
           const isMe = myAddr && addr.toLowerCase() === myAddr
           const followBtn = registryAddress && !isMe
@@ -413,6 +413,7 @@ async function init() {
           const ogUrl = `https://${escapeHtml(s.handle)}.ourpraxis.network/og/index.png`
           return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><img src="${ogUrl}" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt=""><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}</div></div></a></li>`
         }).join('')
+        listEl.insertAdjacentHTML('beforeend', supHtml)
 
         // add sentinel for infinite scroll
         if (!supAllLoaded) {
@@ -484,8 +485,9 @@ async function init() {
   // default to list view
   switchView('list')
 
-  // delegate follow + dm button clicks
-  listEl.addEventListener('click', (e) => {
+  if (!listEl._delegated) {
+    listEl._delegated = true
+    listEl.addEventListener('click', (e) => {
     const followBtn = e.target.closest('.follow-btn')
     if (followBtn) { e.preventDefault(); e.stopPropagation(); toggleFollow(followBtn.dataset.followAddr); return }
 
@@ -496,6 +498,7 @@ async function init() {
     }
 
   })
+  }
 
   // clean up old load more buttons (replaced by IntersectionObserver)
   document.getElementById('load-more-btn')?.remove()

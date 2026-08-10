@@ -740,9 +740,44 @@ function renderLibraryActivity(item, resolve) {
 
 // --- Bookmark server sync (localStorage base in utils.js) ---
 let _bookmarkToken = ''
-window.addEventListener('wallet-connected', () => { _bookmarkToken = '' })
-window.addEventListener('wallet-disconnected', () => { _bookmarkToken = '' })
+window.addEventListener('wallet-connected', () => { _bookmarkToken = ''; _bookmarkCryptoKey = null; _bookmarkKeyDerived = false })
+window.addEventListener('wallet-disconnected', () => { _bookmarkToken = ''; _bookmarkCryptoKey = null; _bookmarkKeyDerived = false })
+window.addEventListener('bookmarks-changed', (e) => { if (e.detail) _pushBookmarksToServer(e.detail) })
 let _bookmarkKeyDerived = false
+let _bookmarkCryptoKey = null
+
+function _bmHexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substr(i, 2), 16)
+  return bytes
+}
+function _bmBytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function _bmEncrypt(plaintext) {
+  if (!_bookmarkCryptoKey) throw new Error('bookmarks locked')
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const enc = new TextEncoder()
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _bookmarkCryptoKey, enc.encode(plaintext))
+  const cipherBytes = new Uint8Array(cipherBuf)
+  const encrypted = cipherBytes.slice(0, -16)
+  const tag = cipherBytes.slice(-16)
+  return `${_bmBytesToHex(iv)}:${_bmBytesToHex(encrypted)}:${_bmBytesToHex(tag)}`
+}
+
+async function _bmDecrypt(data) {
+  if (!_bookmarkCryptoKey) throw new Error('bookmarks locked')
+  const [ivHex, encHex, tagHex] = data.split(':')
+  const iv = _bmHexToBytes(ivHex)
+  const encrypted = _bmHexToBytes(encHex)
+  const tag = _bmHexToBytes(tagHex)
+  const combined = new Uint8Array(encrypted.length + tag.length)
+  combined.set(encrypted)
+  combined.set(tag, encrypted.length)
+  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _bookmarkCryptoKey, combined)
+  return new TextDecoder().decode(plainBuf)
+}
 let _bookmarkSyncing = false
 
 function _localBookmarkKey() {
@@ -757,12 +792,13 @@ function _setLocalBookmarks(bookmarks) {
 }
 
 async function _pushBookmarksToServer(bookmarks) {
-  if (!_bookmarkToken || !_bookmarkKeyDerived) return
+  if (!_bookmarkToken || !_bookmarkKeyDerived || !_bookmarkCryptoKey) return
   try {
+    const encrypted = await _bmEncrypt(JSON.stringify(bookmarks))
     await fetch('/api/bookmarks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_bookmarkToken}` },
-      body: JSON.stringify({ data: JSON.stringify(bookmarks) }),
+      body: JSON.stringify({ data: encrypted }),
     })
   } catch { /* server push failed, localStorage still has the data */ }
 }
@@ -822,13 +858,8 @@ async function syncBookmarks() {
       })
       const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
       const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
-      const keyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
-
-      await fetch('/api/journal-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_bookmarkToken}` },
-        body: JSON.stringify({ key: keyHex }),
-      })
+      const keyBytes = new Uint8Array(hashBuffer)
+      _bookmarkCryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
       _bookmarkKeyDerived = true
     }
 
@@ -838,8 +869,9 @@ async function syncBookmarks() {
     })
     const result = await res.json()
 
-    if (result.data) {
-      const serverBookmarks = JSON.parse(result.data)
+    if (result.encrypted) {
+      const decrypted = await _bmDecrypt(result.encrypted)
+      const serverBookmarks = JSON.parse(decrypted)
       const localBookmarks = getBookmarks()
 
       // merge: union by id, prefer newer savedAt

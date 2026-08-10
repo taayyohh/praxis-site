@@ -1280,17 +1280,8 @@ export function removeBookmark(itemId) {
   _syncBookmarksToServer(bm)
 }
 
-// push bookmarks to server (encrypted with journal key if session exists)
-async function _syncBookmarksToServer(bookmarks) {
-  try {
-    const token = sessionStorage.getItem('praxis:journal-token') || sessionStorage.getItem('praxis-auth-token')
-    if (!token) return
-    await fetch('/api/bookmarks', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ data: JSON.stringify(bookmarks) }),
-    })
-  } catch {}
+function _syncBookmarksToServer(bookmarks) {
+  window.dispatchEvent(new CustomEvent('bookmarks-changed', { detail: bookmarks }))
 }
 
 // --- Shared media bottom sheet (used by library + feed) ---

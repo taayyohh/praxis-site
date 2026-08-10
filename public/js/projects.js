@@ -35,7 +35,7 @@ async function init() {
   const hubAddress = projectsData.dataset.hub || PRAXIS_DEFAULT_ADDR
   const statusEl = document.getElementById('collab-status')
 
-  if (!hubAddress) { statusEl.textContent = t('projects.notDeployed'); return }
+  if (!hubAddress) { if (statusEl) statusEl.textContent = t('projects.notDeployed'); return }
 
   const publicClient = await getPublicClient()
 

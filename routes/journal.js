@@ -1,33 +1,22 @@
-// Journal routes — encrypted journal CRUD + bookmarks
+// Journal routes — E2E encrypted journal CRUD + bookmarks
+// All encryption/decryption happens client-side. Server stores opaque encrypted blobs.
 import { readFileSync, existsSync, readdirSync, unlinkSync, renameSync, statSync, mkdirSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, readFile as readFileAsync, writeFile as writeFileAsync } from 'fs/promises'
 import { join } from 'path'
-import { JournalKeySchema, JournalPostSchema, JournalPutSchema, JournalPatchSchema, BookmarksPutSchema, validate } from '../lib/schemas.js'
+import { JournalPostSchema, JournalPutSchema, JournalPatchSchema, BookmarksPutSchema, validate } from '../lib/schemas.js'
 
 /** @param {object} ctx @returns {Promise<boolean>} */
 export async function handleJournal(ctx) {
   const { req, res, url, path, method,
-    json, body, getSession, encryptEntry, decryptEntry,
+    json, body, getSession,
     JOURNAL_DIR, siteDir } = ctx
 
   function parseJson(raw) { try { return JSON.parse(raw) } catch { return null } }
 
-  // journal key — wallet-auth only, stores AES key on session
-  if (path === '/api/journal-key' && method === 'POST') {
-    const session = getSession(req)
-    if (!session) { json(res, { error: 'wallet auth required for journal' }, 403); return true }
-    const raw = parseJson(await body(req))
-    const v = validate(JournalKeySchema, raw)
-    if (v.error) { json(res, { error: v.error }, v.status); return true }
-    session.journalKey = v.data.key
-    ctx._persistSessions()
-    json(res, { ok: true }); return true
-  }
-
-  // journal CRUD — requires journalKey on session
+  // journal list
   if (path === '/api/journal' && method === 'GET') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     if (!existsSync(JOURNAL_DIR)) { json(res, { items: [], archived: [], total: 0, page: 1 }); return true }
     try {
       const showArchived = url.searchParams.get('archived') === '1'
@@ -47,23 +36,24 @@ export async function handleJournal(ctx) {
     } catch { json(res, { items: [], total: 0, page: 1 }); return true }
   }
 
+  // journal entry GET — returns raw encrypted blob for client-side decryption
   if (path.startsWith('/api/journal/') && method === 'GET') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
     const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const filePath = join(JOURNAL_DIR, `${safe}.enc`)
     if (!existsSync(filePath)) { json(res, { error: 'not found' }, 404); return true }
     try {
       const raw = await readFileAsync(filePath, 'utf8')
-      const content = decryptEntry(raw, session.journalKey)
-      json(res, { file: safe, content }); return true
-    } catch (e) { console.error('[journal] decrypt error:', safe, e.message); json(res, { file: safe, error: 'decryption failed — re-enter your journal password' }, 500); return true }
+      json(res, { file: safe, encrypted: raw }); return true
+    } catch (e) { console.error('[journal] read error:', safe, e.message); json(res, { file: safe, error: 'read failed' }, 500); return true }
   }
 
+  // journal create — content is already encrypted by client
   if (path === '/api/journal' && method === 'POST') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const raw = parseJson(await body(req))
     const v = validate(JournalPostSchema, raw)
     if (v.error) { json(res, { error: v.error }, v.status); return true }
@@ -71,14 +61,14 @@ export async function handleJournal(ctx) {
     const safe = data.filename.toLowerCase().replace(/[^a-z0-9-]/g, '')
     if (!safe) { json(res, { error: 'invalid filename' }, 400); return true }
     if (!existsSync(JOURNAL_DIR)) mkdirSync(JOURNAL_DIR, { recursive: true })
-    const encrypted = encryptEntry(data.content, session.journalKey)
-    await writeFileAsync(join(JOURNAL_DIR, `${safe}.enc`), encrypted)
+    await writeFileAsync(join(JOURNAL_DIR, `${safe}.enc`), data.content)
     json(res, { ok: true, file: safe }); return true
   }
 
+  // journal update — content is already encrypted by client
   if (path.startsWith('/api/journal/') && method === 'PUT') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
     const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const filePath = join(JOURNAL_DIR, `${safe}.enc`)
@@ -86,14 +76,14 @@ export async function handleJournal(ctx) {
     const raw = parseJson(await body(req))
     const v = validate(JournalPutSchema, raw)
     if (v.error) { json(res, { error: v.error }, v.status); return true }
-    const encrypted = encryptEntry(v.data.content, session.journalKey)
-    await writeFileAsync(filePath, encrypted)
+    await writeFileAsync(filePath, v.data.content)
     json(res, { ok: true }); return true
   }
 
+  // journal archive/unarchive
   if (path.startsWith('/api/journal/') && method === 'PATCH') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
     const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const raw = parseJson(await body(req))
@@ -110,9 +100,10 @@ export async function handleJournal(ctx) {
     }
   }
 
+  // journal delete (archived only)
   if (path.startsWith('/api/journal/') && method === 'DELETE') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'journal locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const file = decodeURIComponent(path.slice('/api/journal/'.length))
     const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const archivedPath = join(JOURNAL_DIR, `${safe}.enc.archived`)
@@ -121,29 +112,27 @@ export async function handleJournal(ctx) {
     json(res, { ok: true }); return true
   }
 
-  // --- Bookmarks (encrypted, same pattern as journal) ---
+  // --- Bookmarks (E2E encrypted, same pattern) ---
   if (path === '/api/bookmarks' && method === 'GET') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'bookmarks locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const bookmarksPath = join(siteDir, 'bookmarks.enc')
     if (!existsSync(bookmarksPath)) { json(res, { data: null }); return true }
     try {
       const raw = await readFileAsync(bookmarksPath, 'utf8')
-      const decrypted = decryptEntry(raw, session.journalKey)
-      json(res, { data: decrypted }); return true
+      json(res, { encrypted: raw }); return true
     } catch { json(res, { data: null }); return true }
   }
 
   if (path === '/api/bookmarks' && method === 'PUT') {
     const session = getSession(req)
-    if (!session?.journalKey) { json(res, { error: 'bookmarks locked' }, 403); return true }
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
     const raw = parseJson(await body(req))
     const v = validate(BookmarksPutSchema, raw)
     if (v.error) { json(res, { error: v.error }, v.status); return true }
-    const encrypted = encryptEntry(v.data.data, session.journalKey)
     const _bmPath = join(siteDir, 'bookmarks.enc')
     const _bmTmp = _bmPath + '.tmp'
-    await writeFileAsync(_bmTmp, encrypted)
+    await writeFileAsync(_bmTmp, v.data.data)
     renameSync(_bmTmp, _bmPath)
     json(res, { ok: true }); return true
   }

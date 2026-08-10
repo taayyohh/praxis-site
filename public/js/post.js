@@ -652,7 +652,7 @@ async function initOnchainPosts() {
     const imgMatch = rawContent.match(/!\[[^\]]*\]\s*\(([^)]+)\)/)
     const vidMatch = rawContent.match(/\[video:\s*[^\]]*\]\s*\(([^)]+)\)/)
     if (imgMatch) {
-      const src = imgMatch[1].includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgMatch[1])}&w=200` : imgMatch[1]
+      const src = imgMatch[1].includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgMatch[1])}&w=200` : escapeHtml(imgMatch[1])
       thumbHtml = `<div style="flex-shrink:0;width:100px;height:80px;margin-left:1em;border-radius:4px;overflow:hidden;background:var(--border)">
         <img src="${src}" loading="lazy" style="width:100%;height:100%;object-fit:cover" alt="">
       </div>`
@@ -686,7 +686,7 @@ async function initOnchainPosts() {
     if (vidMatch) {
       mediaTopHtml = `<div class="feed-media-wrap"><div class="video-lazy" data-src="${escapeHtml(vidMatch[1])}" style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center"><video src="${escapeHtml(vidMatch[1])}" preload="metadata" style="width:100%;height:100%;object-fit:cover;pointer-events:none"></video></div></div>`
     } else if (imgMatch) {
-      const src = imgMatch[1].includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgMatch[1])}&w=800` : imgMatch[1]
+      const src = imgMatch[1].includes('/api/ipfs-proxy/') ? `/api/img?url=${encodeURIComponent(imgMatch[1])}&w=800` : escapeHtml(imgMatch[1])
       mediaTopHtml = `<img src="${src}" loading="lazy" style="width:100%;display:block;max-height:250px;object-fit:cover" alt="">`
     }
 

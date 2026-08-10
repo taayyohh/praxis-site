@@ -16,9 +16,49 @@ import {
 } from './fountain.js'
 
 let journalToken = sessionStorage.getItem('praxis:journal-token') || ''
-window.addEventListener('wallet-connected', () => { journalToken = ''; try { sessionStorage.removeItem('praxis:journal-token') } catch {} })
-window.addEventListener('wallet-disconnected', () => { journalToken = ''; try { sessionStorage.removeItem('praxis:journal-token') } catch {} })
+let _journalCryptoKey = null
+let _journalKeyHex = ''
+window.addEventListener('wallet-connected', () => { journalToken = ''; _journalCryptoKey = null; _journalKeyHex = ''; try { sessionStorage.removeItem('praxis:journal-token') } catch {} })
+window.addEventListener('wallet-disconnected', () => { journalToken = ''; _journalCryptoKey = null; _journalKeyHex = ''; try { sessionStorage.removeItem('praxis:journal-token') } catch {} })
 let _journalWalletListenersBound = false
+
+function _hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substr(i, 2), 16)
+  return bytes
+}
+function _bytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function _deriveKey(keyHex) {
+  const keyBytes = _hexToBytes(keyHex)
+  return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+}
+
+async function _encryptE2E(plaintext) {
+  if (!_journalCryptoKey) throw new Error('journal locked')
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const enc = new TextEncoder()
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _journalCryptoKey, enc.encode(plaintext))
+  const cipherBytes = new Uint8Array(cipherBuf)
+  const encrypted = cipherBytes.slice(0, -16)
+  const tag = cipherBytes.slice(-16)
+  return `${_bytesToHex(iv)}:${_bytesToHex(encrypted)}:${_bytesToHex(tag)}`
+}
+
+async function _decryptE2E(data) {
+  if (!_journalCryptoKey) throw new Error('journal locked')
+  const [ivHex, encHex, tagHex] = data.split(':')
+  const iv = _hexToBytes(ivHex)
+  const encrypted = _hexToBytes(encHex)
+  const tag = _hexToBytes(tagHex)
+  const combined = new Uint8Array(encrypted.length + tag.length)
+  combined.set(encrypted)
+  combined.set(tag, encrypted.length)
+  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _journalCryptoKey, combined)
+  return new TextDecoder().decode(plainBuf)
+}
 
 // Re-authenticate when session expires (server restart, 24h expiry)
 async function reauthJournal() {
@@ -41,12 +81,8 @@ async function reauthJournal() {
 
     const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
     const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
-    const keyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
-    await fetch('/api/journal-key', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-      body: JSON.stringify({ key: keyHex }),
-    })
+    _journalKeyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+    _journalCryptoKey = await _deriveKey(_journalKeyHex)
     return true
   } catch { return false }
 }
@@ -249,15 +285,8 @@ async function initJournal() {
 
       const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
       const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
-      const keyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
-
-      const keyRes = await fetch('/api/journal-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-        body: JSON.stringify({ key: keyHex }),
-      })
-      const keyData = await keyRes.json()
-      if (keyData.error) { if (unlockStatus) unlockStatus.textContent = keyData.error; return }
+      _journalKeyHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+      _journalCryptoKey = await _deriveKey(_journalKeyHex)
 
       loadEntries()
     } catch (e) {
@@ -349,7 +378,6 @@ async function initJournal() {
       loadEntries()
     })
 
-    // edit buttons — detect mode from content
     contentEl.querySelectorAll('.journal-edit-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const file = btn.dataset.file
@@ -358,17 +386,18 @@ async function initJournal() {
             headers: { 'Authorization': `Bearer ${journalToken}` },
           })
           const data = await res.json()
-          if (data.content) {
-            if (isStagePlayContent(data.content)) {
-              showScriptEditor(file, extractStagePlayBody(data.content), 'stageplay')
-            } else if (isFountainContent(data.content)) {
-              showScriptEditor(file, extractFountainBody(data.content), 'screenplay')
-            } else if (hasTypedScriptLines(data.content)) {
-              showScriptEditor(file, data.content, 'screenplay')
-            } else if (looksLikeFountain(data.content)) {
-              showScriptEditor(file, data.content, 'screenplay')
+          if (data.encrypted) {
+            const content = await _decryptE2E(data.encrypted)
+            if (isStagePlayContent(content)) {
+              showScriptEditor(file, extractStagePlayBody(content), 'stageplay')
+            } else if (isFountainContent(content)) {
+              showScriptEditor(file, extractFountainBody(content), 'screenplay')
+            } else if (hasTypedScriptLines(content)) {
+              showScriptEditor(file, content, 'screenplay')
+            } else if (looksLikeFountain(content)) {
+              showScriptEditor(file, content, 'screenplay')
             } else {
-              showEditor(file, data.content)
+              showEditor(file, content)
             }
           } else if (data.error) {
             contentEl.innerHTML = `<div style="max-width:680px;padding:2em 0"><p style="color:var(--muted)">${escapeHtml(data.error)}</p><button class="buy-btn" style="margin-top:1em;font-size:0.8em;padding:0.3em 1ch" onclick="loadEntries()">back</button></div>`
@@ -565,11 +594,12 @@ async function initJournal() {
         const renamed = _savedFile && newFilename !== _savedFile
 
         async function doSave() {
+          const encrypted = await _encryptE2E(content)
           if (renamed) {
             const r1 = await fetch('/api/journal', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-              body: JSON.stringify({ filename: newFilename, content }),
+              body: JSON.stringify({ filename: newFilename, content: encrypted }),
             })
             if (r1.status === 401 || r1.status === 403) return 403
             await fetch(`/api/journal/${encodeURIComponent(_savedFile)}`, {
@@ -583,7 +613,7 @@ async function initJournal() {
             const r = await fetch(url, {
               method,
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-              body: JSON.stringify({ filename: newFilename, content }),
+              body: JSON.stringify({ filename: newFilename, content: encrypted }),
             })
             if (r.status === 401 || r.status === 403) return 403
             if (!r.ok) { console.error('journal save error:', r.status); return r.status }
@@ -1295,11 +1325,12 @@ async function initJournal() {
         const renamed = _savedFile && newFilename !== _savedFile
 
         async function doSave() {
+          const encrypted = await _encryptE2E(content)
           if (renamed) {
             const r1 = await fetch('/api/journal', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-              body: JSON.stringify({ filename: newFilename, content }),
+              body: JSON.stringify({ filename: newFilename, content: encrypted }),
             })
             if (r1.status === 401 || r1.status === 403) return 403
             await fetch(`/api/journal/${encodeURIComponent(_savedFile)}`, {
@@ -1313,7 +1344,7 @@ async function initJournal() {
             const r = await fetch(url, {
               method,
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${journalToken}` },
-              body: JSON.stringify({ filename: newFilename, content }),
+              body: JSON.stringify({ filename: newFilename, content: encrypted }),
             })
             if (r.status === 401 || r.status === 403) return 403
             if (!r.ok) { console.error('journal save error:', r.status); return r.status }

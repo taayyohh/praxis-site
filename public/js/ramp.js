@@ -2864,7 +2864,7 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
   ]).then(([bal, prices]) => {
     if (_destroyed) return
     _walletBalance = bal
-    _ethPriceUsd = prices?.USD || null
+    _ethPriceUsd = prices?.usd || null
     render()
   })
 

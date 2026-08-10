@@ -83,7 +83,7 @@ const TEMPLATE_LABELS = {
 }
 
 function getTemplateLabel(moduleType, moduleEntry) {
-  if (moduleEntry?.customLabel) return moduleEntry.customLabel
+  if (moduleEntry?.customLabel) return escapeForHtml(moduleEntry.customLabel)
   const overrides = TEMPLATE_LABELS[templateName] || {}
   return overrides[moduleType] || MODULE_REGISTRY[moduleType]?.label || moduleType
 }

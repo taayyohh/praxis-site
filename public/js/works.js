@@ -274,7 +274,7 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
         try { localStorage.setItem(_acceptedCollabsKey, JSON.stringify([..._acceptedCollabs])) } catch {}
         btn.closest('.pending-collab')?.remove()
         _worksLoaded = false
-        loadWorks()
+        init()
       })
     })
     contentEl.querySelectorAll('.collab-dismiss').forEach(btn => {
@@ -329,7 +329,7 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
           }
           // Reload works to show the accepted collab in the grid
           _worksLoaded = false
-          loadWorks()
+          init()
         } catch (e) {
           btn.textContent = e.message || 'error'
           btn.disabled = false
