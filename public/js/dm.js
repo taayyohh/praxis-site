@@ -151,22 +151,26 @@ async function initClient() {
     window._xmtpLockHolder = true
   }
 
+  let _dmUIBound = false
   async function _initDmUI() {
     document.getElementById('dm-connect-prompt').style.display = 'none'
     document.getElementById('dm-new-section').style.display = 'block'
     document.getElementById('dm-tabs').style.display = 'flex'
-    document.getElementById('dm-new-btn').addEventListener('click', toggleNewPicker)
-    document.querySelectorAll('.dm-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.dm-tab').forEach(t => t.classList.remove('dm-tab-active'))
-        tab.classList.add('dm-tab-active')
-        const tabName = tab.dataset.tab
-        document.getElementById('dm-convo-list').style.display = tabName === 'dms' ? 'block' : 'none'
-        document.getElementById('dm-project-list').style.display = tabName === 'projects' ? 'block' : 'none'
-        document.getElementById('dm-new-section').style.display = tabName === 'dms' ? 'block' : 'none'
-        if (tabName === 'projects') loadProjectGroups()
+    if (!_dmUIBound) {
+      _dmUIBound = true
+      document.getElementById('dm-new-btn').addEventListener('click', toggleNewPicker)
+      document.querySelectorAll('.dm-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.dm-tab').forEach(t => t.classList.remove('dm-tab-active'))
+          tab.classList.add('dm-tab-active')
+          const tabName = tab.dataset.tab
+          document.getElementById('dm-convo-list').style.display = tabName === 'dms' ? 'block' : 'none'
+          document.getElementById('dm-project-list').style.display = tabName === 'projects' ? 'block' : 'none'
+          document.getElementById('dm-new-section').style.display = tabName === 'dms' ? 'block' : 'none'
+          if (tabName === 'projects') loadProjectGroups()
+        })
       })
-    })
+    }
     await resolveArtistDomains()
     await loadConversations()
     await updateUnreadBadge()

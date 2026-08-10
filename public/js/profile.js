@@ -206,9 +206,9 @@ async function showProfile(addr) {
           </div>
           ${!isMe ? `
             <div style="display:flex;gap:0.4ch;align-items:center">
-              <button class="profile-btn profile-btn-follow follow-btn${isFollowing ? ' profile-btn-active' : ''}" data-follow-addr="${addr}">${isFollowing ? 'following' : 'follow'}</button>
-              ${isMutual ? `<button class="profile-btn profile-btn-dm dm-btn" data-dm-addr="${addr}" data-dm-domain="${escapeHtml(artist.domain)}">dm</button>` : ''}
-              <button class="profile-btn profile-btn-block profile-block-btn${isBlocked(addr) ? ' profile-btn-blocked' : ''}" data-block-addr="${addr}">${isBlocked(addr) ? 'unblock' : 'block'}</button>
+              <button class="profile-btn profile-btn-follow follow-btn${isFollowing ? ' profile-btn-active' : ''}" data-follow-addr="${escapeHtml(addr)}">${isFollowing ? 'following' : 'follow'}</button>
+              ${isMutual ? `<button class="profile-btn profile-btn-dm dm-btn" data-dm-addr="${escapeHtml(addr)}" data-dm-domain="${escapeHtml(artist.domain)}">dm</button>` : ''}
+              <button class="profile-btn profile-btn-block profile-block-btn${isBlocked(addr) ? ' profile-btn-blocked' : ''}" data-block-addr="${escapeHtml(addr)}">${isBlocked(addr) ? 'unblock' : 'block'}</button>
             </div>
           ` : ''}
         </div>

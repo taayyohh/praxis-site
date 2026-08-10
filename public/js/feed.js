@@ -116,6 +116,7 @@ registerPage('feed', () => {
 
 async function initFeed() {
   await i18nReady()
+  if (!feedContainer) return
   const blogAddr = feedContainer.dataset.blog
 
   // show feed when wallet connects

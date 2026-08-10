@@ -1381,7 +1381,7 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
       }
 
       if (status === STATUS.error && errorMessage) {
-        html += `<div class="ramp-status-msg error">${errorMessage}</div>`
+        html += `<div class="ramp-status-msg error">${escapeHtml(errorMessage)}</div>`
       }
       if (status === STATUS.matching) {
         html += `<div class="ramp-status-msg"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> finding liquidity…</div>`
@@ -1403,17 +1403,17 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
         const payUrl = _buildPaymentDeepLink(paymentInstructions, currentAmount)
         html += `<div class="ramp-target">
           <div class="ramp-target-label">Send to</div>
-          <div class="ramp-target-value">${paymentInstructions.target}</div>
+          <div class="ramp-target-value">${escapeHtml(paymentInstructions.target)}</div>
           ${payUrl ? `<div class="ramp-qr-wrap"><div id="ramp-qr"></div></div>
-          <a href="${payUrl}" target="_blank" rel="noopener" class="ramp-target-link">open ${paymentInstructions.method} ↗</a>` : ''}
+          <a href="${escapeHtml(payUrl)}" target="_blank" rel="noopener" class="ramp-target-link">open ${escapeHtml(paymentInstructions.method)} ↗</a>` : ''}
         </div>`
       }
 
       html += `<div class="ramp-instructions">
         <h4>Instructions</h4>
         <ul>
-          <li><i class="ph ph-check"></i><span>Send <strong>exactly ${paymentInstructions.amount} ${PAYMENT_METHOD_CURRENCIES[paymentInstructions.methodId] || 'USD'}</strong> in a <strong>single</strong> payment</span></li>
-          <li><i class="ph ph-check"></i><span>Use your <strong>${paymentInstructions.method}</strong> app to pay</span></li>
+          <li><i class="ph ph-check"></i><span>Send <strong>exactly ${escapeHtml(paymentInstructions.amount)} ${PAYMENT_METHOD_CURRENCIES[paymentInstructions.methodId] || 'USD'}</strong> in a <strong>single</strong> payment</span></li>
+          <li><i class="ph ph-check"></i><span>Use your <strong>${escapeHtml(paymentInstructions.method)}</strong> app to pay</span></li>
           <li><i class="ph ph-check"></i><span><strong>Double-check</strong> the recipient before confirming</span></li>
           <li><i class="ph ph-x"></i><span>Do <strong>not</strong> include Peer, PeerAuth, crypto, or related terms in the memo</span></li>
         </ul>
@@ -1493,7 +1493,7 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
           <div class="ramp-verify-item-content"><div class="ramp-verify-item-title">Received USDC on Base</div><div class="ramp-verify-item-sub">bridged to Optimism</div></div>
         </div>
       </div>`
-      html += `<div class="ramp-status-msg success">${successMessage || `Received ~${quoteData?.amount || currentAmount} USDC`}</div>`
+      html += `<div class="ramp-status-msg success">${escapeHtml(successMessage) || `Received ~${escapeHtml(String(quoteData?.amount || currentAmount))} USDC`}</div>`
       html += `<button id="ramp-cancel" class="ramp-primary-btn">DONE</button>`
       html += `</div>`
     }

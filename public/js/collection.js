@@ -17,15 +17,10 @@ let _credsHasMore = false
 let _currentAddr = null
 let _domainMap = {}
 const _OBJ_CACHE_MAX = 1000
-let _mediaDetails = {}
-let _projectMap = {}
-let _coverArtMap = {}
-const _mediaTypeCache = {}
-function _boundedSet(obj, key, val, max = _OBJ_CACHE_MAX) {
-  const keys = Object.keys(obj)
-  if (keys.length >= max) { for (let i = 0; i < keys.length - max + 1; i++) delete obj[keys[i]] }
-  obj[key] = val
-}
+const _mediaDetails = new Map()
+const _projectMap = new Map()
+const _coverArtMap = new Map()
+const _mediaTypeCache = new Map()
 let _mediaLoadingMore = false
 let _credsLoadingMore = false
 let _allMediaPurchases = []
@@ -124,9 +119,9 @@ async function loadCollection(addr, statusEl, contentEl) {
   _credsCursor = null
   _credsHasMore = false
   _currentAddr = addr
-  _mediaDetails = {}
-  _projectMap = {}
-  _coverArtMap = {}
+  _mediaDetails.clear()
+  _projectMap.clear()
+  _coverArtMap.clear()
   _mediaLoadingMore = false
   _credsLoadingMore = false
   _allMediaPurchases = []
@@ -152,8 +147,8 @@ async function loadCollection(addr, statusEl, contentEl) {
         _mediaHasMore = parsed.mediaHasMore || false
         _credsCursor = parsed.credsCursor || null
         _credsHasMore = parsed.credsHasMore || false
-        _mediaDetails = parsed.mediaDetails || {}
-        _projectMap = parsed.projectMap || {}
+        _mediaDetails.clear(); for (const [k, v] of Object.entries(parsed.mediaDetails || {})) _mediaDetails.set(k, v)
+        _projectMap.clear(); for (const [k, v] of Object.entries(parsed.projectMap || {})) _projectMap.set(k, v)
         _domainMap = parsed.domainMap || {}
       } catch { /* fall through to fetch */ }
     }
@@ -179,7 +174,7 @@ async function loadCollection(addr, statusEl, contentEl) {
       try {
         const items = await fetchByIds('mediaListings', 'MediaDetails', mediaIds, F.mediaListingFull)
         for (const m of items) {
-          _boundedSet(_mediaDetails, m.id, m)
+          _lruSet(_mediaDetails, m.id, m)
         }
       } catch (e) {
         console.warn('could not fetch media details:', e)
@@ -192,7 +187,7 @@ async function loadCollection(addr, statusEl, contentEl) {
       try {
         const items = await fetchByIds('projects', 'Projects', projectIds, F.projectSummary)
         for (const p of items) {
-          _boundedSet(_projectMap, p.id, p)
+          _lruSet(_projectMap, p.id, p)
         }
       } catch (e) {
         console.warn('could not fetch project details:', e)
@@ -201,12 +196,12 @@ async function loadCollection(addr, statusEl, contentEl) {
     }
 
     // annotate relistings — mark superseded media
-    if (Object.keys(_mediaDetails).length > 0) {
-      annotateRelistings(Object.values(_mediaDetails))
+    if (_mediaDetails.size > 0) {
+      annotateRelistings([..._mediaDetails.values()])
     }
 
     // resolve artist domains from media details
-    const artistAddresses = Object.values(_mediaDetails).map(m => m.artist).filter(Boolean)
+    const artistAddresses = [..._mediaDetails.values()].map(m => m.artist).filter(Boolean)
     _domainMap = await resolveAddresses(query, artistAddresses)
 
     // fetch cover art + resolve album names
@@ -215,7 +210,7 @@ async function loadCollection(addr, statusEl, contentEl) {
     const preGroups = []
     const tempAlbumMap = new Map()
     for (const p of mediaPurchases) {
-      const cid = _coverArtMap[p.mediaId] || ''
+      const cid = _coverArtMap.get(p.mediaId) || ''
       if (cid) {
         if (!tempAlbumMap.has(cid)) tempAlbumMap.set(cid, { items: [], coverCid: cid })
         tempAlbumMap.get(cid).items.push(p)
@@ -226,8 +221,8 @@ async function loadCollection(addr, statusEl, contentEl) {
 
     // sort: active listings first, superseded at bottom
     mediaPurchases.sort((a, b) => {
-      const aSuperseded = _mediaDetails[a.mediaId]?.superseded ? 1 : 0
-      const bSuperseded = _mediaDetails[b.mediaId]?.superseded ? 1 : 0
+      const aSuperseded = _mediaDetails.get(a.mediaId)?.superseded ? 1 : 0
+      const bSuperseded = _mediaDetails.get(b.mediaId)?.superseded ? 1 : 0
       return aSuperseded - bSuperseded
     })
 
@@ -250,14 +245,14 @@ async function loadCollection(addr, statusEl, contentEl) {
     // Build artist map for sidebar
     _artistMap = new Map()
     for (const purchase of mediaPurchases) {
-      const media = _mediaDetails[purchase.mediaId]
+      const media = _mediaDetails.get(purchase.mediaId)
       if (!media?.artist) continue
       const addr = media.artist.toLowerCase()
       if (!_artistMap.has(addr)) _artistMap.set(addr, { domain: '', mediaCount: 0, credCount: 0 })
       _artistMap.get(addr).mediaCount++
     }
     for (const cred of allCreds) {
-      const proposer = _projectMap[cred.projectId]?.proposer
+      const proposer = _projectMap.get(cred.projectId)?.proposer
       const addr = (proposer || '').toLowerCase()
       if (!addr) continue
       if (!_artistMap.has(addr)) _artistMap.set(addr, { domain: '', mediaCount: 0, credCount: 0 })
@@ -456,14 +451,14 @@ async function loadCollection(addr, statusEl, contentEl) {
         if (shouldCache) {
           // M12: cache structured data instead of rendered HTML
           try {
-            const dataStr = JSON.stringify({ purchases: mediaPurchases, credentials, mediaCursor: _mediaCursor, mediaHasMore: _mediaHasMore, credsCursor: _credsCursor, credsHasMore: _credsHasMore, mediaDetails: _mediaDetails, projectMap: _projectMap, domainMap: _domainMap })
+            const dataStr = JSON.stringify({ purchases: mediaPurchases, credentials, mediaCursor: _mediaCursor, mediaHasMore: _mediaHasMore, credsCursor: _credsCursor, credsHasMore: _credsHasMore, mediaDetails: Object.fromEntries(_mediaDetails), projectMap: Object.fromEntries(_projectMap), domainMap: _domainMap })
             if (dataStr.length <= 100 * 1024) setCache(collectionCacheKey, dataStr, TTL.medium)
           } catch {}
         }
       })
     } else if (shouldCache) {
       try {
-        const dataStr = JSON.stringify({ purchases: mediaPurchases, credentials, mediaCursor: _mediaCursor, mediaHasMore: _mediaHasMore, credsCursor: _credsCursor, credsHasMore: _credsHasMore, mediaDetails: _mediaDetails, projectMap: _projectMap, domainMap: _domainMap })
+        const dataStr = JSON.stringify({ purchases: mediaPurchases, credentials, mediaCursor: _mediaCursor, mediaHasMore: _mediaHasMore, credsCursor: _credsCursor, credsHasMore: _credsHasMore, mediaDetails: Object.fromEntries(_mediaDetails), projectMap: Object.fromEntries(_projectMap), domainMap: _domainMap })
         if (dataStr.length <= 100 * 1024) setCache(collectionCacheKey, dataStr, TTL.medium)
       } catch {}
     }
@@ -481,24 +476,24 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
   // collect unique CIDs that need detection
   const cidToMediaIds = {} // cid -> [mediaId, ...]
   for (const purchase of mediaPurchases) {
-    const media = _mediaDetails[purchase.mediaId]
+    const media = _mediaDetails.get(purchase.mediaId)
     if (!media?.ipfsCid) continue
     const cid = media.ipfsCid
     if (!cidToMediaIds[cid]) cidToMediaIds[cid] = []
     cidToMediaIds[cid].push(purchase.mediaId)
 
     // use indexed contentType from Ponder if available (skip HEAD request)
-    if (!_mediaTypeCache[cid] && media.contentType) {
-      _boundedSet(_mediaTypeCache, cid, classifyContentType(media.contentType), 500)
+    if (!_mediaTypeCache.get(cid) && media.contentType) {
+      _lruSet(_mediaTypeCache, cid, classifyContentType(media.contentType))
     }
   }
 
   // Batch-resolve unknown CIDs via server endpoint (persistent cache, no client HEAD)
-  const uniqueCids = Object.keys(cidToMediaIds).filter(cid => !_mediaTypeCache[cid])
+  const uniqueCids = Object.keys(cidToMediaIds).filter(cid => !_mediaTypeCache.get(cid))
   if (uniqueCids.length > 0) {
     const resolved = await resolveContentTypes(uniqueCids)
     for (const [cid, ct] of Object.entries(resolved)) {
-      _boundedSet(_mediaTypeCache, cid, classifyContentType(ct), 500)
+      _lruSet(_mediaTypeCache, cid, classifyContentType(ct))
     }
   }
 
@@ -509,12 +504,12 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
   const items = grid.querySelectorAll('.collection-item[data-media-id]')
   for (const item of items) {
     const mediaId = item.dataset.mediaId
-    const media = _mediaDetails[mediaId]
+    const media = _mediaDetails.get(mediaId)
     if (!media?.ipfsCid) {
       item.dataset.mediaType = 'other'
       continue
     }
-    const type = _mediaTypeCache[media.ipfsCid] || 'other'
+    const type = _mediaTypeCache.get(media.ipfsCid) || 'other'
     item.dataset.mediaType = type
 
     // Upgrade video cards that were initially rendered as audio/placeholder
@@ -612,7 +607,7 @@ function renderFilteredCollection(contentEl) {
   // Filter purchases by artist
   const filteredMedia = _selectedArtist
     ? _allMediaPurchases.filter(p => {
-        const media = _mediaDetails[p.mediaId]
+        const media = _mediaDetails.get(p.mediaId)
         return media?.artist?.toLowerCase() === _selectedArtist
       })
     : _allMediaPurchases
@@ -620,7 +615,7 @@ function renderFilteredCollection(contentEl) {
   // Filter credentials by artist
   const filteredCreds = _selectedArtist
     ? _allCredentials.filter(c => {
-        const proj = _projectMap[c.projectId]
+        const proj = _projectMap.get(c.projectId)
         return proj?.proposer?.toLowerCase() === _selectedArtist
       })
     : _allCredentials
@@ -757,7 +752,7 @@ function applySearchFilter(contentEl) {
     mediaGrid.querySelectorAll('.collection-item[data-media-id]').forEach(el => {
       if (!q) { el.style.display = ''; return }
       const mediaId = el.dataset.mediaId
-      const media = _mediaDetails[mediaId]
+      const media = _mediaDetails.get(mediaId)
       const title = (media?.title || '').toLowerCase()
       const artist = media ? (resolveDomain(_domainMap, media.artist) || '').toLowerCase() : ''
       el.style.display = (title.includes(q) || artist.includes(q)) ? '' : 'none'
@@ -806,11 +801,11 @@ function setupInfiniteScroll(contentEl, addr) {
         _mediaHasMore = result.hasMore
 
         if (result.items.length > 0) {
-          const newIds = [...new Set(result.items.map(p => p.mediaId).filter(id => !_mediaDetails[id]))]
+          const newIds = [...new Set(result.items.map(p => p.mediaId).filter(id => !_mediaDetails.has(id)))]
           if (newIds.length > 0) {
             try {
               const items = await fetchByIds('mediaListings', 'MediaDetails', newIds, F.mediaListingFull)
-              for (const m of items) _boundedSet(_mediaDetails, m.id, m)
+              for (const m of items) _lruSet(_mediaDetails, m.id, m)
             } catch (e) { console.warn('media details:', e) }
           }
           await fetchCoverArt(result.items, _domainMap)
@@ -848,11 +843,11 @@ function setupInfiniteScroll(contentEl, addr) {
         _credsCursor = result.cursor
         _credsHasMore = result.hasMore
 
-        const newProjIds = [...new Set(result.items.map(c => c.projectId).filter(id => !_projectMap[id]))]
+        const newProjIds = [...new Set(result.items.map(c => c.projectId).filter(id => !_projectMap.get(id)))]
         if (newProjIds.length > 0) {
           try {
             const items = await fetchByIds('projects', 'Projects', newProjIds, F.projectSummary)
-            for (const p of items) _boundedSet(_projectMap, p.id, p)
+            for (const p of items) _lruSet(_projectMap, p.id, p)
           } catch (e) { console.warn('project details:', e) }
         }
 
@@ -922,7 +917,7 @@ async function fetchByIds(entityName, queryName, ids, fields) {
 function buildArtistStamps(mediaPurchases, credentials) {
   const artistMap = new Map() // artistAddr -> { count, domain, name, firstDate, mediaIds }
   for (const p of mediaPurchases) {
-    const m = _mediaDetails[p.mediaId]
+    const m = _mediaDetails.get(p.mediaId)
     if (!m) continue
     const addr = m.artist?.toLowerCase() || ''
     if (!addr) continue
@@ -949,7 +944,7 @@ function buildArtistStamps(mediaPurchases, credentials) {
   }
   // Add project credentials
   for (const c of credentials) {
-    const proj = _projectMap[c.projectId]
+    const proj = _projectMap.get(c.projectId)
     const proposer = proj?.proposer?.toLowerCase() || ''
     if (!proposer) continue
     if (!artistMap.has(proposer)) {
@@ -989,7 +984,7 @@ async function resolveAlbumInfo(albums) {
   // First pass: resolve domains and kick off fetches
   for (const album of albums) {
     const first = album.items[0]
-    const media = _mediaDetails[first.mediaId]
+    const media = _mediaDetails.get(first.mediaId)
     const artistAddr = media?.artist?.toLowerCase() || ''
     const domain = _domainMap[artistAddr] || ''
     album._domain = domain // stash for matching
@@ -1009,7 +1004,7 @@ async function resolveAlbumInfo(albums) {
     const domain = album._domain || ''
     const siteData = _lruGet(_artistSiteCache, domain)
     if (!siteData?.modules) continue
-    const trackTitles = new Set(album.items.map(p => (_mediaDetails[p.mediaId]?.title || '').toLowerCase()).filter(Boolean))
+    const trackTitles = new Set(album.items.map(p => (_mediaDetails.get(p.mediaId)?.title || '').toLowerCase()).filter(Boolean))
     for (let mi = 0; mi < siteData.modules.length; mi++) {
       const mod = siteData.modules[mi]
       if (mod.type !== 'music') continue
@@ -1033,7 +1028,7 @@ function renderMediaItems(mediaPurchases) {
   const albumGroups = new Map() // coverCid -> { items, artistDomain, coverUrl }
   const singles = []
   for (const purchase of mediaPurchases) {
-    const coverCid = _coverArtMap[purchase.mediaId] || ''
+    const coverCid = _coverArtMap.get(purchase.mediaId) || ''
     if (coverCid) {
       if (!albumGroups.has(coverCid)) albumGroups.set(coverCid, { items: [], coverCid })
       albumGroups.get(coverCid).items.push(purchase)
@@ -1056,7 +1051,7 @@ function renderMediaItems(mediaPurchases) {
   // Render albums
   for (const album of albums) {
     const first = album.items[0]
-    const media = _mediaDetails[first.mediaId]
+    const media = _mediaDetails.get(first.mediaId)
     const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
     const artistLink = `https://${escapeHtml(artistDomain)}`
     const coverUrl = ipfsUrl(album.coverCid)
@@ -1071,8 +1066,8 @@ function renderMediaItems(mediaPurchases) {
     const albumLink = (info.aliasName && info.name) ? `https://${escapeHtml(artistDomain)}/music/${slugify(info.aliasName)}/${slugify(info.name)}` : `/art?media=${first.mediaId}`
 
     // Build play-all queue
-    const queueTracks = sorted.filter(p => _mediaDetails[p.mediaId]?.ipfsCid).map(p => {
-      const m = _mediaDetails[p.mediaId]
+    const queueTracks = sorted.filter(p => _mediaDetails.get(p.mediaId)?.ipfsCid).map(p => {
+      const m = _mediaDetails.get(p.mediaId)
       return { src: ipfsUrl(m.ipfsCid), title: m.title || '', artist: aliasName, art: `/api/img?url=${encodeURIComponent(coverUrl)}&w=200` }
     })
     const queueData = encodeURIComponent(JSON.stringify(queueTracks))
@@ -1109,7 +1104,7 @@ function renderMediaItems(mediaPurchases) {
         <div class="album-tracklist">`
       for (let i = 0; i < sorted.length; i++) {
         const p = sorted[i]
-        const m = _mediaDetails[p.mediaId]
+        const m = _mediaDetails.get(p.mediaId)
         const trackTitle = m ? escapeHtml(m.title) : `#${p.mediaId}`
         const trackUrl = m?.ipfsCid ? ipfsUrl(m.ipfsCid) : ''
         html += `<div class="album-track">
@@ -1128,14 +1123,14 @@ function renderMediaItems(mediaPurchases) {
 
   // Render singles
   for (const purchase of singles) {
-    const media = _mediaDetails[purchase.mediaId]
+    const media = _mediaDetails.get(purchase.mediaId)
     const title = media ? escapeHtml(media.title) : `#${purchase.mediaId}`
     const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
     const artistLink = `https://${escapeHtml(artistDomain)}`
     const mediaUrl = media?.ipfsCid ? ipfsUrl(media.ipfsCid) : ''
-    const coverCid = _coverArtMap[purchase.mediaId] || ''
+    const coverCid = _coverArtMap.get(purchase.mediaId) || ''
     const coverUrl = coverCid ? ipfsUrl(coverCid) : ''
-    const cachedType = media?.ipfsCid ? (_mediaTypeCache[media.ipfsCid] || (media.contentType?.startsWith('video/') ? 'video' : 'audio')) : 'other'
+    const cachedType = media?.ipfsCid ? (_mediaTypeCache.get(media.ipfsCid) || (media.contentType?.startsWith('video/') ? 'video' : 'audio')) : 'other'
     const isSuperseded = media?.superseded === true
     const artDetailUrl = isSuperseded ? `/art?media=${media.activeListingId}` : `/art?media=${purchase.mediaId}`
     const escapedArtist = escapeHtml(artistDomain || '')
@@ -1188,7 +1183,7 @@ function renderCredentialItems(allCreds) {
   // projectType is now a string directly from the contract
   let html = ''
   for (const cred of allCreds) {
-    const proj = _projectMap[cred.projectId]
+    const proj = _projectMap.get(cred.projectId)
     const title = proj ? escapeHtml(proj.title) : `project #${cred.projectId}`
     const type = proj ? (proj.projectType || '') : ''
     const role = cred.tokenType === 3 ? 'contributor' : 'producer'
@@ -1214,7 +1209,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
   try {
     const pc = await getPublicClient()
     const mediaAbi = [{ name: 'media', type: 'function', inputs: [{ name: 'mediaId', type: 'uint256' }], outputs: [{ name: 'artist', type: 'address' }, { name: 'title', type: 'string' }, { name: 'ipfsCid', type: 'string' }, { name: 'metadataCid', type: 'string' }, { name: 'price', type: 'uint256' }, { name: 'maxSupply', type: 'uint256' }, { name: 'totalMinted', type: 'uint256' }], stateMutability: 'view' }]
-    const uniqueIds = [...new Set(mediaPurchases.map(p => p.mediaId).filter(id => !_coverArtMap[id]))]
+    const uniqueIds = [...new Set(mediaPurchases.map(p => p.mediaId).filter(id => !_coverArtMap.get(id)))]
     if (uniqueIds.length === 0) return
 
     const calls = uniqueIds.map(id => ({

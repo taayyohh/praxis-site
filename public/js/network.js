@@ -958,12 +958,12 @@ function appendSponsoredRow(container, code, redeemed = false, publicClient, myA
   row.dataset.code = code
   if (redeemed) {
     row.innerHTML = `
-      <span class="invite-code redeemed">${code.slice(0, 8)}...</span>
+      <span class="invite-code redeemed">${escapeHtml(code.slice(0, 8))}...</span>
       <span class="invite-badge" style="color:var(--dim)">redeemed</span>
     `
   } else {
     row.innerHTML = `
-      <span class="invite-code">${code.slice(0, 8)}...</span>
+      <span class="invite-code">${escapeHtml(code.slice(0, 8))}...</span>
       <span class="invite-badge sponsored">sponsored</span>
       <button class="invite-action copy-sp-btn">${t('invites.copyLink')}</button>
       <button class="invite-action revoke-sp-btn" style="color:#ef4444">revoke</button>

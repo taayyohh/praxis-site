@@ -1,5 +1,5 @@
 import { t } from './i18n.js'
-import { getWalletProvider, boundedSet, escapeHtml } from './utils.js'
+import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken } from './utils.js'
 
 const status = document.getElementById('wallet-status')
 const topBarWallet = document.getElementById('top-bar-wallet')
@@ -242,7 +242,7 @@ function clearBridgeAddress() {
 
 function showAddress(address) {
   connectedAddress = address
-  sessionStorage.removeItem('wallet-disconnected')
+  localStorage.removeItem('wallet-disconnected')
   try { localStorage.setItem('praxis-wallet', address.toLowerCase()) } catch {}
   // Publish to the cross-origin bridge so other Praxis sites can pick it up.
   try { setBridgeAddress(address) } catch {}
@@ -875,8 +875,12 @@ function showAudiencePrompt(address, registryAddress, publicClient) {
 }
 
 async function disconnect() {
+  const token = getCachedAuthToken()
+  if (token) {
+    try { fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {}) } catch {}
+  }
   connectedAddress = null
-  sessionStorage.setItem('wallet-disconnected', '1')
+  localStorage.setItem('wallet-disconnected', '1')
   try { localStorage.removeItem('praxis-wallet') } catch {}
   try { clearBridgeAddress() } catch {}
 
@@ -1033,7 +1037,7 @@ async function connect(forceChoice = false) {
 
 // auto-connect logic — check embedded wallet
 async function autoConnect() {
-  if (sessionStorage.getItem('wallet-disconnected')) {
+  if (localStorage.getItem('wallet-disconnected')) {
     showConnectButton()
     return
   }
@@ -1120,7 +1124,7 @@ async function autoConnect() {
   // /api/wallet/restore-token passes. The destination origin then redeems
   // the token at /api/wallet/retrieve to get the encrypted blob and prompts
   // unlock — no signature required.
-  if (!localStorage.getItem('praxis-embedded-addr') && !sessionStorage.getItem('wallet-disconnected')) {
+  if (!localStorage.getItem('praxis-embedded-addr') && !localStorage.getItem('wallet-disconnected')) {
     try {
       const { address: bridgeAddr, restoreToken } = await getBridgeAddressWithToken()
       if (bridgeAddr && restoreToken) {

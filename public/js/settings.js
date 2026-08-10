@@ -1119,10 +1119,10 @@ async function showConvertToOrgModal() {
   const domain = window._siteData?.domain || location.hostname
   dialog.innerHTML = `
     <h3 style="margin:0 0 0.5em;font-size:1em">convert to organization</h3>
-    <p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${domain}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>
+    <p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${escapeHtml(domain)}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>
     <div style="margin-bottom:0.8em">
       <label style="font-size:0.8em;color:var(--muted)">organization name</label>
-      <input type="text" id="org-convert-name" class="project-input" value="${handle}" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
+      <input type="text" id="org-convert-name" class="project-input" value="${escapeHtml(handle)}" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
     </div>
     <div id="org-convert-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin-bottom:0.6em"></div>
     <div style="display:flex;gap:0.5em">

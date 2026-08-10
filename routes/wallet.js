@@ -257,7 +257,7 @@ export async function handleWallet(ctx) {
       if (!primaryValid) { json(res, { error: 'invalid primary signature' }, 401); return true }
       const secondaryValid = await verifyMessage({ address: secondary.toLowerCase(), message, signature: secondarySig })
       if (!secondaryValid) { json(res, { error: 'invalid secondary signature' }, 401); return true }
-      const wl = loadWalletLinks()
+      const wl = await loadWalletLinks()
       const pKey = primary.toLowerCase()
       const sKey = secondary.toLowerCase()
       if (wl.reverse[sKey] && wl.reverse[sKey] !== pKey) {
@@ -284,13 +284,13 @@ export async function handleWallet(ctx) {
       if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)) {
         json(res, { error: 'valid address required' }, 400); return true
       }
-      const entry = getWalletLinkEntry(addr)
+      const entry = await getWalletLinkEntry(addr)
       if (entry.links) {
         json(res, { primary: addr, linked: entry.links }); return true
       }
       if (entry.reverse) {
         const primary = entry.reverse
-        const primaryEntry = getWalletLinkEntry(primary)
+        const primaryEntry = await getWalletLinkEntry(primary)
         json(res, { primary, linked: primaryEntry.links || [] }); return true
       }
       json(res, { primary: null, linked: [] }); return true

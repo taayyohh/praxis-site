@@ -215,7 +215,7 @@ async function initLibrary() {
       const match = items.find(i => String(i.id) === itemParam)
       if (match) {
         const link = match.ipfsCid ? ipfsUrl(match.ipfsCid) : match.url
-        if (link && !link.startsWith('/') && !match.ipfsCid) {
+        if (link && !link.startsWith('/') && !match.ipfsCid && /^https?:\/\//i.test(link)) {
           window.open(link, '_blank')
         } else {
           openMediaSheet({ url: link, title: match.title || '', author: match.author || '', itemId: match.id || '' })
@@ -240,7 +240,7 @@ async function initLibrary() {
           }
           const link = el.dataset.link
           // URL-only items (no IPFS file) open in a new tab
-          if (link && !link.startsWith('/') && !link.startsWith(location.origin)) {
+          if (link && !link.startsWith('/') && !link.startsWith(location.origin) && /^https?:\/\//i.test(link)) {
             window.open(link, '_blank')
           } else {
             openMediaSheet({ url: link, title: el.dataset.title || '', author: el.dataset.author || '', itemId: itemId || '' })

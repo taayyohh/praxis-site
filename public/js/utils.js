@@ -23,6 +23,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('wallet-disconnected', () => { _authToken = '' })
 }
 
+export function getCachedAuthToken() { return _authToken }
+
 export async function getAuthToken() {
   if (_authToken) return _authToken
   let addr = window.getWalletAddress?.()
@@ -231,17 +233,18 @@ export function renderMedia(url, filename) {
 }
 
 function renderByExt(url, ext) {
+  const safeUrl = escapeHtml(url)
   if (['jpg','jpeg','png','gif','webp','svg','avif'].includes(ext)) {
-    return `<img src="${url}" loading="lazy" style="max-width:100%;margin:0.5em 0">`
+    return `<img src="${safeUrl}" loading="lazy" style="max-width:100%;margin:0.5em 0">`
   }
   if (ext === 'pdf') {
     return renderPdf(url)
   }
   if (['mp3','wav','ogg','flac','aac','m4a','opus'].includes(ext)) {
-    return `<audio src="${url}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
+    return `<audio src="${safeUrl}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
   }
   if (['mp4','webm','mov','mkv','avi'].includes(ext)) {
-    return `<video src="${url}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
+    return `<video src="${safeUrl}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
   }
   return null
 }
@@ -428,22 +431,23 @@ function renderPdf(url) {
 async function detectAndRender(id, url) {
   const el = document.getElementById(id)
   if (!el) return
+  const safeUrl = escapeHtml(url)
   try {
     const res = await fetch(url, { method: 'HEAD' })
     const ct = (res.headers.get('content-type') || '').split(';')[0].trim()
     if (ct.startsWith('image/')) {
-      el.innerHTML = `<img src="${url}" loading="lazy" style="max-width:100%;margin:0.5em 0">`
+      el.innerHTML = `<img src="${safeUrl}" loading="lazy" style="max-width:100%;margin:0.5em 0">`
     } else if (ct === 'application/pdf') {
       el.innerHTML = renderPdf(url)
     } else if (ct.startsWith('audio/')) {
-      el.innerHTML = `<audio src="${url}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
+      el.innerHTML = `<audio src="${safeUrl}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
     } else if (ct.startsWith('video/')) {
-      el.innerHTML = `<video src="${url}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
+      el.innerHTML = `<video src="${safeUrl}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
     } else {
-      el.innerHTML = `<a href="${url}" target="_blank" style="color:var(--accent)">open file (${ct || 'unknown'})</a>`
+      el.innerHTML = `<a href="${safeUrl}" target="_blank" style="color:var(--accent)">open file (${escapeHtml(ct) || 'unknown'})</a>`
     }
   } catch {
-    el.innerHTML = `<a href="${url}" target="_blank" style="color:var(--accent)">open file</a>`
+    el.innerHTML = `<a href="${safeUrl}" target="_blank" style="color:var(--accent)">open file</a>`
   }
 }
 
