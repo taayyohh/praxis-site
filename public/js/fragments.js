@@ -89,7 +89,7 @@ export function listQuery(table, fields, where = '', vars = '', limit = 50, orde
   const orderClause = orderBy ? `, orderBy: "${orderBy}", orderDirection: "${direction}"` : ''
   const varDecl = vars ? `(${vars})` : ''
   return `query ${table}Query${varDecl} {
-    ${table}(${whereClause}, limit: ${limit}${orderClause}) {
+    ${table}(${whereClause}${whereClause ? ', ' : ''}limit: ${limit}${orderClause}) {
       items { ${fields} }
     }
   }`

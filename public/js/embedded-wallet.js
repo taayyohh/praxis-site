@@ -401,17 +401,17 @@ function confirmTransaction(to, value) {
       const { query } = await import('./ponder.js')
       const resolved = await resolveAddresses(query, [to])
       const domain = resolved[to?.toLowerCase()]
-      if (domain) recipientName = domain
+      if (domain) recipientName = domain.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
     } catch {}
 
     // Human-readable context
     const KNOWN_CONTRACTS = {
       '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'one-time network registration fee' },
-      '0x8b8243033c74195bf834664d28d4bfaec899b600': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
+      '0x8f5b0d0f0073a1573f17e37746811672aedde2f8': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
       '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
-      '0x10e4eee065fd2008e754edf317c74deb8a25d208': { name: 'use invite', desc: 'activating your invite code' },
-      '0xf032bd2ebfa4082fe708142487e7064823e9d768': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
-      '0xfb9a48e324904aa69786084af876f00e3b2cc6cf': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
+      '0x23289c228ca0867122dc8855613858c8c3dc707c': { name: 'use invite', desc: 'activating your invite code' },
+      '0xb7a66e7ad464495d22b3a39140bd8d7f10afb3f7': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
+      '0x1781666673b6fb22f59229fb120f14bd97d2edc6': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
       '0x5cddd64f20c69fc2007868476788bc3766c28a0a': { name: 'add to library', desc: 'adding to the shared knowledge base' },
       '0x5cf9e88417a7ce08028d32c44f9b63bc3d960b21': { name: 'treasury', desc: 'interacting with the network treasury' },
     }
@@ -422,7 +422,7 @@ function confirmTransaction(to, value) {
     let title, subtitle, contextHtml
     if (isPurchase) {
       title = 'confirm purchase'
-      subtitle = purchase.title
+      subtitle = (purchase.title || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
       contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">you'll receive a permanent, non-transferable proof of purchase</div>`
     } else if (isDirectSend) {
       title = 'send payment'
@@ -722,7 +722,7 @@ function createEmbeddedProvider(account) {
                   params: [{ from: account.address, to: tx.to, data: tx.data, value: tx.value || '0x0' }] }),
               })
               const estData = await estResp.json()
-              if (estData.result) gas = BigInt(Math.ceil(Number(BigInt(estData.result)) * 1.5))
+              if (estData.result) gas = BigInt(estData.result) * 3n / 2n
             } catch {}
             if (!gas) gas = 200000n // safe fallback
           }
@@ -1103,7 +1103,7 @@ async function showUnlockPrompt() {
     document.body.appendChild(overlay)
 
     // Resolve address to domain name in background
-    if (_storedAddr) {
+    if (_storedAddr && /^0x[0-9a-fA-F]{40}$/.test(_storedAddr)) {
       fetch('/ponder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

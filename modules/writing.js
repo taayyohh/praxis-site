@@ -58,7 +58,7 @@ export default {
               ${badges.join(' ')}
             </div>
             <div style="color:var(--muted);font-size:0.8em;margin-top:0.15em">
-              ${p.publication ? `${esc(p.publication)}` : ''}${p.publication && p.year ? ' -- ' : ''}${p.year || ''}
+              ${p.publication ? `${esc(p.publication)}` : ''}${p.publication && p.year ? ' -- ' : ''}${p.year ? esc(String(p.year)) : ''}
             </div>
             ${metaHtml ? `<div style="margin-top:0.15em">${metaHtml}</div>` : ''}
             ${excerptHtml}
@@ -139,16 +139,16 @@ export default {
   renderHighlights(data) {
     const pubs = data?.publications || []
     if (!pubs.length) return ''
-    return pubs.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(p =>
-      `<div class="credit"><span class="credit-title">${esc(p.title)}</span>${p.publication ? ` <span class="credit-detail">-- ${esc(p.publication)}</span>` : ''}${p.year ? ` <span class="credit-detail">(${p.year})</span>` : ''}</div>`
+    return [...pubs].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(p =>
+      `<div class="credit"><span class="credit-title">${esc(p.title)}</span>${p.publication ? ` <span class="credit-detail">-- ${esc(p.publication)}</span>` : ''}${p.year ? ` <span class="credit-detail">(${esc(String(p.year))})</span>` : ''}</div>`
     ).join('\n')
   },
 
   renderCV(data) {
     if (!data) return ''
-    return (data.publications || [])
+    return [...(data.publications || [])]
       .sort((a, b) => (b.year || 0) - (a.year || 0))
-      .map(p => `<div class="cv-item"><span class="cv-title">${esc(p.title)}</span> <span class="cv-detail">${p.publication ? `-- ${esc(p.publication)}` : ''}${p.year ? `, ${p.year}` : ''}</span></div>`)
+      .map(p => `<div class="cv-item"><span class="cv-title">${esc(p.title)}</span> <span class="cv-detail">${p.publication ? `-- ${esc(p.publication)}` : ''}${p.year ? `, ${esc(String(p.year))}` : ''}</span></div>`)
       .join('\n')
   },
 }

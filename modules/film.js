@@ -102,14 +102,14 @@ export default {
   renderHighlights(data) {
     const works = data?.works || []
     if (!works.length) return ''
-    return works.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(w =>
+    return [...works].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(w =>
       `<div class="credit"><span class="credit-title">${esc(w.title)}</span> <span class="credit-detail">-- ${esc(w.role || '')}${w.director ? `, dir. ${esc(w.director)}` : ''}${w.year ? `, ${esc(w.year)}` : ''}</span></div>`
     ).join('\n')
   },
 
   renderCV(data) {
     if (!data) return ''
-    return (data.works || [])
+    return [...(data.works || [])]
       .sort((a, b) => (b.year || 0) - (a.year || 0))
       .map(w => `<div class="cv-item"><span class="cv-title">${esc(w.title)}</span> <span class="cv-detail">-- ${esc(w.role)}${w.year ? `, ${esc(w.year)}` : ''}</span></div>`)
       .join('\n')

@@ -1,5 +1,5 @@
 import { F } from './fragments.js'
-import { createWalletClient, custom } from './vendor.js'
+import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
 import { t } from './i18n.js'
@@ -684,7 +684,7 @@ async function init() {
 
               if (!await window.ensureOptimism?.()) { buyStatus.textContent = t('network.connectFirst'); return }
 
-              const totalWei = BigInt(Math.ceil(totalEth * 1e18))
+              const totalWei = parseEther(totalEth.toFixed(18))
 
               buyStatus.textContent = t('network.confirmPayment')
               const payAccount = await window.ensureAuthorized?.() || addr
@@ -849,7 +849,7 @@ async function init() {
         const priceData = await priceRes.json()
         if (sigData.error) { statusEl.textContent = `signature error: ${sigData.error}`; return }
         signature = sigData.signature
-        deployFeeWei = BigInt(Math.ceil(parseFloat(priceData.eth) * 1e18))
+        deployFeeWei = parseEther(String(priceData.eth))
       } catch (e) {
         statusEl.textContent = 'could not get registration signature'
         return

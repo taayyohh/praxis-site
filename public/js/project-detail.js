@@ -619,7 +619,7 @@ async function initProjectDetail() {
           functionName: fn, args, account: currentAccount,
           ...(value ? { value } : {}),
         })
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('transaction timed out')), 15000))
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('transaction timed out')), 60000))
         const hash = await Promise.race([action, timeout])
         if (statusEl) statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
         await publicClient.waitForTransactionReceipt({ hash })
@@ -1081,7 +1081,6 @@ async function loadCommentReplies(commentIds, domainMap, resolve) {
       }
     }
   } catch (e) { console.warn('comment replies error:', e?.message) }
-  }
 }
 
 function renderCommentForm(blogAddr, projectId, projectTitle) {

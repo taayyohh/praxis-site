@@ -612,7 +612,7 @@ audio.addEventListener('ended', () => {
   if (_repeatMode === 'all' && _queue.length > 0) {
     _queueIdx = 0
     const track = _queue[0]
-    playTrack(track.src, track.title, track.artist)
+    playTrack(track.src, track.title, track.artist, track.art)
     return
   }
   playBtn.innerHTML = '<i class="ph ph-play"></i>'

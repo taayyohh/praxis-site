@@ -277,7 +277,14 @@ export function loadPdfJs() {
 const _pdfThumbCache = new Map()
 const _PDF_THUMB_MAX_CACHE = 100
 export async function renderPdfThumbnail(url, width = 300) {
-  if (_pdfThumbCache.has(url)) return _pdfThumbCache.get(url).cloneNode(true)
+  if (_pdfThumbCache.has(url)) {
+    const cached = _pdfThumbCache.get(url)
+    const clone = document.createElement('canvas')
+    clone.width = cached.width; clone.height = cached.height
+    clone.style.cssText = cached.style.cssText
+    clone.getContext('2d').drawImage(cached, 0, 0)
+    return clone
+  }
 
   const pdfjsLib = await loadPdfJs()
   const res = await fetch(url)

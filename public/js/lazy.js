@@ -70,16 +70,17 @@ function loadRamp() {
   return _loaded.ramp
 }
 
-window.peerOnrampOptimism = async (...args) => {
+const _onrampStub = async (...args) => {
   await loadRamp()
-  // ramp.js overwrites window.peerOnrampOptimism with the real function
-  return window.peerOnrampOptimism?.(...args)
+  if (window.peerOnrampOptimism !== _onrampStub) return window.peerOnrampOptimism?.(...args)
 }
+window.peerOnrampOptimism = _onrampStub
 
-window.peerOfframpOptimism = async (...args) => {
+const _offrampStub = async (...args) => {
   await loadRamp()
-  return window.peerOfframpOptimism?.(...args)
+  if (window.peerOfframpOptimism !== _offrampStub) return window.peerOfframpOptimism?.(...args)
 }
+window.peerOfframpOptimism = _offrampStub
 
 // Pre-load pay.js when buy buttons exist on the page (after SPA navigation or initial load)
 // so the delegated click handler in pay.js is ready before the user clicks

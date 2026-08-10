@@ -723,7 +723,7 @@ function attachLoadMore(container, artistAddr) {
           attachBuyHandlers(grid)
           // apply current filter to new items
           if (_activeFilter !== 'all') {
-            grid.querySelectorAll('.works-item').forEach(item => {
+            grid.querySelectorAll('.works-card').forEach(item => {
               item.style.display = item.dataset.type === _activeFilter ? '' : 'none'
             })
           }

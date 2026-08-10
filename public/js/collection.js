@@ -1232,7 +1232,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
       const [artist, , trackCid, metadataCid] = result.result
       const id = uniqueIds[i]
       if (metadataCid) {
-        _boundedSet(_coverArtMap, id, metadataCid)
+        _lruSet(_coverArtMap, id, metadataCid)
       } else {
         const artistDom = domainMap[artist.toLowerCase()]
         if (artistDom) {
@@ -1268,7 +1268,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
                 for (const track of (album.tracks || [])) {
                   if (track.src?.includes(trackCid)) {
                     const artMatch = album.art?.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
-                    if (artMatch) _boundedSet(_coverArtMap, id, artMatch[1])
+                    if (artMatch) _lruSet(_coverArtMap, id, artMatch[1])
                   }
                 }
               }

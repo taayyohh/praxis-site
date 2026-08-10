@@ -288,7 +288,7 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   }
   if (album.links && Object.keys(album.links).length) {
     for (const [platform, url] of Object.entries(album.links)) {
-      if (url) html += `<a href="${url}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.85em;padding:0.3em 1ch;border:1px solid var(--border);text-decoration:none">${escapeHtml(platform)}</a>`
+      if (url && /^https?:\/\//i.test(url)) html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.85em;padding:0.3em 1ch;border:1px solid var(--border);text-decoration:none">${escapeHtml(platform)}</a>`
     }
   }
   html += `</div>`

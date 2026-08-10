@@ -37,7 +37,7 @@ export default {
     for (const cat of orderedCats) {
       const items = groups[cat]
       html += `<h3>${esc(cat)}</h3>`
-      for (const c of items.sort((a, b) => (b.year || 0) - (a.year || 0))) {
+      for (const c of [...items].sort((a, b) => (b.year || 0) - (a.year || 0))) {
         const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')
         const dirCol = [c.director ? `dir. ${c.director}` : '', c.org, c.productionCompany, c.venue].filter(Boolean).join(', ')
         html += `<div class="credit">`
@@ -55,7 +55,7 @@ export default {
   renderHighlights(data) {
     const d = normalizeData(data)
     if (!d.items.length) return ''
-    return d.items.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(c => {
+    return [...d.items].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3).map(c => {
       const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')
       const dirCol = [c.org, c.director ? `dir. ${c.director}` : ''].filter(Boolean).join(', ')
       return `<div class="credit"><span class="credit-title">${esc(c.title)}</span><span class="credit-role">${esc(roleCol)}</span><span class="credit-dir">${esc(dirCol)}</span></div>`
@@ -65,7 +65,7 @@ export default {
   renderCV(data) {
     const d = normalizeData(data)
     if (!d.items.length) return ''
-    return d.items
+    return [...d.items]
       .sort((a, b) => (b.year || 0) - (a.year || 0))
       .map(c => {
         const roleCol = [c.role, c.characterName ? `(${c.characterName})` : ''].filter(Boolean).join(' ')

@@ -142,7 +142,7 @@ export default {
     if (!data) return ''
     const items = Array.isArray(data) ? data : data.items || []
     if (!items.length) return ''
-    const recent = items.sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3)
+    const recent = [...items].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 3)
     const idxMap = recent.map(r => items.indexOf(r))
 
     function renderThumb(v, idx) {

@@ -684,7 +684,7 @@ const collectionHtml = `<div id="collection-page">
 <p id="collection-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
 <div id="collection-content"></div>
 </div>`
-out('collection', wrap(collectionHtml, 'collection', '/collection', '/og/collection.svg', { description: `media and credentials collected by ${site.name}.` }))
+out('collection', wrap(collectionHtml, 'collection', '/collection', '/og/collection.png', { description: `media and credentials collected by ${site.name}.` }))
 
 // works for sale page
 const worksHtml = `<div id="works-page">
@@ -808,7 +808,7 @@ const messagesHtml = `<div id="messages-page">
   </div>
 </div>
 </div>`
-out('messages', wrap(messagesHtml, 'messages', '/messages', '/og/messages.svg', { noindex: true }))
+out('messages', wrap(messagesHtml, 'messages', '/messages', '/og/messages.png', { noindex: true }))
 
 // project detail page (JS-rendered from Ponder)
 const praxisAddr = site.network?.praxisAddress || ''
@@ -818,7 +818,7 @@ const projectDetailHtml = `
   <p id="project-detail-loading"><span class="praxis-loader"></span></p>
   <div id="project-detail-content"></div>
 </div>`
-out('project', wrap(projectDetailHtml, 'project', '/project', '/og/project.svg', { description: 'creative project on praxis.' }))
+out('project', wrap(projectDetailHtml, 'project', '/project', '/og/project.png', { description: 'creative project on praxis.' }))
 
 // 3. build blog index (rendered by post.js)
 
@@ -832,7 +832,7 @@ const blogIndexHtml = fill(blogIndexTpl, {})
 const blogDataScript = blogCollections.length > 0
   ? `<script>window.__blogCollections=${blogCollectionsJson};window.__blogPostCollections=${blogPostCollectionsJson};</script>`
   : ''
-out('blog', wrap(blogDataScript + blogIndexHtml, 'blog', '/blog', '/og/blog.svg', { description: `blog posts by ${site.name}.` }))
+out('blog', wrap(blogDataScript + blogIndexHtml, 'blog', '/blog', '/og/blog.png', { description: `blog posts by ${site.name}.` }))
 
 // Build per-collection blog pages (e.g. /blog/essays/)
 for (const col of blogCollections) {
@@ -844,7 +844,7 @@ for (const col of blogCollections) {
   <div id="blog-collection-filters"></div>
   <div id="onchain-posts"></div>
 </section>`
-  out(`blog/${colSlug}`, wrap(colDataScript + colHtml, col.name, `/blog/${colSlug}`, '/og/blog.svg', { description: col.description || `${col.name} — blog posts by ${site.name}.` }))
+  out(`blog/${colSlug}`, wrap(colDataScript + colHtml, col.name, `/blog/${colSlug}`, '/og/blog.png', { description: col.description || `${col.name} — blog posts by ${site.name}.` }))
 }
 
 // 4b. build post page (JS-rendered from Ponder)
@@ -854,7 +854,7 @@ const postPageHtml = `
   <div id="post-content"></div>
 </article>
 `
-out('post', wrap(postPageHtml, 'post', '/post', '/og/post.svg', { description: `blog post by ${site.name}.` }))
+out('post', wrap(postPageHtml, 'post', '/post', '/og/post.png', { description: `blog post by ${site.name}.` }))
 
 // 5. build reading list
 
@@ -1087,7 +1087,7 @@ const manifestJson = {
 writeFileSync(join(distDir, 'manifest.json'), JSON.stringify(manifestJson, null, 2))
 
 // 12. copy service worker to dist (must be at root for scope)
-try { copyFileSync(join(__dirname, 'public', 'sw.js'), join(distDir, 'sw.js')) } catch {}
+try { cpSync(join(import.meta.dirname, 'public', 'sw.js'), join(distDir, 'sw.js')) } catch {}
 
 console.log(`built ${getEnabledModules().length} modules + network pages (template: ${templateName})`)
 

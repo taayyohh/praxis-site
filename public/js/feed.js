@@ -259,7 +259,7 @@ async function loadFeed(myAddr, blogAddr) {
     // Background freshness check — lightweight: compare latest global post timestamp
     // Uses cached follow list from the feed cache itself (no extra getAllFollows call)
     // Skip if a loadFeed is already in flight (avoids redundant 6-query cascade)
-    if (!_feedLoadInFlight) {
+    {
       ;(async () => {
         try {
           const authors = cached.authors || [myAddr]
