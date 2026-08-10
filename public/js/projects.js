@@ -2056,8 +2056,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
         if (geoData[0]) {
           const lat = Math.round(parseFloat(geoData[0].lat) * 1e7)
           const lng = Math.round(parseFloat(geoData[0].lon) * 1e7)
-          const latBig = BigInt(lat < 0 ? lat + 2**64 : lat)
-          const lngBig = BigInt(lng < 0 ? lng + 2**64 : lng)
+          const latBig = lat < 0 ? BigInt(lat) + (1n << 64n) : BigInt(lat)
+          const lngBig = lng < 0 ? BigInt(lng) + (1n << 64n) : BigInt(lng)
           geoResults[loc] = (latBig << 64n) | lngBig
         }
       } catch {}
@@ -2132,8 +2132,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           const lat = Math.round(detectedLat * 1e7)
           const lng = Math.round(detectedLng * 1e7)
           // pack into uint128: upper 64 = lat, lower 64 = lng
-          const latBig = BigInt(lat < 0 ? lat + 2**64 : lat) // handle negative as uint64
-          const lngBig = BigInt(lng < 0 ? lng + 2**64 : lng)
+          const latBig = lat < 0 ? BigInt(lat) + (1n << 64n) : BigInt(lat)
+          const lngBig = lng < 0 ? BigInt(lng) + (1n << 64n) : BigInt(lng)
           locationPacked = (latBig << 64n) | lngBig
           // store display format: "Name|lat,lng,radius"
           locInput.dataset.locationDisplay = `${locationStr}|${detectedLat.toFixed(7)},${detectedLng.toFixed(7)},${locationRadius}`

@@ -5,8 +5,8 @@ import { esc } from './shared.js'
 const safeUrl = u => {
   if (typeof u !== 'string' || !u) return ''
   const trimmed = u.trim()
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) return ''
-  return esc(trimmed)
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return esc(trimmed)
+  return ''
 }
 export default {
   type: 'writing',
@@ -31,7 +31,7 @@ export default {
         if (p.mediaId !== undefined && p.mediaId !== null) {
           const priceEth = p.mediaPrice ? (Number(p.mediaPrice) / 1e18) : 0
           const priceLabel = priceEth > 0 ? `${priceEth} ETH` : 'free'
-          buyHtml = `<button class="track-buy-btn" data-media-id="${p.mediaId}" data-price="${p.mediaPrice || '0'}" data-eth-wei="${p.mediaPrice || '0'}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer">${priceLabel}</button>`
+          buyHtml = `<button class="track-buy-btn" data-media-id="${esc(String(p.mediaId))}" data-price="${esc(String(p.mediaPrice || '0'))}" data-eth-wei="${esc(String(p.mediaPrice || '0'))}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.7em;padding:0.1em 0.6ch;cursor:pointer">${priceLabel}</button>`
         }
         const badges = []
         if (p.type) badges.push(`<span style="color:var(--muted);font-size:0.7em;border:1px solid var(--border);padding:0.1em 0.4ch;border-radius:2px">${esc(p.type)}</span>`)

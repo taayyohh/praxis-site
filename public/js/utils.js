@@ -448,9 +448,8 @@ async function detectAndRender(id, url) {
 }
 
 export function escapeHtml(s) {
-  const d = document.createElement('div')
-  d.textContent = s
-  return d.innerHTML
+  if (typeof s !== 'string') return ''
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
 // Shared markdown renderer — escapes HTML first for XSS safety, then applies

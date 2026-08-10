@@ -16,10 +16,16 @@ let _credsCursor = null
 let _credsHasMore = false
 let _currentAddr = null
 let _domainMap = {}
+const _OBJ_CACHE_MAX = 1000
 let _mediaDetails = {}
 let _projectMap = {}
 let _coverArtMap = {}
 const _mediaTypeCache = {}
+function _boundedSet(obj, key, val, max = _OBJ_CACHE_MAX) {
+  const keys = Object.keys(obj)
+  if (keys.length >= max) { for (let i = 0; i < keys.length - max + 1; i++) delete obj[keys[i]] }
+  obj[key] = val
+}
 let _mediaLoadingMore = false
 let _credsLoadingMore = false
 let _allMediaPurchases = []
@@ -173,7 +179,7 @@ async function loadCollection(addr, statusEl, contentEl) {
       try {
         const items = await fetchByIds('mediaListings', 'MediaDetails', mediaIds, F.mediaListingFull)
         for (const m of items) {
-          _mediaDetails[m.id] = m
+          _boundedSet(_mediaDetails, m.id, m)
         }
       } catch (e) {
         console.warn('could not fetch media details:', e)
@@ -186,7 +192,7 @@ async function loadCollection(addr, statusEl, contentEl) {
       try {
         const items = await fetchByIds('projects', 'Projects', projectIds, F.projectSummary)
         for (const p of items) {
-          _projectMap[p.id] = p
+          _boundedSet(_projectMap, p.id, p)
         }
       } catch (e) {
         console.warn('could not fetch project details:', e)
@@ -483,12 +489,7 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
 
     // use indexed contentType from Ponder if available (skip HEAD request)
     if (!_mediaTypeCache[cid] && media.contentType) {
-      const cacheKeys = Object.keys(_mediaTypeCache)
-      if (cacheKeys.length > 500) {
-        const toRemove = cacheKeys.slice(0, Math.floor(cacheKeys.length / 2))
-        for (const k of toRemove) delete _mediaTypeCache[k]
-      }
-      _mediaTypeCache[cid] = classifyContentType(media.contentType)
+      _boundedSet(_mediaTypeCache, cid, classifyContentType(media.contentType), 500)
     }
   }
 
@@ -497,12 +498,7 @@ async function detectMediaTypes(mediaPurchases, contentEl) {
   if (uniqueCids.length > 0) {
     const resolved = await resolveContentTypes(uniqueCids)
     for (const [cid, ct] of Object.entries(resolved)) {
-      const cacheKeys = Object.keys(_mediaTypeCache)
-      if (cacheKeys.length > 500) {
-        const toRemove = cacheKeys.slice(0, Math.floor(cacheKeys.length / 2))
-        for (const k of toRemove) delete _mediaTypeCache[k]
-      }
-      _mediaTypeCache[cid] = classifyContentType(ct)
+      _boundedSet(_mediaTypeCache, cid, classifyContentType(ct), 500)
     }
   }
 
@@ -814,7 +810,7 @@ function setupInfiniteScroll(contentEl, addr) {
           if (newIds.length > 0) {
             try {
               const items = await fetchByIds('mediaListings', 'MediaDetails', newIds, F.mediaListingFull)
-              for (const m of items) _mediaDetails[m.id] = m
+              for (const m of items) _boundedSet(_mediaDetails, m.id, m)
             } catch (e) { console.warn('media details:', e) }
           }
           await fetchCoverArt(result.items, _domainMap)
@@ -856,7 +852,7 @@ function setupInfiniteScroll(contentEl, addr) {
         if (newProjIds.length > 0) {
           try {
             const items = await fetchByIds('projects', 'Projects', newProjIds, F.projectSummary)
-            for (const p of items) _projectMap[p.id] = p
+            for (const p of items) _boundedSet(_projectMap, p.id, p)
           } catch (e) { console.warn('project details:', e) }
         }
 
@@ -1241,7 +1237,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
       const [artist, , trackCid, metadataCid] = result.result
       const id = uniqueIds[i]
       if (metadataCid) {
-        _coverArtMap[id] = metadataCid
+        _boundedSet(_coverArtMap, id, metadataCid)
       } else {
         const artistDom = domainMap[artist.toLowerCase()]
         if (artistDom) {
@@ -1277,7 +1273,7 @@ async function fetchCoverArt(mediaPurchases, domainMap) {
                 for (const track of (album.tracks || [])) {
                   if (track.src?.includes(trackCid)) {
                     const artMatch = album.art?.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
-                    if (artMatch) _coverArtMap[id] = artMatch[1]
+                    if (artMatch) _boundedSet(_coverArtMap, id, artMatch[1])
                   }
                 }
               }

@@ -2,19 +2,23 @@
 // These are rarely needed on initial page load. Each is imported on first demand.
 
 const _loaded = { dm: null, pay: null, ramp: null, settings: null }
+const _failed = { dm: false, pay: false, ramp: false, settings: false }
 
 function loadDm() {
-  if (!_loaded.dm) _loaded.dm = import('/js/dm.js').catch(e => { console.warn('[lazy] dm.js failed:', e); _loaded.dm = null })
+  if (_failed.dm) return Promise.resolve(null)
+  if (!_loaded.dm) _loaded.dm = import('/js/dm.js').catch(e => { console.warn('[lazy] dm.js failed:', e); _loaded.dm = null; _failed.dm = true; return null })
   return _loaded.dm
 }
 
 function loadPay() {
-  if (!_loaded.pay) _loaded.pay = import('/js/pay.js').catch(e => { console.warn('[lazy] pay.js failed:', e); _loaded.pay = null })
+  if (_failed.pay) return Promise.resolve(null)
+  if (!_loaded.pay) _loaded.pay = import('/js/pay.js').catch(e => { console.warn('[lazy] pay.js failed:', e); _loaded.pay = null; _failed.pay = true; return null })
   return _loaded.pay
 }
 
 function loadSettings() {
-  if (!_loaded.settings) _loaded.settings = import('/js/settings.js').catch(e => { console.warn('[lazy] settings.js failed:', e); _loaded.settings = null })
+  if (_failed.settings) return Promise.resolve(null)
+  if (!_loaded.settings) _loaded.settings = import('/js/settings.js').catch(e => { console.warn('[lazy] settings.js failed:', e); _loaded.settings = null; _failed.settings = true; return null })
   return _loaded.settings
 }
 
@@ -25,14 +29,14 @@ function loadSettings() {
 
 window.addEventListener('open-dm', async (e) => {
   if (_loaded.dm) return // already loaded, dm.js handles it
-  await loadDm()
-  window.dispatchEvent(new CustomEvent('open-dm', { detail: e.detail }))
+  const mod = await loadDm()
+  if (mod) window.dispatchEvent(new CustomEvent('open-dm', { detail: e.detail }))
 })
 
 window.addEventListener('auto-dm', async (e) => {
   if (_loaded.dm) return
-  await loadDm()
-  window.dispatchEvent(new CustomEvent('auto-dm', { detail: e.detail }))
+  const mod = await loadDm()
+  if (mod) window.dispatchEvent(new CustomEvent('auto-dm', { detail: e.detail }))
 })
 
 // On wallet-connected, eagerly load dm.js for ANY signed-in user (not just owner).
@@ -61,7 +65,8 @@ if (sessionStorage.getItem('praxis-unread-msgs')) {
 // Create stub globals that lazy-load ramp.js then forward the call.
 
 function loadRamp() {
-  if (!_loaded.ramp) _loaded.ramp = import('/js/ramp.js').catch(e => { console.warn('[lazy] ramp.js failed:', e); _loaded.ramp = null })
+  if (_failed.ramp) return Promise.resolve(null)
+  if (!_loaded.ramp) _loaded.ramp = import('/js/ramp.js').catch(e => { console.warn('[lazy] ramp.js failed:', e); _loaded.ramp = null; _failed.ramp = true; return null })
   return _loaded.ramp
 }
 
@@ -90,8 +95,8 @@ window.addEventListener('spa-navigate', () => {
 
 window.addEventListener('open-settings', async () => {
   if (_loaded.settings) return // already loaded, settings.js handles it
-  await loadSettings()
-  window.dispatchEvent(new CustomEvent('open-settings'))
+  const mod = await loadSettings()
+  if (mod) window.dispatchEvent(new CustomEvent('open-settings'))
 })
 
 document.addEventListener('click', (e) => {

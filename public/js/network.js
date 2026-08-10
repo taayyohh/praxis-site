@@ -2116,7 +2116,7 @@ function showDeployOptions(domain, wallet, txHash, onrampOnly = false) {
             <p style="color:#fff;margin-bottom:0.5em">DNS setup</p>
             <p style="color:#999">point your domain to: <code style="background:#1a1a1a;padding:0.2em 0.5em">${escapeHtml(data.serverIp)}</code></p>
             <p style="color:#999;font-size:0.9em;margin-top:0.5em">A record: @ &rarr; ${escapeHtml(data.serverIp)}</p>
-            <p style="color:#999;font-size:0.9em">A record: www &rarr; ${data.serverIp}</p>
+            <p style="color:#999;font-size:0.9em">A record: www &rarr; ${escapeHtml(data.serverIp)}</p>
           </div>
         </div>
       `
