@@ -288,11 +288,13 @@ function isPraxisHost(host) {
   // Praxis artist. The client-side _praxisDomains set (populated from follow
   // data) is NOT trusted on its own.
   if (_praxisDomainsVerified.has(h)) return true
-  // If the client-side set claims this host, still require server confirmation.
+  // If the client-side set claims this host, verify via per-domain check
   const clientKnown = window._praxisDomains
   if (clientKnown && typeof clientKnown.has === 'function' && clientKnown.has(h)) {
-    // kick off a refresh so future clicks succeed, but do not trust now
-    fetchTrustedDomains()
+    fetch(`/api/artists/domain-check?domain=${encodeURIComponent(h)}`, { credentials: 'omit' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.ok) _praxisDomainsVerified.add(h) })
+      .catch(() => {})
   }
   return false
 }
