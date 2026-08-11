@@ -4,7 +4,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider, prettifyFilename } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
@@ -27,15 +27,6 @@ async function _fetchServerTags() {
 }
 
 // Derive a prettified title from a filename (strip extension, replace
-// underscores/dashes with spaces, title-case). Used to auto-fill an empty
-// title field when the user picks a file for the library upload.
-function prettifyFilename(name) {
-  if (!name) return ''
-  const base = String(name).replace(/\.[^.]+$/, '')
-  const cleaned = base.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!cleaned) return ''
-  return cleaned.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ')
-}
 
 let uploadToken = ''
 window.addEventListener('wallet-connected', () => { uploadToken = '' })

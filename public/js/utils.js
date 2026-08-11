@@ -1467,3 +1467,11 @@ export function mediaUrl(type, item, mod) {
 export function mediaUrlHtml(type, item, mod) {
   return escapeHtml(mediaUrl(type, item, mod))
 }
+
+export function prettifyFilename(name) {
+  if (!name) return ''
+  const base = String(name).replace(/\.[^.]+$/, '')
+  const cleaned = base.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!cleaned) return ''
+  return cleaned.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ')
+}

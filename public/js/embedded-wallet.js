@@ -6,6 +6,7 @@
 const _originalEthereum = window.ethereum
 
 import { privateKeyToAccount, createWalletClient, http, optimism } from './vendor.js'
+import { PRAXIS_ADDR, INVITES_ADDR, TICKET_MARKET_ADDR, ARTIST_SPONSOR_ADDR } from './contracts.js'
 
 const STORAGE_KEY = 'praxis-wallet-enc'
 const ADDR_KEY = 'praxis-embedded-addr'
@@ -405,13 +406,15 @@ function confirmTransaction(to, value) {
     } catch {}
 
     // Human-readable context
+    const _registry = (document.body.dataset.registry || '').toLowerCase()
+    const _media = (document.body.dataset.media || '').toLowerCase()
     const KNOWN_CONTRACTS = {
-      '0x4bc73f9cc7c7a84b5cf20e1469ad65f8b5448336': { name: 'register as an artist', desc: 'one-time network registration fee' },
-      '0x8f5b0d0f0073a1573f17e37746811672aedde2f8': { name: 'project action', desc: 'funding, credentials, or revenue claim' },
-      '0xaf995db3955419e9e2086fd02891580f8a025481': { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
-      '0x23289c228ca0867122dc8855613858c8c3dc707c': { name: 'use invite', desc: 'activating your invite code' },
-      '0xb7a66e7ad464495d22b3a39140bd8d7f10afb3f7': { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
-      '0x1781666673b6fb22f59229fb120f14bd97d2edc6': { name: 'ticket purchase', desc: 'buying or listing a ticket' },
+      [_registry]: { name: 'register as an artist', desc: 'one-time network registration fee' },
+      [PRAXIS_ADDR.toLowerCase()]: { name: 'project action', desc: 'funding, credentials, or revenue claim' },
+      [_media]: { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
+      [INVITES_ADDR.toLowerCase()]: { name: 'use invite', desc: 'activating your invite code' },
+      [ARTIST_SPONSOR_ADDR.toLowerCase()]: { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
+      [TICKET_MARKET_ADDR.toLowerCase()]: { name: 'ticket purchase', desc: 'buying or listing a ticket' },
       '0x5cddd64f20c69fc2007868476788bc3766c28a0a': { name: 'add to library', desc: 'adding to the shared knowledge base' },
       '0x5cf9e88417a7ce08028d32c44f9b63bc3d960b21': { name: 'treasury', desc: 'interacting with the network treasury' },
     }

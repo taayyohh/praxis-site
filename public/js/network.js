@@ -4,6 +4,7 @@ import { optimism } from './vendor.js'
 import { query } from './ponder.js'
 import { t } from './i18n.js'
 import { getPublicClient, isBlocked, blockUser, unblockUser, registerPage, requireUser, escapeHtml , getWalletProvider } from './utils.js'
+import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const REGISTRY_V1_ABI = [
   {
@@ -694,7 +695,7 @@ async function init() {
               const payAccount = await window.ensureAuthorized?.() || addr
               const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
               const payHash = await walletClient.sendTransaction({
-                to: '0x46db55AD42dA6bA3c29a3C1522EBBF8e16960725',
+                to: TREASURY_ADMIN_ADDR,
                 value: totalWei,
                 account: payAccount,
               })
@@ -1842,7 +1843,7 @@ async function openInvitesModal(myAddr, publicClient) {
   }
 
   // --- Sponsored invites admin section (deployer/treasury only) ---
-  const TREASURY_ADDR = '0x46db55ad42da6ba3c29a3c1522ebbf8e16960725'
+  const TREASURY_ADDR = TREASURY_ADMIN_ADDR.toLowerCase()
   if (myAddr === TREASURY_ADDR) {
     const divider = document.createElement('hr')
     divider.style.cssText = 'border:none;border-top:1px solid #333;margin:1.5em 0'

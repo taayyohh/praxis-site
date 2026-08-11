@@ -1,5 +1,6 @@
 import { t } from './i18n.js'
 import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken } from './utils.js'
+import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const status = document.getElementById('wallet-status')
 const topBarWallet = document.getElementById('top-bar-wallet')
@@ -1307,7 +1308,7 @@ function showRenewalBanner(domain, statusData, address) {
       // get treasury address from deploy-price endpoint
       const deployRes = await fetch(`${orchBase}/orchestrator/deploy-price`)
       const deployData = await deployRes.json()
-      const treasuryAddress = deployData.treasury || '0x46db55AD42dA6bA3c29a3C1522EBBF8e16960725'
+      const treasuryAddress = deployData.treasury || TREASURY_ADMIN_ADDR
 
       const txHash = await walletClient.sendTransaction({
         to: treasuryAddress,

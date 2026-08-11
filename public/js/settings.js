@@ -3,7 +3,7 @@
 
 import { t } from './i18n.js'
 import { contrastRatio, deriveFullPalette, hexToHsl } from './contrast.js'
-import { getWalletProvider, escapeHtml } from './utils.js'
+import { getWalletProvider, escapeHtml, prettifyFilename } from './utils.js'
 import { parseEther } from './vendor.js'
 
 let settingsToken = ''
@@ -3500,15 +3500,6 @@ async function _pollUploadJob(jobId, btn) {
 // Derive a prettified title from a filename (strip extension, replace _/- with
 // spaces, collapse whitespace, title-case words). Used to auto-fill empty
 // title fields on upload across gallery/music/audio/video/demos/library.
-function prettifyFilename(name) {
-  if (!name) return ''
-  const base = String(name).replace(/\.[^.]+$/, '')
-  const cleaned = base.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!cleaned) return ''
-  return cleaned.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ')
-}
-// Expose for library.js (same-origin module, reached via window)
-try { window.__praxisPrettifyFilename = prettifyFilename } catch {}
 
 // Inline "loading screen" preview: when the user selects a music/audio/video
 // file to upload, insert a native <audio>/<video> element next to the upload

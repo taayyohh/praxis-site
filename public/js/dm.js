@@ -1,7 +1,7 @@
 // Global DM panel — iMessage-style messaging via XMTP
 // Loaded on every page. Owns the single XMTP client instance.
 import { query } from './ponder.js'
-import { createWalletClient, custom, parseEther, formatEther } from './vendor.js'
+import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { escapeHtml, resolveAddresses, getPublicClient , getWalletProvider } from './utils.js'
 
