@@ -2,7 +2,7 @@
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase, slugify } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase, slugify, getAuthToken } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
@@ -1348,6 +1348,12 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
   async function _uploadProjectImages(statusEl) {
     if (_projectImages.length === 0) return ''
+    // CQ-H13: /api/ipfs uploads require an authenticated session everywhere
+    // else in the codebase (library.js, write.js, markdown-editor.js all send
+    // an `Authorization: Bearer <token>` obtained via getAuthToken()). This
+    // function was posting the raw file with no auth at all.
+    const authToken = await getAuthToken()
+    if (!authToken) throw new Error('wallet authentication required to upload images')
     const imageCids = []
     for (let i = 0; i < _projectImages.length; i++) {
       const img = _projectImages[i]
@@ -1355,7 +1361,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       if (statusEl) statusEl.textContent = `uploading image ${i + 1}/${_projectImages.length}...`
       const res = await fetch(`/api/ipfs?name=${encodeURIComponent(img.file.name)}`, {
         method: 'POST', body: img.file,
-        headers: { 'Content-Length': img.file.size.toString() },
+        headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': img.file.size.toString() },
       })
       if (!res.ok) throw new Error('image upload failed')
       const { jobId } = await res.json()
@@ -1368,7 +1374,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const metaBlob = new Blob([metadata], { type: 'application/json' })
     const metaRes = await fetch('/api/ipfs?name=project-metadata.json', {
       method: 'POST', body: metaBlob,
-      headers: { 'Content-Length': metaBlob.size.toString() },
+      headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': metaBlob.size.toString() },
     })
     if (!metaRes.ok) throw new Error('metadata upload failed')
     const { jobId: metaJobId } = await metaRes.json()

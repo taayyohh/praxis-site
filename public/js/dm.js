@@ -272,8 +272,29 @@ async function resolveInboxIdForAddr(addr) {
   } catch (e) { if (e?.message) console.warn("praxis:", e.message); return null }
 }
 
+// CQ-H15: this only ever checked the local cache and returned null on a miss —
+// it never actually resolved anything for a newly-seen inbox ID. Mirror the
+// fallback used throughout messages.js: ask the XMTP network via
+// fetchInboxStates for the address(es) associated with this inbox, then cache
+// the result both ways.
 async function resolveInboxId(inboxId) {
   if (inboxToAddr[inboxId]) return inboxToAddr[inboxId]
+  if (!inboxId || !sdk) return null
+  try {
+    const states = await sdk.Client.fetchInboxStates?.([inboxId], 'production')
+    if (Array.isArray(states) && states[0]) {
+      const ids = states[0].accountIdentifiers || states[0].accountAddresses || states[0].identifiers || []
+      for (const id of ids) {
+        const addr = typeof id === 'string' ? id : id?.identifier || id?.address
+        if (addr && /^0x[0-9a-f]{40}$/i.test(addr)) {
+          const lower = addr.toLowerCase()
+          boundedAssign(inboxToAddr, inboxId, lower)
+          boundedAssign(inboxToAddr, lower, inboxId)
+          return lower
+        }
+      }
+    }
+  } catch (e) { if (e?.message) console.warn('praxis dm resolveInboxId:', e.message) }
   return null
 }
 

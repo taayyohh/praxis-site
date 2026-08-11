@@ -325,7 +325,7 @@ async function init() {
             ? `<button class="buy-btn dm-btn nc-btn" data-dm-addr="${addr.toLowerCase()}" data-dm-domain="${escapeHtml(a.domain)}"><i class="ph ph-chat-circle"></i></button>`
             : ''
           const ogImg = `<img src="https://${escapeHtml(a.domain)}/og/index.png" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt="">`
-          return `<li class="nc-item" data-addr="${addr.toLowerCase()}"><a href="/network?artist=${addr.toLowerCase()}" class="nc-link">${ogImg}<div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(a.domain)}</span>${followBtn}</div></div></a></li>`
+          return `<li class="nc-item" data-addr="${addr.toLowerCase()}"><a href="/network?artist=${addr.toLowerCase()}" class="nc-link">${ogImg}<div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(a.domain)}</span>${followBtn}${dmBtn}</div></div></a></li>`
         })
         .join(''))
 
@@ -411,7 +411,7 @@ async function init() {
             ? `<button class="buy-btn dm-btn nc-btn" data-dm-addr="${addr.toLowerCase()}" data-dm-domain="${escapeHtml(s.handle)}"><i class="ph ph-chat-circle"></i></button>`
             : ''
           const ogUrl = `https://${escapeHtml(s.handle)}.ourpraxis.network/og/index.png`
-          return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><img src="${ogUrl}" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt=""><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}</div></div></a></li>`
+          return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><img src="${ogUrl}" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt=""><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}${dmBtn}</div></div></a></li>`
         }).join('')
         listEl.insertAdjacentHTML('beforeend', supHtml)
 
@@ -493,6 +493,10 @@ async function init() {
 
     const dmBtn = e.target.closest('.dm-btn')
     if (dmBtn) {
+      // CQ-H9: the button lives inside the card's <a href="/network?..."> —
+      // without preventDefault/stopPropagation the anchor's own navigation
+      // could win the race against this redirect.
+      e.preventDefault(); e.stopPropagation()
       const addr = dmBtn.dataset.dmAddr
       window.location.href = `/messages?dm=${addr}`
     }

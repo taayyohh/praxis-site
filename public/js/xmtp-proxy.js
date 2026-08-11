@@ -201,7 +201,22 @@ export function startLeaderResponder(channel, getClient, { onYield, releaseLock 
             channel.postMessage({ type: 'proxy-response', reqId, error: 'client is read-only' })
             return
           }
-          const newConvo = await client.conversations.newDm(args.peerAddress)
+          // CQ-H18: `conversations.newDm()` is not a real method on
+          // @xmtp/browser-sdk (only createDmWithIdentifier(identifier) and
+          // createDm(inboxId) exist) — this threw "not a function" on every
+          // call, so any follower tab (any tab that isn't the XMTP leader
+          // holding the OPFS lock) could never start a first-time DM.
+          let newConvo = null
+          if (args.peerAddress && typeof client.conversations.createDmWithIdentifier === 'function') {
+            try {
+              newConvo = await client.conversations.createDmWithIdentifier({ identifier: args.peerAddress, identifierKind: 0 })
+            } catch { /* fall through to inbox-id based creation below */ }
+          }
+          if (!newConvo) {
+            const peerInboxId = args.peerInboxId || (args.peerAddress && await client.fetchInboxIdByIdentifier?.({ identifier: args.peerAddress, identifierKind: 0 }))
+            if (!peerInboxId) throw new Error('could not resolve inbox id for peer')
+            newConvo = await client.conversations.createDm(peerInboxId)
+          }
           await newConvo.sync()
           result = await serializeConvo(newConvo, client.inboxId)
           break
@@ -383,8 +398,17 @@ export function createProxyClient(channel) {
       },
       sync: () => request('sync-conversations').then(() => {}),
       syncAll: () => request('sync-conversations').then(() => {}),
-      newDm: async (peerAddress) => {
-        const r = await request('create-dm', { peerAddress })
+      // CQ-H18: match the real @xmtp/browser-sdk Conversations API
+      // (createDmWithIdentifier/createDm) instead of the made-up `newDm` name,
+      // so messages.js's DM-creation code (which calls these exact methods)
+      // works identically whether `client` is the real leader client or this
+      // BroadcastChannel proxy.
+      createDmWithIdentifier: async ({ identifier }) => {
+        const r = await request('create-dm', { peerAddress: identifier })
+        return wrapConvo(r)
+      },
+      createDm: async (inboxId) => {
+        const r = await request('create-dm', { peerInboxId: inboxId })
         return wrapConvo(r)
       },
       streamAllMessages: () => {
