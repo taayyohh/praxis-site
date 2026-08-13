@@ -1584,7 +1584,7 @@ section img {
   .network-nav .lang-switcher { display: none; }
   .network-nav > span:last-child { display: none; }
   .network-nav { margin-left: auto; gap: 0.5ch; }
-  #mobile-menu-btn { display: flex !important; margin-left: 0.5ch; }
+  #mobile-menu-btn { display: flex !important; margin-left: auto; }
 
   #mobile-menu-sheet {
     position: fixed;
