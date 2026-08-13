@@ -79,14 +79,14 @@ function injectPanel() {
       </div>
       <div id="dm-messages"></div>
       <div id="dm-pay-bar">
-        <div class="pay-amount-row">
-          <input type="text" inputmode="decimal" id="dm-pay-amount" class="pay-amount-input" placeholder="0.00" autocomplete="off">
+        <div class="pay-amount-display">
+          <input type="text" inputmode="decimal" id="dm-pay-amount" class="pay-amount-input" placeholder="0" autocomplete="off">
           <span class="pay-currency-label">ETH</span>
-          <button id="dm-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
         </div>
-        <div class="pay-actions">
-          <span id="dm-pay-fiat" class="pay-fiat-line"></span>
-          <button id="dm-pay-cancel" class="dm-icon-btn" style="font-size:0.85em;color:var(--dim)"><i class="ph ph-x"></i> cancel</button>
+        <span id="dm-pay-fiat" class="pay-fiat-line"></span>
+        <div class="pay-bottom">
+          <button id="dm-pay-cancel" class="pay-cancel-btn">cancel</button>
+          <button id="dm-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
         </div>
       </div>
       <form id="dm-send-form">
@@ -103,23 +103,29 @@ function injectPanel() {
   document.getElementById('dm-back-btn').addEventListener('click', showListView)
   document.getElementById('dm-send-form').addEventListener('submit', sendMessage)
 
-  // payment toggle
+  // payment toggle — replaces message input with pay UI
   document.getElementById('dm-pay-toggle').addEventListener('click', () => {
     const bar = document.getElementById('dm-pay-bar')
+    const form = document.getElementById('dm-send-form')
     const open = bar.style.display === 'none' || !bar.style.display
     bar.style.display = open ? 'flex' : 'none'
+    form.style.display = open ? 'none' : 'flex'
     if (open) {
       document.getElementById('dm-pay-amount').focus()
       _updatePayFiat()
     }
   })
   document.getElementById('dm-pay-cancel').addEventListener('click', () => {
-    const bar = document.getElementById('dm-pay-bar')
-    bar.style.display = 'none'
+    document.getElementById('dm-pay-bar').style.display = 'none'
+    document.getElementById('dm-send-form').style.display = 'flex'
     document.getElementById('dm-pay-amount').value = ''
     document.getElementById('dm-pay-fiat').textContent = ''
   })
-  document.getElementById('dm-pay-amount').addEventListener('input', _updatePayFiat)
+  document.getElementById('dm-pay-amount').addEventListener('input', e => {
+    const len = Math.max(2, e.target.value.length + 1)
+    e.target.style.width = Math.min(len, 10) + 'ch'
+    _updatePayFiat()
+  })
   document.getElementById('dm-pay-send').addEventListener('click', sendPayment)
 }
 
@@ -785,6 +791,7 @@ async function sendPayment() {
     amountInput.value = ''
     document.getElementById('dm-pay-fiat').textContent = ''
     document.getElementById('dm-pay-bar').style.display = 'none'
+    document.getElementById('dm-send-form').style.display = 'flex'
   } catch (e) {
     if (e.code !== 4001) console.error('payment error:', e)
   }
