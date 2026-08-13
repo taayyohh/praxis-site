@@ -469,7 +469,11 @@ async function initMessages() {
 
   let _payPrices = null
   let _payBalance = null
+  let _msgPayFiatAmount = 0
+  let _msgPayKeypadMode = false
   import('./fiat.js').then(m => m.getEthPrices().then(p => { _payPrices = p })).catch(() => {})
+
+  const _currSymbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', BRL: 'R$', NGN: '₦', KES: 'KSh', INR: '₹', KRW: '₩' }
 
   async function _fetchMsgPayBalance() {
     try {
@@ -478,18 +482,84 @@ async function initMessages() {
       const pc = await getPublicClient()
       const bal = await pc.getBalance({ address: addr })
       _payBalance = Number(bal) / 1e18
-      const balEl = document.getElementById('messages-pay-balance')
-      if (balEl) balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH`
+      _msgPayUpdateBalanceEl()
     } catch {}
   }
-  function _checkMsgPayOverBalance() {
+  function _msgPayUpdateBalanceEl() {
+    const balEl = document.getElementById('messages-pay-balance')
+    if (!balEl || _payBalance == null) return
+    const { getUserCurrency, formatFiat } = { getUserCurrency: () => 'USD', formatFiat: (v, c) => `$${v.toFixed(2)}` }
+    import('./fiat.js').then(m => {
+      const currency = m.getUserCurrency()
+      let extra = ''
+      if (_payPrices && _payPrices[currency]) extra = ` (${m.formatFiat(_payBalance * _payPrices[currency], currency)})`
+      balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH${extra}`
+    }).catch(() => { balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH` })
+  }
+  function _msgPayGetEthAmount() {
+    if (_msgPayKeypadMode) return parseFloat(document.getElementById('messages-pay-eth-input')?.value) || 0
+    if (!_payPrices) return 0
+    import('./fiat.js').then(() => {})
+    const currency = _msgPayGetCurrency()
+    const rate = _payPrices[currency]
+    if (!rate || !_msgPayFiatAmount) return 0
+    return _msgPayFiatAmount / rate
+  }
+  function _msgPayGetCurrency() {
+    try { return window._fiatCurrency || 'USD' } catch { return 'USD' }
+  }
+  async function _msgPayUpdateDisplay() {
+    if (!_payPrices) { const m = await import('./fiat.js'); _payPrices = await m.getEthPrices() }
+    const convEl = document.getElementById('messages-pay-conversion')
+    const { getUserCurrency, formatFiat } = await import('./fiat.js')
+    const currency = getUserCurrency()
+    if (_msgPayKeypadMode) {
+      const ethInput = document.getElementById('messages-pay-eth-input')
+      const eth = parseFloat(ethInput?.value) || 0
+      const len = Math.max(2, (ethInput?.value || '').length + 1)
+      ethInput.style.width = Math.min(len, 12) + 'ch'
+      if (eth > 0 && _payPrices && _payPrices[currency]) {
+        convEl.textContent = `≈ ${formatFiat(eth * _payPrices[currency], currency)}`
+      } else { convEl.textContent = '' }
+    } else {
+      const sym = _currSymbols[currency] || '$'
+      document.getElementById('messages-pay-display').textContent = `${sym}${_msgPayFiatAmount}`
+      const ethAmt = _msgPayGetEthAmount()
+      if (ethAmt > 0) { convEl.textContent = `≈ ${ethAmt.toFixed(6)} ETH` }
+      else { convEl.textContent = '' }
+    }
+    _msgPayCheckOverBalance()
+  }
+  function _msgPayCheckOverBalance() {
     const bar = document.getElementById('messages-pay-bar')
     const sendBtn = document.getElementById('messages-pay-send')
     if (!bar) return
-    const val = parseFloat(document.getElementById('messages-pay-amount')?.value)
-    const over = _payBalance != null && val > 0 && val > _payBalance
+    const eth = _msgPayGetEthAmount()
+    const over = _payBalance != null && eth > 0 && eth > _payBalance
     bar.classList.toggle('pay-over-balance', over)
     if (sendBtn) sendBtn.disabled = over
+  }
+  function _msgPayClose() {
+    const bar = document.getElementById('messages-pay-bar')
+    if (bar) { bar.style.display = 'none'; bar.classList.remove('pay-over-balance') }
+    const form = document.getElementById('messages-send-form')
+    if (form) form.style.display = 'flex'
+    const ethInput = document.getElementById('messages-pay-eth-input')
+    if (ethInput) ethInput.value = ''
+    const convEl = document.getElementById('messages-pay-conversion')
+    if (convEl) convEl.textContent = ''
+    const balEl = document.getElementById('messages-pay-balance')
+    if (balEl) balEl.textContent = ''
+    _msgPayFiatAmount = 0
+    _msgPayKeypadMode = false
+    const stepper = document.getElementById('messages-pay-stepper')
+    if (stepper) stepper.style.display = 'flex'
+    const keypad = document.getElementById('messages-pay-keypad')
+    if (keypad) keypad.style.display = 'none'
+    const toggle = document.getElementById('messages-pay-mode-toggle')
+    if (toggle) toggle.textContent = 'Show Keypad'
+    const display = document.getElementById('messages-pay-display')
+    if (display) display.textContent = '$0'
   }
 
   document.getElementById('messages-pay-toggle')?.addEventListener('click', () => {
@@ -499,44 +569,34 @@ async function initMessages() {
     bar.style.display = open ? 'flex' : 'none'
     if (form) form.style.display = open ? 'none' : 'flex'
     if (open) {
-      document.getElementById('messages-pay-amount')?.focus()
+      _msgPayFiatAmount = 0
+      _msgPayKeypadMode = false
+      _msgPayUpdateDisplay()
       _fetchMsgPayBalance()
     }
   })
-  document.getElementById('messages-pay-cancel')?.addEventListener('click', () => {
-    const bar = document.getElementById('messages-pay-bar')
-    bar.style.display = 'none'
-    bar.classList.remove('pay-over-balance')
-    const form = document.getElementById('messages-send-form')
-    if (form) form.style.display = 'flex'
-    const amt = document.getElementById('messages-pay-amount')
-    if (amt) amt.value = ''
-    const fiat = document.getElementById('messages-pay-fiat')
-    if (fiat) fiat.textContent = ''
-    const balEl = document.getElementById('messages-pay-balance')
-    if (balEl) balEl.textContent = ''
+  document.getElementById('messages-pay-cancel')?.addEventListener('click', _msgPayClose)
+  document.getElementById('messages-pay-send')?.addEventListener('click', () => sendPayment('send'))
+  document.getElementById('messages-pay-request')?.addEventListener('click', () => sendPayment('request'))
+  document.getElementById('messages-pay-mode-toggle')?.addEventListener('click', () => {
+    _msgPayKeypadMode = !_msgPayKeypadMode
+    const stepper = document.getElementById('messages-pay-stepper')
+    const keypad = document.getElementById('messages-pay-keypad')
+    const toggle = document.getElementById('messages-pay-mode-toggle')
+    if (stepper) stepper.style.display = _msgPayKeypadMode ? 'none' : 'flex'
+    if (keypad) keypad.style.display = _msgPayKeypadMode ? 'flex' : 'none'
+    if (toggle) toggle.textContent = _msgPayKeypadMode ? 'Use Stepper' : 'Show Keypad'
+    if (_msgPayKeypadMode) document.getElementById('messages-pay-eth-input')?.focus()
+    _msgPayUpdateDisplay()
   })
-  document.getElementById('messages-pay-send')?.addEventListener('click', sendPayment)
-
-  const payAmtInput = document.getElementById('messages-pay-amount')
-  const payFiatSpan = document.getElementById('messages-pay-fiat')
-  if (payAmtInput && payFiatSpan) {
-    const updatePayFiat = async () => {
-      const eth = parseFloat(payAmtInput.value)
-      if (!eth || !_payPrices) { payFiatSpan.textContent = ''; _checkMsgPayOverBalance(); return }
-      const { getUserCurrency, formatFiat } = await import('./fiat.js')
-      const currency = getUserCurrency()
-      const rate = _payPrices[currency]
-      if (!rate) { payFiatSpan.textContent = ''; _checkMsgPayOverBalance(); return }
-      payFiatSpan.textContent = `≈ ${formatFiat(eth * rate, currency)}`
-      _checkMsgPayOverBalance()
-    }
-    payAmtInput.addEventListener('input', () => {
-      const len = Math.max(2, payAmtInput.value.length + 1)
-      payAmtInput.style.width = Math.min(len, 12) + 'ch'
-      updatePayFiat()
+  document.getElementById('messages-pay-bar')?.querySelectorAll('.pay-step-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dir = btn.dataset.dir === 'plus' ? 1 : -1
+      _msgPayFiatAmount = Math.max(0, _msgPayFiatAmount + dir)
+      _msgPayUpdateDisplay()
     })
-  }
+  })
+  document.getElementById('messages-pay-eth-input')?.addEventListener('input', () => _msgPayUpdateDisplay())
 
   // check URL params for direct message
   const params = new URLSearchParams(window.location.search)
@@ -2252,6 +2312,31 @@ async function openConversation(convo, peerDomain) {
     document.getElementById('messages-back')?.addEventListener('click', () => {
       document.getElementById('messages-container')?.classList.remove('chat-active')
     })
+    // Re-bind pay bar buttons after template clone
+    document.getElementById('messages-pay-toggle')?.addEventListener('click', () => {
+      const bar = document.getElementById('messages-pay-bar')
+      const form = document.getElementById('messages-send-form')
+      const open = bar.style.display === 'none' || !bar.style.display
+      bar.style.display = open ? 'flex' : 'none'
+      if (form) form.style.display = open ? 'none' : 'flex'
+      if (open) { _msgPayFiatAmount = 0; _msgPayKeypadMode = false; _msgPayUpdateDisplay(); _fetchMsgPayBalance() }
+    })
+    document.getElementById('messages-pay-cancel')?.addEventListener('click', _msgPayClose)
+    document.getElementById('messages-pay-send')?.addEventListener('click', () => sendPayment('send'))
+    document.getElementById('messages-pay-request')?.addEventListener('click', () => sendPayment('request'))
+    document.getElementById('messages-pay-mode-toggle')?.addEventListener('click', () => {
+      _msgPayKeypadMode = !_msgPayKeypadMode
+      const s = document.getElementById('messages-pay-stepper'); const k = document.getElementById('messages-pay-keypad'); const t = document.getElementById('messages-pay-mode-toggle')
+      if (s) s.style.display = _msgPayKeypadMode ? 'none' : 'flex'
+      if (k) k.style.display = _msgPayKeypadMode ? 'flex' : 'none'
+      if (t) t.textContent = _msgPayKeypadMode ? 'Use Stepper' : 'Show Keypad'
+      if (_msgPayKeypadMode) document.getElementById('messages-pay-eth-input')?.focus()
+      _msgPayUpdateDisplay()
+    })
+    document.getElementById('messages-pay-bar')?.querySelectorAll('.pay-step-btn').forEach(btn => {
+      btn.addEventListener('click', () => { const d = btn.dataset.dir === 'plus' ? 1 : -1; _msgPayFiatAmount = Math.max(0, _msgPayFiatAmount + d); _msgPayUpdateDisplay() })
+    })
+    document.getElementById('messages-pay-eth-input')?.addEventListener('input', () => _msgPayUpdateDisplay())
   }
   chatEmpty.style.display = 'none'
   chatActive.style.display = 'flex'
@@ -2585,6 +2670,49 @@ function prependMessages(messages, el) {
 }
 
 // --- Render message content with link previews and attachment embeds ---
+function _renderMsgPayCard(text, isMe) {
+  const sendMatch = text.match(/^\[ethpay:send:([0-9.]+):([^:]+)(?::([^\]]*))?\]$/)
+  if (sendMatch) {
+    const eth = parseFloat(sendMatch[1])
+    const fiat = sendMatch[3] || ''
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+      <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+      <div class="pay-card-status sent">${isMe ? 'Sent' : 'Received'} ✓</div>
+    </div>`
+  }
+  const reqMatch = text.match(/^\[ethpay:request:([0-9.]+)(?::([^\]]*))?\]$/)
+  if (reqMatch) {
+    const eth = parseFloat(reqMatch[1])
+    const fiat = reqMatch[2] || ''
+    if (isMe) {
+      return `<div class="pay-card">
+        <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+        <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+        <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+        <div class="pay-card-status">Requested</div>
+      </div>`
+    }
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+      <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+      <button class="pay-card-accept-btn" data-eth-amount="${eth}">Accept</button>
+    </div>`
+  }
+  const legacyMatch = text.match(/^sent ([0-9.]+) ETH → tx: (0x[0-9a-f]+)$/i)
+  if (legacyMatch) {
+    const eth = parseFloat(legacyMatch[1])
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${eth} ETH</div>
+      <div class="pay-card-status sent">${isMe ? 'Sent' : 'Received'} ✓</div>
+    </div>`
+  }
+  return null
+}
+
 function renderMessageContent(text) {
   const escaped = escapeHtml(text)
   // Detect attachment embeds: [image:filename](url) or [pdf:filename](url)
@@ -2750,10 +2878,11 @@ function renderMessages(messages) {
     // No per-message receipt indicator anymore. We render a single
     // "sent" / "read" status only on the LAST outgoing bubble after
     // the loop, see updateLastReceiptIndicator() below.
+    const payCardHtml = _renderMsgPayCard(text, isMe)
+    const bubbleHtml = payCardHtml || `${replyHtml}<div class="dm-bubble">${renderMessageContent(displayText)}</div>`
     return `<div class="dm-msg ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}" data-msg-id="${escapeHtml(m.id || '')}" data-sender-inbox="${escapeHtml(m.senderInboxId || '')}" data-my-reaction="${myReactedMsgs.has(m.id) ? '1' : '0'}" data-sent-ns="${escapeHtml(sentNs)}">
       ${senderHtml}
-      ${replyHtml}
-      <div class="dm-bubble">${renderMessageContent(displayText)}</div>${reactionHtml}
+      ${bubbleHtml}${reactionHtml}
       <div class="dm-time">${time}</div>
     </div>`
   }).join('')
@@ -2795,6 +2924,19 @@ function renderMessages(messages) {
       }
     })
   })
+
+  // Payment request accept buttons (event delegation)
+  if (!el._payBound) {
+    el._payBound = true
+    el.addEventListener('click', async e => {
+      const btn = e.target.closest('.pay-card-accept-btn')
+      if (!btn || btn.disabled) return
+      btn.disabled = true
+      btn.textContent = 'Sending...'
+      await _acceptMsgPayRequest(btn.dataset.ethAmount)
+      btn.textContent = 'Accepted ✓'
+    })
+  }
 
   // long-press to copy message text (mobile-friendly)
   el.querySelectorAll('.dm-msg').forEach(msgEl => {
@@ -3306,36 +3448,65 @@ async function sendMessage(e) {
 
 // --- Send payment ---
 
-async function sendPayment() {
-  const amountInput = document.getElementById('messages-pay-amount')
-  const amount = parseFloat(amountInput.value)
-  if (!amount || !activePeerAddr) return
+async function sendPayment(mode) {
+  const ethAmount = _msgPayGetEthAmount()
+  if (!ethAmount || ethAmount <= 0 || !activePeerAddr) return
+
+  let fiatStr = ''
+  try {
+    const { getUserCurrency, formatFiat } = await import('./fiat.js')
+    if (_payPrices && _payPrices[getUserCurrency()]) {
+      fiatStr = formatFiat(ethAmount * _payPrices[getUserCurrency()], getUserCurrency())
+    }
+  } catch {}
+
+  if (mode === 'request') {
+    if (activeConvo) await activeConvo.sendText(`[ethpay:request:${ethAmount.toFixed(8)}:${fiatStr}]`)
+    _msgPayClose()
+    return
+  }
+
+  const payBtn = document.getElementById('messages-pay-send')
+  if (payBtn) { payBtn.textContent = 'Sending...'; payBtn.disabled = true }
 
   try {
     const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    // Use getWalletProvider() so embedded users with another wallet (Phantom/Coinbase/Rabby)
-    // installed still hit our embedded provider — window.ethereum may be locked.
     const walletClient = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider?.() || window.ethereum) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
-      value: parseEther(amount.toString()),
+      value: parseEther(ethAmount.toFixed(18)),
       account: payAccount,
     })
     if (activeConvo) {
-      await activeConvo.sendText(t('messages.sentEth', { amount }))
+      await activeConvo.sendText(`[ethpay:send:${ethAmount.toFixed(8)}:${hash}:${fiatStr}]`)
     }
-    amountInput.value = ''
-    const payBar = document.getElementById('messages-pay-bar')
-    payBar.style.display = 'none'
-    payBar.classList.remove('pay-over-balance')
-    const form = document.getElementById('messages-send-form')
-    if (form) form.style.display = 'flex'
-    const fiat = document.getElementById('messages-pay-fiat')
-    if (fiat) fiat.textContent = ''
-    const balEl = document.getElementById('messages-pay-balance')
-    if (balEl) balEl.textContent = ''
+    _msgPayClose()
   } catch (e) {
     if (e.code !== 4001) console.error('payment error:', e)
+  }
+  if (payBtn) { payBtn.textContent = 'Send'; payBtn.disabled = false }
+}
+
+async function _acceptMsgPayRequest(ethAmount) {
+  if (!activeConvo || !activePeerAddr) return
+  try {
+    const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
+    const walletClient = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider?.() || window.ethereum) })
+    const hash = await walletClient.sendTransaction({
+      to: activePeerAddr,
+      value: parseEther(ethAmount.toString()),
+      account: payAccount,
+    })
+    let fiatStr = ''
+    try {
+      const { getUserCurrency, formatFiat } = await import('./fiat.js')
+      if (_payPrices && _payPrices[getUserCurrency()]) {
+        fiatStr = formatFiat(parseFloat(ethAmount) * _payPrices[getUserCurrency()], getUserCurrency())
+      }
+    } catch {}
+    await activeConvo.sendText(`[ethpay:send:${parseFloat(ethAmount).toFixed(8)}:${hash}:${fiatStr}]`)
+  } catch (e) {
+    if (e.code !== 4001) console.error('accept payment error:', e)
   }
 }
 

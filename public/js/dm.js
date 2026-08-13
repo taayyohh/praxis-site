@@ -78,17 +78,24 @@ function injectPanel() {
         <button id="dm-close-btn2" class="dm-icon-btn"><i class="ph ph-x"></i></button>
       </div>
       <div id="dm-messages"></div>
-      <div id="dm-pay-bar">
-        <div class="pay-amount-display">
-          <input type="text" inputmode="decimal" id="dm-pay-amount" class="pay-amount-input" placeholder="0" autocomplete="off">
+      <div id="dm-pay-bar" class="pay-bar-panel">
+        <div class="pay-stepper-wrap" id="dm-pay-stepper">
+          <button type="button" class="pay-step-btn" data-dir="minus">−</button>
+          <div class="pay-amount-center"><span id="dm-pay-display" class="pay-display">$0</span></div>
+          <button type="button" class="pay-step-btn" data-dir="plus">+</button>
+        </div>
+        <div class="pay-keypad-wrap" id="dm-pay-keypad">
+          <input type="text" inputmode="decimal" id="dm-pay-eth-input" class="pay-eth-input" placeholder="0" autocomplete="off">
           <span class="pay-currency-label">ETH</span>
         </div>
-        <span id="dm-pay-fiat" class="pay-fiat-line"></span>
+        <span id="dm-pay-conversion" class="pay-conversion-line"></span>
+        <button type="button" id="dm-pay-mode-toggle" class="pay-mode-toggle">Show Keypad</button>
         <span id="dm-pay-balance" class="pay-balance-line"></span>
-        <div class="pay-bottom">
-          <button id="dm-pay-cancel" class="pay-cancel-btn">cancel</button>
-          <button id="dm-pay-send" class="pay-send-btn">Send</button>
+        <div class="pay-actions">
+          <button type="button" id="dm-pay-request" class="pay-action-btn pay-request-btn">Request</button>
+          <button type="button" id="dm-pay-send" class="pay-action-btn pay-send-btn">Send</button>
         </div>
+        <button type="button" id="dm-pay-cancel" class="pay-cancel-link">cancel</button>
       </div>
       <form id="dm-send-form">
         <button type="button" id="dm-pay-toggle" class="dm-icon-btn" title="send ETH" aria-label="send ETH"><i class="ph ph-currency-eth"></i></button>
@@ -112,27 +119,31 @@ function injectPanel() {
     bar.style.display = open ? 'flex' : 'none'
     form.style.display = open ? 'none' : 'flex'
     if (open) {
-      document.getElementById('dm-pay-amount').focus()
+      _dmPayFiatAmount = 0
+      _dmPayKeypadMode = false
+      _dmPayUpdateDisplay()
       _fetchPayBalance()
-      _updatePayFiat()
     }
   })
-  document.getElementById('dm-pay-cancel').addEventListener('click', () => {
-    const bar = document.getElementById('dm-pay-bar')
-    bar.style.display = 'none'
-    bar.classList.remove('pay-over-balance')
-    document.getElementById('dm-send-form').style.display = 'flex'
-    document.getElementById('dm-pay-amount').value = ''
-    document.getElementById('dm-pay-fiat').textContent = ''
-    const balEl = document.getElementById('dm-pay-balance')
-    if (balEl) balEl.textContent = ''
+  document.getElementById('dm-pay-cancel').addEventListener('click', _dmPayClose)
+  document.getElementById('dm-pay-send').addEventListener('click', () => sendPayment('send'))
+  document.getElementById('dm-pay-request').addEventListener('click', () => sendPayment('request'))
+  document.getElementById('dm-pay-mode-toggle').addEventListener('click', () => {
+    _dmPayKeypadMode = !_dmPayKeypadMode
+    document.getElementById('dm-pay-stepper').style.display = _dmPayKeypadMode ? 'none' : 'flex'
+    document.getElementById('dm-pay-keypad').style.display = _dmPayKeypadMode ? 'flex' : 'none'
+    document.getElementById('dm-pay-mode-toggle').textContent = _dmPayKeypadMode ? 'Use Stepper' : 'Show Keypad'
+    if (_dmPayKeypadMode) document.getElementById('dm-pay-eth-input').focus()
+    _dmPayUpdateDisplay()
   })
-  document.getElementById('dm-pay-amount').addEventListener('input', e => {
-    const len = Math.max(2, e.target.value.length + 1)
-    e.target.style.width = Math.min(len, 10) + 'ch'
-    _updatePayFiat()
+  document.getElementById('dm-pay-bar').querySelectorAll('.pay-step-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dir = btn.dataset.dir === 'plus' ? 1 : -1
+      _dmPayFiatAmount = Math.max(0, _dmPayFiatAmount + dir)
+      _dmPayUpdateDisplay()
+    })
   })
-  document.getElementById('dm-pay-send').addEventListener('click', sendPayment)
+  document.getElementById('dm-pay-eth-input').addEventListener('input', () => _dmPayUpdateDisplay())
 }
 
 async function togglePanel() {
@@ -509,6 +520,7 @@ async function openConversation(convo, peerDomain) {
     activePeerAddr = peerInboxId ? inboxToAddr[peerInboxId] : null
   } catch { activePeerAddr = null }
   document.getElementById('dm-pay-bar').style.display = 'none'
+  document.getElementById('dm-send-form').style.display = 'flex'
 
   document.getElementById('dm-list-view').style.display = 'none'
   document.getElementById('dm-convo-view').style.display = 'flex'
@@ -569,13 +581,59 @@ function extractText(m) {
   return null
 }
 
+function _renderPayCard(text, isMe) {
+  const sendMatch = text.match(/^\[ethpay:send:([0-9.]+):([^:]+)(?::([^\]]*))?\]$/)
+  if (sendMatch) {
+    const eth = parseFloat(sendMatch[1])
+    const hash = sendMatch[2]
+    const fiat = sendMatch[3] || ''
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+      <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+      <div class="pay-card-status sent">${isMe ? 'Sent' : 'Received'} ✓</div>
+    </div>`
+  }
+  const reqMatch = text.match(/^\[ethpay:request:([0-9.]+)(?::([^\]]*))?\]$/)
+  if (reqMatch) {
+    const eth = parseFloat(reqMatch[1])
+    const fiat = reqMatch[2] || ''
+    if (isMe) {
+      return `<div class="pay-card">
+        <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+        <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+        <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+        <div class="pay-card-status">Requested</div>
+      </div>`
+    }
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
+      <div class="pay-card-eth">${fiat ? eth.toFixed(6) + ' ETH' : ''}</div>
+      <button class="pay-card-accept-btn" data-eth-amount="${eth}">Accept</button>
+    </div>`
+  }
+  const legacyMatch = text.match(/^sent ([0-9.]+) ETH → tx: (0x[0-9a-f]+)$/i)
+  if (legacyMatch) {
+    const eth = parseFloat(legacyMatch[1])
+    return `<div class="pay-card">
+      <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
+      <div class="pay-card-amount">${eth} ETH</div>
+      <div class="pay-card-status sent">${isMe ? 'Sent' : 'Received'} ✓</div>
+    </div>`
+  }
+  return null
+}
+
 function _renderSingleMessageHtml(m) {
   const text = extractText(m)
   if (!text) return ''
   const isMe = m.senderInboxId === client?.inboxId
   const time = m.sentAtNs ? new Date(Number(m.sentAtNs) / 1e6).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  const cardHtml = _renderPayCard(text, isMe)
+  const content = cardHtml || `<div class="dm-bubble">${escapeHtml(text)}</div>`
   return `<div class="dm-msg ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}">
-      <div class="dm-bubble">${escapeHtml(text)}</div>
+      ${content}
       <div class="dm-time">${time}</div>
     </div>`
 }
@@ -585,6 +643,17 @@ function renderMessages(messages) {
   if (!el) return
   el.innerHTML = messages.slice(-100).map(_renderSingleMessageHtml).join('')
   el.scrollTop = el.scrollHeight
+  if (!el._payBound) {
+    el._payBound = true
+    el.addEventListener('click', async e => {
+      const btn = e.target.closest('.pay-card-accept-btn')
+      if (!btn || btn.disabled) return
+      btn.disabled = true
+      btn.textContent = 'Sending...'
+      await _acceptPayRequest(btn.dataset.ethAmount)
+      btn.textContent = 'Accepted ✓'
+    })
+  }
 }
 
 // Fix 4 (H2): append a single streamed message to the existing list instead of
@@ -752,6 +821,9 @@ async function openDmByAddress(addr, domain) {
 
 let _payPrices = null
 let _payBalance = null
+let _dmPayFiatAmount = 0
+let _dmPayKeypadMode = false
+
 async function _fetchPayBalance() {
   try {
     const addr = window.getWalletAddress?.()
@@ -759,43 +831,101 @@ async function _fetchPayBalance() {
     const pc = await getPublicClient()
     const bal = await pc.getBalance({ address: addr })
     _payBalance = Number(bal) / 1e18
-    const balEl = document.getElementById('dm-pay-balance')
-    if (balEl) balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH`
+    _dmPayUpdateBalanceDisplay()
   } catch {}
 }
-function _checkPayOverBalance() {
+
+function _dmPayUpdateBalanceDisplay() {
+  const balEl = document.getElementById('dm-pay-balance')
+  if (!balEl || _payBalance == null) return
+  const currency = getUserCurrency()
+  let extra = ''
+  if (_payPrices && _payPrices[currency]) {
+    extra = ` (${formatFiat(_payBalance * _payPrices[currency], currency)})`
+  }
+  balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH${extra}`
+}
+
+function _dmPayGetEthAmount() {
+  if (_dmPayKeypadMode) {
+    return parseFloat(document.getElementById('dm-pay-eth-input')?.value) || 0
+  }
+  if (!_payPrices) return 0
+  const currency = getUserCurrency()
+  const rate = _payPrices[currency]
+  if (!rate || !_dmPayFiatAmount) return 0
+  return _dmPayFiatAmount / rate
+}
+
+async function _dmPayUpdateDisplay() {
+  if (!_payPrices) _payPrices = await getEthPrices()
+  const convEl = document.getElementById('dm-pay-conversion')
+  const currency = getUserCurrency()
+
+  if (_dmPayKeypadMode) {
+    const eth = parseFloat(document.getElementById('dm-pay-eth-input')?.value) || 0
+    const len = Math.max(2, (document.getElementById('dm-pay-eth-input')?.value || '').length + 1)
+    document.getElementById('dm-pay-eth-input').style.width = Math.min(len, 12) + 'ch'
+    if (eth > 0 && _payPrices && _payPrices[currency]) {
+      convEl.textContent = `≈ ${formatFiat(eth * _payPrices[currency], currency)}`
+    } else { convEl.textContent = '' }
+  } else {
+    const sym = _getCurrencySymbol(currency)
+    document.getElementById('dm-pay-display').textContent = `${sym}${_dmPayFiatAmount}`
+    const ethAmt = _dmPayGetEthAmount()
+    if (ethAmt > 0) {
+      convEl.textContent = `≈ ${ethAmt.toFixed(6)} ETH`
+    } else { convEl.textContent = '' }
+  }
+  _dmPayCheckOverBalance()
+}
+
+function _dmPayCheckOverBalance() {
   const bar = document.getElementById('dm-pay-bar')
   const sendBtn = document.getElementById('dm-pay-send')
   if (!bar) return
-  const val = parseFloat(document.getElementById('dm-pay-amount')?.value)
-  const over = _payBalance != null && val > 0 && val > _payBalance
+  const eth = _dmPayGetEthAmount()
+  const over = _payBalance != null && eth > 0 && eth > _payBalance
   bar.classList.toggle('pay-over-balance', over)
   if (sendBtn) sendBtn.disabled = over
 }
-async function _updatePayFiat() {
-  const input = document.getElementById('dm-pay-amount')
-  const fiatEl = document.getElementById('dm-pay-fiat')
-  if (!fiatEl) return
-  const val = parseFloat(input?.value)
-  if (!val || val <= 0) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
-  if (!_payPrices) _payPrices = await getEthPrices()
-  if (!_payPrices) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
-  const currency = getUserCurrency()
-  const rate = _payPrices[currency]
-  if (!rate) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
-  const fiatAmount = val * rate
-  fiatEl.textContent = `≈ ${formatFiat(fiatAmount, currency)}`
-  _checkPayOverBalance()
+
+function _dmPayClose() {
+  const bar = document.getElementById('dm-pay-bar')
+  bar.style.display = 'none'
+  bar.classList.remove('pay-over-balance')
+  document.getElementById('dm-send-form').style.display = 'flex'
+  document.getElementById('dm-pay-eth-input').value = ''
+  document.getElementById('dm-pay-conversion').textContent = ''
+  document.getElementById('dm-pay-balance').textContent = ''
+  _dmPayFiatAmount = 0
+  _dmPayKeypadMode = false
+  document.getElementById('dm-pay-stepper').style.display = 'flex'
+  document.getElementById('dm-pay-keypad').style.display = 'none'
+  document.getElementById('dm-pay-mode-toggle').textContent = 'Show Keypad'
+  document.getElementById('dm-pay-display').textContent = '$0'
 }
 
-async function sendPayment() {
+function _getCurrencySymbol(currency) {
+  const symbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', BRL: 'R$', NGN: '₦', KES: 'KSh', INR: '₹', KRW: '₩' }
+  return symbols[currency] || '$'
+}
+
+async function sendPayment(mode) {
   if (!activeConvo || !activePeerAddr) return
-  const amountInput = document.getElementById('dm-pay-amount')
-  const amount = amountInput.value.trim()
-  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) return
+  const ethAmount = _dmPayGetEthAmount()
+  if (!ethAmount || ethAmount <= 0) return
+
+  const fiatStr = _payPrices ? formatFiat(ethAmount * _payPrices[getUserCurrency()], getUserCurrency()) : ''
+
+  if (mode === 'request') {
+    await activeConvo.sendText(`[ethpay:request:${ethAmount.toFixed(8)}:${fiatStr}]`)
+    _dmPayClose()
+    return
+  }
 
   const payBtn = document.getElementById('dm-pay-send')
-  payBtn.innerHTML = 'Sending...'
+  payBtn.textContent = 'Sending...'
   payBtn.disabled = true
 
   try {
@@ -807,25 +937,43 @@ async function sendPayment() {
 
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
-      value: parseEther(amount),
+      value: parseEther(ethAmount.toFixed(18)),
       account: sendAccount,
     })
 
     const publicClient = await getPublicClient()
     await publicClient.waitForTransactionReceipt({ hash })
 
-    await activeConvo.sendText(`sent ${amount} ETH → tx: ${hash}`)
-
-    amountInput.value = ''
-    document.getElementById('dm-pay-fiat').textContent = ''
-    document.getElementById('dm-pay-bar').style.display = 'none'
-    document.getElementById('dm-send-form').style.display = 'flex'
+    await activeConvo.sendText(`[ethpay:send:${ethAmount.toFixed(8)}:${hash}:${fiatStr}]`)
+    _dmPayClose()
   } catch (e) {
     if (e.code !== 4001) console.error('payment error:', e)
   }
 
-  payBtn.innerHTML = 'Send'
+  payBtn.textContent = 'Send'
   payBtn.disabled = false
+}
+
+async function _acceptPayRequest(ethAmount) {
+  if (!activeConvo || !activePeerAddr) return
+  try {
+    const sendAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
+    const walletClient = createWalletClient({
+      chain: optimism,
+      transport: custom(getWalletProvider()),
+    })
+    const hash = await walletClient.sendTransaction({
+      to: activePeerAddr,
+      value: parseEther(ethAmount.toString()),
+      account: sendAccount,
+    })
+    const publicClient = await getPublicClient()
+    await publicClient.waitForTransactionReceipt({ hash })
+    const fiatStr = _payPrices ? formatFiat(ethAmount * _payPrices[getUserCurrency()], getUserCurrency()) : ''
+    await activeConvo.sendText(`[ethpay:send:${parseFloat(ethAmount).toFixed(8)}:${hash}:${fiatStr}]`)
+  } catch (e) {
+    if (e.code !== 4001) console.error('accept payment error:', e)
+  }
 }
 
 // --- Helpers ---
