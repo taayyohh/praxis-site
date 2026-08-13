@@ -2021,25 +2021,26 @@ async function loadConversations() {
         } catch {
           isGroup = true
           let groupName = c.name
-          if (!groupName || groupName === 'unnamed group') {
+          if (!groupName || groupName === t('messages.unnamedGroup')) {
             try {
               const gMembers = typeof c.members === 'function' ? await c.members() : c.members || []
               const myId = client?.inboxId
-              const names = []
+              const addrs = []
               for (const m of gMembers) {
                 const mId = m.inboxId || m
                 if (mId === myId) continue
                 const mAddr = m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
-                if (mAddr) {
-                  setInboxToAddr(mId, mAddr)
-                  if (!addrToDomain[mAddr]) {
-                    const dm = await resolveAddresses(query, [mAddr]).catch(() => ({}))
-                    if (dm[mAddr]) addrToDomain[mAddr] = dm[mAddr]
-                  }
-                  names.push((addrToDomain[mAddr] || mAddr.slice(0, 6)).replace(/\.\w+$/, ''))
-                }
+                if (mAddr) { setInboxToAddr(mId, mAddr); addrs.push(mAddr) }
               }
-              if (names.length) groupName = names.join(', ')
+              if (addrs.length) {
+                const unresolved = addrs.filter(a => !addrToDomain[a])
+                if (unresolved.length) {
+                  const dm = await resolveAddresses(query, unresolved).catch(() => ({}))
+                  Object.assign(addrToDomain, dm)
+                }
+                const names = addrs.map(a => (addrToDomain[a] || a.slice(0, 6)).replace(/\.\w+$/, ''))
+                groupName = names.join(', ')
+              }
             } catch {}
           }
           displayName = groupName || t('messages.unnamedGroup')
