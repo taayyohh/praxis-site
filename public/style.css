@@ -4703,8 +4703,8 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
   color: var(--fg);
   font-family: inherit;
   font-size: 0.9em;
-  padding: 0.5em 1ch;
-  border-radius: 2px !important; /* smallest radius — override any defaults */
+  padding: 0.7em 1.5ch;
+  border-radius: 999px;
 }
 
 .messages-send-form input:focus,
@@ -4714,28 +4714,24 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
 }
 
 .messages-pay-bar {
-  display: flex;
-  gap: 0.5em;
+  display: none;
+  flex-direction: column;
   align-items: center;
-  padding: 0.5em 1em;
+  gap: 0.25em;
+  padding: 1.5em 1.5em 1em;
   border-top: 1px solid var(--border);
-  background: var(--bg, #0a0a0a);
 }
-.messages-pay-bar input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--fg);
-  font-family: inherit;
-  font-size: 0.95em;
-  padding: 0.5em 1ch;
-  text-align: center;
-  width: 10ch;
-}
-.messages-pay-bar .buy-btn {
-  border-radius: 8px;
-  padding: 0.5em 1.5ch;
-}
+.messages-pay-bar .pay-amount-display { display: flex; align-items: baseline; justify-content: center; gap: 0.3ch; }
+.messages-pay-bar .pay-amount-input { background: none; border: none; color: var(--fg); font-family: inherit; font-size: 2.5em; font-weight: 300; padding: 0; outline: none; text-align: right; width: 3ch; min-width: 2ch; max-width: 10ch; }
+.messages-pay-bar .pay-amount-input::placeholder { color: var(--dim); }
+.messages-pay-bar .pay-currency-label { color: var(--dim); font-size: 1.4em; font-weight: 300; }
+.messages-pay-bar .pay-fiat-line { color: var(--dim); font-size: 0.85em; min-height: 1.2em; margin-bottom: 0.75em; }
+.messages-pay-bar .pay-bottom { display: flex; align-items: center; gap: 0.75em; width: 100%; }
+.messages-pay-bar .pay-send-btn { flex: 1; background: var(--accent); color: var(--bg); border: none; border-radius: 999px; padding: 0.7em 1ch; font-family: inherit; font-size: 0.9em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5ch; transition: opacity 0.15s; }
+.messages-pay-bar .pay-send-btn:hover { opacity: 0.85; }
+.messages-pay-bar .pay-send-btn:disabled { opacity: 0.4; cursor: default; }
+.messages-pay-bar .pay-cancel-btn { background: none; border: 1px solid var(--border-hover); border-radius: 999px; color: var(--muted); font-family: inherit; font-size: 0.85em; padding: 0.65em 1.5ch; cursor: pointer; transition: border-color 0.15s; }
+.messages-pay-bar .pay-cancel-btn:hover { border-color: var(--muted); }
 
 
 .msg-convo-item {

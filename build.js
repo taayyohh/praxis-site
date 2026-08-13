@@ -789,14 +789,15 @@ const messagesHtml = `<div id="messages-page">
       </div>
       <div id="messages-msgs" class="messages-msgs"></div>
       <div id="messages-pay-bar" class="messages-pay-bar" style="display:none">
-        <div style="display:flex;align-items:center;gap:0.75ch;flex:1;background:var(--surface,#111);border:1px solid var(--border,#333);border-radius:8px;padding:0.4em 0.75ch">
-          <i class="ph ph-currency-eth" style="color:var(--accent);font-size:1em"></i>
-          <input type="text" id="messages-pay-amount" placeholder="0.00" style="flex:1;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0;outline:none;min-width:4ch" inputmode="decimal">
-          <span id="messages-pay-fiat" style="color:var(--dim);font-size:0.8em;white-space:nowrap"></span>
-          <span style="color:var(--dim);font-size:0.8em">ETH</span>
+        <div class="pay-amount-display">
+          <input type="text" inputmode="decimal" id="messages-pay-amount" class="pay-amount-input" placeholder="0" autocomplete="off">
+          <span class="pay-currency-label">ETH</span>
         </div>
-        <button id="messages-pay-send" style="background:none;border:1px solid var(--accent,#fff);color:var(--accent,#fff);font-family:inherit;font-size:0.85em;padding:0.4em 1.2ch;cursor:pointer;border-radius:6px;white-space:nowrap"><i class="ph ph-paper-plane-tilt" style="margin-right:0.3ch"></i> send</button>
-        <button id="messages-pay-cancel" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1em;padding:0.2em"><i class="ph ph-x"></i></button>
+        <span id="messages-pay-fiat" class="pay-fiat-line"></span>
+        <div class="pay-bottom">
+          <button id="messages-pay-cancel" class="pay-cancel-btn">cancel</button>
+          <button id="messages-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
+        </div>
       </div>
       <form id="messages-send-form" class="messages-send-form">
         <button type="button" id="messages-pay-toggle" class="dock-btn" title="send ETH" style="font-size:1em"><i class="ph ph-currency-eth"></i></button>

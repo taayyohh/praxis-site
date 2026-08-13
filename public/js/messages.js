@@ -469,10 +469,20 @@ async function initMessages() {
 
   document.getElementById('messages-pay-toggle')?.addEventListener('click', () => {
     const bar = document.getElementById('messages-pay-bar')
-    bar.style.display = bar.style.display === 'none' ? 'flex' : 'none'
+    const form = document.getElementById('messages-send-form')
+    const open = bar.style.display === 'none' || !bar.style.display
+    bar.style.display = open ? 'flex' : 'none'
+    if (form) form.style.display = open ? 'none' : 'flex'
+    if (open) document.getElementById('messages-pay-amount')?.focus()
   })
   document.getElementById('messages-pay-cancel')?.addEventListener('click', () => {
     document.getElementById('messages-pay-bar').style.display = 'none'
+    const form = document.getElementById('messages-send-form')
+    if (form) form.style.display = 'flex'
+    const amt = document.getElementById('messages-pay-amount')
+    if (amt) amt.value = ''
+    const fiat = document.getElementById('messages-pay-fiat')
+    if (fiat) fiat.textContent = ''
   })
   document.getElementById('messages-pay-send')?.addEventListener('click', sendPayment)
 
@@ -489,9 +499,13 @@ async function initMessages() {
       const currency = getUserCurrency()
       const rate = _payPrices[currency]
       if (!rate) { payFiatSpan.textContent = ''; return }
-      payFiatSpan.textContent = `~${formatFiat(eth * rate, currency)}`
+      payFiatSpan.textContent = `≈ ${formatFiat(eth * rate, currency)}`
     }
-    payAmtInput.addEventListener('input', updatePayFiat)
+    payAmtInput.addEventListener('input', () => {
+      const len = Math.max(2, payAmtInput.value.length + 1)
+      payAmtInput.style.width = Math.min(len, 10) + 'ch'
+      updatePayFiat()
+    })
   }
 
   // check URL params for direct message
@@ -3282,6 +3296,10 @@ async function sendPayment() {
     }
     amountInput.value = ''
     document.getElementById('messages-pay-bar').style.display = 'none'
+    const form = document.getElementById('messages-send-form')
+    if (form) form.style.display = 'flex'
+    const fiat = document.getElementById('messages-pay-fiat')
+    if (fiat) fiat.textContent = ''
   } catch (e) {
     if (e.code !== 4001) console.error('payment error:', e)
   }
