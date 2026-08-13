@@ -98,9 +98,9 @@ function injectPanel() {
         <button type="button" id="dm-pay-cancel" class="pay-cancel-link">cancel</button>
       </div>
       <form id="dm-send-form">
-        <button type="button" id="dm-pay-toggle" class="dm-icon-btn" title="send ETH" aria-label="send ETH"><i class="ph ph-currency-eth"></i></button>
         <input type="text" id="dm-input" placeholder="type a message..." autocomplete="off">
         <button type="submit" class="dm-icon-btn"><i class="ph ph-paper-plane-tilt"></i></button>
+        <button type="button" id="dm-pay-toggle" class="dm-icon-btn" title="send ETH" aria-label="send ETH"><i class="ph ph-money"></i></button>
       </form>
     </div>
   `
