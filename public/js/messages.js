@@ -4,7 +4,7 @@ import { query } from './ponder.js'
 import { t } from './i18n.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
-import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient } from './utils.js'
+import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic } from './utils.js'
 
 // Sign a message via the embedded wallet, falling back to window.ethereum.
 // Critical: when another wallet (Phantom, Coinbase, Rabby) has locked window.ethereum
@@ -1929,7 +1929,7 @@ async function loadConversations() {
             try {
               const members = typeof c.members === 'function' ? await c.members() : c.members || []
               for (const m of (members || [])) {
-                const mAddr = m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
+                const mAddr = m.accountIdentifiers?.[0]?.identifier?.toLowerCase() || m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
                 if (mAddr && m.inboxId) {
                   setInboxToAddr(m.inboxId, mAddr)
                   setInboxToAddr(mAddr, m.inboxId)
@@ -2021,7 +2021,7 @@ async function loadConversations() {
         } catch {
           isGroup = true
           let groupName = c.name
-          if (!groupName || groupName === t('messages.unnamedGroup')) {
+          if (!groupName || groupName === t('messages.unnamedGroup') || groupName === 'unnamed group' || groupName === 'New Group') {
             try {
               const gMembers = typeof c.members === 'function' ? await c.members() : c.members || []
               const myId = client?.inboxId
@@ -2029,7 +2029,7 @@ async function loadConversations() {
               for (const m of gMembers) {
                 const mId = m.inboxId || m
                 if (mId === myId) continue
-                const mAddr = m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
+                const mAddr = m.accountIdentifiers?.[0]?.identifier?.toLowerCase() || m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
                 if (mAddr) { setInboxToAddr(mId, mAddr); addrs.push(mAddr) }
               }
               if (addrs.length) {
@@ -2221,7 +2221,7 @@ async function loadConversations() {
       ? `<div id="messages-syncing" style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no conversations yet</div>`
       : displayItems.map((item, i) => `
       <div class="msg-convo-item${item.isGroup ? ' msg-convo-group' : ''}" data-idx="${i}">
-        ${_convoAvatar(item.peerDomain, item.isGroup)}
+        ${_convoAvatar(item.peerDomain, item.isGroup, item.peerInboxId ? inboxToAddr[item.peerInboxId] : null)}
         <div class="msg-convo-body">
           <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)}</div>
           <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
@@ -2241,7 +2241,7 @@ async function loadConversations() {
         <div id="msg-requests-list" style="display:none">
           ${requests.map((item, i) => `
             <div class="msg-convo-item msg-convo-request" data-idx="${filtered.length + i}" style="opacity:0.55">
-              ${_convoAvatar(item.peerDomain, item.isGroup)}
+              ${_convoAvatar(item.peerDomain, item.isGroup, item.peerInboxId ? inboxToAddr[item.peerInboxId] : null)}
               <div class="msg-convo-body">
                 <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)} <span style="color:var(--muted);font-size:0.75em;margin-left:0.5ch">request</span></div>
                 <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
@@ -2768,7 +2768,7 @@ function prependMessages(messages, el) {
 }
 
 // --- Render message content with link previews and attachment embeds ---
-function _convoAvatar(domain, isGroup) {
+function _convoAvatar(domain, isGroup, addr) {
   const name = (domain || '?').replace(/\..*$/, '')
   const initial = name.charAt(0).toUpperCase()
   let hash = 0
@@ -2776,7 +2776,8 @@ function _convoAvatar(domain, isGroup) {
   const lightness = 20 + (Math.abs(hash) % 15)
   const bg = `hsl(0, 0%, ${lightness}%)`
   const groupIcon = isGroup ? '#' : initial
-  const imgUrl = domain && domain.includes('.') ? `https://${escapeHtml(domain)}/api/img?url=https://${escapeHtml(domain)}/og/index.png&w=80` : ''
+  const pfp = addr ? getProfilePic(addr) : null
+  const imgUrl = pfp || (domain && domain.includes('.') ? `/api/img?url=https://${escapeHtml(domain)}/og/index.png&w=80` : '')
   return `<div class="msg-convo-avatar" style="background:${bg}">${groupIcon}${imgUrl ? `<img src="${escapeHtml(imgUrl)}" loading="lazy" onerror="this.remove()">` : ''}</div>`
 }
 
@@ -3322,8 +3323,7 @@ async function sendMessage(e) {
     } else {
       await activeConvo.sendText(text)
     }
-    // Success: just remove the optimistic marker — the stream listener will
-    // pick up the real message and re-render naturally (no flash)
+    try { localStorage.setItem(`praxis:msg-seen:${activeConvo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
     const optEl = document.querySelector(`[data-optimistic-id="${optimisticId}"]`)
     if (optEl) optEl.removeAttribute('data-optimistic-id')
     // move active conversation to top of list (or add it if new)

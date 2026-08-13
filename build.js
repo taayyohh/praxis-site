@@ -770,9 +770,9 @@ const messagesHtml = `<div id="messages-page">
   <div id="messages-sidebar" class="messages-sidebar">
     <div class="messages-sidebar-header" style="display:flex;align-items:center;justify-content:space-between">
       <span data-i18n="messages.title">messages</span>
-      <div style="display:flex;align-items:center;gap:0.5ch">
-        <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:1.2em;padding:0.15em 0.5ch;font-family:inherit;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-plus-circle"></i></button>
-        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-gear"></i></button>
+      <div style="display:flex;align-items:center;gap:0.25em;margin-left:auto">
+        <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0;font-family:inherit;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-plus-circle" style="font-size:1.5em"></i></button>
+        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-gear" style="font-size:1.5em"></i></button>
       </div>
     </div>
     <div id="messages-connect" style="padding:1em;color:var(--muted);display:none" data-i18n="messages.connectToMessage">connect wallet to message</div>

@@ -1216,8 +1216,8 @@ section img {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.5em;
-  min-width: 260px;
-  max-width: 320px;
+  min-width: 300px;
+  max-width: 420px;
   width: 90%;
 }
 .msg-compose-overlay {
