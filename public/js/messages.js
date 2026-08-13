@@ -2090,8 +2090,8 @@ async function loadConversations() {
             } catch {}
           }
         }
-        // Use the actual last message timestamp for unread (not the preview text message)
-        const lastMsgTs = lastMsg?.sentAtNs ? Number(lastMsg.sentAtNs) : (previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0)
+        // Use the last VISIBLE message timestamp (not control messages like read receipts)
+        const lastMsgTs = previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0
         const time = lastMsgTs ? relativeTime(lastMsgTs / 1e6) : ''
         // Find the last real user message for unread check (skip control/metadata messages).
         // extractText() already filters praxis control prefixes, XMTP group updates, etc.
