@@ -1071,7 +1071,7 @@ async function createProjectGroup(projectId, title) {
   if (!client || !sdk) return
 
   try {
-    const convo = await client.conversations.createGroup([], { name: title })
+    const convo = await client.conversations.createGroup([], { groupName: title })
     const groupId = convo.id
 
     // store group ID on server

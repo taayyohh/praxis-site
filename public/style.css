@@ -4800,6 +4800,39 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
   flex: 1;
   min-width: 0;
 }
+.group-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  margin-bottom: 0.5em;
+}
+.group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.2em 0.6em;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.75em;
+  border-radius: 1em;
+  font-weight: 500;
+}
+.msg-member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.msg-member-row:hover {
+  background: var(--surface);
+}
+.msg-member-row .msg-convo-avatar {
+  width: 1.8em;
+  height: 1.8em;
+  font-size: 0.8em;
+}
 
 .msg-convo-peer {
   color: var(--accent);

@@ -411,37 +411,86 @@ async function initMessages() {
         if (!mutuals.length) { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted);font-size:0.85em">no mutual follows yet</div>`; return }
         const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
         Object.assign(addrToDomain, mutualDomains)
-        const formHtml = `<div style="padding:0 1em 1em">
-          <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">group name</div>
-          <input id="group-name-input" type="text" placeholder="e.g. the crew" style="width:100%;padding:0.5em;margin-bottom:0.75em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;border-radius:4px;box-sizing:border-box">
-          <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">add members</div>
-          <div style="max-height:200px;overflow-y:auto">${mutuals.map(addr => {
-            const domain = addrToDomain[addr] || addr.slice(0, 6) + '...' + addr.slice(-4)
-            return `<label class="msg-convo-item" style="display:flex;align-items:center;gap:0.5em;cursor:pointer"><input type="checkbox" data-addr="${escapeHtml(addr)}" style="accent-color:var(--accent)"><span style="font-size:0.85em">${escapeHtml(domain)}</span></label>`
-          }).join('')}</div>
-          <button id="group-create-btn" class="msg-compose-option" style="margin-top:0.75em;justify-content:center;font-weight:600">create group</button>
-        </div>`
-        sheet.querySelector('div[style*=padding]').outerHTML = formHtml
-        sheet.querySelector('#group-create-btn')?.addEventListener('click', async () => {
-          const name = sheet.querySelector('#group-name-input')?.value.trim()
-          const addrs = [...sheet.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.dataset.addr)
-          if (!name || !addrs.length) return
-          const inboxIds = []
-          for (const addr of addrs) {
-            try {
-              const id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
-              if (id) inboxIds.push(id)
-            } catch {}
-          }
-          if (!inboxIds.length) return
-          try {
-            const group = await client.conversations.createGroup(inboxIds, { name })
-            overlay.remove()
-            await loadConversations()
-            openConversation(group, name)
-          } catch (e) { console.error('create group error:', e) }
-        })
+        _renderGroupForm(sheet, mutuals, overlay)
       } catch { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted)">failed to load</div>` }
+    }
+
+    function _renderGroupForm(sheet, mutuals, overlay) {
+      const selected = new Set()
+      const formHtml = `<div style="padding:0 1em 1em">
+        <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">group name</div>
+        <input id="group-name-input" type="text" placeholder="e.g. the crew" style="width:100%;padding:0.5em;margin-bottom:0.75em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;border-radius:4px;box-sizing:border-box">
+        <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">add members</div>
+        <div id="group-selected-chips" class="group-chips-wrap"></div>
+        <input id="group-member-search" type="text" placeholder="search..." style="width:100%;padding:0.5em;margin-bottom:0.5em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;border-radius:4px;box-sizing:border-box">
+        <div id="group-member-list" style="max-height:180px;overflow-y:auto"></div>
+        <button id="group-create-btn" class="msg-compose-option" style="margin-top:0.75em;justify-content:center;font-weight:600">create group</button>
+      </div>`
+      sheet.querySelector('div[style*=padding]').outerHTML = formHtml
+
+      function renderChips() {
+        const wrap = sheet.querySelector('#group-selected-chips')
+        if (!wrap) return
+        if (!selected.size) { wrap.innerHTML = ''; return }
+        wrap.innerHTML = [...selected].map(addr => {
+          const d = addrToDomain[addr] || addr.slice(0, 6) + '...'
+          return `<span class="group-chip" data-addr="${escapeHtml(addr)}">${escapeHtml(d)} <i class="ph ph-x" style="cursor:pointer;font-size:0.8em;opacity:0.7"></i></span>`
+        }).join('')
+        wrap.querySelectorAll('.group-chip').forEach(chip => {
+          chip.querySelector('.ph-x')?.addEventListener('click', () => {
+            selected.delete(chip.dataset.addr)
+            renderChips(); renderList()
+          })
+        })
+      }
+
+      function renderList(filter) {
+        const list = sheet.querySelector('#group-member-list')
+        if (!list) return
+        const f = (filter || '').toLowerCase()
+        const items = mutuals.filter(addr => {
+          if (selected.has(addr)) return false
+          const domain = addrToDomain[addr] || addr
+          return !f || domain.toLowerCase().includes(f) || addr.toLowerCase().includes(f)
+        })
+        list.innerHTML = items.map(addr => {
+          const domain = addrToDomain[addr] || addr.slice(0, 6) + '...' + addr.slice(-4)
+          return `<div class="msg-member-row" data-addr="${escapeHtml(addr)}">${_convoAvatar(domain, false)}<span style="font-size:0.85em">${escapeHtml(domain)}</span></div>`
+        }).join('') || '<div style="color:var(--muted);font-size:0.8em;padding:0.5em 0">no matches</div>'
+        list.querySelectorAll('.msg-member-row').forEach(row => {
+          row.addEventListener('click', () => {
+            selected.add(row.dataset.addr)
+            renderChips(); renderList(sheet.querySelector('#group-member-search')?.value)
+          })
+        })
+      }
+
+      renderList()
+      sheet.querySelector('#group-member-search')?.addEventListener('input', (e) => renderList(e.target.value))
+
+      sheet.querySelector('#group-create-btn')?.addEventListener('click', async () => {
+        const addrs = [...selected]
+        if (!addrs.length) return
+        const nameInput = sheet.querySelector('#group-name-input')?.value.trim()
+        const autoName = addrs.map(a => (addrToDomain[a] || a.slice(0, 6)).replace(/\.\w+$/, '')).join(', ')
+        const name = nameInput || autoName
+        const btn = sheet.querySelector('#group-create-btn')
+        btn.textContent = 'creating...'; btn.disabled = true
+        const inboxIds = []
+        for (const addr of addrs) {
+          try {
+            const id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
+            if (id) inboxIds.push(id)
+          } catch {}
+        }
+        if (!inboxIds.length) { btn.textContent = 'create group'; btn.disabled = false; return }
+        try {
+          const group = await client.conversations.createGroup(inboxIds, { groupName: name })
+          overlay.remove()
+          await loadConversations()
+          openConversation(group, name)
+        } catch (e) { console.error('create group error:', e); btn.textContent = 'create group'; btn.disabled = false }
+      })
     }
 
     showMenu()
@@ -4119,7 +4168,10 @@ async function toggleMembersPanel() {
       html += `</div>`
     }
 
-    html += `<button class="buy-btn" id="members-leave-btn" style="margin-top:0.75em;font-size:0.8em;padding:0.3em 1ch;width:100%;border-color:#ef4444;color:#ef4444">leave group</button>`
+    if (iAmAdmin || iAmSuperAdmin) {
+      html += `<button class="buy-btn" id="members-add-btn" style="margin-top:0.75em;font-size:0.8em;padding:0.3em 1ch;width:100%"><i class="ph ph-user-plus"></i> add member</button>`
+    }
+    html += `<button class="buy-btn" id="members-leave-btn" style="margin-top:0.5em;font-size:0.8em;padding:0.3em 1ch;width:100%;border-color:#ef4444;color:#ef4444">leave group</button>`
 
     panel.innerHTML = html
 
@@ -4167,6 +4219,48 @@ async function toggleMembersPanel() {
           btn.textContent = 'error'
         }
       })
+    })
+
+    document.getElementById('members-add-btn')?.addEventListener('click', async () => {
+      const addBtn = document.getElementById('members-add-btn')
+      addBtn.textContent = 'loading...'; addBtn.disabled = true
+      try {
+        const mutuals = await _fetchMutuals()
+        const memberInboxIds = new Set(members.map(m => m.inboxId || m))
+        const currentAddrs = new Set()
+        for (const [inbox, addr] of Object.entries(inboxToAddr)) {
+          if (memberInboxIds.has(inbox)) currentAddrs.add(addr.toLowerCase())
+        }
+        const available = mutuals.filter(a => !currentAddrs.has(a.toLowerCase()))
+        if (!available.length) { addBtn.textContent = 'no one to add'; setTimeout(() => { addBtn.innerHTML = '<i class="ph ph-user-plus"></i> add member'; addBtn.disabled = false }, 2000); return }
+        const avDomains = await resolveAddresses(query, available).catch(() => ({}))
+        Object.assign(addrToDomain, avDomains)
+        let addHtml = '<div style="margin-top:0.5em;border-top:1px solid var(--border);padding-top:0.5em">'
+        addHtml += '<input id="members-add-search" type="text" placeholder="search..." style="width:100%;padding:0.4em;margin-bottom:0.4em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.8em;border-radius:4px;box-sizing:border-box">'
+        addHtml += '<div id="members-add-list"></div></div>'
+        addBtn.outerHTML = addHtml
+        function renderAddList(filter) {
+          const listEl = panel.querySelector('#members-add-list')
+          if (!listEl) return
+          const f = (filter || '').toLowerCase()
+          const filtered = available.filter(a => { const d = addrToDomain[a] || a; return !f || d.toLowerCase().includes(f) })
+          listEl.innerHTML = filtered.map(addr => {
+            const domain = addrToDomain[addr] || addr.slice(0, 6) + '...' + addr.slice(-4)
+            return `<div class="msg-member-row" data-addr="${escapeHtml(addr)}">${_convoAvatar(domain, false)}<span style="font-size:0.8em">${escapeHtml(domain)}</span></div>`
+          }).join('') || '<div style="color:var(--muted);font-size:0.8em">no matches</div>'
+          listEl.querySelectorAll('.msg-member-row').forEach(row => {
+            row.addEventListener('click', async () => {
+              row.innerHTML = '<span style="color:var(--muted);font-size:0.8em">adding...</span>'
+              try {
+                const id = await client.fetchInboxIdByIdentifier({ identifier: row.dataset.addr, identifierKind: sdk.IdentifierKind.Ethereum })
+                if (id) { await activeConvo.addMembers([id]); row.innerHTML = '<span style="color:var(--accent);font-size:0.8em">added</span>' }
+              } catch (e) { row.innerHTML = `<span style="color:#ef4444;font-size:0.8em">failed: ${escapeHtml(e?.message?.slice(0, 40) || 'error')}</span>` }
+            })
+          })
+        }
+        renderAddList()
+        panel.querySelector('#members-add-search')?.addEventListener('input', (e) => renderAddList(e.target.value))
+      } catch (e) { addBtn.textContent = 'error'; console.warn('add member:', e?.message) }
     })
 
     document.getElementById('members-leave-btn')?.addEventListener('click', async () => {
