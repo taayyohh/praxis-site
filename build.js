@@ -771,8 +771,8 @@ const messagesHtml = `<div id="messages-page">
     <div class="messages-sidebar-header" style="display:flex;align-items:center;justify-content:space-between">
       <span data-i18n="messages.title">messages</span>
       <div style="display:flex;align-items:center;gap:0.25em;margin-left:auto">
-        <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0;font-family:inherit;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-plus-circle" style="font-size:1.5em"></i></button>
-        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-gear" style="font-size:1.5em"></i></button>
+        <button id="messages-compose" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0;font-family:inherit;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-plus-circle" style="font-size:1.2em"></i></button>
+        <button id="messages-settings-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-gear" style="font-size:1.2em"></i></button>
       </div>
     </div>
     <div id="messages-connect" style="padding:1em;color:var(--muted);display:none" data-i18n="messages.connectToMessage">connect wallet to message</div>

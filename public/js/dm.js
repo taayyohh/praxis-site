@@ -613,7 +613,7 @@ function _renderPayCard(text, isMe) {
       <button class="pay-card-accept-btn" data-eth-amount="${eth}">Accept</button>
     </div>`
   }
-  const legacyMatch = text.match(/^sent ([0-9.]+) ETH → tx: (0x[0-9a-f]+)$/i)
+  const legacyMatch = text.match(/^sent ([0-9.]+) ETH(?: → tx: (0x[0-9a-f]+))?$/i)
   if (legacyMatch) {
     const eth = parseFloat(legacyMatch[1])
     return `<div class="pay-card">

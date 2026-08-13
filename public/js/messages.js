@@ -2775,7 +2775,7 @@ function _convoAvatar(domain, isGroup, addr) {
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   const lightness = 20 + (Math.abs(hash) % 15)
   const bg = `hsl(0, 0%, ${lightness}%)`
-  const groupIcon = isGroup ? '#' : initial
+  const groupIcon = initial
   const pfp = addr ? getProfilePic(addr) : null
   const imgUrl = pfp || (domain && domain.includes('.') ? `/api/img?url=https://${escapeHtml(domain)}/og/index.png&w=80` : '')
   return `<div class="msg-convo-avatar" style="background:${bg}">${groupIcon}${imgUrl ? `<img src="${escapeHtml(imgUrl)}" loading="lazy" onerror="this.remove()">` : ''}</div>`
@@ -2812,7 +2812,7 @@ function _renderMsgPayCard(text, isMe) {
       <button class="pay-card-accept-btn" data-eth-amount="${eth}">Accept</button>
     </div>`
   }
-  const legacyMatch = text.match(/^sent ([0-9.]+) ETH → tx: (0x[0-9a-f]+)$/i)
+  const legacyMatch = text.match(/^sent ([0-9.]+) ETH(?: → tx: (0x[0-9a-f]+))?$/i)
   if (legacyMatch) {
     const eth = parseFloat(legacyMatch[1])
     return `<div class="pay-card">
