@@ -164,12 +164,12 @@ function showAddress(address) {
   // Publish to the cross-origin bridge so other Praxis sites can pick it up.
   try { setBridgeAddress(address) } catch {}
 
-  // top bar: bell in header bar, wallet actions inline in planet dropdown
+  // top bar: bell in header bar, wallet actions inline in praxis dropdown
   if (topBarWallet) {
     const siteOwner = document.body.dataset.owner?.toLowerCase() || ''
     const isOwnerView = siteOwner && address.toLowerCase() === siteOwner
 
-    // bell in the top bar itself (next to planet icon), owner's site only
+    // bell in the top bar itself (next to praxis mark), owner's site only
     if (isOwnerView && !document.getElementById('top-notifications')) {
       const bell = document.createElement('a')
       bell.href = '/notifications'
@@ -181,7 +181,7 @@ function showAddress(address) {
       if (trigger) trigger.parentNode.insertBefore(bell, trigger)
     }
 
-    // populate planet dropdown with wallet items
+    // populate praxis dropdown with wallet items
     const dropdown = document.getElementById('praxis-menu-dropdown')
     const walletTop = document.getElementById('top-bar-wallet-top')
     const closeFn = () => {
@@ -221,14 +221,14 @@ function showAddress(address) {
       </div>
     `
 
-    // move switchers to top bar (next to planet icon, with separator)
+    // move switchers to top bar (next to praxis mark, with separator)
     document.getElementById('praxis-menu-bottom')?.remove()
     if (dropdown) {
       const menuRow = dropdown.querySelector('.praxis-menu-row')
       const langSwitcher = menuRow?.querySelector('#lang-switcher')
       const currSwitcher = menuRow?.querySelector('#currency-switcher')
 
-      // insert switchers into top bar after the planet trigger (far right)
+      // insert switchers into top bar after the praxis trigger (far right)
       const trigger = document.getElementById('praxis-menu-trigger')
       if (trigger && langSwitcher && !document.getElementById('top-bar-switchers')) {
         const wrap = document.createElement('span')

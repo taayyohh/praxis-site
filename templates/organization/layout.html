@@ -49,7 +49,7 @@
     <a href="/" class="site-identity">{{domain}}</a>
     <div id="praxis-menu-trigger">
       <span id="praxis-menu-label">praxis</span>
-      <button id="praxis-menu-btn" aria-label="Menu"><i class="ph ph-planet"></i></button>
+      <button id="praxis-menu-btn" aria-label="Menu"><svg class="praxis-mark" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3.5"/><circle cx="7.1" cy="11.1" r="2.2"/><circle cx="16.7" cy="9" r="2"/><circle cx="10.4" cy="17.9" r="1.9"/><circle cx="9.3" cy="6" r="1.8"/><circle cx="18.6" cy="14.4" r="1.6"/><circle cx="5.1" cy="14.9" r="1.5"/><circle cx="15.2" cy="4.8" r="1.4"/><circle cx="14.5" cy="19.9" r="1.3"/></svg></button>
     </div>
     <div id="praxis-menu-dropdown" class="praxis-dropdown-hidden">
       <span id="top-bar-wallet-top"></span>
@@ -216,7 +216,7 @@
       if (cached && !sessionStorage.getItem('wallet-disconnected')) checkOwner(cached)
     } catch(e) {}
 
-    // --- planet menu dropdown ---
+    // --- praxis menu dropdown ---
     var pmBtn = document.getElementById('praxis-menu-btn')
     var pmTrigger = document.getElementById('praxis-menu-trigger')
     var pmDrop = document.getElementById('praxis-menu-dropdown')

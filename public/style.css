@@ -115,7 +115,13 @@ input[type="number"] {
   color: var(--fg);
 }
 
-/* --- planet menu --- */
+/* --- praxis mark menu --- */
+
+.praxis-mark {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
 
 #praxis-menu-trigger {
   display: flex;
@@ -254,7 +260,7 @@ input[type="number"] {
   white-space: nowrap;
 }
 
-/* top bar switchers (next to planet icon) */
+/* top bar switchers (next to praxis mark) */
 #top-bar-switchers {
   display: flex;
   align-items: center;
@@ -279,7 +285,7 @@ input[type="number"] {
   display: none;
 }
 
-/* top bar bell (next to planet icon) */
+/* top bar bell (next to praxis mark) */
 .top-bar-bell {
   position: relative;
   color: var(--fg);
@@ -310,7 +316,7 @@ input[type="number"] {
   font-size: 0.9em;
 }
 
-/* wallet items inline in planet dropdown */
+/* wallet items inline in praxis dropdown */
 #top-bar-wallet {
   display: flex;
   flex-direction: column;
@@ -1575,7 +1581,7 @@ section img {
     align-items: center;
     font-size: 0.85em;
   }
-  /* mobile: hide planet menu + bell, show hamburger */
+  /* mobile: hide praxis menu + bell, show hamburger */
   #praxis-menu-trigger { display: none; }
   #praxis-menu-dropdown { display: none; }
   .top-bar-bell { display: none; }
