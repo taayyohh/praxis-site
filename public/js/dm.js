@@ -824,6 +824,11 @@ let _payBalance = null
 let _dmPayFiatAmount = 0
 let _dmPayKeypadMode = false
 
+window.addEventListener('currency-changed', () => {
+  _dmPayUpdateBalanceDisplay()
+  _dmPayUpdateDisplay()
+})
+
 async function _fetchPayBalance() {
   try {
     const addr = window.getWalletAddress?.()

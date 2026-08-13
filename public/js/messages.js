@@ -60,6 +60,11 @@ function _initPayPrices() {
   import('./fiat.js').then(m => m.getEthPrices().then(p => { _payPrices = p })).catch(() => {})
 }
 
+window.addEventListener('currency-changed', () => {
+  _msgPayUpdateBalanceEl()
+  _msgPayUpdateDisplay()
+})
+
 async function _fetchMsgPayBalance() {
   try {
     const addr = window.getWalletAddress?.()
