@@ -570,9 +570,15 @@ function showListView() {
 
 function extractText(m) {
   if (!m) return null
-  if (typeof m.content === 'string') return m.content
-  if (m.content?.text) return m.content.text
-  if (m.content?.content) return m.content.content
+  let txt = null
+  if (typeof m.content === 'string') txt = m.content
+  else if (m.content?.text) txt = m.content.text
+  else if (m.content?.content) txt = m.content.content
+  if (txt !== null && typeof txt === 'string') {
+    if (txt.startsWith('\x00praxis:read:') || txt.startsWith('\x00praxis:typing:') || txt.startsWith('praxis:typing:') || txt.startsWith('praxis:read:')) return null
+    if (txt.includes('"initiatedByInboxId"') || txt.includes('"addedInboxes"') || txt.includes('"removedInboxes"') || txt.includes('"metadataFieldChanges"')) return null
+    return txt
+  }
   if (m.contentType?.typeId === 'group_updated') return null
   if (m.kind !== undefined && m.kind !== 1) return null
   if (typeof m.content === 'object' && m.content !== null) {
@@ -897,19 +903,25 @@ function _dmPayCheckOverBalance() {
 
 function _dmPayClose() {
   const bar = document.getElementById('dm-pay-bar')
-  bar.style.display = 'none'
-  bar.classList.remove('pay-over-balance')
-  document.getElementById('dm-send-form').style.display = 'flex'
-  document.getElementById('dm-pay-eth-input').value = ''
-  document.getElementById('dm-pay-conversion').textContent = ''
-  document.getElementById('dm-pay-balance').textContent = ''
+  if (bar) { bar.style.display = 'none'; bar.classList.remove('pay-over-balance') }
+  const form = document.getElementById('dm-send-form')
+  if (form) form.style.display = 'flex'
+  const ethInput = document.getElementById('dm-pay-eth-input')
+  if (ethInput) ethInput.value = ''
+  const conv = document.getElementById('dm-pay-conversion')
+  if (conv) conv.textContent = ''
+  const bal = document.getElementById('dm-pay-balance')
+  if (bal) bal.textContent = ''
   _dmPayFiatAmount = 0
   _dmPayKeypadMode = false
-  document.getElementById('dm-pay-stepper').style.display = 'flex'
-  document.getElementById('dm-pay-keypad').style.display = 'none'
-  document.getElementById('dm-pay-mode-toggle').textContent = 'Show Keypad'
-  const sym = _getCurrencySymbol(getUserCurrency())
-  document.getElementById('dm-pay-display').textContent = `${sym}0`
+  const stepper = document.getElementById('dm-pay-stepper')
+  if (stepper) stepper.style.display = 'flex'
+  const keypad = document.getElementById('dm-pay-keypad')
+  if (keypad) keypad.style.display = 'none'
+  const toggle = document.getElementById('dm-pay-mode-toggle')
+  if (toggle) toggle.textContent = 'Show Keypad'
+  const display = document.getElementById('dm-pay-display')
+  if (display) display.textContent = `${_getCurrencySymbol(getUserCurrency())}0`
 }
 
 function _getCurrencySymbol(currency) {
@@ -930,9 +942,10 @@ async function sendPayment(mode) {
     return
   }
 
+  if (!await window.ensureOptimism?.()) return
+
   const payBtn = document.getElementById('dm-pay-send')
-  payBtn.textContent = 'Sending...'
-  payBtn.disabled = true
+  if (payBtn) { payBtn.textContent = 'Sending...'; payBtn.disabled = true }
 
   try {
     const sendAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
@@ -956,13 +969,13 @@ async function sendPayment(mode) {
     if (e.code !== 4001) console.error('payment error:', e)
   }
 
-  payBtn.textContent = 'Send'
-  payBtn.disabled = false
+  if (payBtn) { payBtn.textContent = 'Send'; payBtn.disabled = false }
 }
 
 async function _acceptPayRequest(ethAmount) {
   if (!activeConvo || !activePeerAddr) return
   try {
+    if (!await window.ensureOptimism?.()) return
     const sendAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
     const walletClient = createWalletClient({
       chain: optimism,

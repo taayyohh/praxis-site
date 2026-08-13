@@ -897,20 +897,16 @@ async function fetchCredentialsPage(holder, cursor) {
 
 // Fetch items by ID (single page — sufficient for detail lookups)
 async function fetchByIds(entityName, queryName, ids, fields) {
-  let all = []
-  const remaining = [...ids]
-  while (remaining.length > 0) {
-    const batch = remaining.splice(0, 100)
-    const data = await query(`
-      query ${queryName}($ids: [BigInt!]!) {
-        ${entityName}(where: { id_in: $ids }, limit: 100) {
-          items { ${fields} }
-        }
+  const batches = []
+  for (let i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100))
+  const results = await Promise.all(batches.map(batch => query(`
+    query ${queryName}($ids: [BigInt!]!) {
+      ${entityName}(where: { id_in: $ids }, limit: 100) {
+        items { ${fields} }
       }
-    `, { ids: batch })
-    all.push(...(data[entityName]?.items || []))
-  }
-  return all
+    }
+  `, { ids: batch })))
+  return results.flatMap(data => data[entityName]?.items || [])
 }
 
 // Resolve album names + paths from artist site.json for grouped purchases

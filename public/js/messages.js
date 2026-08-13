@@ -230,6 +230,23 @@ const INBOX_ADDR_MAX = 500
 let inboxToAddr = {}
 let _inboxToAddrOrder = []
 let addrToDomain = {}
+let _addrToDomainOrder = []
+const ADDR_DOMAIN_MAX = 1000
+
+function setAddrToDomain(map) {
+  for (const [k, v] of Object.entries(map)) {
+    if (addrToDomain[k] !== undefined) {
+      const idx = _addrToDomainOrder.indexOf(k)
+      if (idx !== -1) _addrToDomainOrder.splice(idx, 1)
+    }
+    addrToDomain[k] = v
+    _addrToDomainOrder.push(k)
+  }
+  while (_addrToDomainOrder.length > ADDR_DOMAIN_MAX) {
+    const old = _addrToDomainOrder.shift()
+    delete addrToDomain[old]
+  }
+}
 
 // restore inbox-addr mapping from localStorage (for toast on non-messages pages)
 try {
@@ -388,7 +405,7 @@ async function initMessages() {
         const listEl = sheet.querySelector('.msg-picker-list')
         if (!mutuals.length) { listEl.innerHTML = `<div style="color:var(--muted);padding:1em;font-size:0.85em">no mutual follows yet</div>`; return }
         const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
-        Object.assign(addrToDomain, mutualDomains)
+        setAddrToDomain(mutualDomains)
         listEl.innerHTML = mutuals.map(addr => {
           const domain = addrToDomain[addr] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
           return `<div class="msg-convo-item msg-new-item" data-addr="${escapeHtml(addr)}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}</div>`
@@ -410,7 +427,7 @@ async function initMessages() {
         const mutuals = await _fetchMutuals()
         if (!mutuals.length) { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted);font-size:0.85em">no mutual follows yet</div>`; return }
         const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
-        Object.assign(addrToDomain, mutualDomains)
+        setAddrToDomain(mutualDomains)
         _renderGroupForm(sheet, mutuals, overlay)
       } catch { sheet.querySelector('div[style*=padding]').innerHTML = `<div style="color:var(--muted)">failed to load</div>` }
     }
@@ -2036,7 +2053,7 @@ async function loadConversations() {
                 const unresolved = addrs.filter(a => !addrToDomain[a])
                 if (unresolved.length) {
                   const dm = await resolveAddresses(query, unresolved).catch(() => ({}))
-                  Object.assign(addrToDomain, dm)
+                  setAddrToDomain(dm)
                 }
                 const names = addrs.map(a => (addrToDomain[a] || a.slice(0, 6)).replace(/\.\w+$/, ''))
                 groupName = names.join(', ')
@@ -2076,9 +2093,10 @@ async function loadConversations() {
         // Use the actual last message timestamp for unread (not the preview text message)
         const lastMsgTs = lastMsg?.sentAtNs ? Number(lastMsg.sentAtNs) : (previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0)
         const time = lastMsgTs ? relativeTime(lastMsgTs / 1e6) : ''
-        // Find the last real user message for unread check (skip control/metadata messages)
-        const isControlMsg = (m) => !m || m.contentType?.typeId === 'group_updated' || m.contentType?.typeId === 'read_receipt' || m.contentType?.typeId === 'typing_indicator' || m.kind === 2
-        const unreadMsg = isControlMsg(lastMsg) ? previewMsg : lastMsg
+        // Find the last real user message for unread check (skip control/metadata messages).
+        // extractText() already filters praxis control prefixes, XMTP group updates, etc.
+        const isCtrl = (m) => !m || !extractText(m)
+        const unreadMsg = isCtrl(lastMsg) ? previewMsg : lastMsg
         const myInboxId = client.inboxId
         const lastSeenStr = localStorage.getItem(`praxis:msg-seen:${c.id}`) || ''
         const lastMsgNsStr = String(unreadMsg?.sentAtNs || '0')
@@ -2105,7 +2123,7 @@ async function loadConversations() {
       .filter(a => !addrToDomain[a])
     if (unresolvedAddrs.length > 0) {
       const domainMap = await resolveAddresses(query, [...new Set(unresolvedAddrs)]).catch(() => ({}))
-      Object.assign(addrToDomain, domainMap)
+      setAddrToDomain(domainMap)
       // re-compute display names for resolved addresses
       for (const item of items) {
         if (!item.isGroup && item.peerInboxId) {
@@ -3580,8 +3598,10 @@ async function sendPayment(mode) {
   if (payBtn) { payBtn.textContent = 'Sending...'; payBtn.disabled = true }
 
   try {
+    if (!await window.ensureOptimism?.()) return
     const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider?.() || window.ethereum) })
+    const provider = window.getWalletProvider?.() || window.ethereum
+    const walletClient = createWalletClient({ chain: optimism, transport: custom(provider) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
       value: parseEther(ethAmount.toFixed(18)),
@@ -3600,8 +3620,10 @@ async function sendPayment(mode) {
 async function _acceptMsgPayRequest(ethAmount) {
   if (!activeConvo || !activePeerAddr) return
   try {
+    if (!await window.ensureOptimism?.()) return
     const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider?.() || window.ethereum) })
+    const provider = window.getWalletProvider?.() || window.ethereum
+    const walletClient = createWalletClient({ chain: optimism, transport: custom(provider) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
       value: parseEther(ethAmount.toString()),
@@ -4280,7 +4302,7 @@ async function toggleMembersPanel() {
         const available = mutuals.filter(a => !currentAddrs.has(a.toLowerCase()))
         if (!available.length) { addBtn.textContent = 'no one to add'; setTimeout(() => { addBtn.innerHTML = '<i class="ph ph-user-plus"></i> add member'; addBtn.disabled = false }, 2000); return }
         const avDomains = await resolveAddresses(query, available).catch(() => ({}))
-        Object.assign(addrToDomain, avDomains)
+        setAddrToDomain(avDomains)
         let addHtml = '<div style="margin-top:0.5em;border-top:1px solid var(--border);padding-top:0.5em">'
         addHtml += '<input id="members-add-search" type="text" placeholder="search..." style="width:100%;padding:0.4em;margin-bottom:0.4em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.8em;border-radius:4px;box-sizing:border-box">'
         addHtml += '<div id="members-add-list"></div></div>'
