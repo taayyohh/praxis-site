@@ -2020,7 +2020,29 @@ async function loadConversations() {
           displayName = peerInboxId ? domainForInbox(peerInboxId) : t('messages.unknown')
         } catch {
           isGroup = true
-          displayName = c.name || t('messages.unnamedGroup')
+          let groupName = c.name
+          if (!groupName || groupName === 'unnamed group') {
+            try {
+              const gMembers = typeof c.members === 'function' ? await c.members() : c.members || []
+              const myId = client?.inboxId
+              const names = []
+              for (const m of gMembers) {
+                const mId = m.inboxId || m
+                if (mId === myId) continue
+                const mAddr = m.addresses?.[0]?.toLowerCase() || m.accountAddresses?.[0]?.toLowerCase() || m.accountAddress?.toLowerCase()
+                if (mAddr) {
+                  setInboxToAddr(mId, mAddr)
+                  if (!addrToDomain[mAddr]) {
+                    const dm = await resolveAddresses(query, [mAddr]).catch(() => ({}))
+                    if (dm[mAddr]) addrToDomain[mAddr] = dm[mAddr]
+                  }
+                  names.push((addrToDomain[mAddr] || mAddr.slice(0, 6)).replace(/\.\w+$/, ''))
+                }
+              }
+              if (names.length) groupName = names.join(', ')
+            } catch {}
+          }
+          displayName = groupName || t('messages.unnamedGroup')
         }
         // If the last message is a control message (read receipt / typing indicator),
         // its text is null after extractText. Fall back to the PREVIOUS real message
@@ -2053,19 +2075,18 @@ async function loadConversations() {
         // Use the actual last message timestamp for unread (not the preview text message)
         const lastMsgTs = lastMsg?.sentAtNs ? Number(lastMsg.sentAtNs) : (previewMsg?.sentAtNs ? Number(previewMsg.sentAtNs) : 0)
         const time = lastMsgTs ? relativeTime(lastMsgTs / 1e6) : ''
-        // check if conversation has unread messages (last message is from someone else)
+        // Find the last real user message for unread check (skip control/metadata messages)
+        const isControlMsg = (m) => !m || m.contentType?.typeId === 'group_updated' || m.contentType?.typeId === 'read_receipt' || m.contentType?.typeId === 'typing_indicator' || m.kind === 2
+        const unreadMsg = isControlMsg(lastMsg) ? previewMsg : lastMsg
         const myInboxId = client.inboxId
         const lastSeenStr = localStorage.getItem(`praxis:msg-seen:${c.id}`) || ''
-        const lastMsgNsStr = String(lastMsg?.sentAtNs || previewMsg?.sentAtNs || '0')
-        // If no seen timestamp exists for this conversation, mark it as seen now
-        // (prevents all conversations showing as unread on first sign-in)
+        const lastMsgNsStr = String(unreadMsg?.sentAtNs || '0')
         if (!lastSeenStr) {
           try { localStorage.setItem(`praxis:msg-seen:${c.id}`, lastMsgNsStr) } catch {}
         }
-        // Compare as strings padded to same length (nanosecond values exceed Number.MAX_SAFE_INTEGER)
         const effectiveSeenStr = lastSeenStr || lastMsgNsStr
         const padLen = Math.max(effectiveSeenStr.length, lastMsgNsStr.length)
-        const isUnread = lastMsg && lastMsg.senderInboxId !== myInboxId && lastMsgNsStr.padStart(padLen, '0') > effectiveSeenStr.padStart(padLen, '0')
+        const isUnread = unreadMsg && unreadMsg.senderInboxId !== myInboxId && lastMsgNsStr.padStart(padLen, '0') > effectiveSeenStr.padStart(padLen, '0')
         // Clean attachment markdown for preview
         let preview = text || ''
         if (preview.includes('[image:')) preview = preview.replace(/\[image:[^\]]*\]\([^)]+\)/g, 'sent an image').trim()
@@ -2334,6 +2355,7 @@ async function openConversation(convo, peerDomain) {
   } catch (e) { dbg('praxis: openConversation sync failed:', e?.message) }
 
   activeConvo = convo
+  try { localStorage.setItem(`praxis:msg-seen:${convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
   if (activeStream) { try { activeStream.return?.() } catch {} }
   activeStream = null
   // Reset typing/read state for the newly-active conversation
@@ -2745,13 +2767,13 @@ function prependMessages(messages, el) {
 }
 
 // --- Render message content with link previews and attachment embeds ---
-const _avatarColors = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4','#3b82f6']
 function _convoAvatar(domain, isGroup) {
   const name = (domain || '?').replace(/\..*$/, '')
   const initial = name.charAt(0).toUpperCase()
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  const bg = _avatarColors[Math.abs(hash) % _avatarColors.length]
+  const lightness = 20 + (Math.abs(hash) % 15)
+  const bg = `hsl(0, 0%, ${lightness}%)`
   const groupIcon = isGroup ? '#' : initial
   const imgUrl = domain && domain.includes('.') ? `https://${escapeHtml(domain)}/api/img?url=https://${escapeHtml(domain)}/og/index.png&w=80` : ''
   return `<div class="msg-convo-avatar" style="background:${bg}">${groupIcon}${imgUrl ? `<img src="${escapeHtml(imgUrl)}" loading="lazy" onerror="this.remove()">` : ''}</div>`
@@ -4135,7 +4157,12 @@ async function toggleMembersPanel() {
     const iAmAdmin = admins.has(myInboxId) || superAdmins.has(myInboxId)
     const iAmSuperAdmin = superAdmins.has(myInboxId)
 
-    let html = '<div style="margin-bottom:0.5em;color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.05em">members</div>'
+    const currentName = activeConvo.name || ''
+    let html = `<div style="display:flex;align-items:center;gap:0.5em;margin-bottom:0.75em">
+      <input id="members-group-name" type="text" value="${escapeHtml(currentName)}" placeholder="group name" style="flex:1;padding:0.4em;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;border-radius:4px;box-sizing:border-box">
+      <button class="buy-btn" id="members-rename-btn" style="font-size:0.75em;padding:0.2em 0.6ch;white-space:nowrap">rename</button>
+    </div>`
+    html += '<div style="margin-bottom:0.5em;color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.05em">members</div>'
 
     for (const m of members) {
       const mInboxId = m.inboxId || m
@@ -4174,6 +4201,24 @@ async function toggleMembersPanel() {
     html += `<button class="buy-btn" id="members-leave-btn" style="margin-top:0.5em;font-size:0.8em;padding:0.3em 1ch;width:100%;border-color:#ef4444;color:#ef4444">leave group</button>`
 
     panel.innerHTML = html
+
+    // rename group
+    document.getElementById('members-rename-btn')?.addEventListener('click', async () => {
+      const newName = document.getElementById('members-group-name')?.value.trim()
+      if (!newName) return
+      const btn = document.getElementById('members-rename-btn')
+      btn.textContent = '...'; btn.disabled = true
+      try {
+        await activeConvo.updateName(newName)
+        document.getElementById('messages-peer-name').textContent = newName
+        btn.textContent = 'saved'
+        setTimeout(() => { btn.textContent = 'rename'; btn.disabled = false }, 1500)
+        loadConversations()
+      } catch (e) {
+        console.warn('rename group:', e?.message)
+        btn.textContent = 'error'; setTimeout(() => { btn.textContent = 'rename'; btn.disabled = false }, 1500)
+      }
+    })
 
     // wire up member action buttons
     panel.querySelectorAll('.member-remove-btn').forEach(btn => {
