@@ -794,9 +794,10 @@ const messagesHtml = `<div id="messages-page">
           <span class="pay-currency-label">ETH</span>
         </div>
         <span id="messages-pay-fiat" class="pay-fiat-line"></span>
+        <span id="messages-pay-balance" class="pay-balance-line"></span>
         <div class="pay-bottom">
           <button id="messages-pay-cancel" class="pay-cancel-btn">cancel</button>
-          <button id="messages-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
+          <button id="messages-pay-send" class="pay-send-btn">Send</button>
         </div>
       </div>
       <form id="messages-send-form" class="messages-send-form">

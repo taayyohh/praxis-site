@@ -84,9 +84,10 @@ function injectPanel() {
           <span class="pay-currency-label">ETH</span>
         </div>
         <span id="dm-pay-fiat" class="pay-fiat-line"></span>
+        <span id="dm-pay-balance" class="pay-balance-line"></span>
         <div class="pay-bottom">
           <button id="dm-pay-cancel" class="pay-cancel-btn">cancel</button>
-          <button id="dm-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
+          <button id="dm-pay-send" class="pay-send-btn">Send</button>
         </div>
       </div>
       <form id="dm-send-form">
@@ -112,14 +113,19 @@ function injectPanel() {
     form.style.display = open ? 'none' : 'flex'
     if (open) {
       document.getElementById('dm-pay-amount').focus()
+      _fetchPayBalance()
       _updatePayFiat()
     }
   })
   document.getElementById('dm-pay-cancel').addEventListener('click', () => {
-    document.getElementById('dm-pay-bar').style.display = 'none'
+    const bar = document.getElementById('dm-pay-bar')
+    bar.style.display = 'none'
+    bar.classList.remove('pay-over-balance')
     document.getElementById('dm-send-form').style.display = 'flex'
     document.getElementById('dm-pay-amount').value = ''
     document.getElementById('dm-pay-fiat').textContent = ''
+    const balEl = document.getElementById('dm-pay-balance')
+    if (balEl) balEl.textContent = ''
   })
   document.getElementById('dm-pay-amount').addEventListener('input', e => {
     const len = Math.max(2, e.target.value.length + 1)
@@ -745,19 +751,41 @@ async function openDmByAddress(addr, domain) {
 // --- Send payment ---
 
 let _payPrices = null
+let _payBalance = null
+async function _fetchPayBalance() {
+  try {
+    const addr = window.getWalletAddress?.()
+    if (!addr) return
+    const pc = await getPublicClient()
+    const bal = await pc.getBalance({ address: addr })
+    _payBalance = Number(bal) / 1e18
+    const balEl = document.getElementById('dm-pay-balance')
+    if (balEl) balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH`
+  } catch {}
+}
+function _checkPayOverBalance() {
+  const bar = document.getElementById('dm-pay-bar')
+  const sendBtn = document.getElementById('dm-pay-send')
+  if (!bar) return
+  const val = parseFloat(document.getElementById('dm-pay-amount')?.value)
+  const over = _payBalance != null && val > 0 && val > _payBalance
+  bar.classList.toggle('pay-over-balance', over)
+  if (sendBtn) sendBtn.disabled = over
+}
 async function _updatePayFiat() {
   const input = document.getElementById('dm-pay-amount')
   const fiatEl = document.getElementById('dm-pay-fiat')
   if (!fiatEl) return
   const val = parseFloat(input?.value)
-  if (!val || val <= 0) { fiatEl.textContent = ''; return }
+  if (!val || val <= 0) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
   if (!_payPrices) _payPrices = await getEthPrices()
-  if (!_payPrices) { fiatEl.textContent = ''; return }
+  if (!_payPrices) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
   const currency = getUserCurrency()
   const rate = _payPrices[currency]
-  if (!rate) { fiatEl.textContent = ''; return }
+  if (!rate) { fiatEl.textContent = ''; _checkPayOverBalance(); return }
   const fiatAmount = val * rate
   fiatEl.textContent = `≈ ${formatFiat(fiatAmount, currency)}`
+  _checkPayOverBalance()
 }
 
 async function sendPayment() {
@@ -767,7 +795,7 @@ async function sendPayment() {
   if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) return
 
   const payBtn = document.getElementById('dm-pay-send')
-  payBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> sending'
+  payBtn.innerHTML = 'Sending...'
   payBtn.disabled = true
 
   try {
@@ -796,7 +824,7 @@ async function sendPayment() {
     if (e.code !== 4001) console.error('payment error:', e)
   }
 
-  payBtn.innerHTML = '<i class="ph ph-paper-plane-tilt"></i> send'
+  payBtn.innerHTML = 'Send'
   payBtn.disabled = false
 }
 
