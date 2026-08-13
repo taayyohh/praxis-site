@@ -701,7 +701,7 @@ async function startXmtp(address) {
 
   // Cross-tab coordination via xmtp-proxy module
   const _xmtpLockName = `xmtp-${location.hostname}`
-  const { acquireLeadership, createProxyClient, startLeaderResponder, broadcastNewMessage, broadcastUnread, patchWorker } = await import('./xmtp-proxy.js')
+  const { acquireLeadership, patchWorker } = await import('./xmtp-proxy.js')
 
   // Skip lock acquisition if this tab already holds it (dm.js or wallet.js acquired before SPA nav)
   let _leadership = null

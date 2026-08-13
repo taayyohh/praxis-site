@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Cap: wide dome -->
+  <path d="M40 128 C40 72 80 32 128 32 C176 32 216 72 216 128 L40 128 Z"/>
+  <!-- Cap underside: gill line -->
+  <line x1="56" y1="128" x2="200" y2="128"/>
+  <!-- Stem -->
+  <path d="M96 128 L96 192 C96 208 108 216 128 216 C148 216 160 208 160 192 L160 128"/>
+  <!-- Mycelium tendrils branching from stem base -->
+  <path d="M108 216 C100 228 80 236 64 232"/>
+  <path d="M128 216 C128 232 128 240 128 248"/>
+  <path d="M148 216 C156 228 176 236 192 232"/>
+  <!-- Cap spots (small circles) -->
+  <circle cx="100" cy="80" r="8" fill="currentColor" stroke="none"/>
+  <circle cx="148" cy="68" r="6" fill="currentColor" stroke="none"/>
+  <circle cx="128" cy="100" r="7" fill="currentColor" stroke="none"/>
+  <circle cx="168" cy="92" r="5" fill="currentColor" stroke="none"/>
+</svg>
