@@ -2150,9 +2150,12 @@ async function loadConversations() {
       ? `<div id="messages-syncing" style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no conversations yet</div>`
       : displayItems.map((item, i) => `
       <div class="msg-convo-item${item.isGroup ? ' msg-convo-group' : ''}" data-idx="${i}">
-        <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)}</div>
-        <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
-        <div class="msg-convo-time">${item.time}</div>
+        ${_convoAvatar(item.peerDomain, item.isGroup)}
+        <div class="msg-convo-body">
+          <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)}</div>
+          <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
+          <div class="msg-convo-time">${item.time}</div>
+        </div>
       </div>
     `).join('') + (hasMore ? `<div id="messages-load-more" class="msg-convo-item" style="text-align:center;color:var(--muted);cursor:pointer">${t('messages.loadMore') || 'load more conversations'}</div>` : '')
 
@@ -2167,9 +2170,12 @@ async function loadConversations() {
         <div id="msg-requests-list" style="display:none">
           ${requests.map((item, i) => `
             <div class="msg-convo-item msg-convo-request" data-idx="${filtered.length + i}" style="opacity:0.55">
-              <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)} <span style="color:var(--muted);font-size:0.75em;margin-left:0.5ch">request</span></div>
-              <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
-              <div class="msg-convo-time">${item.time}</div>
+              ${_convoAvatar(item.peerDomain, item.isGroup)}
+              <div class="msg-convo-body">
+                <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)} <span style="color:var(--muted);font-size:0.75em;margin-left:0.5ch">request</span></div>
+                <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
+                <div class="msg-convo-time">${item.time}</div>
+              </div>
             </div>
           `).join('')}
         </div>`
@@ -2690,6 +2696,18 @@ function prependMessages(messages, el) {
 }
 
 // --- Render message content with link previews and attachment embeds ---
+const _avatarColors = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4','#3b82f6']
+function _convoAvatar(domain, isGroup) {
+  const name = (domain || '?').replace(/\..*$/, '')
+  const initial = name.charAt(0).toUpperCase()
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  const bg = _avatarColors[Math.abs(hash) % _avatarColors.length]
+  const groupIcon = isGroup ? '#' : initial
+  const imgUrl = domain && domain.includes('.') ? `https://${escapeHtml(domain)}/api/img?url=https://${escapeHtml(domain)}/og/index.png&w=80` : ''
+  return `<div class="msg-convo-avatar" style="background:${bg}">${groupIcon}${imgUrl ? `<img src="${escapeHtml(imgUrl)}" loading="lazy" onerror="this.remove()">` : ''}</div>`
+}
+
 function _renderMsgPayCard(text, isMe) {
   const sendMatch = text.match(/^\[ethpay:send:([0-9.]+):([^:]+)(?::([^\]]*))?\]$/)
   if (sendMatch) {
