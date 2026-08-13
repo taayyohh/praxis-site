@@ -1,7 +1,7 @@
 // Post page — renders a single on-chain blog post from Ponder
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider, slugify } from './utils.js'
+import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider, slugify, resolveDomain } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 
 // Sanitize script HTML: only allow <p> with fountain-*/stageplay-* classes
@@ -466,7 +466,7 @@ async function loadReplies(postId, domainMap) {
   const repliesEl = document.getElementById('post-replies')
   if (!repliesEl) return
 
-  const resolve = addr => domainMap?.[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const resolve = addr => resolveDomain(domainMap, addr)
 
   // helper to resolve new reply authors and merge into domainMap
   async function resolveReplyAuthors(replies) {

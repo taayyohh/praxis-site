@@ -1,7 +1,7 @@
 // Notification center — queries Ponder for actionable events for the connected wallet
 import { query } from './ponder.js'
 import { F } from './fragments.js'
-import { resolveAddresses, resolveDomain, escapeHtml, getPublicClient, formatEthAmount, isBlocked, getPendingWithdrawals, getWalletProvider } from './utils.js'
+import { resolveAddresses, resolveDomain, escapeHtml, getPublicClient, formatEthAmount, isBlocked, getPendingWithdrawals, getWalletProvider, timeAgo, getAuthToken } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 
@@ -587,14 +587,6 @@ const NOTIF_ICONS = {
   revenue: '$',
 }
 
-function timeAgo(ts) {
-  const now = Date.now()
-  const diff = now - ts
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  return `${Math.floor(diff / 86400000)}d ago`
-}
 
 function renderNotificationsPage(contentEl, notifications) {
   if (notifications.length === 0) {
@@ -664,7 +656,6 @@ function renderNotificationsPage(contentEl, notifications) {
   })
 
   // collaboration accept/dismiss buttons
-  let _notifAuthToken = ''
   contentEl.querySelectorAll('.notif-collab-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const collabId = btn.dataset.collabId
@@ -676,29 +667,14 @@ function renderNotificationsPage(contentEl, notifications) {
       const sibling = btn.parentElement?.querySelector(`.notif-collab-btn:not([data-action="${action}"])`)
       if (sibling) sibling.disabled = true
       try {
-        // Get auth token if we don't have one
-        if (!_notifAuthToken) {
-          const addr = window.getWalletAddress?.()
-          if (!addr || !getWalletProvider()) throw new Error('wallet not connected')
-          await window.ensureAuthorized?.()
-          const msg = `admin:${location.hostname}:${Date.now()}`
-          const sig = await getWalletProvider().request({ method: 'personal_sign', params: [msg, addr] })
-          const authRes = await fetch('/api/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: addr, signature: sig, message: msg }),
-          })
-          const authData = await authRes.json()
-          if (authData.token) _notifAuthToken = authData.token
-          else throw new Error(authData.error || 'auth failed')
-        }
+        const token = await getAuthToken()
+        if (!token) throw new Error('auth failed')
         const resp = await fetch(`/api/collaborations/${collabId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_notifAuthToken}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ status: action }),
         })
         if (!resp.ok) {
-          if (resp.status === 401) _notifAuthToken = '' // token expired, retry next time
           const err = await resp.json().catch(() => ({}))
           throw new Error(err.error || 'failed')
         }

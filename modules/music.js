@@ -8,21 +8,7 @@
 // the cycle-2 patch that exposed album.description on click-through made the
 // vulnerability newly reachable for any owner.
 
-import { esc, batchBuyScript, artPlaceholder, slugify } from './shared.js'
-
-// Validate a URL is safe to use as an `<a href>` target. Rejects javascript:,
-// data:, vbscript:, file: and any non-http(s) scheme. Returns the original URL
-// if safe, or '#' otherwise. Also escapes the result for HTML attribute use.
-function safeUrl(url) {
-  if (!url) return '#'
-  try {
-    const u = new URL(String(url), 'https://placeholder.invalid')
-    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:') {
-      return esc(String(url))
-    }
-  } catch {}
-  return '#'
-}
+import { esc, batchBuyScript, artPlaceholder, slugify, safeUrl } from './shared.js'
 
 export default {
   type: 'music',

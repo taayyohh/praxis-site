@@ -346,9 +346,6 @@ async function getSettingsToken() {
   }
 }
 
-// Clear cached token so next save re-authenticates
-function clearSettingsToken() { settingsToken = '' }
-
 async function api(path, opts = {}) {
   // GET /api/site is public — no auth needed for reading
   if (!opts.method || opts.method === 'GET') {
@@ -572,35 +569,8 @@ function renderTab(tab) {
 
   if (tab === 'identity') renderIdentityTab(el)
   else if (tab === 'modules') renderModulesTab(el)
-  else if (tab === 'homepage') renderHomepageTab(el)
   else if (tab === 'theme') renderThemeTab(el)
   // ai tab removed — local Ollama too slow, revisit with cloud API
-}
-
-// --- Template Preview ---
-
-function renderTemplatePreview(template) {
-  const container = document.getElementById('s-template-preview')
-  if (!container) return
-
-  const info = {
-    default: { desc: 'minimal text-only layout', style: 'clean lines, no images, text-forward' },
-    musician: { desc: 'large album art, prominent name', style: 'album covers, track listings, discography' },
-    visual: { desc: 'image grid, portfolio-first', style: 'masonry gallery, exhibition focused' },
-    writer: { desc: 'large typography, long-form reading', style: 'serif headings, reading-optimized, drop caps' },
-    performer: { desc: 'stage/event-oriented, resume layout', style: 'credits table, headshot, skills grid' },
-    filmmaker: { desc: 'video-forward, cinematic', style: 'video hero, film credits, laurels' },
-  }
-
-  const t = info[template] || { desc: template, style: '' }
-
-  container.innerHTML = `
-    <div style="border:1px solid var(--border);padding:1.5em;margin-top:0.5em;background:var(--surface)">
-      <div style="color:var(--accent);font-size:0.9em;margin-bottom:0.5em">${template}</div>
-      <div style="color:var(--fg);font-size:0.85em;margin-bottom:0.3em">${t.desc}</div>
-      <div style="color:var(--dim);font-size:0.8em">${t.style}</div>
-    </div>
-  `
 }
 
 // --- Identity Tab ---
@@ -3731,83 +3701,6 @@ function wireEditorEvents(el, mod, items) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
       _handleRemoveCollabTag(btn, items, el, mod)
-    })
-  })
-}
-
-// --- Homepage Tab ---
-
-function renderHomepageTab(el) {
-  const cv = siteData.cv || {}
-  const modules = siteData.modules || []
-  const enabledMods = modules.filter(m => m.enabled)
-
-  // CV sections: which modules appear in the resume section on the homepage
-  const cvSections = cv.sections || enabledMods.map(m => m.type)
-  const cvOrder = cv.sectionOrder || cvSections
-
-  el.innerHTML = `
-    <div style="max-width:480px">
-      <label style="display:flex;align-items:center;gap:0.75ch;cursor:pointer;margin-bottom:1.5em">
-        <input type="checkbox" id="s-cv-show" ${cv.showOnHomepage !== false ? 'checked' : ''}>
-        show resume on homepage
-      </label>
-
-      <p style="color:var(--dim);font-size:0.8em;margin-bottom:0.75em">resume sections</p>
-      <p style="color:var(--muted);font-size:0.75em;margin-bottom:1em;line-height:1.4">choose which modules appear in the resume section on your homepage and their order. section headings use the display names from the modules tab.</p>
-
-      <div id="cv-section-list">
-        ${cvOrder.map((type, i) => {
-          const mod = modules.find(m => m.type === type)
-          const label = mod?.customLabel || type
-          const checked = cvSections.includes(type)
-          return `
-            <div style="display:flex;align-items:center;gap:1ch;padding:0.4em 0;border-bottom:1px solid var(--border)">
-              <input type="checkbox" class="cv-section-toggle" data-type="${escapeHtml(type)}" ${checked ? 'checked' : ''}>
-              <span style="flex:1;color:var(--fg);font-size:0.9em">${escapeHtml(label)}</span>
-              <button class="cv-section-up" data-i="${i}" style="background:none;border:none;color:${i === 0 ? 'var(--border)' : 'var(--dim)'};cursor:${i === 0 ? 'default' : 'pointer'};padding:0.2em;font-size:0.9em" ${i === 0 ? 'disabled' : ''}><i class="ph ph-caret-up"></i></button>
-              <button class="cv-section-down" data-i="${i}" style="background:none;border:none;color:${i === cvOrder.length - 1 ? 'var(--border)' : 'var(--dim)'};cursor:${i === cvOrder.length - 1 ? 'default' : 'pointer'};padding:0.2em;font-size:0.9em" ${i === cvOrder.length - 1 ? 'disabled' : ''}><i class="ph ph-caret-down"></i></button>
-            </div>
-          `
-        }).join('')}
-      </div>
-    </div>
-  `
-
-  document.getElementById('s-cv-show')?.addEventListener('change', (e) => {
-    if (!siteData.cv) siteData.cv = {}
-    siteData.cv.showOnHomepage = e.target.checked
-  })
-
-  el.querySelectorAll('.cv-section-toggle').forEach(cb => {
-    cb.addEventListener('change', () => {
-      if (!siteData.cv) siteData.cv = {}
-      const checked = [...el.querySelectorAll('.cv-section-toggle:checked')].map(c => c.dataset.type)
-      siteData.cv.sections = checked
-    })
-  })
-
-  el.querySelectorAll('.cv-section-up').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = parseInt(btn.dataset.i)
-      if (i <= 0) return
-      if (!siteData.cv) siteData.cv = {}
-      const order = siteData.cv.sectionOrder || cvOrder.slice()
-      ;[order[i - 1], order[i]] = [order[i], order[i - 1]]
-      siteData.cv.sectionOrder = order
-      renderHomepageTab(el)
-    })
-  })
-
-  el.querySelectorAll('.cv-section-down').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = parseInt(btn.dataset.i)
-      if (!siteData.cv) siteData.cv = {}
-      const order = siteData.cv.sectionOrder || cvOrder.slice()
-      if (i >= order.length - 1) return
-      ;[order[i], order[i + 1]] = [order[i + 1], order[i]]
-      siteData.cv.sectionOrder = order
-      renderHomepageTab(el)
     })
   })
 }

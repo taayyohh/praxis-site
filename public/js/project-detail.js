@@ -3,7 +3,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -191,7 +191,7 @@ async function initProjectDetail() {
       ].filter(Boolean)
       domainMap = await resolveAddresses(query, addressesToResolve).catch(() => ({}))
     }
-    const resolve = addr => domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+    const resolve = addr => resolveDomain(domainMap, addr)
     const myAddr = window.getWalletAddress?.()?.toLowerCase()
     const isProposer = myAddr === p.proposer.toLowerCase()
     const isCollaborator = data.collaborators.items.some(c => c.artist.toLowerCase() === myAddr)
@@ -928,7 +928,7 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
   const commentsEl = document.getElementById('project-comments')
   if (!commentsEl) return
 
-  const resolve = addr => domainMap?.[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const resolve = addr => resolveDomain(domainMap, addr)
 
   async function resolveNewAuthors(items) {
     const newAddrs = items.map(r => r.author).filter(a => !domainMap[a.toLowerCase()])

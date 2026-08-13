@@ -3,7 +3,8 @@
 import { query } from './ponder.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
-import { escapeHtml, resolveAddresses, getPublicClient , getWalletProvider } from './utils.js'
+import { escapeHtml, resolveAddresses, getPublicClient , getWalletProvider, timeAgo, dbg } from './utils.js'
+import { getEthPrices, getUserCurrency, formatFiat } from './fiat.js'
 
 let client = null
 let sdk = null
@@ -77,11 +78,16 @@ function injectPanel() {
         <button id="dm-close-btn2" class="dm-icon-btn"><i class="ph ph-x"></i></button>
       </div>
       <div id="dm-messages"></div>
-      <div id="dm-pay-bar" style="display:none;padding:0.5em 1em;border-top:1px solid #1a1a1a;gap:0.5em;align-items:center">
-        <input type="text" id="dm-pay-amount" placeholder="0.01" style="width:8ch;background:#1a1a1a;border:1px solid #333;color:#c0c0c0;font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;border-radius:4px">
-        <span style="color:#666;font-size:0.8em">ETH</span>
-        <button id="dm-pay-send" class="buy-btn" style="font-size:0.8em;padding:0.3em 1ch;margin:0">send</button>
-        <button id="dm-pay-cancel" class="dm-icon-btn" style="font-size:0.9em"><i class="ph ph-x"></i></button>
+      <div id="dm-pay-bar">
+        <div class="pay-amount-row">
+          <input type="text" inputmode="decimal" id="dm-pay-amount" class="pay-amount-input" placeholder="0.00" autocomplete="off">
+          <span class="pay-currency-label">ETH</span>
+          <button id="dm-pay-send" class="pay-send-btn"><i class="ph ph-paper-plane-tilt"></i> send</button>
+        </div>
+        <div class="pay-actions">
+          <span id="dm-pay-fiat" class="pay-fiat-line"></span>
+          <button id="dm-pay-cancel" class="dm-icon-btn" style="font-size:0.85em;color:var(--dim)"><i class="ph ph-x"></i> cancel</button>
+        </div>
       </div>
       <form id="dm-send-form">
         <button type="button" id="dm-pay-toggle" class="dm-icon-btn" title="send ETH" aria-label="send ETH"><i class="ph ph-currency-eth"></i></button>
@@ -100,11 +106,20 @@ function injectPanel() {
   // payment toggle
   document.getElementById('dm-pay-toggle').addEventListener('click', () => {
     const bar = document.getElementById('dm-pay-bar')
-    bar.style.display = bar.style.display === 'none' ? 'flex' : 'none'
+    const open = bar.style.display === 'none' || !bar.style.display
+    bar.style.display = open ? 'flex' : 'none'
+    if (open) {
+      document.getElementById('dm-pay-amount').focus()
+      _updatePayFiat()
+    }
   })
   document.getElementById('dm-pay-cancel').addEventListener('click', () => {
-    document.getElementById('dm-pay-bar').style.display = 'none'
+    const bar = document.getElementById('dm-pay-bar')
+    bar.style.display = 'none'
+    document.getElementById('dm-pay-amount').value = ''
+    document.getElementById('dm-pay-fiat').textContent = ''
   })
+  document.getElementById('dm-pay-amount').addEventListener('input', _updatePayFiat)
   document.getElementById('dm-pay-send').addEventListener('click', sendPayment)
 }
 
@@ -138,7 +153,7 @@ async function initClient() {
   // If no OPFS database exists (user never visited /messages), skip XMTP entirely.
   const hasRegistered = localStorage.getItem(`xmtp-registered-${address.toLowerCase()}`)
   if (!hasRegistered) {
-    console.log('praxis: dm.js skipping XMTP — no prior registration (visit /messages first)')
+    dbg('praxis: dm.js skipping XMTP — no prior registration (visit /messages first)')
     return
   }
 
@@ -178,7 +193,7 @@ async function initClient() {
 
   if (!isLeader) {
     // Follower: use proxy client for full DM functionality
-    console.log('praxis: dm.js follower — using proxy client')
+    dbg('praxis: dm.js follower — using proxy client')
     client = createProxyClient(channel)
     sdk = await import('./vendor-xmtp.js')
     window._xmtpClient = client
@@ -188,7 +203,7 @@ async function initClient() {
     await _initDmUI()
     // Auto-promote when leader closes
     onPromoted.then(async () => {
-      console.log('praxis: dm.js promoted to leader')
+      dbg('praxis: dm.js promoted to leader')
       window._xmtpLockHolder = true
       try {
         if (client?.close) client.close()
@@ -245,10 +260,10 @@ async function resolveArtistDomains() {
   // resolve peer domains on demand from discovered addresses
   try {
     const peerAddrs = Object.values(inboxToAddr).filter(a => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a))
-    console.log('praxis dm: resolving', peerAddrs.length, 'addresses:', peerAddrs)
+    dbg('praxis dm: resolving', peerAddrs.length, 'addresses:', peerAddrs)
     if (peerAddrs.length > 0) {
       const resolved = await resolveAddresses(query, peerAddrs)
-      console.log('praxis dm: resolved:', resolved)
+      dbg('praxis dm: resolved:', resolved)
       // merge with lowercase keys for consistent lookup
       for (const [addr, domain] of Object.entries(resolved)) {
         boundedAssign(addrToDomain, addr, domain)
@@ -258,19 +273,6 @@ async function resolveArtistDomains() {
   } catch (e) { console.warn("praxis dm resolve error:", e?.message) }
 }
 
-// Lazy inbox ID resolution — resolve single addresses on demand
-async function resolveInboxIdForAddr(addr) {
-  if (inboxToAddr[addr]) return inboxToAddr[addr]
-  if (!client || !sdk) return null
-  try {
-    const id = await client.fetchInboxIdByIdentifier({
-      identifier: addr,
-      identifierKind: sdk.IdentifierKind.Ethereum,
-    })
-    if (id) { boundedAssign(inboxToAddr, id, addr); boundedAssign(inboxToAddr, addr, id) }
-    return id
-  } catch (e) { if (e?.message) console.warn("praxis:", e.message); return null }
-}
 
 // CQ-H15: this only ever checked the local cache and returned null on a miss —
 // it never actually resolved anything for a newly-seen inbox ID. Mirror the
@@ -302,7 +304,7 @@ function domainForInbox(inboxId) {
   const addr = inboxToAddr[inboxId]
   if (addr) {
     const domain = addrToDomain[addr] || addrToDomain[addr.toLowerCase()]
-    if (!domain) console.log('praxis dm: no domain for addr', addr, 'addrToDomain keys:', Object.keys(addrToDomain))
+    if (!domain) dbg('praxis dm: no domain for addr', addr, 'addrToDomain keys:', Object.keys(addrToDomain))
     if (domain) return domain
     return addr.slice(0, 6) + '...' + addr.slice(-4)
   }
@@ -363,7 +365,7 @@ async function loadConversations() {
         }
         const peerDomain = peerInboxId ? domainForInbox(peerInboxId) : 'unknown'
         const text = extractText(lastMsg)
-        const time = lastMsg?.sentAtNs ? relativeTime(Number(lastMsg.sentAtNs) / 1e6) : ''
+        const time = lastMsg?.sentAtNs ? timeAgo(Number(lastMsg.sentAtNs) / 1e6) : ''
         return { convo: c, peerDomain, preview: text || '', time, peerInboxId }
       }))
       items.push(...results)
@@ -446,7 +448,7 @@ async function loadConversations() {
             try { peerInboxId = await c.peerInboxId() } catch {}
             const peerDomain = peerInboxId ? domainForInbox(peerInboxId) : 'unknown'
             const text = extractText(lastMsg)
-            const time = lastMsg?.sentAtNs ? relativeTime(Number(lastMsg.sentAtNs) / 1e6) : ''
+            const time = lastMsg?.sentAtNs ? timeAgo(Number(lastMsg.sentAtNs) / 1e6) : ''
             return { convo: c, peerDomain, preview: text || '', time, peerInboxId }
           }))
           moreItems.push(...results)
@@ -736,6 +738,22 @@ async function openDmByAddress(addr, domain) {
 
 // --- Send payment ---
 
+let _payPrices = null
+async function _updatePayFiat() {
+  const input = document.getElementById('dm-pay-amount')
+  const fiatEl = document.getElementById('dm-pay-fiat')
+  if (!fiatEl) return
+  const val = parseFloat(input?.value)
+  if (!val || val <= 0) { fiatEl.textContent = ''; return }
+  if (!_payPrices) _payPrices = await getEthPrices()
+  if (!_payPrices) { fiatEl.textContent = ''; return }
+  const currency = getUserCurrency()
+  const rate = _payPrices[currency]
+  if (!rate) { fiatEl.textContent = ''; return }
+  const fiatAmount = val * rate
+  fiatEl.textContent = `≈ ${formatFiat(fiatAmount, currency)}`
+}
+
 async function sendPayment() {
   if (!activeConvo || !activePeerAddr) return
   const amountInput = document.getElementById('dm-pay-amount')
@@ -743,7 +761,7 @@ async function sendPayment() {
   if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) return
 
   const payBtn = document.getElementById('dm-pay-send')
-  payBtn.textContent = 'sending...'
+  payBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> sending'
   payBtn.disabled = true
 
   try {
@@ -762,29 +780,22 @@ async function sendPayment() {
     const publicClient = await getPublicClient()
     await publicClient.waitForTransactionReceipt({ hash })
 
-    // send receipt as XMTP message
     await activeConvo.sendText(`sent ${amount} ETH → tx: ${hash}`)
 
     amountInput.value = ''
+    document.getElementById('dm-pay-fiat').textContent = ''
     document.getElementById('dm-pay-bar').style.display = 'none'
   } catch (e) {
     if (e.code !== 4001) console.error('payment error:', e)
   }
 
-  payBtn.textContent = 'send'
+  payBtn.innerHTML = '<i class="ph ph-paper-plane-tilt"></i> send'
   payBtn.disabled = false
 }
 
 // --- Helpers ---
 // escapeHtml imported from utils.js
 
-function relativeTime(ms) {
-  const diff = Date.now() - ms
-  if (diff < 60000) return 'now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`
-  return `${Math.floor(diff / 86400000)}d`
-}
 
 // --- Project group chats ---
 

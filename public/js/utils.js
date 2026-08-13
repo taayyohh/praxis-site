@@ -15,6 +15,17 @@ export function dbg(...args) {
   } catch {}
 }
 
+// Shared relative-time formatter. Accepts a timestamp in milliseconds.
+// Uses short labels (now/5m/3h/2d) suitable for lists and cards.
+export function timeAgo(ts) {
+  if (!ts) return ''
+  const diff = Date.now() - (ts < 1e12 ? ts * 1000 : ts) // accept seconds or ms
+  if (diff < 60000) return 'now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`
+  return `${Math.floor(diff / 86400000)}d`
+}
+
 // === Auth token ===
 // Shared auth token for admin endpoints. Resets on wallet connect/disconnect.
 let _authToken = ''
@@ -461,6 +472,24 @@ async function detectAndRender(id, url) {
 export function escapeHtml(s) {
   if (typeof s !== 'string') return ''
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+// Truncate an Ethereum address for display: 0x1234...abcd
+export function shortAddr(addr) {
+  if (!addr || addr.length < 10) return addr || ''
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+// Copy text and flash a button label. Returns a promise.
+export async function copyToClipboard(text, btn, originalLabel = 'copy', copiedLabel = 'copied', delay = 2000) {
+  try {
+    await navigator.clipboard.writeText(text)
+    if (btn) {
+      btn.textContent = copiedLabel
+      setTimeout(() => { btn.textContent = originalLabel }, delay)
+    }
+    return true
+  } catch { return false }
 }
 
 // Shared markdown renderer — escapes HTML first for XSS safety, then applies
@@ -1088,29 +1117,11 @@ export async function resolveAddresses(queryFn, addresses) {
   return result
 }
 
-/**
- * DEPRECATED — returns empty object. Callers should migrate to resolveAddresses().
- * Kept for backward compat during migration.
- */
-export async function getArtistDomains(_queryFn) {
-  return {}
-}
-
 export function resolveDomain(domainMap, addr) {
   // check in-memory cache first, then fall back to provided map
   const cached = _domainCacheGet(addr)
   if (cached) return cached
   return domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-// On-demand single-address resolution using the shared cache
-export async function resolveSingleDomain(queryFn, addr) {
-  const key = addr.toLowerCase()
-  const cached = _domainCacheGet(key)
-  if (cached) return cached
-  // resolve via batch resolver (single address)
-  const result = await resolveAddresses(queryFn, [addr])
-  return result[key] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
 
 // Paginated fetch of follows for a user, capped to avoid huge _in filters
@@ -1209,51 +1220,6 @@ export function registerPage(elementId, initFn, key) {
   if (prev) window.removeEventListener('spa-navigate', prev)
   _registeredPages.set(mapKey, check)
   window.addEventListener('spa-navigate', check)
-}
-
-// --- Token name generator: deterministic memorable names from BigInt token IDs ---
-const _tokenAdj = [
-  'amber','velvet','lunar','coral','ember','crystal','jade','copper','silver','obsidian',
-  'arctic','crimson','golden','phantom','shadow','mystic','ancient','cosmic','fading','hollow',
-  'silent','woven','drifting','electric','frozen','burning','violet','indigo','scarlet','cerulean',
-  'sunken','brazen','tender','vivid','pale','dark','bright','quiet','wild','gentle',
-  'bitter','molten','veiled','stark','iron','ashen','dusted','rusted','sunlit','gilded',
-  'earthen','spectral','deep','raw','thin','faint','heavy','swift','slow','vast',
-]
-const _tokenNoun = [
-  'echo','prism','orbit','tide','flame','bloom','cipher','spark','relic','crown',
-  'veil','pulse','drift','throne','grove','vault','haze','wave','storm','mirror',
-  'shard','forge','dust','stone','light','depth','root','seed','wind','shore',
-  'glyph','hymn','moth','arc','bell','knot','loom','reef','moss','dusk',
-  'dawn','rift','plume','ink','bone','field','well','path','gate','rim',
-  'fold','thread','grain','ash','spire','den','vale','crest','ledge','brook',
-]
-
-/**
- * Convert a BigInt token ID to a deterministic, memorable word combination.
- * Returns something like "velvet-prism" or "amber-echo-3" for display in UI.
- */
-export function tokenName(tokenId) {
-  const id = BigInt(tokenId)
-  // simple deterministic hash: mix bits via multiply-and-shift
-  // use two different multipliers to get independent indices for adj and noun
-  const ADJ_LEN = _tokenAdj.length   // 60
-  const NOUN_LEN = _tokenNoun.length  // 60
-  const TOTAL_COMBOS = ADJ_LEN * NOUN_LEN // 3600
-
-  // hash the token ID into a manageable number
-  // multiply by large primes, take mod — keeps it deterministic
-  const h1 = Number(((id * 2654435761n) >> 16n) % BigInt(ADJ_LEN))
-  const h2 = Number(((id * 2246822519n) >> 16n) % BigInt(NOUN_LEN))
-
-  const adj = _tokenAdj[Math.abs(h1)]
-  const noun = _tokenNoun[Math.abs(h2)]
-
-  // compute a collision suffix: for IDs that map to the same adj+noun pair,
-  // this distinguishes them. bucket = which "round" of the 3600-combo space we're in
-  const bucket = Number((id % BigInt(TOTAL_COMBOS * 100)) / BigInt(TOTAL_COMBOS))
-  if (bucket === 0) return `${adj}-${noun}`
-  return `${adj}-${noun}-${bucket}`
 }
 
 // --- Bookmark helpers (localStorage-based, shared across library + feed) ---
@@ -1462,10 +1428,6 @@ export function mediaUrl(type, item, mod) {
     return `/music/${aliasSlug}/${albumSlug}`
   }
   return `/${type}/${slugify(item.title)}`
-}
-
-export function mediaUrlHtml(type, item, mod) {
-  return escapeHtml(mediaUrl(type, item, mod))
 }
 
 export function prettifyFilename(name) {

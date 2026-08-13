@@ -1,7 +1,7 @@
 // Works for Sale page — shows all PraxisMedia listings by this artist
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { ipfsUrl, escapeHtml, formatEthAmount, registerPage, getWalletProvider, resolveContentTypes, classifyContentType } from './utils.js'
+import { ipfsUrl, escapeHtml, formatEthAmount, registerPage, getWalletProvider, resolveContentTypes, classifyContentType, getAuthToken } from './utils.js'
 import { t } from './i18n.js'
 import { getArtistMedia, purchaseMedia, annotateRelistings } from './media.js'
 import { formatPriceFiatOnly, getEthPrices } from './fiat.js'
@@ -289,24 +289,6 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
     })
 
     // Wire off-chain collab accept/dismiss buttons (API-backed, persists server-side)
-    let _worksAuthToken = ''
-    async function getWorksAuthToken() {
-      if (_worksAuthToken) return _worksAuthToken
-      const addr = window.getWalletAddress?.()
-      if (!addr || !getWalletProvider()) throw new Error('wallet not connected')
-      await window.ensureAuthorized?.()
-      const msg = `admin:${location.hostname}:${Date.now()}`
-      const sig = await getWalletProvider().request({ method: 'personal_sign', params: [msg, addr] })
-      const authRes = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: addr, signature: sig, message: msg }),
-      })
-      const authData = await authRes.json()
-      if (authData.token) { _worksAuthToken = authData.token; return _worksAuthToken }
-      throw new Error(authData.error || 'auth failed')
-    }
-
     contentEl.querySelectorAll('.offchain-collab-accept').forEach(btn => {
       btn.addEventListener('click', async () => {
         const collabId = btn.dataset.collabId
@@ -316,14 +298,13 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
         const sibling = btn.parentElement?.querySelector('.offchain-collab-dismiss')
         if (sibling) sibling.disabled = true
         try {
-          const token = await getWorksAuthToken()
+          const token = await getAuthToken()
           const resp = await fetch(`/api/collaborations/${collabId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ status: 'accepted' }),
           })
           if (!resp.ok) {
-            if (resp.status === 401) _worksAuthToken = ''
             const err = await resp.json().catch(() => ({}))
             throw new Error(err.error || 'failed')
           }
@@ -347,14 +328,13 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
         const sibling = btn.parentElement?.querySelector('.offchain-collab-accept')
         if (sibling) sibling.disabled = true
         try {
-          const token = await getWorksAuthToken()
+          const token = await getAuthToken()
           const resp = await fetch(`/api/collaborations/${collabId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ status: 'dismissed' }),
           })
           if (!resp.ok) {
-            if (resp.status === 401) _worksAuthToken = ''
             const err = await resp.json().catch(() => ({}))
             throw new Error(err.error || 'failed')
           }

@@ -6,28 +6,7 @@ import { t } from './i18n.js'
 import { getPublicClient, isBlocked, blockUser, unblockUser, registerPage, requireUser, escapeHtml , getWalletProvider } from './utils.js'
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
-const REGISTRY_V1_ABI = [
-  {
-    name: 'register',
-    type: 'function',
-    inputs: [{ name: 'domain', type: 'string' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    name: 'artists',
-    type: 'function',
-    inputs: [{ name: '', type: 'address' }],
-    outputs: [
-      { name: 'domain', type: 'string' },
-      { name: 'registeredAt', type: 'uint256' },
-    ],
-    stateMutability: 'view',
-  },
-]
-
 import { REGISTRY_ABI, INVITES_ABI, INVITES_ADDR, ARTIST_SPONSOR_ABI, ARTIST_SPONSOR_ADDR } from './contracts.js'
-const INVITES_ADDRESS = INVITES_ADDR
 
 const PAGE_SIZE = 100
 
@@ -826,7 +805,7 @@ async function init() {
         }
         if (!sigData.error) {
           const inviteHash = await walletClient.writeContract({
-            address: INVITES_ADDRESS, abi: INVITES_ABI,
+            address: INVITES_ADDR, abi: INVITES_ABI,
             functionName: 'useInvite',
             args: [inviteCode, BigInt(sigData.expiry), sigData.nonce, sigData.signature],
             account: authAccount,
@@ -918,7 +897,7 @@ async function init() {
       try {
         const regWalletClient2 = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const ch = await regWalletClient2.writeContract({
-          address: INVITES_ADDRESS,
+          address: INVITES_ADDR,
           abi: [{ name: 'claimInitialInvites', type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' }],
           functionName: 'claimInitialInvites',
           args: [],
@@ -932,7 +911,7 @@ async function init() {
       // auto-follow inviter
       try {
         const inviter = await publicClient.readContract({
-          address: INVITES_ADDRESS,
+          address: INVITES_ADDR,
           abi: [{ name: 'invitedBy', type: 'function', inputs: [{ type: 'address' }], outputs: [{ type: 'address' }], stateMutability: 'view' }],
           functionName: 'invitedBy', args: [window.getWalletAddress()],
         })
@@ -1092,131 +1071,6 @@ function generateInviteCard(bgColor, fgColor, domain, message) {
   return canvas
 }
 
-function openInviteCardModal(code) {
-  // Remove any existing card modal
-  document.getElementById('invite-card-modal')?.remove()
-
-  const siteDomain = document.body.dataset.domain || window.location.hostname
-
-  const overlay = document.createElement('div')
-  overlay.id = 'invite-card-modal'
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center'
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-
-  const modal = document.createElement('div')
-  modal.style.cssText = 'background:var(--surface,#111);border:1px solid var(--border,#1a1a1a);border-radius:12px;padding:1.5em;max-width:420px;width:90%;max-height:90vh;overflow-y:auto'
-
-  // Title
-  const title = document.createElement('h3')
-  title.style.cssText = 'margin:0 0 1em;font-size:1.1em;color:var(--fg)'
-  title.textContent = 'create invite card'
-  modal.appendChild(title)
-
-  // Color picker
-  const colorLabel = document.createElement('p')
-  colorLabel.style.cssText = 'color:var(--dim);font-size:0.85em;margin:0 0 0.5em'
-  colorLabel.textContent = 'choose a color'
-  modal.appendChild(colorLabel)
-
-  const colorRow = document.createElement('div')
-  colorRow.style.cssText = 'display:flex;gap:10px;margin-bottom:1em;flex-wrap:wrap'
-  let selectedColor = INVITE_CARD_COLORS[5] // default pink
-  INVITE_CARD_COLORS.forEach((c, i) => {
-    const dot = document.createElement('button')
-    dot.style.cssText = `width:32px;height:32px;border-radius:50%;border:2px solid ${i === 5 ? 'var(--fg)' : 'transparent'};cursor:pointer;background:${c.bg};transition:border-color 0.2s`
-    dot.title = c.label
-    dot.addEventListener('click', () => {
-      selectedColor = c
-      colorRow.querySelectorAll('button').forEach(b => b.style.borderColor = 'transparent')
-      dot.style.borderColor = 'var(--fg)'
-    })
-    colorRow.appendChild(dot)
-  })
-  modal.appendChild(colorRow)
-
-  // Message input
-  const msgLabel = document.createElement('p')
-  msgLabel.style.cssText = 'color:var(--dim);font-size:0.85em;margin:0 0 0.5em'
-  msgLabel.textContent = 'personal message (optional)'
-  modal.appendChild(msgLabel)
-
-  const msgInput = document.createElement('input')
-  msgInput.type = 'text'
-  msgInput.placeholder = 'join the network!'
-  msgInput.maxLength = 100
-  msgInput.style.cssText = 'width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);color:var(--fg);border:1px solid var(--border,#1a1a1a);border-radius:6px;padding:0.6em 0.8em;font-family:inherit;font-size:0.9em;margin-bottom:1em'
-  modal.appendChild(msgInput)
-
-  // Create card button
-  const createBtn = document.createElement('button')
-  createBtn.className = 'buy-btn'
-  createBtn.textContent = 'create card'
-  createBtn.style.cssText = 'margin-bottom:1em;width:100%'
-  modal.appendChild(createBtn)
-
-  // Preview container (hidden until created)
-  const previewContainer = document.createElement('div')
-  previewContainer.style.cssText = 'display:none'
-  modal.appendChild(previewContainer)
-
-  createBtn.addEventListener('click', () => {
-    const canvas = generateInviteCard(selectedColor.bg, selectedColor.fg, siteDomain, msgInput.value.trim())
-    const dataUrl = canvas.toDataURL('image/png')
-
-    // Build the themed invite link
-    const themeHex = selectedColor.bg.replace('#', '')
-    const link = `https://ourpraxis.network/?invite=${code}&from=${encodeURIComponent(siteDomain)}&theme=${themeHex}`
-
-    previewContainer.innerHTML = ''
-    previewContainer.style.display = ''
-
-    // Card image
-    const img = document.createElement('img')
-    img.src = dataUrl
-    img.style.cssText = 'width:100%;border-radius:8px;margin-bottom:1em;display:block'
-    img.alt = 'invite card'
-    previewContainer.appendChild(img)
-
-    // Action buttons row
-    const actions = document.createElement('div')
-    actions.style.cssText = 'display:flex;gap:0.5em'
-
-    const dlBtn = document.createElement('button')
-    dlBtn.className = 'buy-btn'
-    dlBtn.style.cssText = 'flex:1'
-    dlBtn.textContent = 'download'
-    dlBtn.addEventListener('click', () => {
-      const a = document.createElement('a')
-      a.href = dataUrl
-      a.download = `praxis-invite-${code.slice(0, 8)}.png`
-      a.click()
-    })
-    actions.appendChild(dlBtn)
-
-    const copyBtn = document.createElement('button')
-    copyBtn.className = 'buy-btn'
-    copyBtn.style.cssText = 'flex:1'
-    copyBtn.textContent = 'copy link'
-    copyBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(link)
-      copyBtn.textContent = 'copied!'
-      setTimeout(() => { copyBtn.textContent = 'copy link' }, 2000)
-    })
-    actions.appendChild(copyBtn)
-
-    previewContainer.appendChild(actions)
-
-    // Show the link below
-    const linkEl = document.createElement('p')
-    linkEl.style.cssText = 'color:var(--dim);font-size:0.75em;margin-top:0.75em;word-break:break-all;text-align:center'
-    linkEl.textContent = link
-    previewContainer.appendChild(linkEl)
-  })
-
-  overlay.appendChild(modal)
-  document.body.appendChild(overlay)
-}
-
 function appendInviteLinkRow(container, code, claimed = false) {
   const siteDomain = document.body.dataset.domain || window.location.hostname
   const row = document.createElement('div')
@@ -1339,7 +1193,7 @@ async function openInvitesModal(myAddr, publicClient) {
   let count = 0
   try {
     const remaining = await publicClient.readContract({
-      address: INVITES_ADDRESS,
+      address: INVITES_ADDR,
       abi: [{ name: 'invitesRemaining', type: 'function', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }],
       functionName: 'invitesRemaining', args: [myAddr],
     })
@@ -1359,22 +1213,22 @@ async function openInvitesModal(myAddr, publicClient) {
   try {
     const [initialClaimed, migrationClaimed, migrationRoot, migrationDeadline] = await Promise.all([
       publicClient.readContract({
-        address: INVITES_ADDRESS,
+        address: INVITES_ADDR,
         abi: [{ name: 'initialClaimed', type: 'function', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }], stateMutability: 'view' }],
         functionName: 'initialClaimed', args: [myAddr],
       }).catch(() => true),
       publicClient.readContract({
-        address: INVITES_ADDRESS,
+        address: INVITES_ADDR,
         abi: [{ name: 'migrationClaimed', type: 'function', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }], stateMutability: 'view' }],
         functionName: 'migrationClaimed', args: [myAddr],
       }).catch(() => true),
       publicClient.readContract({
-        address: INVITES_ADDRESS,
+        address: INVITES_ADDR,
         abi: [{ name: 'migrationRoot', type: 'function', inputs: [], outputs: [{ type: 'bytes32' }], stateMutability: 'view' }],
         functionName: 'migrationRoot',
       }).catch(() => '0x0000000000000000000000000000000000000000000000000000000000000000'),
       publicClient.readContract({
-        address: INVITES_ADDRESS,
+        address: INVITES_ADDR,
         abi: [{ name: 'migrationDeadline', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }],
         functionName: 'migrationDeadline',
       }).catch(() => 0n),
@@ -1409,7 +1263,7 @@ async function openInvitesModal(myAddr, publicClient) {
             const acct = await window.ensureAuthorized?.() || myAddr
             const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({
-              address: INVITES_ADDRESS,
+              address: INVITES_ADDR,
               abi: [{ name: 'claimMigration', type: 'function', inputs: [
                 { name: 'artist', type: 'address' },
                 { name: 'amount', type: 'uint256' },
@@ -1450,7 +1304,7 @@ async function openInvitesModal(myAddr, publicClient) {
           const acct = await window.ensureAuthorized?.() || myAddr
           const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
           const hash = await wc.writeContract({
-            address: INVITES_ADDRESS,
+            address: INVITES_ADDR,
             abi: [{ name: 'claimInitialInvites', type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' }],
             functionName: 'claimInitialInvites',
             args: [],
@@ -1483,7 +1337,7 @@ async function openInvitesModal(myAddr, publicClient) {
                 const acct = await window.ensureAuthorized?.() || window.getWalletAddress()
                 const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
                 const hash = await wc.writeContract({
-                  address: INVITES_ADDRESS,
+                  address: INVITES_ADDR,
                   abi: [{ name: 'createInvite', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [], stateMutability: 'nonpayable' }],
                   functionName: 'createInvite', args: [codeHash], account: acct,
                 })
@@ -1557,7 +1411,7 @@ async function openInvitesModal(myAddr, publicClient) {
       const { keccak256, toBytes } = await import('./vendor.js')
       const checks = storedInvites.map(item =>
         publicClient.readContract({
-          address: INVITES_ADDRESS,
+          address: INVITES_ADDR,
           abi: [{ name: 'codeUsed', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [{ type: 'bool' }], stateMutability: 'view' }],
           functionName: 'codeUsed', args: [keccak256(toBytes(item.code))],
         }).then(used => { if (used) claimedSet.add(item.code) }).catch(() => {})
@@ -1606,7 +1460,7 @@ async function openInvitesModal(myAddr, publicClient) {
         const currentAccount = await window.ensureAuthorized?.() || myAddr
         const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
-          address: INVITES_ADDRESS,
+          address: INVITES_ADDR,
           abi: [{ name: 'createInvite', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [], stateMutability: 'nonpayable' }],
           functionName: 'createInvite', args: [codeHash],
           account: currentAccount,
@@ -1649,7 +1503,7 @@ async function openInvitesModal(myAddr, publicClient) {
         const { keccak256, toBytes } = await import('./vendor.js')
         await Promise.all(storedInvites.map(item =>
           publicClient.readContract({
-            address: INVITES_ADDRESS,
+            address: INVITES_ADDR,
             abi: [{ name: 'codeUsed', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [{ type: 'bool' }], stateMutability: 'view' }],
             functionName: 'codeUsed', args: [keccak256(toBytes(item.code))],
           }).then(used => { if (used) claimedSet2.add(item.code) }).catch(() => {})

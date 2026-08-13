@@ -9,6 +9,7 @@ import { formatPriceFiatOnly, getEthPrices } from './fiat.js'
 import { MEDIA_ABI, getMediaAddress } from './contracts.js'
 
 const BATCH_MAX = 20
+const MEDIA_LISTED_TOPIC = '0x4d24da2b70562743cabea6cd760eed0904274271969048edfc6f65e0b556d038'
 
 // --- Exported contract interactions ---
 
@@ -61,7 +62,7 @@ export async function listMedia(title, ipfsCid, metadataCid, price, maxSupply, c
   // extract mediaId from Listed event in receipt
   const receipt = await pc.waitForTransactionReceipt({ hash })
   const listedLog = receipt.logs.find(log => {
-    try { return log.topics[0] === '0x4d24da2b70562743cabea6cd760eed0904274271969048edfc6f65e0b556d038' } catch { return false }
+    try { return log.topics[0] === MEDIA_LISTED_TOPIC } catch { return false }
   })
   if (listedLog?.topics?.[1]) {
     return BigInt(listedLog.topics[1]).toString()
@@ -153,9 +154,8 @@ export async function listBatchMedia(entries) {
     const receipt = await pc.waitForTransactionReceipt({ hash })
 
     // Extract media IDs from Listed events in receipt
-    const listedTopic = '0x4d24da2b70562743cabea6cd760eed0904274271969048edfc6f65e0b556d038'
     const batchIds = receipt.logs
-      .filter(log => { try { return log.topics[0] === listedTopic } catch { return false } })
+      .filter(log => { try { return log.topics[0] === MEDIA_LISTED_TOPIC } catch { return false } })
       .map(log => BigInt(log.topics[1]).toString())
 
     if (batchIds.length > 0) {
@@ -373,13 +373,6 @@ export async function withdrawEarnings() {
   const pc = await getPublicClient()
   await pc.waitForTransactionReceipt({ hash })
   return hash
-}
-
-export async function getPendingWithdrawals(addr) {
-  const address = getMediaAddress()
-  if (!address) return 0n
-  const pc = await getPublicClient()
-  return await pc.readContract({ address, abi: MEDIA_ABI, functionName: 'pendingWithdrawals', args: [addr] })
 }
 
 // --- Owner badges ---

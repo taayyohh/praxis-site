@@ -15,7 +15,7 @@ export default {
 
     // Respect the order from site.json (set by user in settings module editor)
     // First item is featured (full-width)
-    const sorted = items
+    const allItems = items
 
     function renderVideoItem(v, isFeatured, idx) {
       const cls = isFeatured ? 'video-item video-featured' : 'video-item'
@@ -60,13 +60,13 @@ export default {
       return html
     }
 
-    const hasSections = sections.length > 0 && sorted.some(v => v.section)
+    const hasSections = sections.length > 0 && allItems.some(v => v.section)
 
     let html = ''
 
     if (hasSections) {
       // Items without a section go at top (no header)
-      const unsectioned = sorted.filter(v => !v.section)
+      const unsectioned = allItems.filter(v => !v.section)
       if (unsectioned.length) {
         html += renderVideoItem(unsectioned[0], true, items.indexOf(unsectioned[0]))
         if (unsectioned.length > 1) {
@@ -76,7 +76,7 @@ export default {
         }
       }
       for (const sec of sections) {
-        const sectionItems = sorted.filter(v => v.section === sec.label)
+        const sectionItems = allItems.filter(v => v.section === sec.label)
         if (!sectionItems.length) continue
         let sectionHeader = `<div style="color:var(--dim);font-size:0.75em;text-transform:uppercase;letter-spacing:0.1em;margin:1.5em 0 0.75em;border-bottom:1px solid var(--border);padding-bottom:0.3em">${esc(sec.label)}`
         // Buy collection button for this section
@@ -100,10 +100,8 @@ export default {
       }
     } else {
       // No sections: render flat (backward compatible)
-      // build index map so we can pass original index for art detail links
-      const idxMap = sorted.map(s => items.indexOf(s))
       // Buy all videos button (flat layout)
-      const allListed = sorted.filter(v => v.mediaId !== undefined && v.mediaId !== null)
+      const allListed = allItems.filter(v => v.mediaId !== undefined && v.mediaId !== null)
       if (allListed.length >= 2) {
         const totalWei = allListed.reduce((sum, v) => sum + BigInt(v.mediaPrice || '0'), 0n)
         const totalEth = Number(totalWei) / 1e18
@@ -112,12 +110,12 @@ export default {
         html += `<div style="margin-bottom:1em"><button class="batch-buy-btn" data-media-ids="${idsJson}" data-total-price="${totalWei.toString()}" data-eth-wei="${totalWei.toString()}" style="background:none;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:0.85em;padding:0.3em 1.2ch;cursor:pointer">buy all videos (${priceLabel})</button></div>`
       }
       // featured: first/latest video full-width
-      html += renderVideoItem(sorted[0], true, idxMap[0])
+      html += renderVideoItem(allItems[0], true, items.indexOf(allItems[0]))
       // additional videos in a 2-column grid
-      if (sorted.length > 1) {
+      if (allItems.length > 1) {
         html += `<div class="video-grid">`
-        for (let i = 1; i < sorted.length; i++) {
-          html += renderVideoItem(sorted[i], false, idxMap[i])
+        for (let i = 1; i < allItems.length; i++) {
+          html += renderVideoItem(allItems[i], false, items.indexOf(allItems[i]))
         }
         html += `</div>`
       }

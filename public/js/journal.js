@@ -1,6 +1,6 @@
 // Journal — encrypted private writing, wallet-only access
 // Includes script mode: Fountain-based screenplay editor
-import { escapeHtml, registerPage, getWalletProvider } from './utils.js'
+import { escapeHtml, registerPage, getWalletProvider, dbg } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { createMarkdownEditor } from './markdown-editor.js'
 import {
@@ -628,10 +628,10 @@ async function initJournal() {
         }
         if (result === 403) {
           // session expired (server restart, TTL) — re-authenticate silently
-          console.log('journal: session expired, re-authenticating...')
+          dbg('journal: session expired, re-authenticating...')
           if (saveStatus) saveStatus.textContent = t('journal.reconnecting') || 'reconnecting...'
           const ok = await reauthJournal()
-          console.log('journal: re-auth result:', ok)
+          dbg('journal: re-auth result:', ok)
           if (ok) result = await doSave()
           else if (saveStatus) saveStatus.textContent = 're-auth failed — sign in again'
         }

@@ -1,13 +1,7 @@
 // Writing module — publications, reading list, excerpts, chapbooks
 // For poets, essayists, novelists, journalists, translators
 // data: { publications: [{ title, publication, year, url, type, excerpt, coverImage, src, mediaId, mediaPrice, genre, isbn, translator, publisher, pageCount, language, awards }], reading: [...] }
-import { esc } from './shared.js'
-const safeUrl = u => {
-  if (typeof u !== 'string' || !u) return ''
-  const trimmed = u.trim()
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return esc(trimmed)
-  return ''
-}
+import { esc, safeUrl } from './shared.js'
 export default {
   type: 'writing',
   label: 'text',

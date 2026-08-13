@@ -1,7 +1,7 @@
 import { createPublicClient, createWalletClient, custom, parseEther, encodeFunctionData, http } from './vendor.js'
 import { optimism } from './vendor.js'
 import { showOnrampModal, showOfframpModal } from './ramp.js'
-import { getWalletProvider, escapeHtml } from './utils.js'
+import { getWalletProvider, escapeHtml, formatTxError, dbg } from './utils.js'
 import { getEthPrices } from './fiat.js'
 import { t } from './i18n.js'
 
@@ -278,7 +278,7 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
         confirmBtn.style.color = '#000'
         setTimeout(cleanup, 2000)
       } catch (e) {
-        status.textContent = e.code === 4001 ? t('pay.cancelled') : (e.shortMessage || e.message || t('pay.buy')).slice(0, 60)
+        status.textContent = formatTxError(e)
         confirmBtn.textContent = t('pay.buy')
         confirmBtn.disabled = false
         setTimeout(() => { status.textContent = '' }, 3000)
@@ -469,7 +469,7 @@ export async function showFundingSheet(address, amountWei, options = {}) {
         if (amtWei >= maxBal) {
           bridgeWei = maxBal > gasReserve ? maxBal - gasReserve : maxBal
         }
-        console.log('[funding-sheet] bridging', { chainId, address, bridgeWei: bridgeWei.toString(), amtEth })
+        dbg('[funding-sheet] bridging', { chainId, address, bridgeWei: bridgeWei.toString(), amtEth })
         _bridgeState = { phase: 'pending', chainId, message: `getting quote for ${amtEth} ETH from ${chainName}…` }
         renderSheet()
         try {
@@ -503,7 +503,7 @@ export async function showFundingSheet(address, amountWei, options = {}) {
           }
         } catch (e) {
           console.error('[funding-sheet] bridge failed:', e)
-          const errMsg = e?.shortMessage || e?.message || 'bridge failed'
+          const errMsg = formatTxError(e)
           _bridgeState = { phase: 'error', chainId, message: errMsg }
           renderSheet()
         } finally {
@@ -639,7 +639,7 @@ async function buyItem(button) {
     button.textContent = `tx: ${hash.slice(0, 10)}...`
     button.title = hash
   } catch (e) {
-    button.textContent = e.code === 4001 ? 'cancelled' : 'error'
+    button.textContent = formatTxError(e)
     setTimeout(() => {
       button.textContent = 'buy'
       button.disabled = false

@@ -1,9 +1,9 @@
 // Global persistent audio/video player — fixed bottom bar with unified queue
 // Exposes: window.playTrack(), window.pauseTrack(), window.isPlaying(), window.playVideo(), window.addToQueue()
+import { escapeHtml } from './utils.js'
 
 const STORAGE_KEY = 'praxis-player'
 const SAVE_INTERVAL = 2000
-function _esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') }
 
 // --- Build DOM ---
 const bar = document.createElement('div')
@@ -197,8 +197,8 @@ function renderQueueList() {
     return `<div class="gp-queue-item" data-idx="${i}" style="display:flex;align-items:center;gap:0.75ch;padding:0.5em 1em;cursor:pointer;${isActive ? 'background:var(--surface,#111);border-left:2px solid var(--accent)' : 'border-left:2px solid transparent'}">
       ${artThumb ? `<img src="${artThumb}" style="width:36px;height:36px;object-fit:cover;flex-shrink:0;border-radius:2px" loading="lazy">` : `<i class="ph ${icon}" style="font-size:1.2em;color:var(--dim);width:36px;text-align:center;flex-shrink:0"></i>`}
       <div style="flex:1;min-width:0;overflow:hidden">
-        <div style="color:${isActive ? 'var(--accent)' : 'var(--fg)'};font-size:0.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(item.title) || 'untitled'}</div>
-        ${item.artist ? `<div style="color:var(--dim);font-size:0.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(item.artist)}</div>` : ''}
+        <div style="color:${isActive ? 'var(--accent)' : 'var(--fg)'};font-size:0.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(item.title) || 'untitled'}</div>
+        ${item.artist ? `<div style="color:var(--dim);font-size:0.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(item.artist)}</div>` : ''}
       </div>
       <button class="gp-queue-rm" data-idx="${i}" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.9em;flex-shrink:0;padding:0.2em">&times;</button>
     </div>`

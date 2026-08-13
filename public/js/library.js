@@ -4,7 +4,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider, prettifyFilename } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider, prettifyFilename, getAuthToken, resolveDomain } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
@@ -28,27 +28,6 @@ async function _fetchServerTags() {
 
 // Derive a prettified title from a filename (strip extension, replace
 
-let uploadToken = ''
-window.addEventListener('wallet-connected', () => { uploadToken = '' })
-window.addEventListener('wallet-disconnected', () => { uploadToken = '' })
-async function getUploadToken() {
-  if (uploadToken) return uploadToken
-  const addr = window.getWalletAddress?.()
-  if (!addr || !getWalletProvider()) return ''
-  try {
-    await window.ensureAuthorized?.()
-    const msg = `admin:${location.hostname}:${Date.now()}`
-    const sig = await getWalletProvider().request({ method: 'personal_sign', params: [msg, addr] })
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: addr, signature: sig, message: msg }),
-    })
-    const data = await res.json()
-    if (data.token) uploadToken = data.token
-    return uploadToken
-  } catch { return '' }
-}
 
 import { LIBRARY_ABI } from './contracts.js'
 
@@ -65,7 +44,7 @@ async function initLibrary() {
   if (!libraryAddress) { statusEl.textContent = t('library.notDeployed'); return }
 
   let domainMap = {}
-  const resolve = addr => domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const resolve = addr => resolveDomain(domainMap, addr)
 
   // load items with pagination
   let libraryCursor = null
@@ -605,7 +584,7 @@ function renderAddForm(libraryAddress) {
         const res = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${await getUploadToken()}`,
+            'Authorization': `Bearer ${await getAuthToken()}`,
             'Content-Length': String(buffer.byteLength),
           },
           body: buffer,

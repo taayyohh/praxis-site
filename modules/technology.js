@@ -1,14 +1,6 @@
 // Technology module — engineering, design, repos, case studies, product work
 // For engineers, designers, creative technologists, game devs
-import { esc } from './shared.js'
-function safeUrl(u) {
-  if (!u || typeof u !== 'string') return '#'
-  try {
-    const parsed = new URL(u, 'https://placeholder.invalid')
-    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
-    return esc(u)
-  } catch { return '#' }
-}
+import { esc, safeUrl } from './shared.js'
 export default {
   type: 'technology',
   label: 'technology',

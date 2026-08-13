@@ -14,6 +14,22 @@ export function esc(s) {
     .replace(/'/g, '&#39;')
 }
 
+/**
+ * Sanitize a URL for use in href attributes.
+ * Only allows http, https, mailto protocols and relative paths.
+ * Returns '#' for invalid/missing URLs.
+ */
+export function safeUrl(u) {
+  if (!u || typeof u !== 'string') return '#'
+  const trimmed = u.trim()
+  if (trimmed.startsWith('/')) return esc(trimmed)
+  try {
+    const parsed = new URL(trimmed)
+    if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return esc(trimmed)
+  } catch {}
+  return '#'
+}
+
 export function slugify(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
 }

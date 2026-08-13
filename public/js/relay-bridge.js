@@ -1,5 +1,6 @@
 // relay-bridge.js — cross-chain ETH bridging via Relay Protocol
 // lazy-loaded only when bridge is needed
+import { USDC_BASE } from './contracts.js'
 
 let _relayClient = null
 // H8: module-level publicClient cache keyed by chainId
@@ -313,7 +314,6 @@ async function _buildBridgeWalletClient(fromChainId) {
 }
 
 // Bridge USDC on Base → ETH on Optimism (Relay handles swap + bridge in one tx)
-const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
 
 export async function bridgeUsdcToOptimismEth(address, amountUsdc, onStatusUpdate) {
   const client = await initRelay()

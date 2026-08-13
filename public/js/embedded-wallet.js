@@ -6,7 +6,8 @@
 const _originalEthereum = window.ethereum
 
 import { privateKeyToAccount, createWalletClient, http, optimism } from './vendor.js'
-import { PRAXIS_ADDR, INVITES_ADDR, TICKET_MARKET_ADDR, ARTIST_SPONSOR_ADDR } from './contracts.js'
+import { PRAXIS_ADDR, INVITES_ADDR, TICKET_MARKET_ADDR, ARTIST_SPONSOR_ADDR, LIBRARY_ADDR, TREASURY_ADDR } from './contracts.js'
+import { escapeHtml } from './utils.js'
 
 const STORAGE_KEY = 'praxis-wallet-enc'
 const ADDR_KEY = 'praxis-embedded-addr'
@@ -402,7 +403,7 @@ function confirmTransaction(to, value) {
       const { query } = await import('./ponder.js')
       const resolved = await resolveAddresses(query, [to])
       const domain = resolved[to?.toLowerCase()]
-      if (domain) recipientName = domain.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+      if (domain) recipientName = escapeHtml(domain)
     } catch {}
 
     // Human-readable context
@@ -415,8 +416,8 @@ function confirmTransaction(to, value) {
       [INVITES_ADDR.toLowerCase()]: { name: 'use invite', desc: 'activating your invite code' },
       [ARTIST_SPONSOR_ADDR.toLowerCase()]: { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
       [TICKET_MARKET_ADDR.toLowerCase()]: { name: 'ticket purchase', desc: 'buying or listing a ticket' },
-      '0x5cddd64f20c69fc2007868476788bc3766c28a0a': { name: 'add to library', desc: 'adding to the shared knowledge base' },
-      '0x5cf9e88417a7ce08028d32c44f9b63bc3d960b21': { name: 'treasury', desc: 'interacting with the network treasury' },
+      [LIBRARY_ADDR.toLowerCase()]: { name: 'add to library', desc: 'adding to the shared knowledge base' },
+      [TREASURY_ADDR.toLowerCase()]: { name: 'treasury', desc: 'interacting with the network treasury' },
     }
     const contract = KNOWN_CONTRACTS[to?.toLowerCase()]
     const isDirectSend = !contract && !purchase
@@ -425,7 +426,7 @@ function confirmTransaction(to, value) {
     let title, subtitle, contextHtml
     if (isPurchase) {
       title = 'confirm purchase'
-      subtitle = (purchase.title || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+      subtitle = escapeHtml(purchase.title || '')
       contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">you'll receive a permanent, non-transferable proof of purchase</div>`
     } else if (isDirectSend) {
       title = 'send payment'

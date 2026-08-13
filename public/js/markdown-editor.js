@@ -2,7 +2,7 @@
 // Usage: const editor = createMarkdownEditor(containerEl, { placeholder, rows, value })
 //        editor.getValue() / editor.setValue(text)
 
-import { escapeHtml, renderMarkdown } from './utils.js'
+import { escapeHtml, renderMarkdown, getAuthToken } from './utils.js'
 
 export function createMarkdownEditor(container, opts = {}) {
   const { placeholder = 'write something...', rows = 6, value = '', onInput } = opts
@@ -97,19 +97,7 @@ export function createMarkdownEditor(container, opts = {}) {
     const statusText = textarea.placeholder
     textarea.placeholder = `uploading ${file.name}...`
     try {
-      let authToken = sessionStorage.getItem('praxis-auth-token') || ''
-      if (!authToken) {
-        await window.ensureAuthorized?.()
-        const addr = window.getWalletAddress?.()
-        const provider = window.getWalletProvider?.()
-        if (provider && addr) {
-          const msg = `admin:${location.hostname}:${Date.now()}`
-          const sig = await provider.request({ method: 'personal_sign', params: [msg, addr] })
-          const authRes = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr, signature: sig, message: msg }) })
-          const authData = await authRes.json()
-          if (authData.token) { authToken = authData.token; sessionStorage.setItem('praxis-auth-token', authToken) }
-        }
-      }
+      const authToken = await getAuthToken()
       const buf = await file.arrayBuffer()
       const uploadRes = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: buf })
       const uploadData = await uploadRes.json()

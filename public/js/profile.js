@@ -167,7 +167,7 @@ async function showProfile(addr) {
     _domainMap = await resolveAddresses(query, allAddrs).catch(() => ({}))
 
     statusEl.textContent = ''
-    const resolve = a => _domainMap[a.toLowerCase()] || `${a.slice(0, 6)}...${a.slice(-4)}`
+    const resolve = a => resolveDomain(_domainMap, a)
 
     // categorize credentials
     const tickets = allCredentials.filter(c => c.tokenType === 1)

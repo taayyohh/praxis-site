@@ -1,15 +1,7 @@
 // Education module — workshops, events, curricula, community projects
 // For teaching artists, organizers, workshop facilitators
 // data: { events: [{ title, role, org, year, description, url, type }] }
-import { esc } from './shared.js'
-function safeUrl(u) {
-  if (!u || typeof u !== 'string') return '#'
-  try {
-    const parsed = new URL(u, 'https://placeholder.invalid')
-    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
-    return esc(u)
-  } catch { return '#' }
-}
+import { esc, safeUrl } from './shared.js'
 export default {
   type: 'education',
   label: 'education',

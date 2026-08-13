@@ -7,6 +7,8 @@ export const PRAXIS_ADDR = '0x8f5B0D0f0073a1573f17e37746811672aeDDE2F8'
 export const INVITES_ADDR = '0x23289c228cA0867122dC8855613858C8C3dc707c'
 export const TICKET_MARKET_ADDR = '0x1781666673b6fB22f59229fb120F14bD97d2EdC6'
 export const ARTIST_SPONSOR_ADDR = '0xb7A66e7ad464495D22B3A39140BD8d7F10Afb3f7'
+export const LIBRARY_ADDR = '0x5CdDD64f20C69fC2007868476788BC3766C28A0A'
+export const TREASURY_ADDR = '0x5CF9E88417A7cE08028D32C44F9b63bc3d960b21'
 export const TREASURY_ADMIN_ADDR = '0x46db55AD42dA6bA3c29a3C1522EBBF8e16960725'
 
 // Dynamic addresses (from HTML data attributes)
@@ -228,7 +230,6 @@ export const ARTIST_SPONSOR_ABI = [
 
 // PraxisOrganization — orgs, members, management
 export const ORG_ADDRESS = '0x23045DF374874274497541cCF34945069447e01F'
-export function getOrgAddress() { return ORG_ADDRESS }
 export const ORG_ABI = [
   // Lifecycle
   { name: 'createOrg', type: 'function', inputs: [{ name: 'name', type: 'string' }, { name: 'metadataCid', type: 'string' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'nonpayable' },
@@ -253,6 +254,11 @@ export const ORG_ABI = [
   { name: 'orgCount', type: 'function', inputs: [], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
   { name: 'getOrgsByMember', type: 'function', inputs: [{ name: 'wallet', type: 'address' }], outputs: [{ name: '', type: 'uint256[]' }], stateMutability: 'view' },
 ]
+
+export const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+export const WETH_BASE = '0x4200000000000000000000000000000000000006'
+export const BASE_CHAIN_ID = 8453
+export const OPTIMISM_CHAIN_ID = 10
 
 // LibraryRegistry — addItem, tagItem
 export const LIBRARY_ABI = [

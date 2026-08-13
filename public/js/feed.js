@@ -25,7 +25,7 @@ _ensureSiteModules()
 
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown, getProfilePic } from './utils.js'
+import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown, getProfilePic, resolveDomain, getAuthToken, formatEthAmount } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
@@ -153,7 +153,7 @@ async function loadBalance(addr) {
 }
 
 function renderBalance(addr, balance) {
-    const ethBalance = (Number(balance) / 1e18).toFixed(4).replace(/\.?0+$/, '')
+    const ethBalance = formatEthAmount(balance)
 
     // render in dock
     const topBalance = document.getElementById('top-balance')
@@ -182,7 +182,7 @@ function renderItem(item, domainMap, resolve) {
 }
 
 function renderCachedFeed(feedItems, domainMap, postsEl) {
-  const resolve = addr => domainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const resolve = addr => resolveDomain(domainMap, addr)
 
   // Pre-pass: collect replies into a map keyed by parent post ID, so they
   // can be injected under their parent post card after rendering.
@@ -422,7 +422,7 @@ async function renderFeedBatch(items, postsEl) {
     Object.assign(_feedDomainMap, extra)
   }
 
-  const resolve = addr => _feedDomainMap[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const resolve = addr => resolveDomain(_feedDomainMap, addr)
 
   // remove sentinel before appending
   postsEl.querySelector('#feed-sentinel')?.remove()
@@ -834,20 +834,8 @@ async function syncBookmarks() {
   try {
     // authenticate (get session token)
     if (!_bookmarkToken) {
-      await window.ensureAuthorized?.()
-      const authMsg = `admin:${location.hostname}:${Date.now()}`
-      const authSig = await getWalletProvider().request({
-        method: 'personal_sign',
-        params: [authMsg, addr],
-      })
-      const authRes = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: addr, signature: authSig, message: authMsg }),
-      })
-      const authData = await authRes.json()
-      if (authData.error) { _bookmarkSyncing = false; return }
-      _bookmarkToken = authData.token
+      _bookmarkToken = await getAuthToken()
+      if (!_bookmarkToken) { _bookmarkSyncing = false; return }
     }
 
     // derive encryption key (same deterministic message as journal)

@@ -1,7 +1,7 @@
 // Demos module — works in progress, rough cuts, sketches, drafts
 // For unfinished/in-progress work across all disciplines
 // data: { items: [{ title, description, year, art, coverArt, src, url, status, mediaId, mediaPrice, collaborators, tools, startedDate, estimatedCompletion, notes, medium }] }
-import { esc } from './shared.js'
+import { esc, safeUrl } from './shared.js'
 
 const IMG_RE = /\.(jpe?g|png|gif|webp|svg|avif)$/i
 const VID_RE = /\.(mp4|webm|mov)$/i
@@ -55,8 +55,8 @@ function metaBlock(item) {
   if (item.description) m += `<div style="color:var(--fg);font-size:0.9em;margin:0.25em 0">${esc(item.description)}</div>`
   if (item.notes) m += `<div style="color:var(--dim);font-size:0.85em;margin:0.25em 0;font-style:italic">${esc(item.notes)}</div>`
   if (item.url) {
-    const safeUrl = /^(https?:\/\/|\/)/i.test(item.url) ? esc(item.url) : '#'
-    m += `<div style="margin-top:0.25em"><a href="${safeUrl}" style="color:var(--muted);font-size:0.85em">view</a></div>`
+    const safe = safeUrl(item.url)
+    m += `<div style="margin-top:0.25em"><a href="${safe}" style="color:var(--muted);font-size:0.85em">view</a></div>`
   }
   return m
 }

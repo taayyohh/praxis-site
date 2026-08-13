@@ -1369,13 +1369,96 @@ section img {
   color: var(--fg);
   font-family: inherit;
   font-size: 0.9em;
-  padding: 0.5em 1ch;
-  border-radius: 4px;
+  padding: 0.65em 1.25ch;
+  border-radius: 20px;
 }
 
 #dm-input:focus {
   outline: none;
   border-color: var(--muted);
+}
+
+#dm-pay-bar {
+  display: none;
+  flex-direction: column;
+  gap: 0.75em;
+  padding: 1em 1em 0.75em;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+#dm-pay-bar .pay-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg);
+  border: 1px solid var(--border-hover);
+  border-radius: 24px;
+  padding: 0.15em 0.5em 0.15em 1em;
+  transition: border-color 0.15s;
+}
+
+#dm-pay-bar .pay-amount-row:focus-within {
+  border-color: var(--accent);
+}
+
+#dm-pay-bar .pay-amount-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 1.5em;
+  font-weight: 600;
+  padding: 0.3em 0;
+  outline: none;
+  min-width: 0;
+}
+
+#dm-pay-bar .pay-amount-input::placeholder {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+#dm-pay-bar .pay-currency-label {
+  color: var(--dim);
+  font-size: 0.85em;
+  font-weight: 500;
+  padding: 0 0.75ch;
+  white-space: nowrap;
+}
+
+#dm-pay-bar .pay-send-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 20px;
+  padding: 0.45em 1.25ch;
+  font-family: inherit;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4ch;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+#dm-pay-bar .pay-send-btn:hover { opacity: 0.85; }
+#dm-pay-bar .pay-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+#dm-pay-bar .pay-fiat-line {
+  color: var(--dim);
+  font-size: 0.8em;
+  text-align: center;
+  min-height: 1.2em;
+}
+
+#dm-pay-bar .pay-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 #dm-new-section {

@@ -1,15 +1,7 @@
 // Film module — video uploads, reels, festival credits, shorts
 // For filmmakers, directors, cinematographers, editors, animators
 // data: { works: [{ title, role, director, year, video, poster, description, cast, genre, runtime, mediaId, mediaPrice, cinematographer, composer, editor, writer, productionCompany, synopsis, distributor, trailer }], festivals: [{ festival, film, year, result }] }
-import { esc, batchBuyScript, slugify } from './shared.js'
-function safeUrl(u) {
-  if (!u || typeof u !== 'string') return '#'
-  try {
-    const parsed = new URL(u, 'https://placeholder.invalid')
-    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
-    return esc(u)
-  } catch { return '#' }
-}
+import { esc, batchBuyScript, slugify, safeUrl } from './shared.js'
 export default {
   type: 'film',
   label: 'film',

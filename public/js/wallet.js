@@ -21,90 +21,6 @@ let _usingEmbeddedWallet = false
 // network tab. We keep a bounded LRU cache and debounce misses into a 200ms
 // batch call to the existing POST endpoint, which already accepts multiple
 // addresses per request.
-const _addrToDomainCache = new Map() // lowercase addr -> domain string (or '' for miss)
-const _ADDR_CACHE_MAX = 500
-const _resolveQueue = new Set() // pending addresses
-const _resolveWaiters = new Map() // addr -> [resolve, ...]
-let _resolveFlushTimer = null
-
-// Fix NEW-H1 (cycle-2): separate negative cache with short TTL so we never
-// poison the positive cache with '' on transient fetch failure. Previously,
-// a single network error caused every queued address to be cached as ''
-// permanently (until disconnect()).
-const _addrNegativeCache = new Map() // addr -> ts (negative cached until ts + TTL)
-const _NEG_CACHE_TTL_MS = 30 * 1000
-
-function _flushResolveQueue() {
-  _resolveFlushTimer = null
-  if (_resolveQueue.size === 0) return
-  const batch = [..._resolveQueue]
-  _resolveQueue.clear()
-  ;(async () => {
-    let ok = false
-    let map = {}
-    try {
-      const res = await fetch('/api/artists/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addresses: batch }),
-      })
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null)
-        if (data && typeof data === 'object') {
-          map = data.addresses || {}
-          ok = true
-        }
-      }
-    } catch {}
-    const now = Date.now()
-    for (const addr of batch) {
-      const domain = map[addr] || map[addr.toLowerCase()] || ''
-      if (ok) {
-        if (domain) {
-          // Positive hit — cache it and clear any negative entry.
-          boundedSet(_addrToDomainCache, addr, domain, _ADDR_CACHE_MAX)
-          _addrNegativeCache.delete(addr)
-        } else {
-          // Confirmed miss from a successful response — negative-cache with TTL.
-          boundedSet(_addrNegativeCache, addr, now, _ADDR_CACHE_MAX)
-        }
-      }
-      // On fetch failure (ok === false), do NOT write any cache entry. Waiters
-      // still get '' so they unblock, but the next call will re-attempt.
-      const waiters = _resolveWaiters.get(addr)
-      if (waiters) {
-        _resolveWaiters.delete(addr)
-        for (const w of waiters) { try { w(domain) } catch {} }
-      }
-    }
-  })()
-}
-
-function resolveAddrToDomain(address) {
-  const addr = (address || '').toLowerCase()
-  if (!addr) return Promise.resolve('')
-  if (_addrToDomainCache.has(addr)) {
-    // bump recency
-    const v = _addrToDomainCache.get(addr)
-    _addrToDomainCache.delete(addr)
-    _addrToDomainCache.set(addr, v)
-    return Promise.resolve(v)
-  }
-  // Fix NEW-H1: respect short-TTL negative cache for confirmed misses.
-  const negTs = _addrNegativeCache.get(addr)
-  if (negTs != null) {
-    if (Date.now() - negTs < _NEG_CACHE_TTL_MS) return Promise.resolve('')
-    _addrNegativeCache.delete(addr)
-  }
-  return new Promise((resolve) => {
-    let waiters = _resolveWaiters.get(addr)
-    if (!waiters) { waiters = []; _resolveWaiters.set(addr, waiters) }
-    waiters.push(resolve)
-    _resolveQueue.add(addr)
-    if (_resolveFlushTimer == null) _resolveFlushTimer = setTimeout(_flushResolveQueue, 200)
-  })
-}
-
 // --- Cross-origin wallet bridge (Fix 3 Part B) ---
 //
 // Praxis sites live on many hostnames (artist custom domains + subdomains of
@@ -891,11 +807,6 @@ async function disconnect() {
   window._xmtpBgStream = null
   try { window._xmtpClient?.close?.() } catch {}
   window._xmtpClient = null
-  try { _addrToDomainCache.clear() } catch {}
-  try { _addrNegativeCache.clear() } catch {}
-  try { _resolveQueue.clear() } catch {}
-  try { _resolveWaiters.clear() } catch {}
-  if (_resolveFlushTimer != null) { clearTimeout(_resolveFlushTimer); _resolveFlushTimer = null }
   try { window.dispatchEvent(new CustomEvent('xmtp-teardown')) } catch {}
 
   if (_usingEmbeddedWallet) {

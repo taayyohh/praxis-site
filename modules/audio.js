@@ -1,14 +1,6 @@
 // Audio module — podcasts, sound design, voiceover, audio essays
 // For podcasters, sound designers, voice actors, audio engineers
-import { esc, batchBuyScript, slugify } from './shared.js'
-function safeUrl(u) {
-  if (!u || typeof u !== 'string') return '#'
-  try {
-    const parsed = new URL(u, 'https://placeholder.invalid')
-    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '#'
-    return esc(u)
-  } catch { return '#' }
-}
+import { esc, batchBuyScript, slugify, safeUrl } from './shared.js'
 export default {
   type: 'audio',
   label: 'audio',

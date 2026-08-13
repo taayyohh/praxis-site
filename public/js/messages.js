@@ -2,7 +2,7 @@
 // Two-column layout: conversation list (left) + active chat (right)
 import { query } from './ponder.js'
 import { t } from './i18n.js'
-import { createWalletClient, custom, http, parseEther, formatEther } from './vendor.js'
+import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet} from './utils.js'
 
@@ -154,19 +154,6 @@ function setInboxToAddr(key, value) {
     if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete stored[k]
     localStorage.setItem('praxis:inbox-addr-map', JSON.stringify(stored))
   } catch {}
-}
-
-// LRU-aware getter: touches key (moves to end)
-function getInboxToAddr(key) {
-  const val = inboxToAddr[key]
-  if (val !== undefined) {
-    const idx = _inboxToAddrOrder.indexOf(key)
-    if (idx !== -1) {
-      _inboxToAddrOrder.splice(idx, 1)
-      _inboxToAddrOrder.push(key)
-    }
-  }
-  return val
 }
 
 registerPage('messages-page', initMessages)
@@ -2673,7 +2660,7 @@ function renderMessages(messages) {
     }
   }
 
-  el.innerHTML = messages.slice(-200).map(m => {
+  el.innerHTML = messages.slice(-MSG_CAP).map(m => {
     // skip legacy reaction messages — they're shown as decorations on referenced messages
     if (reactionMsgIds.has(m.id)) return ''
     const text = extractText(m)
@@ -3796,203 +3783,6 @@ async function _fetchMutuals() {
   const iFollow = new Set(followingItems.map(f => f.followed.toLowerCase()))
   const followsMe = new Set(followerItems.map(f => f.follower.toLowerCase()))
   return [...iFollow].filter(addr => followsMe.has(addr) && addr !== myAddr)
-}
-
-async function toggleNewPicker() {
-  const picker = document.getElementById('messages-new-picker')
-  if (picker.style.display !== 'none') { picker.style.display = 'none'; return }
-
-  picker.innerHTML = `<div style="color:var(--muted);padding:0.5em;font-size:0.85em">${t('messages.loadingFollows')}</div>`
-  picker.style.display = 'block'
-
-  const myAddr = window.getWalletAddress()?.toLowerCase()
-  if (!myAddr) return
-
-  try {
-    // H5: cursor-based pagination for mutual follows, pages of 200, capped at 2000
-    async function fetchFollowPages(field, extractKey) {
-      const items = []
-      let cursor = null
-      for (let page = 0; page < 10; page++) {
-        const vars = { me: myAddr }
-        if (cursor) vars.after = cursor
-        const data = await query(`query($me: String!${cursor ? ', $after: String' : ''}) { follows(where: { ${field}: $me }, limit: 200${cursor ? ', after: $after' : ''}) { items { ${extractKey} } pageInfo { endCursor hasNextPage } } }`, vars)
-        items.push(...(data.follows?.items || []))
-        if (items.length >= 2000 || !data.follows?.pageInfo?.hasNextPage) break
-        cursor = data.follows.pageInfo.endCursor
-      }
-      return items
-    }
-    const [followingItems, followerItems] = await Promise.all([
-      fetchFollowPages('follower', 'followed'),
-      fetchFollowPages('followed', 'follower'),
-    ])
-    const iFollow = new Set(followingItems.map(f => f.followed.toLowerCase()))
-    const followsMe = new Set(followerItems.map(f => f.follower.toLowerCase()))
-    const mutuals = [...iFollow].filter(addr => followsMe.has(addr) && addr !== myAddr)
-
-    if (mutuals.length === 0) {
-      picker.innerHTML = `<div style="color:var(--muted);padding:0.5em;font-size:0.85em">${t('messages.noMutuals')}</div>`
-      return
-    }
-
-    // resolve mutual domains on demand
-    const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
-    Object.assign(addrToDomain, mutualDomains)
-
-    // Hide conversation list, show picker with header
-    const list = document.getElementById('messages-list')
-    if (list) list.style.display = 'none'
-
-    let html = `<div class="msg-picker-header">
-      <button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button>
-      <span>new message</span>
-    </div>
-    <input class="msg-picker-search" type="text" placeholder="search..." autofocus>`
-    html += mutuals.map(addr => {
-      const domain = addrToDomain[addr] || `${addr.slice(0, 6)}...${addr.slice(-4)}`
-      return `<div class="msg-convo-item msg-new-item" data-addr="${escapeHtml(addr)}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}</div>`
-    }).join('')
-    picker.innerHTML = html
-
-    // Back button closes picker
-    picker.querySelector('.msg-picker-back')?.addEventListener('click', () => {
-      picker.style.display = 'none'
-      if (list) list.style.display = ''
-    })
-    // Search filter
-    picker.querySelector('.msg-picker-search')?.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase()
-      picker.querySelectorAll('.msg-new-item').forEach(el => {
-        el.style.display = el.dataset.domain.toLowerCase().includes(q) ? '' : 'none'
-      })
-    })
-    picker.querySelectorAll('.msg-new-item').forEach(el => {
-      el.addEventListener('click', () => {
-        picker.style.display = 'none'
-        if (list) list.style.display = ''
-        openDmByAddress(el.dataset.addr, el.dataset.domain)
-      })
-    })
-  } catch {
-    picker.innerHTML = `<div style="color:var(--muted);padding:0.5em">${t('messages.errorLoading')}</div>`
-  }
-}
-
-// --- Group chat picker ---
-
-async function toggleGroupPicker() {
-  const picker = document.getElementById('messages-new-picker')
-  if (picker.style.display !== 'none') { picker.style.display = 'none'; return }
-
-  picker.innerHTML = `<div style="color:var(--muted);padding:0.5em;font-size:0.85em">${t('messages.loadingFollows')}</div>`
-  picker.style.display = 'block'
-
-  const myAddr = window.getWalletAddress()?.toLowerCase()
-  if (!myAddr) return
-
-  try {
-    // H5: cursor-based pagination for group follows, pages of 200, capped at 2000
-    async function fetchGroupFollowPages(field, extractKey) {
-      const items = []
-      let cursor = null
-      for (let page = 0; page < 10; page++) {
-        const vars = { me: myAddr }
-        if (cursor) vars.after = cursor
-        const d = await query(`query($me: String!${cursor ? ', $after: String' : ''}) { follows(where: { ${field}: $me }, limit: 200${cursor ? ', after: $after' : ''}) { items { ${extractKey} } pageInfo { endCursor hasNextPage } } }`, vars)
-        items.push(...(d.follows?.items || []))
-        if (items.length >= 2000 || !d.follows?.pageInfo?.hasNextPage) break
-        cursor = d.follows.pageInfo.endCursor
-      }
-      return items
-    }
-    const [followingItems, followerItems] = await Promise.all([
-      fetchGroupFollowPages('follower', 'followed'),
-      fetchGroupFollowPages('followed', 'follower'),
-    ])
-    const iFollow = new Set(followingItems.map(f => f.followed.toLowerCase()))
-    const followsMe = new Set(followerItems.map(f => f.follower.toLowerCase()))
-    const mutuals = [...iFollow].filter(addr => followsMe.has(addr) && addr !== myAddr)
-
-    if (mutuals.length === 0) {
-      picker.innerHTML = `<div style="color:var(--muted);padding:0.5em;font-size:0.85em">${t('messages.noMutuals')}</div>`
-      return
-    }
-
-    // resolve mutual domains
-    const mutualDomains = await resolveAddresses(query, mutuals).catch(() => ({}))
-    Object.assign(addrToDomain, mutualDomains)
-
-    const list = document.getElementById('messages-list')
-    if (list) list.style.display = 'none'
-
-    picker.innerHTML = `
-      <div class="msg-picker-header">
-        <button class="msg-picker-back"><i class="ph ph-arrow-left"></i></button>
-        <span>new group</span>
-      </div>
-      <div style="padding:0.5em 1em">
-        <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">group name</div>
-        <input id="group-name-input" type="text" placeholder="e.g. the crew" autofocus style="width:100%;padding:0.4em 0.5em;margin-bottom:0.75em;background:var(--surface);border:1px solid var(--accent);color:var(--text);font-family:inherit;font-size:0.85em;outline:none">
-        <div style="font-size:0.75em;color:var(--muted);margin-bottom:0.3em">add members (mutuals only)</div>
-        <div id="group-member-list" style="max-height:200px;overflow-y:auto">
-          ${mutuals.map(addr => {
-            const domain = addrToDomain[addr] || addr.slice(0, 6) + '...' + addr.slice(-4)
-            return `<label class="msg-convo-item" style="display:flex;align-items:center;gap:0.5em;cursor:pointer">
-              <input type="checkbox" data-addr="${escapeHtml(addr)}" style="accent-color:var(--accent)">
-              <span style="font-size:0.85em">${escapeHtml(domain)}</span>
-            </label>`
-          }).join('')}
-        </div>
-        <button id="group-create-btn" class="buy-btn" style="font-size:0.8em;padding:0.2em 0.8ch;margin-top:0.5em">${t('messages.create')}</button>
-      </div>
-    `
-
-    picker.querySelector('.msg-picker-back')?.addEventListener('click', () => {
-      picker.style.display = 'none'
-      if (list) list.style.display = ''
-    })
-
-    document.getElementById('group-create-btn').addEventListener('click', async () => {
-      const nameInput = document.getElementById('group-name-input')
-      const name = nameInput.value.trim()
-      const checked = [...picker.querySelectorAll('input[type="checkbox"]:checked')]
-      const addrs = checked.map(cb => cb.dataset.addr)
-
-      if (!name) { nameInput.focus(); nameInput.style.borderColor = 'var(--error, #f55)'; return }
-      if (addrs.length === 0) return
-
-      // resolve inbox IDs for selected members
-      const inboxIds = []
-      for (const addr of addrs) {
-        let id = inboxToAddr[addr]
-        if (!id) {
-          try {
-            id = await client.fetchInboxIdByIdentifier({
-              identifier: addr,
-              identifierKind: sdk.IdentifierKind.Ethereum,
-            })
-            if (id) { setInboxToAddr(id, addr); setInboxToAddr(addr, id) }
-          } catch {}
-        }
-        if (id) inboxIds.push(id)
-      }
-
-      if (inboxIds.length === 0) return
-
-      try {
-        const group = await client.conversations.createGroup(inboxIds, { name })
-        picker.style.display = 'none'
-        if (list) list.style.display = ''
-        await loadConversations()
-        openConversation(group, name || t('messages.unnamedGroup'))
-      } catch (e) {
-        console.error('create group error:', e)
-      }
-    })
-  } catch {
-    picker.innerHTML = `<div style="color:var(--muted);padding:0.5em">${t('messages.errorLoading')}</div>`
-  }
 }
 
 // --- Group members panel ---

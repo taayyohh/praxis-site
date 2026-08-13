@@ -77,23 +77,6 @@ export async function cancelTicketListing(tokenId) {
   return hash
 }
 
-export async function updateTicketPrice(tokenId, newPriceWei) {
-  const addr = await ensureWallet()
-  if (!addr) throw new Error(t('status.connectWallet'))
-  if (!await window.ensureOptimism?.()) return
-
-  const updateAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
-  const hash = await wc.writeContract({
-    address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
-    functionName: 'updatePrice', args: [BigInt(tokenId), BigInt(newPriceWei)],
-    account: updateAccount,
-  })
-  const pc = await getPublicClient()
-  await pc.waitForTransactionReceipt({ hash })
-  return hash
-}
-
 export async function withdrawTicketEarnings() {
   const addr = await ensureWallet()
   if (!addr) throw new Error(t('status.connectWallet'))

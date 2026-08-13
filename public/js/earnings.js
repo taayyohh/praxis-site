@@ -3,7 +3,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals , getWalletProvider } from './utils.js'
+import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals , getWalletProvider, formatTxError } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { getTicketPendingWithdrawals, withdrawTicketEarnings, TICKET_MARKET_ADDR } from './tickets.js'
@@ -401,7 +401,7 @@ export async function showSendModal(fromAddress) {
   const { getCachedBalance } = await import('./utils.js')
   const { getUserCurrency, formatFiat } = await import('./fiat.js')
   const balance = await getCachedBalance(fromAddress).catch(() => 0n)
-  const balEth = (Number(balance) / 1e18).toFixed(4)
+  const balEth = formatEthAmount(balance)
   let prices = await getEthPrices().catch(() => null)
   const currency = getUserCurrency()
 
@@ -523,7 +523,7 @@ export async function showSendModal(fromAddress) {
       btn.disabled = false
       btn.textContent = 'send on Optimism'
       status.style.color = 'var(--dim)'
-      status.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'error')
+      status.textContent = formatTxError(e)
     }
   })
 }
