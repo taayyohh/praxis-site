@@ -903,11 +903,12 @@ function _dmPayClose() {
   document.getElementById('dm-pay-stepper').style.display = 'flex'
   document.getElementById('dm-pay-keypad').style.display = 'none'
   document.getElementById('dm-pay-mode-toggle').textContent = 'Show Keypad'
-  document.getElementById('dm-pay-display').textContent = '$0'
+  const sym = _getCurrencySymbol(getUserCurrency())
+  document.getElementById('dm-pay-display').textContent = `${sym}0`
 }
 
 function _getCurrencySymbol(currency) {
-  const symbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', BRL: 'R$', NGN: '₦', KES: 'KSh', INR: '₹', KRW: '₩' }
+  const symbols = { usd: '$', eur: '€', gbp: '£', jpy: '¥', cny: '¥', brl: 'R$', ngn: '₦', kes: 'KSh', inr: '₹', krw: '₩' }
   return symbols[currency] || '$'
 }
 

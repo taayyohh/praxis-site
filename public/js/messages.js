@@ -49,6 +49,114 @@ let activeIsGroup = false
 const _peerReadWatermark = new Map() // convoId -> BigInt-as-string
 const _peerTypingAt = new Map() // convoId -> epoch ms
 
+// --- Pay bar state (module scope so sendPayment can access) ---
+let _payPrices = null
+let _payBalance = null
+let _msgPayFiatAmount = 0
+let _msgPayKeypadMode = false
+const _currSymbols = { usd: '$', eur: '€', gbp: '£', jpy: '¥', cny: '¥', brl: 'R$', ngn: '₦', kes: 'KSh', inr: '₹', krw: '₩' }
+
+function _initPayPrices() {
+  import('./fiat.js').then(m => m.getEthPrices().then(p => { _payPrices = p })).catch(() => {})
+}
+
+async function _fetchMsgPayBalance() {
+  try {
+    const addr = window.getWalletAddress?.()
+    if (!addr) return
+    const pc = await getPublicClient()
+    const bal = await pc.getBalance({ address: addr })
+    _payBalance = Number(bal) / 1e18
+    _msgPayUpdateBalanceEl()
+  } catch {}
+}
+
+async function _msgPayUpdateBalanceEl() {
+  const balEl = document.getElementById('messages-pay-balance')
+  if (!balEl || _payBalance == null) return
+  try {
+    const { getUserCurrency, formatFiat } = await import('./fiat.js')
+    const currency = getUserCurrency()
+    let extra = ''
+    if (_payPrices && _payPrices[currency]) extra = ` (${formatFiat(_payBalance * _payPrices[currency], currency)})`
+    balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH${extra}`
+  } catch { balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH` }
+}
+
+function _msgPayGetEthAmount() {
+  if (_msgPayKeypadMode) return parseFloat(document.getElementById('messages-pay-eth-input')?.value) || 0
+  if (!_payPrices) return 0
+  const currency = _msgPayGetCurrencySync()
+  const rate = _payPrices[currency]
+  if (!rate || !_msgPayFiatAmount) return 0
+  return _msgPayFiatAmount / rate
+}
+
+function _msgPayGetCurrencySync() {
+  try { return localStorage.getItem('praxis-currency') || 'usd' } catch { return 'usd' }
+}
+
+async function _msgPayUpdateDisplay() {
+  if (!_payPrices) { const m = await import('./fiat.js'); _payPrices = await m.getEthPrices() }
+  const convEl = document.getElementById('messages-pay-conversion')
+  const { getUserCurrency, formatFiat } = await import('./fiat.js')
+  const currency = getUserCurrency()
+  if (_msgPayKeypadMode) {
+    const ethInput = document.getElementById('messages-pay-eth-input')
+    const eth = parseFloat(ethInput?.value) || 0
+    const len = Math.max(2, (ethInput?.value || '').length + 1)
+    if (ethInput) ethInput.style.width = Math.min(len, 12) + 'ch'
+    if (eth > 0 && _payPrices && _payPrices[currency]) {
+      convEl.textContent = `≈ ${formatFiat(eth * _payPrices[currency], currency)}`
+    } else if (convEl) { convEl.textContent = '' }
+  } else {
+    const sym = _currSymbols[currency] || '$'
+    const display = document.getElementById('messages-pay-display')
+    if (display) display.textContent = `${sym}${_msgPayFiatAmount}`
+    const ethAmt = _msgPayGetEthAmount()
+    if (ethAmt > 0 && convEl) { convEl.textContent = `≈ ${ethAmt.toFixed(6)} ETH` }
+    else if (convEl) { convEl.textContent = '' }
+  }
+  _msgPayCheckOverBalance()
+}
+
+function _msgPayCheckOverBalance() {
+  const bar = document.getElementById('messages-pay-bar')
+  const sendBtn = document.getElementById('messages-pay-send')
+  if (!bar) return
+  const eth = _msgPayGetEthAmount()
+  const over = _payBalance != null && eth > 0 && eth > _payBalance
+  bar.classList.toggle('pay-over-balance', over)
+  if (sendBtn) sendBtn.disabled = over
+}
+
+async function _msgPayClose() {
+  const bar = document.getElementById('messages-pay-bar')
+  if (bar) { bar.style.display = 'none'; bar.classList.remove('pay-over-balance') }
+  const form = document.getElementById('messages-send-form')
+  if (form) form.style.display = 'flex'
+  const ethInput = document.getElementById('messages-pay-eth-input')
+  if (ethInput) ethInput.value = ''
+  const convEl = document.getElementById('messages-pay-conversion')
+  if (convEl) convEl.textContent = ''
+  const balEl = document.getElementById('messages-pay-balance')
+  if (balEl) balEl.textContent = ''
+  _msgPayFiatAmount = 0
+  _msgPayKeypadMode = false
+  const stepper = document.getElementById('messages-pay-stepper')
+  if (stepper) stepper.style.display = 'flex'
+  const keypad = document.getElementById('messages-pay-keypad')
+  if (keypad) keypad.style.display = 'none'
+  const toggle = document.getElementById('messages-pay-mode-toggle')
+  if (toggle) toggle.textContent = 'Show Keypad'
+  const display = document.getElementById('messages-pay-display')
+  if (display) {
+    const { getUserCurrency } = await import('./fiat.js')
+    const sym = _currSymbols[getUserCurrency()] || '$'
+    display.textContent = `${sym}0`
+  }
+}
+
 // First successful active-conversation open kicks a one-shot background
 // sync for older conversations. Declared early so the teardown handler can
 // reset it without a TDZ risk.
@@ -467,100 +575,7 @@ async function initMessages() {
     }
   })
 
-  let _payPrices = null
-  let _payBalance = null
-  let _msgPayFiatAmount = 0
-  let _msgPayKeypadMode = false
-  import('./fiat.js').then(m => m.getEthPrices().then(p => { _payPrices = p })).catch(() => {})
-
-  const _currSymbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', BRL: 'R$', NGN: '₦', KES: 'KSh', INR: '₹', KRW: '₩' }
-
-  async function _fetchMsgPayBalance() {
-    try {
-      const addr = window.getWalletAddress?.()
-      if (!addr) return
-      const pc = await getPublicClient()
-      const bal = await pc.getBalance({ address: addr })
-      _payBalance = Number(bal) / 1e18
-      _msgPayUpdateBalanceEl()
-    } catch {}
-  }
-  function _msgPayUpdateBalanceEl() {
-    const balEl = document.getElementById('messages-pay-balance')
-    if (!balEl || _payBalance == null) return
-    const { getUserCurrency, formatFiat } = { getUserCurrency: () => 'USD', formatFiat: (v, c) => `$${v.toFixed(2)}` }
-    import('./fiat.js').then(m => {
-      const currency = m.getUserCurrency()
-      let extra = ''
-      if (_payPrices && _payPrices[currency]) extra = ` (${m.formatFiat(_payBalance * _payPrices[currency], currency)})`
-      balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH${extra}`
-    }).catch(() => { balEl.textContent = `Balance: ${_payBalance.toFixed(6)} ETH` })
-  }
-  function _msgPayGetEthAmount() {
-    if (_msgPayKeypadMode) return parseFloat(document.getElementById('messages-pay-eth-input')?.value) || 0
-    if (!_payPrices) return 0
-    import('./fiat.js').then(() => {})
-    const currency = _msgPayGetCurrency()
-    const rate = _payPrices[currency]
-    if (!rate || !_msgPayFiatAmount) return 0
-    return _msgPayFiatAmount / rate
-  }
-  function _msgPayGetCurrency() {
-    try { return window._fiatCurrency || 'USD' } catch { return 'USD' }
-  }
-  async function _msgPayUpdateDisplay() {
-    if (!_payPrices) { const m = await import('./fiat.js'); _payPrices = await m.getEthPrices() }
-    const convEl = document.getElementById('messages-pay-conversion')
-    const { getUserCurrency, formatFiat } = await import('./fiat.js')
-    const currency = getUserCurrency()
-    if (_msgPayKeypadMode) {
-      const ethInput = document.getElementById('messages-pay-eth-input')
-      const eth = parseFloat(ethInput?.value) || 0
-      const len = Math.max(2, (ethInput?.value || '').length + 1)
-      ethInput.style.width = Math.min(len, 12) + 'ch'
-      if (eth > 0 && _payPrices && _payPrices[currency]) {
-        convEl.textContent = `≈ ${formatFiat(eth * _payPrices[currency], currency)}`
-      } else { convEl.textContent = '' }
-    } else {
-      const sym = _currSymbols[currency] || '$'
-      document.getElementById('messages-pay-display').textContent = `${sym}${_msgPayFiatAmount}`
-      const ethAmt = _msgPayGetEthAmount()
-      if (ethAmt > 0) { convEl.textContent = `≈ ${ethAmt.toFixed(6)} ETH` }
-      else { convEl.textContent = '' }
-    }
-    _msgPayCheckOverBalance()
-  }
-  function _msgPayCheckOverBalance() {
-    const bar = document.getElementById('messages-pay-bar')
-    const sendBtn = document.getElementById('messages-pay-send')
-    if (!bar) return
-    const eth = _msgPayGetEthAmount()
-    const over = _payBalance != null && eth > 0 && eth > _payBalance
-    bar.classList.toggle('pay-over-balance', over)
-    if (sendBtn) sendBtn.disabled = over
-  }
-  function _msgPayClose() {
-    const bar = document.getElementById('messages-pay-bar')
-    if (bar) { bar.style.display = 'none'; bar.classList.remove('pay-over-balance') }
-    const form = document.getElementById('messages-send-form')
-    if (form) form.style.display = 'flex'
-    const ethInput = document.getElementById('messages-pay-eth-input')
-    if (ethInput) ethInput.value = ''
-    const convEl = document.getElementById('messages-pay-conversion')
-    if (convEl) convEl.textContent = ''
-    const balEl = document.getElementById('messages-pay-balance')
-    if (balEl) balEl.textContent = ''
-    _msgPayFiatAmount = 0
-    _msgPayKeypadMode = false
-    const stepper = document.getElementById('messages-pay-stepper')
-    if (stepper) stepper.style.display = 'flex'
-    const keypad = document.getElementById('messages-pay-keypad')
-    if (keypad) keypad.style.display = 'none'
-    const toggle = document.getElementById('messages-pay-mode-toggle')
-    if (toggle) toggle.textContent = 'Show Keypad'
-    const display = document.getElementById('messages-pay-display')
-    if (display) display.textContent = '$0'
-  }
+  _initPayPrices()
 
   document.getElementById('messages-pay-toggle')?.addEventListener('click', () => {
     const bar = document.getElementById('messages-pay-bar')
