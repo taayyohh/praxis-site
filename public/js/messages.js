@@ -2803,7 +2803,7 @@ function _renderMsgPayCard(text, isMe) {
   const sendMatch = text.match(/^\[ethpay:send:([0-9.]+):([^:]+)(?::([^\]]*))?\]$/)
   if (sendMatch) {
     const eth = parseFloat(sendMatch[1])
-    const fiat = sendMatch[3] || ''
+    const fiat = escapeHtml(sendMatch[3] || '')
     return `<div class="pay-card">
       <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
       <div class="pay-card-amount">${fiat || eth.toFixed(6) + ' ETH'}</div>
@@ -2814,7 +2814,7 @@ function _renderMsgPayCard(text, isMe) {
   const reqMatch = text.match(/^\[ethpay:request:([0-9.]+)(?::([^\]]*))?\]$/)
   if (reqMatch) {
     const eth = parseFloat(reqMatch[1])
-    const fiat = reqMatch[2] || ''
+    const fiat = escapeHtml(reqMatch[2] || '')
     if (isMe) {
       return `<div class="pay-card">
         <div class="pay-card-header"><i class="ph ph-currency-eth"></i> Praxis Pay</div>
