@@ -936,6 +936,7 @@ document.addEventListener('click', (e) => {
     return (w && /^0x[0-9a-f]{40}$/.test(w)) ? `wallet=${w}&` : ''
   }
 
+  let _sseRetries = 0
   function connectSync() {
     if (_sse) { _sse.close(); _sse = null }
     _sse = new EventSource(`https://ourpraxis.network/api/player-sync/stream?${walletParam()}id=${syncId}`)
@@ -948,7 +949,8 @@ document.addEventListener('click', (e) => {
         }
       } catch {}
     }
-    _sse.onerror = () => { _sse?.close(); _sse = null; setTimeout(connectSync, 5000) }
+    _sse.onopen = () => { _sseRetries = 0 }
+    _sse.onerror = () => { _sse?.close(); _sse = null; if (_sseRetries++ < 50) setTimeout(connectSync, 5000) }
   }
 
   function notifyPlaying() {
@@ -959,5 +961,5 @@ document.addEventListener('click', (e) => {
   video.addEventListener('play', () => notifyPlaying())
 
   connectSync()
-  window.addEventListener('wallet-connected', () => connectSync())
+  window.addEventListener('wallet-connected', () => { _sseRetries = 0; connectSync() }, { once: true })
 })()
