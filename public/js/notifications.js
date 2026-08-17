@@ -230,19 +230,20 @@ async function loadNotifications(myAddr) {
           notifications.push({
             type: 'unclaimed',
             text: `<span data-eth-wei="${String(pending.praxis)}" data-fiat-primary="true">${formatEthAmount(pending.praxis)} ETH</span> unclaimed from projects`,
-            time: Date.now(),
+            time: 0,
             link: '/earnings',
+            _persistent: true,
           })
         }
         if (pending.media > 0n) {
-          // Try to identify which media earned the funds from recent purchase notifications
           const mediaTitles = notifications.filter(n => n.type === 'purchase' && n._title).map(n => n._title)
           const source = mediaTitles.length > 0 ? `media sales (${mediaTitles.slice(0, 3).join(', ')})` : 'media sales'
           notifications.push({
             type: 'unclaimed',
             text: `<span data-eth-wei="${String(pending.media)}" data-fiat-primary="true">${formatEthAmount(pending.media)} ETH</span> unclaimed from ${escapeHtml(source)}`,
-            time: Date.now(),
+            time: 0,
             link: '/earnings',
+            _persistent: true,
           })
         }
       } catch (e) { console.warn('notifications: pendingWithdrawals check failed', e) }
@@ -361,8 +362,9 @@ async function loadNotifications(myAddr) {
                 notifications.push({
                   type: 'confirm',
                   text: t('notifications.confirmNeeded', { project: escapeHtml(needsConfirm[i].title) }),
-                  time: Date.now(),
+                  time: 0,
                   link: `/project?id=${needsConfirm[i].id}`,
+                  _persistent: true,
                 })
               }
             }
@@ -554,7 +556,7 @@ function aggregateNotifications(items) {
 
 function getUnreadCount(notifications) {
   const lastSeen = getLastSeen()
-  return notifications.filter(n => n.time > lastSeen).length
+  return notifications.filter(n => n.time > lastSeen && !n._persistent).length
 }
 
 function updateBadge(count) {
@@ -861,7 +863,7 @@ async function initNotifications(myAddr) {
       try {
         let count = 0
         const pending = await getPendingWithdrawals(myAddr)
-        if (pending > 0n) count++
+        if (pending && (pending.praxis > 0n || pending.media > 0n)) count++
         // quick follow count from server endpoint (1 query, not 7)
         try {
           const res = await fetch(`/api/notifications?addr=${myAddr.toLowerCase()}&limit=10`)
