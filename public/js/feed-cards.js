@@ -386,19 +386,19 @@ export function renderFollowCard(d, resolve, opts = {}) {
   const follower = d.follower ? resolve(d.follower) : resolve(d.author)
   const followed = d.followed ? resolve(d.followed) : (d.target ? resolve(d.target) : resolve(d.refId))
   let followedDomain = d.followed ? resolve(d.followed) : followed
-  // Supporters return handles without dots — add .ourpraxis.network
   if (followedDomain && !followedDomain.includes('.') && !followedDomain.startsWith('0x')) {
     followedDomain = followedDomain + '.ourpraxis.network'
   }
   const followedLink = followedDomain.includes('.') ? `https://${esc(followedDomain)}` : '#'
   const ogImg = followedDomain.includes('.') ? `<img src="https://${esc(followedDomain)}/og/index.png" style="width:100%;aspect-ratio:1200/630;max-height:220px;object-fit:cover;display:block;border-radius:6px 6px 0 0" loading="lazy" onerror="this.style.display='none'">` : ''
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const fPic = getProfilePic(d.follower || d.author)
   return `
     <a href="${followedLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
-      <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.5ch">
-        ${inlineAvatar(d.follower || d.author)}
-        <span style="color:var(--muted);font-size:0.85em"><span style="color:var(--fg)">${esc(follower)}</span> followed <span style="color:var(--fg);font-weight:500">${esc(followed)}</span></span>
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${fPic ? `<img src="${esc(fPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(follower)}</span> <span style="color:var(--muted)">followed</span> <span style="color:var(--accent);font-weight:600">${esc(followed)}</span></div>
       </div>
     </a>
   `
@@ -415,39 +415,35 @@ export function renderProjectCard(p, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
 
   return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.6em 1em 0;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;color:var(--dim);border:1px solid var(--border);padding:0.15em 0.6ch">${esc(typeName)}</span>
-        <span style="font-size:0.75em;color:${statusColors[p.status]};display:flex;align-items:center;gap:0.3ch"><i class="ph ${statusIcons[p.status]}"></i> ${statusLabels[p.status]}</span>
-      </div>
-      <div style="padding:0.4em 1em 0.75em">
-        <a href="/project?id=${p.id}"${linkTarget} style="color:var(--fg);font-weight:700;font-size:1.05em;text-decoration:none;display:block">${esc(p.title)}</a>
-        <div style="color:var(--muted);font-size:0.8em;margin-top:0.2em">
-          <span style="display:inline-flex;align-items:center;gap:0.4ch">by ${inlineAvatar(p.proposer)}<span style="color:var(--fg)">${esc(domain)}</span></span>${deadlineStr ? ` · deadline ${deadlineStr}` : ''}
+    <a href="/project?id=${p.id}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1em 1.25em">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.15em">
+          <span style="color:var(--accent);font-weight:700;font-size:1.1em;line-height:1.3">${esc(p.title)}</span>
+          <span style="font-size:0.8em;color:${statusColors[p.status]};flex-shrink:0;margin-left:1ch">${statusLabels[p.status]}</span>
         </div>
-        ${p.description ? `<p style="color:var(--muted);font-size:0.85em;margin:0.5em 0 0;line-height:1.4">${esc(p.description).slice(0, 200)}${p.description.length > 200 ? '...' : ''}</p>` : ''}
-        <div style="margin-top:0.6em">
-          <div style="background:var(--border);height:4px;border-radius:2px;overflow:hidden"><div style="background:var(--green);height:100%;width:${Math.min(pct, 100)}%;transition:width 0.3s"></div></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4em">
-            <span style="font-size:0.8em;color:var(--dim)">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</span>
-            <a href="/project?id=${p.id}"${linkTarget} style="font-size:0.75em;color:var(--fg);border:1px solid var(--border);padding:0.25em 1ch;text-decoration:none">view</a>
-          </div>
+        <div style="font-size:0.85em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.4ch">
+          ${inlineAvatar(p.proposer)}<span style="color:var(--fg)">${esc(domain)}</span>${deadlineStr ? ` · ${deadlineStr}` : ''}${typeName !== 'other' ? ` · ${esc(typeName)}` : ''}
+        </div>
+        ${p.description ? `<p style="color:var(--dim);font-size:0.85em;margin:0.5em 0 0;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description).slice(0, 200)}</p>` : ''}
+        <div style="margin-top:0.75em">
+          <div style="background:var(--border);height:2px;border-radius:1px;overflow:hidden"><div style="background:var(--green);height:100%;width:${Math.min(pct, 100)}%"></div></div>
+          <div style="font-size:0.8em;color:var(--dim);margin-top:0.4em">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</div>
         </div>
       </div>
-    </div>
+    </a>
   `
 }
 
 export function renderFundedCard(d, resolve, opts = {}) {
   const funder = resolve(d.funder)
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const fPic = getProfilePic(d.funder)
   return `
     <a href="/project?id=${d.projectId}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.funder); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-hand-coins" style="font-size:1.1em"></i></div>` })()}
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${fPic ? `<img src="${esc(fPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--fg);font-weight:500">${esc(d.projectTitle)}</span></div>
-          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${esc(d.amount || '0')}" data-fiat-primary="true"></span></div>
+          <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--accent);font-weight:600">${esc(d.projectTitle)}</span>${d.amount && d.amount !== '0' ? ` <span style="color:var(--muted)">for</span> <span style="color:var(--fg)" data-eth-wei="${esc(d.amount)}" data-fiat-primary="true"></span>` : ''}</div>
         </div>
       </div>
     </a>
@@ -570,15 +566,13 @@ export function renderSupporterCard(d, resolve, opts = {}) {
   const link = handle ? `https://${esc(handle)}.ourpraxis.network` : '#'
   const ogImg = handle ? `<img src="https://${esc(handle)}.ourpraxis.network/og/index.png" style="width:100%;aspect-ratio:1200/630;max-height:220px;object-fit:cover;display:block;border-radius:6px 6px 0 0" loading="lazy" onerror="this.style.display='none'">` : ''
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const sPic = getProfilePic(d.wallet)
   return `
     <a href="${link}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
-      <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.6em">
-        ${(() => { const pic = getProfilePic(d.wallet); return pic ? `<img src="${esc(pic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-user-plus" style="font-size:0.9em"></i></div>` })()}
-        <div>
-          <span style="color:var(--fg);font-weight:500">${esc(displayName)}</span>
-          <span style="color:var(--muted);font-size:0.85em"> joined the audience</span>
-        </div>
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${sPic ? `<img src="${esc(sPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(displayName)}</span> <span style="color:var(--muted)">joined the audience</span></div>
       </div>
     </a>
   `
@@ -590,13 +584,13 @@ export function renderJoinedCard(d, resolve, opts = {}) {
   const domainLink = fullDomain ? `https://${esc(fullDomain)}` : '#'
   const ogImg = fullDomain ? `<img src="https://${esc(fullDomain)}/og/index.png" style="width:100%;aspect-ratio:1200/630;max-height:220px;object-fit:cover;display:block;border-radius:6px 6px 0 0" loading="lazy" onerror="this.style.display='none'">` : ''
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const jPic = getProfilePic(d.wallet || d.artist)
   return `
     <a href="${domainLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
       ${ogImg}
-      <div style="padding:0.6em 1em;display:flex;align-items:center;gap:0.5ch">
-        ${inlineAvatar(d.wallet || d.artist)}
-        <span style="color:var(--fg);font-weight:500">${esc(domain)}</span>
-        <span style="color:var(--muted);font-size:0.85em"> joined the network</span>
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${jPic ? `<img src="${esc(jPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(domain)}</span> <span style="color:var(--muted)">joined the network</span></div>
       </div>
     </a>
   `
@@ -605,13 +599,13 @@ export function renderJoinedCard(d, resolve, opts = {}) {
 export function renderTicketListedCard(d, resolve, opts = {}) {
   const seller = resolveDisplay(d.seller, resolve)
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const sPic = getProfilePic(d.seller)
   return `
     <a href="/tickets"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.seller); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-ticket" style="font-size:1.1em"></i></div>` })()}
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${sPic ? `<img src="${esc(sPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(seller)}</span> <span style="color:var(--muted)">listed a ticket for</span> <span style="color:var(--fg);font-weight:500">${esc(d.eventName || 'an event')}</span></div>
-          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${esc(d.price || '0')}" data-fiat-primary="true"></span></div>
+          <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(seller)}</span> <span style="color:var(--muted)">listed a ticket for</span> <span style="color:var(--accent);font-weight:600">${esc(d.eventName || 'an event')}</span>${d.price && d.price !== '0' ? ` <span style="color:var(--muted)">at</span> <span style="color:var(--fg)" data-eth-wei="${esc(d.price)}" data-fiat-primary="true"></span>` : ''}</div>
         </div>
       </div>
     </a>
@@ -621,13 +615,13 @@ export function renderTicketListedCard(d, resolve, opts = {}) {
 export function renderTicketPurchasedCard(d, resolve, opts = {}) {
   const buyer = resolveDisplay(d.buyer, resolve)
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const bPic = getProfilePic(d.buyer)
   return `
     <a href="/tickets"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.buyer); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-ticket" style="font-size:1.1em"></i></div>` })()}
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${bPic ? `<img src="${esc(bPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(buyer)}</span> <span style="color:var(--muted)">got a ticket to</span> <span style="color:var(--fg);font-weight:500">${esc(d.eventName || 'an event')}</span></div>
-          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${esc(d.price || '0')}" data-fiat-primary="true"></span></div>
+          <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(buyer)}</span> <span style="color:var(--muted)">got a ticket to</span> <span style="color:var(--accent);font-weight:600">${esc(d.eventName || 'an event')}</span></div>
         </div>
       </div>
     </a>
@@ -636,14 +630,10 @@ export function renderTicketPurchasedCard(d, resolve, opts = {}) {
 
 export function renderTransferCard(d, resolve, opts = {}) {
   const domain = d.domain || resolve(d.newWallet) || resolve(d.oldWallet)
-  const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        <div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-arrow-square-out" style="font-size:1.1em"></i></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(domain)}</span> <span style="color:var(--muted)">moved to a new wallet</span></div>
-        </div>
+      <div style="padding:1em 1.25em">
+        <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(domain)}</span> <span style="color:var(--muted)">moved to a new wallet</span></div>
       </div>
     </div>
   `
@@ -658,13 +648,13 @@ export function renderReferralCard(d, resolve, opts = {}) {
   }
   const referredLink = referredDomain.includes('.') ? `https://${esc(referredDomain)}` : '#'
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const rPic = getProfilePic(d.referred)
   return `
     <a href="${referredLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.referred); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)"><i class="ph ph-user-plus" style="font-size:1.1em"></i></div>` })()}
+      <div style="padding:1em 1.25em;display:flex;align-items:center;gap:0.75em">
+        ${rPic ? `<img src="${esc(rPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(referred)}</span> <span style="color:var(--muted)">joined via</span> <span style="color:var(--fg);font-weight:500">${esc(referrer)}</span><span style="color:var(--muted)">'s invite</span></div>
-          <div style="color:var(--green);font-size:0.85em;margin-top:0.15em"><span data-eth-wei="${esc(d.amount || '0')}" data-fiat-primary="true"></span> earned</div>
+          <div style="font-size:0.95em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(referred)}</span> <span style="color:var(--muted)">was invited by</span> <span style="color:var(--accent);font-weight:600">${esc(referrer)}</span></div>
         </div>
       </div>
     </a>
@@ -675,58 +665,44 @@ export function renderProjectCompletedCard(d, resolve, opts = {}) {
   const proposer = resolveDisplay(d.proposer, resolve)
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.6em 1em 0;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;color:var(--dim);border:1px solid var(--border);padding:0.15em 0.6ch">project</span>
-        <span style="font-size:0.75em;color:#a78bfa;display:flex;align-items:center;gap:0.3ch"><i class="ph ph-star"></i> completed</span>
-      </div>
-      <div style="padding:0.4em 1em 0.75em">
-        <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} style="color:var(--fg);font-weight:700;font-size:1.05em;text-decoration:none;display:block">${esc(d.title || 'untitled')}</a>
-        <div style="color:var(--muted);font-size:0.8em;margin-top:0.2em">
-          <span style="display:inline-flex;align-items:center;gap:0.4ch">by ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.6em">
-          <span style="font-size:0.8em;color:var(--dim)"><span data-eth-wei="${esc(d.totalFunded || '0')}" data-fiat-primary="true"></span> funded</span>
-          <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} style="font-size:0.75em;color:var(--fg);border:1px solid var(--border);padding:0.25em 1ch;text-decoration:none">view</a>
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1em 1.25em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.1em;line-height:1.3">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.85em;color:var(--muted);margin-top:0.3em;line-height:1.5;display:flex;align-items:center;gap:0.4ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project completed${d.totalFunded && d.totalFunded !== '0' ? ` · <span data-eth-wei="${esc(d.totalFunded)}" data-fiat-primary="true"></span> funded` : ''}
         </div>
       </div>
-    </div>
+    </a>
   `
 }
 
 export function renderProjectConfirmedCard(d, resolve, opts = {}) {
   const proposer = resolveDisplay(d.proposer, resolve)
   const linkTarget = opts.external ? ' target="_blank"' : ''
+  const collabCount = d.collaboratorCount ? Number(d.collaboratorCount) : 0
   return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.6em 1em 0;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;color:var(--dim);border:1px solid var(--border);padding:0.15em 0.6ch">project</span>
-        <span style="font-size:0.75em;color:#60a5fa;display:flex;align-items:center;gap:0.3ch"><i class="ph ph-handshake"></i> confirmed</span>
-      </div>
-      <div style="padding:0.4em 1em 0.75em">
-        <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} style="color:var(--fg);font-weight:700;font-size:1.05em;text-decoration:none;display:block">${esc(d.title || 'untitled')}</a>
-        <div style="color:var(--muted);font-size:0.8em;margin-top:0.2em">
-          <span style="display:inline-flex;align-items:center;gap:0.4ch">by ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span></span>${d.collaboratorCount ? ` · ${esc(String(d.collaboratorCount))} collaborator${Number(d.collaboratorCount) !== 1 ? 's' : ''}` : ''}
-        </div>
-        <div style="display:flex;justify-content:flex-end;margin-top:0.6em">
-          <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} style="font-size:0.75em;color:var(--fg);border:1px solid var(--border);padding:0.25em 1ch;text-decoration:none">view</a>
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1em 1.25em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.1em;line-height:1.3">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.85em;color:var(--muted);margin-top:0.3em;line-height:1.5;display:flex;align-items:center;gap:0.4ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project confirmed${collabCount ? ` · ${collabCount} collaborator${collabCount !== 1 ? 's' : ''}` : ''}
         </div>
       </div>
-    </div>
+    </a>
   `
 }
 
 export function renderOrgCreatedCard(d, resolve, opts = {}) {
   const founder = resolveDisplay(d.founder, resolve)
-  const linkTarget = opts.external ? ' target="_blank"' : ''
+  const fPic = getProfilePic(d.founder)
   return `
     <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.founder); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ph ph-users-three" style="font-size:1.1em"></i></div>` })()}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(founder)}</span> <span style="color:var(--muted)">created</span> <span style="color:var(--fg);font-weight:500">${esc(d.name || 'an organization')}</span></div>
-          ${d.description ? `<div style="color:var(--muted);font-size:0.8em;margin-top:0.15em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.description).slice(0, 120)}${d.description.length > 120 ? '...' : ''}</div>` : ''}
+      <div style="padding:1em 1.25em">
+        <div style="font-size:0.95em;line-height:1.5;display:flex;align-items:center;gap:0.75em">
+          ${fPic ? `<img src="${esc(fPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+          <div><span style="color:var(--accent);font-weight:600">${esc(founder)}</span> <span style="color:var(--muted)">created</span> <span style="color:var(--accent);font-weight:700">${esc(d.name || 'an organization')}</span></div>
         </div>
+        ${d.description ? `<div style="color:var(--dim);font-size:0.85em;margin-top:0.5em;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(d.description).slice(0, 160)}</div>` : ''}
       </div>
     </div>
   `
@@ -735,16 +711,16 @@ export function renderOrgCreatedCard(d, resolve, opts = {}) {
 export function renderCredentialCard(d, resolve, opts = {}) {
   const recipient = resolveDisplay(d.recipient, resolve)
   const tierColors = { gold: '#fbbf24', silver: '#c0c0c0', bronze: '#cd7f32' }
-  const tierColor = tierColors[(d.tier || '').toLowerCase()] || 'var(--fg)'
-  const linkTarget = opts.external ? ' target="_blank"' : ''
+  const tierColor = tierColors[(d.tier || '').toLowerCase()] || 'var(--accent)'
+  const rPic = getProfilePic(d.recipient)
   return `
     <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:0.75em 1em;display:flex;align-items:center;gap:0.75em">
-        ${(() => { const pic = getProfilePic(d.recipient); return pic ? `<img src="${esc(pic)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:50%;border:1px solid ${tierColor};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:${tierColor}"><i class="ph ph-medal" style="font-size:1.1em"></i></div>` })()}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.9em"><span style="color:var(--fg);font-weight:500">${esc(recipient)}</span> <span style="color:var(--muted)">earned a</span> <span style="color:var(--fg);font-weight:500">${esc(d.role || 'contributor')}</span> <span style="color:var(--muted)">credential from</span> <span style="color:var(--fg);font-weight:500">${esc(d.projectTitle || 'a project')}</span></div>
-          ${d.tier ? `<div style="margin-top:0.2em"><span style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;color:${tierColor};border:1px solid ${tierColor};padding:0.15em 0.6ch">${esc(d.tier)}</span></div>` : ''}
+      <div style="padding:1em 1.25em">
+        <div style="font-size:0.95em;line-height:1.5;display:flex;align-items:center;gap:0.75em">
+          ${rPic ? `<img src="${esc(rPic)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+          <div><span style="color:var(--accent);font-weight:600">${esc(recipient)}</span> <span style="color:var(--muted)">earned</span> <span style="color:var(--accent);font-weight:700">${esc(d.role || 'contributor')}</span> <span style="color:var(--muted)">from</span> <span style="color:var(--accent);font-weight:600">${esc(d.projectTitle || 'a project')}</span></div>
         </div>
+        ${d.tier ? `<div style="margin-top:0.5em;margin-left:${rPic ? '2.75em' : '0'}"><span style="font-size:0.7em;letter-spacing:0.08em;color:${tierColor}">${esc(d.tier)}</span></div>` : ''}
       </div>
     </div>
   `

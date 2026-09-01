@@ -601,6 +601,7 @@ const NOTIF_ICONS = {
   'invite-used': '+',
   mention: '@',
   'sponsored-invite-redeemed': '+',
+  referral: '+',
   disputed: '?',
   completing: '.',
   revenue: '$',
