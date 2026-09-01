@@ -1583,7 +1583,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
     if (!proposeMap) {
       proposeMap = L.map(mapEl, { scrollWheelZoom: true }).setView([lat || 20, lng || 0], lat ? 12 : 2)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OSM',
         maxZoom: 19,
       }).addTo(proposeMap)
@@ -2397,8 +2397,8 @@ async function initMap(projects, resolve) {
   }
 
   mapInstance = L.map(container, { scrollWheelZoom: true }).setView([20, 0], 2)
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: 'CartoDB',
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OSM',
     maxZoom: 19,
   }).addTo(mapInstance)
 
