@@ -25,7 +25,7 @@ export function getRegistryAddress() {
 export const REGISTRY_ABI = [
   { name: 'follow', type: 'function', inputs: [{ name: 'target', type: 'address' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'unfollow', type: 'function', inputs: [{ name: 'target', type: 'address' }], outputs: [], stateMutability: 'nonpayable' },
-  { name: 'register', type: 'function', inputs: [{ name: 'domain', type: 'string' }, { name: 'signature', type: 'bytes' }], outputs: [], stateMutability: 'payable' },
+  { name: 'register', type: 'function', inputs: [{ name: 'domain', type: 'string' }, { name: 'signature', type: 'bytes' }, { name: 'referrer', type: 'address' }], outputs: [], stateMutability: 'payable' },
   { name: 'unregister', type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' },
   { name: 'artists', type: 'function', inputs: [{ name: '', type: 'address' }], outputs: [{ name: 'domain', type: 'string' }, { name: 'registeredAt', type: 'uint256' }], stateMutability: 'view' },
   { name: 'updateDomain', type: 'function', inputs: [{ name: 'newDomain', type: 'string' }, { name: 'signature', type: 'bytes' }], outputs: [], stateMutability: 'nonpayable' },

@@ -201,6 +201,15 @@ async function loadNotifications(myAddr) {
             time: Number(n.timestamp) * 1000,
             link: `/project?id=${n.refId}`,
           })
+        } else if (n.eventType === 'referral_paid') {
+          const referredDomain = resolve(n.fromAddr)
+          const amt = n.amount ? formatEthAmount(n.amount) : ''
+          notifications.push({
+            type: 'referral',
+            text: `${escapeHtml(referredDomain)} joined via your invite${amt ? ` — you earned ${amt}` : ''}`,
+            time: Number(n.timestamp) * 1000,
+            link: `/network`,
+          })
         }
       }
     }

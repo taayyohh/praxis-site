@@ -824,9 +824,10 @@ async function init() {
       statusEl.textContent = 'getting registration signature...'
       let signature
       let deployFeeWei
+      const referrerAddr = '0x0000000000000000000000000000000000000000'
       try {
         const [sigRes, priceRes] = await Promise.all([
-          fetch(`/orchestrator/sign-registration?wallet=${window.getWalletAddress()}&domain=${domain}`),
+          fetch(`/orchestrator/sign-registration?wallet=${window.getWalletAddress()}&domain=${domain}&referrer=${referrerAddr}`),
           fetch('/orchestrator/deploy-price'),
         ])
         const sigData = await sigRes.json()
@@ -879,7 +880,7 @@ async function init() {
         const regWalletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await regWalletClient.writeContract({
           address: regTarget, abi: regAbi,
-          functionName: 'register', args: [domain, signature],
+          functionName: 'register', args: [domain, signature, referrerAddr],
           value: deployFeeWei,
           account: regAccount,
         })
