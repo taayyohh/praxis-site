@@ -326,9 +326,10 @@ export function renderBatchCard(d, resolve, opts = {}) {
   const aName = albumPath?.aliasName || d.aliasName || ''
   const aTitle = albumPath?.albumTitle || headline
   const slugUrl = (aName && aTitle) ? `/music/${slugify(aName)}/${slugify(aTitle)}` : null
+  const artistBase = artist.includes('.') ? `https://${esc(artist)}` : ''
   const artLink = slugUrl
-    ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl}` : slugUrl)
-    : (firstItem ? `/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#')
+    ? `${artistBase}${slugUrl}`
+    : (firstItem ? `${artistBase}/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#')
 
   const metaCid = firstItem?.metadataCid || ''
   const artSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=280` : ''
@@ -345,7 +346,7 @@ export function renderBatchCard(d, resolve, opts = {}) {
     let pw = 0n; try { pw = BigInt(it.price || '0') } catch {}
     const playBtn = cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
     const buyBtn = pw > 0n ? `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}" style="font-size:0.7em;padding:0.2em 0.6ch"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>` : ''
-    return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${playBtn}<a href="/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
+    return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${playBtn}<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
   }).join('')
 
   const albumBuyData = sorted.filter(it => { try { return BigInt(it.price || '0') > 0n } catch { return false } })
