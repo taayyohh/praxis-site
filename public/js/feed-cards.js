@@ -323,7 +323,9 @@ export function renderBatchCard(d, resolve, opts = {}) {
   }
 
   const firstItem = d.items?.[0]
-  const slugUrl = albumPath?.aliasName ? `/music/${slugify(albumPath.aliasName)}/${slugify(albumPath.albumTitle)}` : null
+  const aName = albumPath?.aliasName || d.aliasName || ''
+  const aTitle = albumPath?.albumTitle || headline
+  const slugUrl = (aName && aTitle) ? `/music/${slugify(aName)}/${slugify(aTitle)}` : null
   const artLink = slugUrl
     ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl}` : slugUrl)
     : (firstItem ? `/art?media=${encodeURIComponent(firstItem.mediaId)}` : '#')
