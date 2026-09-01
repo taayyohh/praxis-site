@@ -171,14 +171,6 @@ async function loadNotifications(myAddr) {
             time: Number(n.timestamp) * 1000,
             link: `/network?artist=${n.fromAddr.toLowerCase()}`,
           })
-        } else if (n.eventType === 'refund') {
-          const amt = formatEthAmount(n.amount)
-          notifications.push({
-            type: 'refund',
-            text: t('notifications.refund', { who: whoLink(n.fromAddr, domainMap), amount: amt, title: escapeHtml(n.title || `project #${n.refId}`) }),
-            time: Number(n.timestamp) * 1000,
-            link: `/project?id=${n.refId}`,
-          })
         } else if (n.eventType === 'disputed') {
           notifications.push({
             type: 'disputed',
@@ -207,6 +199,21 @@ async function loadNotifications(myAddr) {
           notifications.push({
             type: 'referral',
             text: `${escapeHtml(referredDomain)} joined via your invite${amt ? ` — you earned ${amt}` : ''}`,
+            time: Number(n.timestamp) * 1000,
+            link: `/network`,
+          })
+        } else if (n.eventType === 'mention') {
+          notifications.push({
+            type: 'mention',
+            text: `${whoLink(n.fromAddr, domainMap)} mentioned you in <a href="/post?id=${encodeURIComponent(n.refId)}" style="color:var(--accent)">${escapeHtml(n.title || 'a post')}</a>`,
+            time: Number(n.timestamp) * 1000,
+            link: `/post?id=${n.refId}`,
+          })
+        } else if (n.eventType === 'sponsored-invite-redeemed') {
+          const inviteeDomain = resolve(n.fromAddr)
+          notifications.push({
+            type: 'sponsored-invite-redeemed',
+            text: `${escapeHtml(inviteeDomain)} joined using your sponsored invite`,
             time: Number(n.timestamp) * 1000,
             link: `/network`,
           })
@@ -592,7 +599,8 @@ const NOTIF_ICONS = {
   cancelled: 'x',
   reply: '>',
   'invite-used': '+',
-  refund: '-',
+  mention: '@',
+  'sponsored-invite-redeemed': '+',
   disputed: '?',
   completing: '.',
   revenue: '$',

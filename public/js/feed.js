@@ -1,5 +1,5 @@
 // Social feed — shows blog posts from followed artists on the homepage
-import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard } from './feed-cards.js'
+import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard, renderTicketListedCard, renderTicketPurchasedCard, renderTransferCard, renderReferralCard, renderProjectCompletedCard, renderProjectConfirmedCard, renderOrgCreatedCard, renderCredentialCard } from './feed-cards.js'
 
 // Named constants for magic numbers used across the module
 const PREVIEW_LEN_WITH_MEDIA = 200
@@ -178,6 +178,14 @@ function renderItem(item, domainMap, resolve) {
   if (item.type === 'purchase-batch') return renderPurchaseBatchCard(item.data, resolve)
   if (item.type === 'listed') return renderMediaCard(item.data, resolve)
   if (item.type === 'listed-batch') return renderBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
+  if (item.type === 'ticket-listed') return renderTicketListedCard(item.data, resolve)
+  if (item.type === 'ticket-purchased') return renderTicketPurchasedCard(item.data, resolve)
+  if (item.type === 'transfer') return renderTransferCard(item.data, resolve)
+  if (item.type === 'referral') return renderReferralCard(item.data, resolve)
+  if (item.type === 'project-completed') return renderProjectCompletedCard(item.data, resolve)
+  if (item.type === 'project-confirmed') return renderProjectConfirmedCard(item.data, resolve)
+  if (item.type === 'org-created') return renderOrgCreatedCard(item.data, resolve)
+  if (item.type === 'credential') return renderCredentialCard(item.data, resolve)
   return ''
 }
 
