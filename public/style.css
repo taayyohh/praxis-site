@@ -3280,9 +3280,6 @@ body:has(.owner-dock) .portfolio-nav {
   display: flex;
   flex-direction: column;
   gap: 0.4em;
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
 }
 /* Glass effect on bordered feed items (listed media, library cards) */
 .feed-item[style*="border"] {

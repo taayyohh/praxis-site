@@ -7,7 +7,7 @@ try { const i18n = await import('./i18n.js'); t = i18n.t } catch {}
 function avatarOverlay(addr, explicitPic) {
   const pic = explicitPic || getProfilePic(addr)
   if (!pic) return ''
-  return `<img src="${esc(pic)}" class="feed-card-avatar" style="position:absolute;bottom:-14px;left:10px;width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--bg,#111);z-index:1" loading="lazy" onerror="this.style.display='none'">`
+  return `<img src="${esc(pic)}" class="feed-card-avatar" style="position:absolute;bottom:8px;left:8px;width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.9);box-shadow:0 1px 6px rgba(0,0,0,0.5);z-index:3" loading="lazy" onerror="this.style.display='none'">`
 }
 
 function inlineAvatar(addr, explicitPic) {
