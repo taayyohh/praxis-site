@@ -1,4 +1,4 @@
-// Vault — financial hub: balances, earnings, spending, unclaimed, send, swap
+// Vault — financial hub: balances, earnings, savings, send, swap
 import { F } from './fragments.js'
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
@@ -12,15 +12,40 @@ import { getEthPrices, formatPriceSync, formatPriceFiatPrimary, getUserCurrency,
 import { PRAXIS_ADDR, PRAXIS_ABI, MEDIA_ABI } from './contracts.js'
 
 const HISTORY_PAGE_SIZE = 20
-const USDC_ADDR = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
-const USDC_ABI = [
+
+const BOLD_ADDR = '0xb3f1186ec30a2ecfe665b04d02785ea552cf6186'
+const WETH_ADDR = '0x4200000000000000000000000000000000000006'
+const VELODROME_ROUTER = '0xa062aE8A9c5e11dEA47203A894fF77F90f4F3343'
+const VELODROME_FACTORY = '0x420DD381b31aEf6683db6B902084cB0FFECe40Da'
+
+const ERC20_BALANCE_ABI = [
   { name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
 ]
+
+const ROUTE_TUPLE = { type: 'tuple[]', components: [
+  { name: 'from', type: 'address' },
+  { name: 'to', type: 'address' },
+  { name: 'stable', type: 'bool' },
+  { name: 'factory', type: 'address' },
+]}
+
+const VELODROME_ABI = [
+  { name: 'getAmountsOut', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'amountIn', type: 'uint256' }, ROUTE_TUPLE],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }] },
+  { name: 'swapExactETHForTokens', type: 'function', stateMutability: 'payable',
+    inputs: [{ name: 'amountOutMin', type: 'uint256' }, ROUTE_TUPLE, { name: 'to', type: 'address' }, { name: 'deadline', type: 'uint256' }],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }] },
+]
+
+const SWAP_ROUTE = [{ from: WETH_ADDR, to: BOLD_ADDR, stable: false, factory: VELODROME_FACTORY }]
+const SLIPPAGE_BPS = 100n // 1%
 
 let _vaultBound = false
 let _allHistory = []
 let _historyShown = 0
 let _ethPrices = null
+let _yieldData = null
 
 registerPage('vault-page', initVault)
 registerPage('earnings-page', initVault)
@@ -52,14 +77,15 @@ async function initVault() {
   const mediaAddr = document.body.dataset.media || ''
 
   try {
-    const [ethBalance, usdcBalance, unclaimed, earned, contributed, ticketUnclaimed, ethPrices] = await Promise.all([
+    const [ethBalance, boldBalance, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
       getCachedBalance(addr).catch(() => 0n),
-      getUsdcBalance(addr).catch(() => 0n),
+      getBoldBalance(addr).catch(() => 0n),
       getPendingWithdrawals(addr),
       fetchEarned(addrLower),
       fetchContributed(addrLower),
       getTicketPendingWithdrawals(addr).catch(() => 0n),
       getEthPrices().catch(() => null),
+      fetchBoldYield().catch(() => null),
     ])
 
     const addressesToResolve = [
@@ -69,20 +95,35 @@ async function initVault() {
 
     const resolve = a => resolveDomain(domainMap, a)
     _ethPrices = ethPrices
+    _yieldData = yieldData
     _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
     _historyShown = 0
 
-    renderVault(contentEl, { ethBalance, usdcBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices })
+    renderVault(contentEl, { ethBalance, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
   } catch (e) {
     console.warn('vault load error:', e)
     contentEl.innerHTML = `<p style="color:var(--muted)">failed to load vault</p>`
   }
 }
 
-async function getUsdcBalance(addr) {
+async function getBoldBalance(addr) {
   const pc = await getPublicClient()
-  const result = await pc.readContract({ address: USDC_ADDR, abi: USDC_ABI, functionName: 'balanceOf', args: [addr] })
-  return result
+  return pc.readContract({ address: BOLD_ADDR, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr] })
+}
+
+async function fetchBoldYield() {
+  const res = await fetch('/api/bold/yield')
+  if (!res.ok) return null
+  return res.json()
+}
+
+async function getSwapQuote(amountIn) {
+  const pc = await getPublicClient()
+  const amounts = await pc.readContract({
+    address: VELODROME_ROUTER, abi: VELODROME_ABI, functionName: 'getAmountsOut',
+    args: [amountIn, SWAP_ROUTE],
+  })
+  return amounts[amounts.length - 1]
 }
 
 // --- Data fetching ---
@@ -117,7 +158,6 @@ async function fetchEarned(addrLower) {
   const listings = listingsResult
   const collabs = collabResult
 
-  // Combine own listings + media collaborations (don't double-count)
   const ownMediaIds = new Set(listings.map(l => l.id.toString()))
   const collabMediaIds = mediaCollabResult.filter(mc => !ownMediaIds.has(mc.mediaId.toString())).map(mc => mc.mediaId)
   const collabSplitMap = {}
@@ -129,7 +169,6 @@ async function fetchEarned(addrLower) {
     const titleMap = {}
     for (const l of listings) titleMap[l.id.toString()] = l.title
 
-    // Fetch titles for collab media we don't own
     if (collabMediaIds.length > 0) {
       try {
         const collabMediaData = await query(`query($ids: [BigInt!]!) { mediaListings(where: { id_in: $ids }, limit: 100) { items { ${F.mediaListing} } } }`, { ids: collabMediaIds })
@@ -307,7 +346,10 @@ function renderHistoryItems(items, ethPrices) {
   }).join('')
 }
 
-function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices }) {
+const ETH_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 12.5L12 16.5L20 12.5L12 2Z" fill="var(--accent)" opacity="0.7"/><path d="M12 2L4 12.5L12 10.5V2Z" fill="var(--accent)"/><path d="M12 18L4 14L12 22L20 14L12 18Z" fill="var(--accent)" opacity="0.7"/><path d="M12 18L4 14L12 22V18Z" fill="var(--accent)"/></svg>`
+const BOLD_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" fill="var(--green)" opacity="0.15"/><text x="12" y="16.5" text-anchor="middle" fill="var(--green)" font-size="13" font-weight="800" font-family="inherit">B</text></svg>`
+
+function renderVault(el, { ethBalance, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
   const totalUnclaimed = unclaimed.praxis + unclaimed.media + ticketUnclaimed
   const totalEarned = earned.mediaTotal + earned.projectEarnings
   const totalContributed = contributed.fundingTotal + contributed.purchaseTotal
@@ -315,42 +357,78 @@ function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contribut
   const ethRate = ethPrices?.[currency] || 0
 
   const ethFiat = ethRate ? Number(ethBalance) / 1e18 * ethRate : 0
-  const usdcFiat = Number(usdcBalance) / 1e6
+  const boldFiat = Number(boldBalance) / 1e18
+  const totalFiat = ethFiat + boldFiat
 
   let html = ''
 
   // --- Balance hero ---
-  html += `<div class="vault-balance-hero">`
-  html += `<div class="vault-balance-main">`
-  html += `<div class="vault-balance-label">total balance</div>`
-  const totalFiat = ethFiat + usdcFiat
-  html += `<div class="vault-balance-value">${formatFiat(totalFiat, currency)}</div>`
-  html += `</div>`
+  html += `<div class="vault-hero">`
+  html += `<div class="vault-total-label">total balance</div>`
+  html += `<div class="vault-total-value">${formatFiat(totalFiat, currency)}</div>`
 
-  // Token breakdown
+  // Token rows
   html += `<div class="vault-tokens">`
   html += `<div class="vault-token">`
-  html += `<div class="vault-token-icon"><svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#627eea"/><path d="M10 3.5v5l4.3 1.9L10 3.5z" fill="#c0cbf6"/><path d="M10 3.5L5.7 10.4 10 8.5V3.5z" fill="#fff"/><path d="M10 12.2v4.3l4.3-6L10 12.2z" fill="#c0cbf6"/><path d="M10 16.5v-4.3l-4.3-1.7L10 16.5z" fill="#fff"/></svg></div>`
+  html += `<div class="vault-token-icon">${ETH_ICON}</div>`
   html += `<div class="vault-token-info"><span class="vault-token-name">ETH</span><span class="vault-token-chain">Optimism</span></div>`
   html += `<div class="vault-token-amounts"><span class="vault-token-bal">${formatEthAmount(ethBalance)}</span><span class="vault-token-fiat">${ethRate ? formatFiat(ethFiat, currency) : ''}</span></div>`
   html += `</div>`
 
-  if (usdcBalance > 0n) {
-    const usdcFormatted = (Number(usdcBalance) / 1e6).toFixed(2)
+  if (boldBalance > 0n) {
+    const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
     html += `<div class="vault-token">`
-    html += `<div class="vault-token-icon"><svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#2775ca"/><text x="10" y="14" text-anchor="middle" fill="white" font-size="10" font-weight="bold">$</text></svg></div>`
-    html += `<div class="vault-token-info"><span class="vault-token-name">USDC</span><span class="vault-token-chain">Optimism</span></div>`
-    html += `<div class="vault-token-amounts"><span class="vault-token-bal">${usdcFormatted}</span><span class="vault-token-fiat">${formatFiat(usdcFiat, currency)}</span></div>`
+    html += `<div class="vault-token-icon">${BOLD_ICON}</div>`
+    html += `<div class="vault-token-info"><span class="vault-token-name">BOLD</span><span class="vault-token-chain">savings</span></div>`
+    html += `<div class="vault-token-amounts"><span class="vault-token-bal">${boldFormatted}</span><span class="vault-token-fiat">${formatFiat(boldFiat, currency)}</span></div>`
     html += `</div>`
   }
   html += `</div>`
 
-  // Quick actions
+  // Action buttons
   html += `<div class="vault-actions">`
-  html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i> send</button>`
-  html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i> receive</button>`
-  html += `<button class="vault-action-btn" id="vault-swap-btn"><i class="ph ph-arrows-left-right"></i> swap</button>`
+  html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i><span>send</span></button>`
+  html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i><span>receive</span></button>`
+  html += `<button class="vault-action-btn" id="vault-swap-btn"><i class="ph ph-swap"></i><span>save</span></button>`
   html += `</div>`
+  html += `</div>`
+
+  // --- BOLD savings card ---
+  const bestApy = yieldData?.bestApy || 0
+  const pools = yieldData?.pools || []
+
+  html += `<div class="vault-savings">`
+  html += `<div class="vault-savings-header">`
+  html += `<div>${BOLD_ICON}</div>`
+  html += `<div style="flex:1">`
+  html += `<div class="vault-savings-title">savings account</div>`
+  html += `<div class="vault-savings-sub">BOLD stablecoin &middot; Liquity stability pools</div>`
+  html += `</div>`
+  if (bestApy > 0) {
+    html += `<div class="vault-savings-apr"><span class="vault-apr-value">${bestApy.toFixed(1)}%</span><span class="vault-apr-label">APR</span></div>`
+  }
+  html += `</div>`
+
+  if (boldBalance > 0n) {
+    const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
+    html += `<div class="vault-savings-bal">${boldFormatted} <span style="color:var(--dim)">BOLD</span></div>`
+  } else {
+    html += `<div class="vault-savings-bal" style="color:var(--dim)">no BOLD yet</div>`
+  }
+
+  if (pools.length > 0) {
+    html += `<div class="vault-pools">`
+    for (const pool of pools.slice(0, 4)) {
+      const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
+      html += `<div class="vault-pool-row">`
+      html += `<div class="vault-pool-info"><span class="vault-pool-name">${escapeHtml(pool.name)}</span><span class="vault-pool-tvl">TVL ${tvlStr}</span></div>`
+      html += `<div class="vault-pool-rates"><span class="vault-pool-apr">${pool.apy.toFixed(1)}%</span><span class="vault-pool-7d">7d ${pool.apy7d.toFixed(1)}%</span></div>`
+      html += `</div>`
+    }
+    html += `</div>`
+  }
+
+  html += `<button class="vault-save-cta" id="vault-save-btn">swap ETH to BOLD</button>`
   html += `</div>`
 
   // --- Unclaimed banner ---
@@ -379,7 +457,7 @@ function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contribut
     html += `</div>`
   }
 
-  // --- Earnings overview ---
+  // --- Overview ---
   html += `<div class="vault-section">`
   html += `<div class="vault-section-title">overview</div>`
   html += `<div class="vault-stats">`
@@ -408,7 +486,7 @@ function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contribut
     _historyShown = firstPage.length
     html += `<div id="vault-history-wrap" class="vault-history"><div id="vault-history">${renderHistoryItems(firstPage, ethPrices)}</div></div>`
   } else {
-    html += `<p style="color:var(--muted);font-size:0.9em">no activity yet</p>`
+    html += `<p style="color:var(--dim);font-size:0.9em">no activity yet</p>`
   }
   html += `</div>`
 
@@ -433,90 +511,13 @@ function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contribut
   // Send button
   document.getElementById('vault-send-btn')?.addEventListener('click', () => showSendModal(addr))
 
-  // Receive button — show address
-  document.getElementById('vault-receive-btn')?.addEventListener('click', () => {
-    const existing = document.getElementById('vault-receive-modal')
-    if (existing) { existing.remove(); return }
-    const overlay = document.createElement('div')
-    overlay.id = 'vault-receive-modal'
-    overlay.className = 'praxis-modal-overlay'
-    overlay.style.zIndex = '10002'
-    const dialog = document.createElement('div')
-    dialog.className = 'praxis-modal-dialog'
-    dialog.style.maxWidth = '400px'
-    dialog.innerHTML = `
-      <h3 style="color:var(--accent);margin-bottom:0.5em">receive</h3>
-      <div style="color:var(--dim);font-size:0.8em;margin-bottom:1em">send ETH or tokens on <strong>Optimism</strong> to this address</div>
-      <div style="background:color-mix(in srgb, var(--fg) 5%, transparent);border:1px solid var(--border);border-radius:8px;padding:1em;font-family:monospace;font-size:0.85em;word-break:break-all;color:var(--fg)">${escapeHtml(addr)}</div>
-      <button id="vault-copy-addr" style="margin-top:0.75em;width:100%;background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.6em;cursor:pointer;border-radius:6px"><i class="ph ph-copy"></i> copy address</button>
-    `
-    overlay.appendChild(dialog)
-    document.body.appendChild(overlay)
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-    dialog.querySelector('#vault-copy-addr').addEventListener('click', async () => {
-      await navigator.clipboard.writeText(addr)
-      dialog.querySelector('#vault-copy-addr').innerHTML = '<i class="ph ph-check"></i> copied'
-      setTimeout(() => overlay.remove(), 1500)
-    })
-  })
+  // Receive button
+  document.getElementById('vault-receive-btn')?.addEventListener('click', () => showReceiveModal(addr))
 
-  // Swap button — coming soon with BOLD integration
-  document.getElementById('vault-swap-btn')?.addEventListener('click', () => {
-    const existing = document.getElementById('vault-swap-modal')
-    if (existing) { existing.remove(); return }
-    const overlay = document.createElement('div')
-    overlay.id = 'vault-swap-modal'
-    overlay.className = 'praxis-modal-overlay'
-    overlay.style.zIndex = '10002'
-    const dialog = document.createElement('div')
-    dialog.className = 'praxis-modal-dialog'
-    dialog.style.maxWidth = '400px'
-    dialog.innerHTML = `
-      <h3 style="color:var(--accent);margin-bottom:0.5em">swap</h3>
-      <div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em">swap ETH for stablecoins on Optimism</div>
-      <div style="display:flex;flex-direction:column;gap:0.75em">
-        <div>
-          <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">from</label>
-          <div style="display:flex;align-items:center;gap:0.5ch;margin-top:0.2em;border:1px solid var(--border);padding:0.6em 1ch;border-radius:6px">
-            <span style="color:var(--fg);font-size:0.9em">ETH</span>
-            <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" style="background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;flex:1;text-align:right;outline:none">
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:0.3em">
-            <span id="swap-fiat" style="color:var(--dim);font-size:0.8em"></span>
-            <button id="swap-max" style="background:none;border:none;color:var(--accent);font-family:inherit;font-size:0.75em;cursor:pointer;padding:0">max</button>
-          </div>
-        </div>
-        <div style="text-align:center;color:var(--dim)"><i class="ph ph-arrow-down"></i></div>
-        <div>
-          <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">to</label>
-          <div style="display:flex;align-items:center;gap:0.5ch;margin-top:0.2em;border:1px solid var(--border);padding:0.6em 1ch;border-radius:6px">
-            <span style="color:var(--fg);font-size:0.9em">USDC</span>
-            <span id="swap-output" style="flex:1;text-align:right;color:var(--dim);font-size:0.9em">—</span>
-          </div>
-        </div>
-        <button id="swap-confirm" class="buy-btn" style="width:100%;text-align:center;margin-top:0.5em" disabled>swap coming soon</button>
-        <div style="color:var(--dim);font-size:0.75em;text-align:center">powered by Velodrome on Optimism</div>
-      </div>
-    `
-    overlay.appendChild(dialog)
-    document.body.appendChild(overlay)
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-
-    const swapInput = dialog.querySelector('#swap-amount')
-    const swapFiat = dialog.querySelector('#swap-fiat')
-    dialog.querySelector('#swap-max')?.addEventListener('click', () => {
-      const maxEth = Math.max(0, Number(ethBalance) / 1e18 - 0.001)
-      swapInput.value = maxEth.toFixed(6)
-      swapInput.dispatchEvent(new Event('input'))
-    })
-    swapInput.addEventListener('input', () => {
-      const val = parseFloat(swapInput.value)
-      if (!val || isNaN(val)) { swapFiat.textContent = ''; return }
-      if (ethRate) swapFiat.textContent = `~${formatFiat(val * ethRate, currency)}`
-      const outputEl = dialog.querySelector('#swap-output')
-      if (outputEl && ethPrices?.usd) outputEl.textContent = `~${(val * ethPrices.usd).toFixed(2)}`
-    })
-  })
+  // Save/Swap button
+  const swapHandler = () => showSwapModal(addr, ethBalance, ethPrices, currency, yieldData)
+  document.getElementById('vault-swap-btn')?.addEventListener('click', swapHandler)
+  document.getElementById('vault-save-btn')?.addEventListener('click', swapHandler)
 
   // Claim buttons
   el.querySelectorAll('.earnings-claim-btn').forEach(btn => {
@@ -555,6 +556,189 @@ function renderVault(el, { ethBalance, usdcBalance, unclaimed, earned, contribut
   })
 }
 
+// --- Modals ---
+
+function showReceiveModal(addr) {
+  const existing = document.getElementById('vault-receive-modal')
+  if (existing) { existing.remove(); return }
+  const overlay = document.createElement('div')
+  overlay.id = 'vault-receive-modal'
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10002'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '420px'
+  dialog.innerHTML = `
+    <h3 class="vault-modal-title">receive</h3>
+    <p class="vault-modal-sub">send ETH or tokens on <strong>Optimism</strong> to this address</p>
+    <div class="vault-addr-box">${escapeHtml(addr)}</div>
+    <button id="vault-copy-addr" class="vault-modal-btn"><i class="ph ph-copy"></i> copy address</button>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#vault-copy-addr').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(addr)
+    dialog.querySelector('#vault-copy-addr').innerHTML = '<i class="ph ph-check"></i> copied'
+    setTimeout(() => overlay.remove(), 1500)
+  })
+}
+
+function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
+  const existing = document.getElementById('vault-swap-modal')
+  if (existing) { existing.remove(); return }
+  const ethRate = ethPrices?.[currency] || 0
+  const bestApy = yieldData?.bestApy || 0
+  const overlay = document.createElement('div')
+  overlay.id = 'vault-swap-modal'
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10002'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '420px'
+
+  let aprLine = ''
+  if (bestApy > 0) aprLine = ` &middot; up to ${bestApy.toFixed(1)}% APR`
+
+  dialog.innerHTML = `
+    <h3 class="vault-modal-title">save</h3>
+    <p class="vault-modal-sub">swap ETH for BOLD via Velodrome${aprLine}</p>
+    <div class="vault-swap-fields">
+      <div>
+        <label class="vault-field-label">from</label>
+        <div class="vault-field-row">
+          <span class="vault-field-token">${ETH_ICON} ETH</span>
+          <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-field-input">
+        </div>
+        <div class="vault-field-meta">
+          <span id="swap-fiat" class="vault-field-fiat"></span>
+          <button id="swap-max" class="vault-field-max">max</button>
+        </div>
+      </div>
+      <div style="text-align:center;color:var(--dim);padding:0.25em 0"><i class="ph ph-arrow-down" style="font-size:1.1em"></i></div>
+      <div>
+        <label class="vault-field-label">to (estimated)</label>
+        <div class="vault-field-row">
+          <span class="vault-field-token">${BOLD_ICON} BOLD</span>
+          <span id="swap-output" class="vault-field-output">—</span>
+        </div>
+        <div id="swap-rate" style="font-size:0.7em;color:var(--dim);margin-top:0.15em"></div>
+      </div>
+      <button id="swap-confirm" class="vault-modal-btn vault-modal-btn-primary" disabled>enter amount</button>
+      <div id="swap-status" style="color:var(--muted);font-size:0.8em;text-align:center;min-height:1.2em"></div>
+      <div style="color:var(--dim);font-size:0.7em;text-align:center">1% slippage tolerance &middot; routed via Velodrome on Optimism</div>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+
+  const swapInput = dialog.querySelector('#swap-amount')
+  const swapFiat = dialog.querySelector('#swap-fiat')
+  const outputEl = dialog.querySelector('#swap-output')
+  const rateEl = dialog.querySelector('#swap-rate')
+  const confirmBtn = dialog.querySelector('#swap-confirm')
+  const statusEl = dialog.querySelector('#swap-status')
+
+  let _quoteTimer = null
+  let _lastQuote = null
+
+  dialog.querySelector('#swap-max')?.addEventListener('click', () => {
+    const maxEth = Math.max(0, Number(ethBalance) / 1e18 - 0.002)
+    swapInput.value = maxEth.toFixed(6)
+    swapInput.dispatchEvent(new Event('input'))
+  })
+
+  swapInput.addEventListener('input', () => {
+    const val = parseFloat(swapInput.value)
+    if (!val || isNaN(val) || val <= 0) {
+      swapFiat.textContent = ''
+      outputEl.textContent = '—'
+      rateEl.textContent = ''
+      confirmBtn.disabled = true
+      confirmBtn.textContent = 'enter amount'
+      _lastQuote = null
+      return
+    }
+    if (ethRate) swapFiat.textContent = `~${formatFiat(val * ethRate, currency)}`
+
+    clearTimeout(_quoteTimer)
+    outputEl.textContent = '...'
+    outputEl.style.color = 'var(--dim)'
+    rateEl.textContent = ''
+    confirmBtn.disabled = true
+    confirmBtn.textContent = 'getting quote...'
+
+    _quoteTimer = setTimeout(async () => {
+      try {
+        const amountIn = parseEther(val.toFixed(18))
+        const amountOut = await getSwapQuote(amountIn)
+        _lastQuote = { amountIn, amountOut }
+        const boldOut = Number(amountOut) / 1e18
+        outputEl.textContent = boldOut.toFixed(2)
+        outputEl.style.color = 'var(--fg)'
+        const rate = boldOut / val
+        rateEl.textContent = `1 ETH = ${rate.toFixed(2)} BOLD`
+        confirmBtn.disabled = false
+        confirmBtn.textContent = 'swap to BOLD'
+      } catch (e) {
+        outputEl.textContent = 'no route'
+        outputEl.style.color = 'var(--dim)'
+        rateEl.textContent = ''
+        confirmBtn.disabled = true
+        confirmBtn.textContent = 'no liquidity'
+        _lastQuote = null
+      }
+    }, 500)
+  })
+
+  confirmBtn.addEventListener('click', async () => {
+    if (!_lastQuote) return
+    const { amountIn, amountOut } = _lastQuote
+    confirmBtn.disabled = true
+    confirmBtn.textContent = 'confirm in wallet...'
+    statusEl.textContent = ''
+    statusEl.style.color = 'var(--muted)'
+
+    try {
+      const account = await window.ensureAuthorized?.() || addr
+      const provider = getWalletProvider()
+      const wc = createWalletClient({ chain: optimism, transport: custom(provider) })
+
+      const minOut = amountOut - (amountOut * SLIPPAGE_BPS / 10000n)
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200) // 20 min
+
+      const hash = await wc.writeContract({
+        address: VELODROME_ROUTER,
+        abi: VELODROME_ABI,
+        functionName: 'swapExactETHForTokens',
+        args: [minOut, SWAP_ROUTE, addr, deadline],
+        value: amountIn,
+        account,
+      })
+
+      confirmBtn.textContent = 'swapping...'
+      statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
+
+      const pc = await getPublicClient()
+      await pc.waitForTransactionReceipt({ hash })
+
+      confirmBtn.textContent = 'swapped!'
+      confirmBtn.style.borderColor = 'var(--green)'
+      confirmBtn.style.color = 'var(--green)'
+      statusEl.style.color = 'var(--green)'
+      statusEl.textContent = 'swap complete'
+      window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
+      setTimeout(() => overlay.remove(), 2500)
+    } catch (e) {
+      confirmBtn.disabled = false
+      confirmBtn.textContent = 'swap to BOLD'
+      statusEl.style.color = 'var(--dim)'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : formatTxError(e)
+    }
+  })
+}
+
 export async function showSendModal(fromAddress) {
   const existing = document.getElementById('send-modal-overlay')
   if (existing) { existing.remove(); return }
@@ -566,7 +750,7 @@ export async function showSendModal(fromAddress) {
 
   const dialog = document.createElement('div')
   dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '400px'
+  dialog.style.maxWidth = '420px'
 
   const balance = await getCachedBalance(fromAddress).catch(() => 0n)
   const balEth = formatEthAmount(balance)
@@ -574,26 +758,26 @@ export async function showSendModal(fromAddress) {
   const currency = getUserCurrency()
 
   dialog.innerHTML = `
-    <h3 style="color:var(--accent);margin-bottom:0.5em">send</h3>
-    <div style="color:var(--dim);font-size:0.8em;margin-bottom:1em">on Optimism &middot; balance: ${balEth} ETH</div>
-    <div style="display:flex;flex-direction:column;gap:0.75em">
+    <h3 class="vault-modal-title">send</h3>
+    <p class="vault-modal-sub">on Optimism &middot; balance: ${balEth} ETH</p>
+    <div class="vault-swap-fields">
       <div>
-        <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">to</label>
-        <input id="send-to" type="text" placeholder="handle, address, or domain" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1ch;width:100%;box-sizing:border-box;margin-top:0.2em">
-        <div id="send-resolved" style="color:var(--dim);font-size:0.8em;min-height:1.2em"></div>
+        <label class="vault-field-label">to</label>
+        <input id="send-to" type="text" placeholder="handle, address, or domain" class="vault-field-input vault-field-input-full">
+        <div id="send-resolved" class="vault-field-fiat" style="min-height:1.2em"></div>
       </div>
       <div>
-        <label style="color:var(--muted);font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em">amount</label>
-        <div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.2em">
-          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1ch;flex:1;box-sizing:border-box">
-          <span style="color:var(--muted);font-size:0.9em">ETH</span>
+        <label class="vault-field-label">amount</label>
+        <div class="vault-field-row">
+          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-field-input">
+          <span style="color:var(--muted);font-size:0.9em;flex-shrink:0">ETH</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:0.3em">
-          <div id="send-fiat" style="color:var(--dim);font-size:0.8em;min-height:1.2em"></div>
-          <button id="send-max" style="background:none;border:none;color:var(--accent);font-family:inherit;font-size:0.75em;cursor:pointer;padding:0">max</button>
+        <div class="vault-field-meta">
+          <span id="send-fiat" class="vault-field-fiat" style="min-height:1.2em"></span>
+          <button id="send-max" class="vault-field-max">max</button>
         </div>
       </div>
-      <button id="send-confirm" class="buy-btn" style="width:100%;text-align:center;margin-top:0.5em">send on Optimism</button>
+      <button id="send-confirm" class="vault-modal-btn vault-modal-btn-primary">send</button>
       <div id="send-status" style="color:var(--muted);font-size:0.85em;text-align:center;min-height:1.2em"></div>
     </div>
   `
@@ -689,7 +873,7 @@ export async function showSendModal(fromAddress) {
       setTimeout(() => overlay.remove(), 2000)
     } catch (e) {
       btn.disabled = false
-      btn.textContent = 'send on Optimism'
+      btn.textContent = 'send'
       status.style.color = 'var(--dim)'
       status.textContent = formatTxError(e)
     }
