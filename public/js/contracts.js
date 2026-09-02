@@ -91,6 +91,7 @@ export const PRAXIS_ABI = [
   { name: 'setOperator', type: 'function', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [{ type: 'bool' }], stateMutability: 'nonpayable' },
   { name: 'isOperator', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
   { name: 'balanceOf', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+  { name: 'withdrawFunding', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'updateProject', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }, { name: 'title', type: 'string' }, { name: 'description', type: 'string' }, { name: 'projectType', type: 'string' }, { name: 'metadataCid', type: 'string' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'updateTier', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }, { name: 'tierId', type: 'uint256' }, { name: 'name', type: 'string' }, { name: 'metadataCid', type: 'string' }, { name: 'eventDate', type: 'uint256' }, { name: 'location', type: 'uint128' }], outputs: [], stateMutability: 'nonpayable' },
   { name: 'checkIn', type: 'function', inputs: [{ name: 'projectId', type: 'uint256' }, { name: 'tokenId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },

@@ -1,9 +1,8 @@
-// Project detail page — full view of a single project with lifecycle controls
 import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage, isBlocked, requireUser , getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient, formatEthAmount, registerPage, isBlocked, requireUser, getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain, ensureFundsForPurchase, getProfilePic } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -23,18 +22,11 @@ const MS_COLORS = ['var(--dim)', '#fbbf24', '#4ade80', '#ef4444']
 const RELOAD_DELAY = 2000
 function reloadAfterTx() { setTimeout(() => location.reload(), RELOAD_DELAY) }
 
-/**
- * Auto-create TWO XMTP group chats for a project after first funding:
- * 1. Team group (proposer + collaborators) — internal coordination
- * 2. Community group (proposer + collaborators + funders) — public updates
- * Skips silently if XMTP is not initialized or groups already exist.
- */
 async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
   const client = window._xmtpClient
   const sdk = window._xmtpSdk
   if (!client || !sdk) return
 
-  // Check if groups already exist
   try {
     const checkRes = await fetch(`/api/project-group?id=${projectId}`)
     const checkData = await checkRes.json()
@@ -46,18 +38,15 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
   const myAddr = window.getWalletAddress?.()?.toLowerCase()
   const title = project.title || `Project #${projectId}`
 
-  // Collect team addresses (proposer + collaborators)
   const teamAddrs = new Set()
   if (project.proposer) teamAddrs.add(project.proposer.toLowerCase())
   for (const c of (data.collaborators?.items || [])) {
     if (c.artist) teamAddrs.add(c.artist.toLowerCase())
   }
 
-  // Community = team + funder
   const communityAddrs = new Set(teamAddrs)
   if (funderAddr) communityAddrs.add(funderAddr.toLowerCase())
 
-  // Resolve inbox IDs helper
   async function resolveInboxIds(addrs) {
     const filtered = addrs.filter(a => a !== myAddr)
     const results = await Promise.all(filtered.map(async addr => {
@@ -81,13 +70,11 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
       resolveInboxIds(communityAddrs),
     ])
 
-    // Create both groups in parallel
     const [teamGroup, communityGroup] = await Promise.all([
       client.conversations.createGroup(teamIds, { name: `${title} — team` }),
       client.conversations.createGroup(communityIds, { name: title }),
     ])
 
-    // Store both group IDs on server
     const token = sessionStorage.getItem('praxis-auth-token') || localStorage.getItem('praxis-auth-token')
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
@@ -96,8 +83,6 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
       headers,
       body: JSON.stringify({ teamGroupId: teamGroup.id, communityGroupId: communityGroup.id }),
     })
-
-    console.log(`praxis: auto-created team + community groups for project ${projectId}`)
   } catch (e) {
     console.warn('praxis: auto-create project groups failed:', e?.message)
   }
@@ -126,6 +111,12 @@ async function _resolveProjectSlug(slug) {
   }
 }
 
+function profilePicHtml(addr, size = 22) {
+  const pic = getProfilePic(addr)
+  if (!pic) return ''
+  return `<img src="${escapeHtml(pic)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`
+}
+
 async function initProjectDetail() {
   const el = document.getElementById('project-detail-page')
   if (!el) return
@@ -136,7 +127,6 @@ async function initProjectDetail() {
   const praxisAddr = el.dataset.praxis
   const registryAddr = el.dataset.registry
 
-  // Vanity slug: /project/<slug>
   if (!projectId) {
     const segs = window.location.pathname.split('/').filter(Boolean)
     if (segs.length >= 2 && (segs[0] === 'project' || segs[0] === 'event')) {
@@ -152,12 +142,10 @@ async function initProjectDetail() {
       const res = await fetch(`/api/project/${projectId}`)
       data = await res.json()
       if (data.error) throw new Error(data.error)
-      // Wrap arrays in items to match expected shape
       if (data.collaborators && !data.collaborators.items) data.collaborators = { items: data.collaborators }
       if (data.tiers && !data.tiers.items) data.tiers = { items: data.tiers }
       if (data.fundings && !data.fundings.items) data.fundings = { items: data.fundings }
     } catch {
-      // Fallback to direct Ponder query
       data = await query(`
         query Project($id: BigInt!) {
           project(id: $id) {
@@ -181,7 +169,6 @@ async function initProjectDetail() {
 
     loadingEl.style.display = 'none'
 
-    // Use pre-resolved domains from materialized endpoint, or resolve on demand
     let domainMap = data.domains || {}
     if (!Object.keys(domainMap).length) {
       const addressesToResolve = [
@@ -192,9 +179,11 @@ async function initProjectDetail() {
       domainMap = await resolveAddresses(query, addressesToResolve).catch(() => ({}))
     }
     const resolve = addr => resolveDomain(domainMap, addr)
+    const esc = escapeHtml
     const myAddr = window.getWalletAddress?.()?.toLowerCase()
     const isProposer = myAddr === p.proposer.toLowerCase()
     const isCollaborator = data.collaborators.items.some(c => c.artist.toLowerCase() === myAddr)
+    const isTeam = isProposer || isCollaborator
     const isFunder = data.fundings.items.some(f => f.funder.toLowerCase() === myAddr)
 
     const [publicClient, ethPrices] = await Promise.all([getPublicClient(), getEthPrices().catch(() => null)])
@@ -209,16 +198,15 @@ async function initProjectDetail() {
       : STATUS_LABELS[p.status] || 'unknown'
     const statusColor = STATUS_COLORS[p.status] || '#666'
 
-    // Parse event metadata from description (if present)
     const { meta: eventMeta, text: cleanDescription } = parseEventMetadata(p.description)
     const eventDate = eventMeta?.eventDate ? new Date(eventMeta.eventDate) : null
     const deadlineDate = p.deadline > 0 ? new Date(Number(p.deadline) * 1000) : null
     const deadlineStr = isEvent && eventDate
-      ? eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + (eventMeta.doorsTime ? ` · doors ${escapeHtml(eventMeta.doorsTime)}` : '')
+      ? eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + (eventMeta.doorsTime ? ` · doors ${esc(eventMeta.doorsTime)}` : '')
       : deadlineDate ? deadlineDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'no deadline'
     const createdStr = new Date(Number(p.createdAt) * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-    // batch-check hasConfirmed for ALL collaborators (including proposer)
+    // batch-check hasConfirmed
     const collabAddrs = data.collaborators.items.map(c => c.artist)
     const allParticipants = [p.proposer, ...collabAddrs.filter(a => a.toLowerCase() !== p.proposer.toLowerCase())]
     const confirmedSet = new Set()
@@ -240,7 +228,7 @@ async function initProjectDetail() {
     }
     const totalParticipants = allParticipants.length
 
-    // team section
+    // ── TEAM ──
     const teamHtml = data.collaborators.items.map(c => {
       const domain = resolve(c.artist)
       const splitPct = (Number(c.split) / 100).toFixed(0)
@@ -250,170 +238,69 @@ async function initProjectDetail() {
           ? '<span style="color:#4ade80;font-size:0.8em;margin-left:0.5ch">confirmed</span>'
           : '<span style="color:var(--dim);font-size:0.8em;margin-left:0.5ch">pending</span>')
         : ''
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);font-size:0.9em">
-        <span><a href="/network?artist=${c.artist.toLowerCase()}" style="color:var(--fg)">${escapeHtml(domain)}</a>${confirmLabel}</span>
-        <span>${splitPct}%</span>
+      return `<div class="pd-row">
+        <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(c.artist, 22)}<a href="/network?artist=${c.artist.toLowerCase()}" style="color:var(--fg)">${esc(domain)}</a>${confirmLabel}</span>
+        <span style="color:var(--muted)">${splitPct}%</span>
       </div>`
     }).join('')
 
-    // tiers section
-    const tiersHtml = (data.tiers?.items || []).map(t => {
-      const priceEth = formatPriceSync(t.price, ethPrices)
-      const isFreeRsvp = Number(t.price) <= 1000 // 1000 wei ≈ free
-      const remaining = Number(t.maxSupply) - Number(t.sold)
+    // ── TIERS ──
+    const tiersHtml = (data.tiers?.items || []).map(tier => {
+      const priceEth = formatPriceSync(tier.price, ethPrices)
+      const isFreeRsvp = Number(tier.price) <= 1000
+      const remaining = Number(tier.maxSupply) - Number(tier.sold)
       const badge = isEvent
         ? (isFreeRsvp ? '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">free rsvp</span>' : '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">ticket</span>')
-        : (t.transferable ? '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">ticket</span>' : '<span style="color:#a78bfa;font-size:0.7em;text-transform:uppercase">producer</span>')
+        : (tier.transferable ? '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">ticket</span>' : '<span style="color:#a78bfa;font-size:0.7em;text-transform:uppercase">producer</span>')
       const priceLabel = isEvent && isFreeRsvp ? 'free' : priceEth
       const capacityLabel = isEvent
         ? (remaining > 0 ? `${remaining} spot${remaining !== 1 ? 's' : ''} left` : 'sold out')
-        : `${t.sold}/${t.maxSupply} sold`
+        : `${tier.sold}/${tier.maxSupply} sold`
       const btnLabel = isEvent ? (isFreeRsvp ? 'RSVP' : 'get tickets') : 'fund'
-      const tierDateStr = t.eventDate && BigInt(t.eventDate) > 0n
-        ? new Date(Number(t.eventDate) * 1000).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      const tierDateStr = tier.eventDate && BigInt(tier.eventDate) > 0n
+        ? new Date(Number(tier.eventDate) * 1000).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
         : ''
-      const tierLoc = unpackLocation(t.location)
+      const tierLoc = unpackLocation(tier.location)
       const tierLocStr = tierLoc ? `${tierLoc.lat.toFixed(4)}, ${tierLoc.lng.toFixed(4)}` : ''
-      return `<div style="border:1px solid var(--border);padding:1em">
-        <div>${badge}</div>
-        <div style="color:var(--accent);margin:0.25em 0">${escapeHtml(t.name)}</div>
-        ${tierDateStr ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.25em"><i class="ph ph-calendar" style="margin-right:0.3ch"></i> ${tierDateStr}</div>` : ''}
-        ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.25em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
-        <div style="color:var(--fg);font-size:0.9em">${priceLabel}</div>
-        <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
-        ${remaining > 0 && p.status <= FUNDED ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
-          <input type="number" class="fund-qty" data-tier-id="${escapeHtml(t.tierId)}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
-          <button class="buy-btn fund-tier-btn" data-tier-id="${escapeHtml(t.tierId)}" data-price="${escapeHtml(t.price)}" style="font-size:0.85em;padding:0.3em 1ch">${btnLabel}</button>
+      return `<div style="padding:1em 1.25em;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div>${badge}</div>
+            <div style="color:var(--accent);font-weight:600;margin:0.2em 0">${esc(tier.name)}</div>
+            ${tierDateStr ? `<div style="color:var(--dim);font-size:0.8em"><i class="ph ph-calendar" style="margin-right:0.3ch"></i> ${tierDateStr}</div>` : ''}
+            ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700;color:var(--accent)">${priceLabel}</div>
+            <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
+          </div>
+        </div>
+        ${remaining > 0 && p.status <= FUNDED ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.75em;justify-content:flex-end">
+          <input type="number" class="fund-qty" data-tier-id="${esc(tier.tierId)}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center;border-radius:4px">
+          <button class="buy-btn fund-tier-btn" data-tier-id="${esc(tier.tierId)}" data-price="${esc(tier.price)}" data-tier-name="${esc(tier.name)}" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0">${btnLabel}</button>
         </div>` : ''}
       </div>`
     }).join('')
 
-    // funders section
+    // ── FUNDERS ──
     const fundersHtml = data.fundings.items.slice(0, 20).map(f => {
       const domain = resolve(f.funder)
       const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatPriceSync(f.amount, ethPrices)
-      return `<div style="font-size:0.85em;padding:0.3em 0"><a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${escapeHtml(domain)}</a> <span style="color:#4ade80">${amtLabel}</span></div>`
+      const dateStr = new Date(Number(f.timestamp) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      return `<div class="pd-row">
+        <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(f.funder, 20)}<a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${esc(domain)}</a></span>
+        <span style="display:flex;gap:1ch;align-items:center"><span style="color:#4ade80;font-variant-numeric:tabular-nums">${amtLabel}</span><span style="color:var(--dim);font-size:0.85em">${dateStr}</span></span>
+      </div>`
     }).join('')
+    const showAllFunders = data.fundings.items.length > 20
+      ? `<div style="text-align:center;padding:0.5em;font-size:0.8em;color:var(--muted);cursor:pointer" id="show-all-funders">show all ${data.fundings.items.length} backers</div>` : ''
 
-    // milestone count — needed before actions block to gate "mark complete"
+    // ── MILESTONES ──
     let msCount = 0
     try {
       msCount = Number(await publicClient.readContract({ address: praxisAddr, abi: PRAXIS_ABI, functionName: 'milestoneCount', args: [BigInt(projectId)] }))
     } catch {}
 
-    // lifecycle actions
-    let actionsHtml = '<div id="project-actions" style="margin-top:1.5em;padding-top:1em;border-top:1px solid var(--border)">'
-
-    if ((p.status == FUNDED || p.status == CONFIRMED) && (isProposer || isCollaborator)) {
-      // FUNDED or CONFIRMED — show confirmation progress
-      const myConfirmed = myAddr ? confirmedSet.has(myAddr) : false
-
-      actionsHtml += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">${confirmCount} of ${totalParticipants} confirmed</div>`
-
-      if (p.status == CONFIRMED) {
-        actionsHtml += '<span style="color:#4ade80;font-size:0.85em">all confirmed</span> '
-      } else if (myConfirmed) {
-        actionsHtml += '<span style="color:var(--muted);font-size:0.85em">you confirmed -- waiting for team</span> '
-      } else {
-        actionsHtml += '<button class="buy-btn" id="action-confirm">i\'m in</button> '
-      }
-    }
-
-    if (p.status == CONFIRMED && isProposer && msCount === 0) {
-      // CONFIRMED non-milestone — proposer can complete
-      actionsHtml += '<button class="buy-btn" id="action-complete">mark complete</button> '
-      actionsHtml += '<span style="color:var(--dim);font-size:0.8em">all confirmed -- proposer can mark complete (starts dispute window)</span> '
-    }
-
-    if (p.status == COMPLETING) {
-      // COMPLETING — dispute window with live countdown
-      // Use disputeDeadline from Ponder (set by ProjectCompleting event), fallback to completedAt + 3 days
-      const disputeEndsAt = p.disputeDeadline
-        ? Number(p.disputeDeadline)
-        : (p.completedAt ? Number(p.completedAt) + (3 * 86400) : Number(p.createdAt) + (3 * 86400))
-      const nowSec = Math.floor(Date.now() / 1000)
-      const remaining = disputeEndsAt - nowSec
-      const canFinalize = remaining <= 0
-
-      actionsHtml += `<div style="margin-bottom:0.75em">
-        <span style="color:#fbbf24;font-size:0.85em">dispute window</span>
-        <span id="dispute-countdown" style="color:var(--accent);font-size:0.9em;margin-left:1ch">${canFinalize ? 'ended' : ''}</span>
-      </div>`
-      if (isFunder) {
-        actionsHtml += '<button class="buy-btn" id="action-dispute" style="border-color:#ef4444;color:#ef4444">dispute</button> '
-      }
-      if (isProposer) {
-        actionsHtml += `<button class="buy-btn" id="action-finalize" ${canFinalize ? '' : 'disabled'}>finalize</button> `
-      }
-
-      // live countdown
-      if (!canFinalize) {
-        function updateCountdown() {
-          const now = Math.floor(Date.now() / 1000)
-          const left = disputeEndsAt - now
-          if (left <= 0) {
-            if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null }
-            const el = document.getElementById('dispute-countdown')
-            if (el) el.textContent = 'ended — finalize available'
-            const btn = document.getElementById('action-finalize')
-            if (btn) { btn.disabled = false; btn.style = '' }
-            return
-          }
-          const d = Math.floor(left / 86400)
-          const h = Math.floor((left % 86400) / 3600)
-          const m = Math.floor((left % 3600) / 60)
-          const s = left % 60
-          const el = document.getElementById('dispute-countdown')
-          if (el) el.textContent = `${d}d ${h}h ${m}m ${s}s`
-        }
-        setTimeout(() => {
-          updateCountdown()
-          if (_countdownInterval) clearInterval(_countdownInterval)
-          _countdownInterval = setInterval(updateCountdown, 1000)
-          // register cleanup every init (not guarded — SPA may re-init)
-          const cleanupFn = () => {
-            if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null }
-          }
-          window.addEventListener('spa-navigate', cleanupFn, { once: true })
-        }, 100)
-      }
-    }
-
-    if (p.status == COMPLETED && (isProposer || isCollaborator)) {
-      // COMPLETED — claim funds
-      actionsHtml += '<button class="buy-btn" id="action-claim" style="border-color:#4ade80;color:#4ade80">claim funds</button> '
-    }
-
-    if ((p.status == PROPOSED || p.status == FUNDED) && isProposer) {
-      // PROPOSED or FUNDED — proposer can cancel
-      actionsHtml += '<button class="buy-btn" id="action-cancel" style="border-color:#ef4444;color:#ef4444">cancel project</button> '
-    }
-
-    if (p.status == CANCELLED && isFunder) {
-      // CANCELLED — claim refund
-      actionsHtml += '<button class="buy-btn" id="action-refund">claim refund</button> '
-    }
-
-    actionsHtml += '<p id="action-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p></div>'
-
-    // location display
-    let locationHtml = ''
-    const projLoc = unpackLocation(p.location)
-    if (projLoc) {
-      try {
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${projLoc.lat}&lon=${projLoc.lng}&format=json`)
-        const geoData = await geoRes.json()
-        const city = geoData.address?.city || geoData.address?.town || geoData.address?.village || geoData.address?.suburb || ''
-        const state = geoData.address?.state || ''
-        const country = geoData.address?.country || ''
-        const name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || geoData.display_name?.split(',').slice(0, 2).join(',').trim() || `${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}`
-        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${escapeHtml(name)}</div>`
-      } catch {
-        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}</div>`
-      }
-    }
-
-    // milestones section — read from contract (msCount already loaded above)
     let milestonesHtml = ''
     let milestones = []
     let disputeWindowDays = 0
@@ -430,7 +317,7 @@ async function initProjectDetail() {
       disputeWindowDays = msMulti[0].status === 'success' ? Number(msMulti[0].result) : 3
       const releasedWei = msMulti[1].status === 'success' ? msMulti[1].result : 0n
       milestones = msMulti.slice(2).map((r, i) => {
-        const v = r.status === 'success' ? r.result : ['' , 0n, 0, 0n]
+        const v = r.status === 'success' ? r.result : ['', 0n, 0, 0n]
         return { index: i, description: v[0], bps: Number(v[1]), status: Number(v[2]), submittedAt: Number(v[3]) }
       })
 
@@ -438,13 +325,13 @@ async function initProjectDetail() {
       const progressPct = msCount > 0 ? Math.round(releasedCount * 100 / msCount) : 0
       const releasedEth = formatEthAmount(releasedWei)
 
-      milestonesHtml = `<div style="margin-bottom:2em;padding-top:1em;border-top:1px solid var(--border)">
-        <h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">milestones — ${releasedCount}/${msCount} released · ${releasedEth} ETH distributed</h3>
+      milestonesHtml = `<div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-flag-checkered" style="margin-right:0.3ch"></i> milestones — ${releasedCount}/${msCount} released · ${releasedEth} ETH distributed</div>
         <div style="margin-bottom:1em"><div class="project-progress-bar"><div class="project-progress-fill" style="width:${progressPct}%;background:#4ade80"></div></div></div>
-        <div style="display:grid;gap:0.75em">${milestones.map((m, i) => {
-          const pct = (m.bps / 100).toFixed(0)
-          const statusLabel = MS_LABELS[m.status] || 'unknown'
-          const statusColor = MS_COLORS[m.status] || 'var(--dim)'
+        ${milestones.map((m, i) => {
+          const pctVal = (m.bps / 100).toFixed(0)
+          const sLabel = MS_LABELS[m.status] || 'unknown'
+          const sColor = MS_COLORS[m.status] || 'var(--dim)'
           const nowSec = Math.floor(Date.now() / 1000)
           const windowEnd = m.submittedAt + disputeWindowDays * 86400
           const windowActive = m.status === 1 && nowSec < windowEnd
@@ -452,11 +339,11 @@ async function initProjectDetail() {
           let actionHtml = ''
           if (m.status === 0 && isProposer && p.status == CONFIRMED) {
             const prevOk = i === 0 || milestones[i - 1].status === 2
-            if (prevOk) actionHtml = `<button class="buy-btn ms-submit-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch">submit</button>`
+            if (prevOk) actionHtml = `<button class="buy-btn ms-submit-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;margin-top:0">submit</button>`
           } else if (m.status === 1 && windowActive && isFunder) {
-            actionHtml = `<button class="buy-btn ms-dispute-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444">dispute</button>`
+            actionHtml = `<button class="buy-btn ms-dispute-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0">dispute</button>`
           } else if (m.status === 1 && !windowActive) {
-            actionHtml = `<button class="buy-btn ms-release-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#4ade80;color:#4ade80">release</button>`
+            actionHtml = `<button class="buy-btn ms-release-btn" data-ms-idx="${i}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#4ade80;color:#4ade80;background:transparent;margin-top:0">release</button>`
           }
 
           let countdownHtml = ''
@@ -468,25 +355,25 @@ async function initProjectDetail() {
             countdownHtml = `<span class="ms-countdown" data-ms-end="${windowEnd}" style="color:var(--accent);font-size:0.8em;margin-left:1ch">${d}d ${h}h ${m2}m</span>`
           }
 
-          return `<div style="padding:0.75em 1em;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1em">
+          return `<div style="padding:0.75em 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1em">
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">
-                <span style="color:var(--fg);font-size:0.9em">${escapeHtml(m.description)}</span>
-                <span style="color:var(--dim);font-size:0.75em">${pct}%</span>
+                <span style="color:var(--fg);font-size:0.9em">${i + 1}. ${esc(m.description)}</span>
+                <span style="color:var(--dim);font-size:0.75em">${pctVal}%</span>
               </div>
               <div style="display:flex;align-items:center;gap:0.5ch;margin-top:0.25em">
-                <span style="color:${statusColor};font-size:0.75em;text-transform:uppercase">${statusLabel}</span>
+                <span style="color:${sColor};font-size:0.75em;text-transform:uppercase">${sLabel}</span>
                 ${countdownHtml}
               </div>
             </div>
             ${actionHtml}
           </div>`
-        }).join('')}</div>
+        }).join('')}
         <p id="ms-action-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
       </div>`
     }
 
-    // revenue sharing section — batch all RPC reads
+    // ── REVENUE SHARING ──
     let revenueHtml = ''
     let revShareBps = 0
     let totalRev = 0n
@@ -515,95 +402,241 @@ async function initProjectDetail() {
       const revPct = (revShareBps / 100).toFixed(0)
       const totalRevEth = formatPriceSync(totalRev, ethPrices)
 
-      revenueHtml = `<div style="margin-top:2em;padding-top:1.5em;border-top:1px solid var(--border)">
-        <h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">revenue sharing -- ${revPct}% to funders</h3>
-        <div style="color:var(--fg);font-size:0.9em;margin-bottom:1em">total revenue received: <span style="color:var(--accent)">${totalRevEth}</span></div>`
+      revenueHtml = `<div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-chart-pie" style="margin-right:0.3ch"></i> revenue — ${revPct}% to backers</div>
+        <div style="color:var(--fg);font-size:0.9em;margin-bottom:1em">total revenue: <span style="color:var(--accent)">${totalRevEth}</span></div>`
 
       if (myAddr && isFunder) {
         try {
           const myPct = Number(p.totalFunded) > 0 ? ((Number(myContribution) / Number(p.totalFunded)) * 100).toFixed(1) : '0'
           const pendingEth = formatPriceSync(pendingRev, ethPrices)
 
-          revenueHtml += `<div style="padding:1em;border:1px solid var(--border);margin-bottom:1em">
-            <div style="color:var(--fg);font-size:0.9em">you own <span style="color:var(--accent)">${myPct}%</span> of funder revenue</div>
-            <div style="color:var(--fg);font-size:0.9em;margin-top:0.25em">claimable: <span style="color:#4ade80">${pendingEth}</span></div>
-            ${Number(pendingRev) > 0 ? '<button class="buy-btn" id="action-claim-revenue" style="margin-top:0.5em">claim revenue</button>' : ''}
+          revenueHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75em;margin-bottom:1em">
+            <div style="padding:0.75em;border:1px solid var(--border);border-radius:8px">
+              <div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.08em">your share</div>
+              <div style="color:var(--accent);font-weight:700;font-size:1.1em">${myPct}%</div>
+            </div>
+            <div style="padding:0.75em;border:1px solid var(--border);border-radius:8px">
+              <div style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.08em">claimable</div>
+              <div style="color:#4ade80;font-weight:700;font-size:1.1em">${pendingEth}</div>
+              ${Number(pendingRev) > 0 ? '<button class="buy-btn" id="action-claim-revenue" style="font-size:0.75em;padding:0.3em 0.8em;margin-top:0.3em">claim</button>' : ''}
+            </div>
           </div>`
         } catch {}
       }
 
-      // team view: send revenue form
-      if (myAddr && (isProposer || isCollaborator) && p.status == COMPLETED) {
-        revenueHtml += `<div style="padding:1em;border:1px solid var(--border)">
+      if (myAddr && isTeam && p.status == COMPLETED) {
+        revenueHtml += `<div style="padding:0.75em;border:1px solid var(--border);border-radius:8px">
           <div style="display:flex;gap:0.5ch;align-items:center">
-            <input type="text" id="revenue-amount" placeholder="0.1" class="project-input" style="width:10ch">
+            <input type="text" id="revenue-amount" placeholder="0.1" class="project-input" style="width:10ch;padding:0.5em 0.8ch;font-size:0.85em">
             <span style="color:var(--dim);font-size:0.85em">ETH</span>
-            <button class="buy-btn" id="action-distribute-revenue">send revenue</button>
+            <button class="buy-btn" id="action-distribute-revenue" style="margin-top:0">send revenue</button>
           </div>
-          <p style="color:var(--dim);font-size:0.8em;margin-top:0.25em">${revPct}% goes to funders, rest returns to you</p>
+          <p style="color:var(--dim);font-size:0.8em;margin-top:0.25em">${revPct}% goes to backers, rest returns to you</p>
         </div>`
       }
 
       revenueHtml += '</div>'
     }
 
+    // ── LOCATION ──
+    let locationHtml = ''
+    const projLoc = unpackLocation(p.location)
+    if (projLoc) {
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${projLoc.lat}&lon=${projLoc.lng}&format=json`)
+        const geoData = await geoRes.json()
+        const city = geoData.address?.city || geoData.address?.town || geoData.address?.village || geoData.address?.suburb || ''
+        const state = geoData.address?.state || ''
+        const country = geoData.address?.country || ''
+        const name = [city, state].filter(Boolean).join(', ') || [city, country].filter(Boolean).join(', ') || geoData.display_name?.split(',').slice(0, 2).join(',').trim() || `${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}`
+        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${esc(name)}</div>`
+      } catch {
+        locationHtml = `<div style="color:var(--dim);font-size:0.85em;margin-bottom:1.5em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${projLoc.lat.toFixed(4)}, ${projLoc.lng.toFixed(4)}</div>`
+      }
+    }
+
+    // ── LIFECYCLE ACTIONS ──
+    let actionsHtml = ''
+    const actionItems = []
+
+    if ((p.status == FUNDED || p.status == CONFIRMED) && isTeam) {
+      const myConfirmed = myAddr ? confirmedSet.has(myAddr) : false
+      if (p.status == FUNDED && !myConfirmed) {
+        actionItems.push(`<button class="buy-btn" id="action-confirm" style="margin-top:0"><i class="ph ph-check-circle" style="margin-right:0.3ch"></i> i'm in</button>`)
+      }
+    }
+
+    if (p.status == CONFIRMED && isProposer && msCount === 0) {
+      actionItems.push(`<button class="buy-btn" id="action-complete" style="margin-top:0"><i class="ph ph-flag" style="margin-right:0.3ch"></i> mark complete</button>`)
+    }
+
+    if (p.status == COMPLETING && isFunder) {
+      actionItems.push(`<button class="buy-btn" id="action-dispute" style="border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0"><i class="ph ph-warning" style="margin-right:0.3ch"></i> dispute</button>`)
+    }
+    if (p.status == COMPLETING && isProposer) {
+      const disputeEndsAt = p.disputeDeadline
+        ? Number(p.disputeDeadline)
+        : (p.completedAt ? Number(p.completedAt) + (3 * 86400) : Number(p.createdAt) + (3 * 86400))
+      const canFinalize = Math.floor(Date.now() / 1000) >= disputeEndsAt
+      actionItems.push(`<button class="buy-btn" id="action-finalize" ${canFinalize ? '' : 'disabled'} style="margin-top:0"><i class="ph ph-seal-check" style="margin-right:0.3ch"></i> finalize</button>`)
+    }
+
+    if (p.status == COMPLETED && isTeam) {
+      actionItems.push(`<button class="buy-btn" id="action-claim" style="border-color:#4ade80;color:#4ade80;background:transparent;margin-top:0"><i class="ph ph-wallet" style="margin-right:0.3ch"></i> claim funds</button>`)
+    }
+
+    if (p.status == PROPOSED && isProposer) {
+      actionItems.push(`<button class="buy-btn" id="action-edit-toggle" style="background:transparent;border:1px solid var(--border);color:var(--fg);margin-top:0"><i class="ph ph-pencil-simple" style="margin-right:0.3ch"></i> edit</button>`)
+    }
+
+    if ((p.status == PROPOSED || p.status == FUNDED) && isProposer) {
+      actionItems.push(`<button class="buy-btn" id="action-cancel" style="border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0"><i class="ph ph-x-circle" style="margin-right:0.3ch"></i> cancel</button>`)
+    }
+
+    if (p.status == PROPOSED && isFunder) {
+      actionItems.push(`<button class="buy-btn" id="action-withdraw" style="border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0"><i class="ph ph-arrow-u-up-left" style="margin-right:0.3ch"></i> withdraw funding</button>`)
+    }
+
+    if (p.status == CANCELLED && isFunder) {
+      actionItems.push(`<button class="buy-btn" id="action-refund" style="margin-top:0"><i class="ph ph-arrow-counter-clockwise" style="margin-right:0.3ch"></i> claim refund</button>`)
+    }
+
+    // timeout: anyone can call when CONFIRMED and past deadline + 30 days
+    if (p.status == CONFIRMED && deadlineDate) {
+      const timeoutAt = Number(p.deadline) + (30 * 86400)
+      if (Math.floor(Date.now() / 1000) > timeoutAt) {
+        actionItems.push(`<button class="buy-btn" id="action-timeout" style="border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0"><i class="ph ph-clock-countdown" style="margin-right:0.3ch"></i> timeout project</button>`)
+      }
+    }
+
+    // completion invites
+    if (p.status == COMPLETED && (isFunder || isTeam)) {
+      actionItems.push(`<button class="buy-btn" id="action-claim-invites" style="background:transparent;border:1px solid var(--border);color:var(--fg);margin-top:0"><i class="ph ph-envelope-simple" style="margin-right:0.3ch"></i> claim invite codes</button>`)
+    }
+
+    if (actionItems.length > 0) {
+      actionsHtml = `<div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions</div>
+        ${p.status == COMPLETING ? (() => {
+          const disputeEndsAt = p.disputeDeadline
+            ? Number(p.disputeDeadline)
+            : (p.completedAt ? Number(p.completedAt) + (3 * 86400) : Number(p.createdAt) + (3 * 86400))
+          const canFinalize = Math.floor(Date.now() / 1000) >= disputeEndsAt
+          return `<div style="padding:0.75em;border:1px solid rgba(251,191,36,0.2);border-radius:8px;background:rgba(251,191,36,0.04);margin-bottom:1em;display:flex;align-items:center;gap:0.75em">
+            <i class="ph ph-warning" style="color:#fbbf24;font-size:1.2em;flex-shrink:0"></i>
+            <span style="font-size:0.85em">dispute window <span id="dispute-countdown" style="color:var(--accent);font-weight:600">${canFinalize ? 'ended' : ''}</span></span>
+          </div>`
+        })() : ''}
+        ${(p.status == FUNDED || p.status == CONFIRMED) && isTeam ? `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">${confirmCount} of ${totalParticipants} confirmed</div>` : ''}
+        <div style="display:flex;gap:0.5em;flex-wrap:wrap">${actionItems.join('')}</div>
+        <p id="action-status" style="color:var(--muted);font-size:0.85em;margin-top:0.75em"></p>
+      </div>`
+    }
+
+    // ── EDIT PROJECT FORM ──
+    const descText = isEvent ? cleanDescription : (p.description || '')
+    const editFormHtml = p.status == PROPOSED && isProposer ? `<div class="pd-glass pd-edit-form" id="edit-form">
+      <div class="pd-section-title"><i class="ph ph-pencil-simple" style="margin-right:0.3ch"></i> edit project</div>
+      <div class="pd-edit-field">
+        <div class="pd-edit-label">title</div>
+        <input class="project-input" id="edit-title" value="${esc(p.title)}">
+      </div>
+      <div class="pd-edit-field">
+        <div class="pd-edit-label">description</div>
+        <textarea class="project-input" id="edit-description" style="min-height:6em;resize:vertical">${esc(descText)}</textarea>
+      </div>
+      <div class="pd-edit-field">
+        <div class="pd-edit-label">category</div>
+        <select class="project-input" id="edit-type" style="padding:0.6em 0.8ch">${PROJECT_TYPE_PRESETS.map(t => `<option value="${t}" ${t === typeName ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      </div>
+      <div style="display:flex;gap:0.5em;justify-content:flex-end;margin-top:1em">
+        <button class="buy-btn" id="edit-cancel" style="background:transparent;border:1px solid var(--border);color:var(--fg);margin-top:0">cancel</button>
+        <button class="buy-btn" id="edit-save" style="margin-top:0"><i class="ph ph-check" style="margin-right:0.3ch"></i> save changes</button>
+      </div>
+      <p id="edit-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
+    </div>` : ''
+
+    // ── MAIN RENDER ──
     contentEl.innerHTML = `
       <div style="margin-bottom:1em">
-        <span style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em">${escapeHtml(typeName)}</span>
+        <span style="color:var(--dim);font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em">${esc(typeName)}</span>
         <span style="color:${statusColor};font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">${statusLabel}</span>
       </div>
-      <h1 style="color:var(--accent);font-size:1.8em;font-weight:normal;margin-bottom:0.25em">${escapeHtml(p.title)}</h1>
+      <h1 style="color:var(--accent);font-size:1.8em;font-weight:normal;margin-bottom:0.25em">${esc(p.title)}</h1>
       ${isEvent ? `
         <div style="font-size:1.1em;color:var(--fg);margin-bottom:0.5em">${deadlineStr}</div>
-        ${eventMeta?.venue ? `<div style="color:var(--muted);font-size:0.95em;margin-bottom:0.25em"><i class="ph ph-map-pin"></i> ${escapeHtml(eventMeta.venue)}${eventMeta.venueAddress ? ` · <a href="https://maps.google.com/?q=${encodeURIComponent(eventMeta.venueAddress)}" target="_blank" rel="noopener" style="color:var(--dim);font-size:0.85em">directions</a>` : ''}</div>` : ''}
-        ${eventMeta?.ageRestriction ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.5em">${escapeHtml(eventMeta.ageRestriction)}</div>` : ''}
+        ${eventMeta?.venue ? `<div style="color:var(--muted);font-size:0.95em;margin-bottom:0.25em"><i class="ph ph-map-pin"></i> ${esc(eventMeta.venue)}${eventMeta.venueAddress ? ` · <a href="https://maps.google.com/?q=${encodeURIComponent(eventMeta.venueAddress)}" target="_blank" rel="noopener" style="color:var(--dim);font-size:0.85em">directions</a>` : ''}</div>` : ''}
+        ${eventMeta?.ageRestriction ? `<div style="color:var(--dim);font-size:0.8em;margin-bottom:0.5em">${esc(eventMeta.ageRestriction)}</div>` : ''}
         <div style="color:var(--muted);font-size:0.85em;margin-bottom:1.5em">
-          hosted by <a href="/network?artist=${p.proposer.toLowerCase()}" style="color:var(--fg)">${escapeHtml(resolve(p.proposer))}</a>
+          hosted by ${profilePicHtml(p.proposer, 18)} <a href="/network?artist=${p.proposer.toLowerCase()}" style="color:var(--fg)">${esc(resolve(p.proposer))}</a>
         </div>
       ` : `
-        <div style="color:var(--muted);font-size:0.85em;margin-bottom:1.5em">
-          proposed by <a href="/network?artist=${p.proposer.toLowerCase()}" style="color:var(--fg)">${escapeHtml(resolve(p.proposer))}</a>
-          <span style="color:var(--dim)"> · ${createdStr} · funding deadline ${deadlineStr}</span>
+        <div style="color:var(--muted);font-size:0.85em;margin-bottom:1.5em;display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">
+          proposed by ${profilePicHtml(p.proposer, 18)} <a href="/network?artist=${p.proposer.toLowerCase()}" style="color:var(--fg)">${esc(resolve(p.proposer))}</a>
+          <span style="color:var(--dim)"> · ${createdStr} · deadline ${deadlineStr}</span>
         </div>
       `}
-      ${(isEvent ? cleanDescription : p.description) ? `<p style="color:var(--fg);line-height:1.7;max-width:65ch;margin-bottom:1em">${escapeHtml(isEvent ? cleanDescription : p.description)}</p>` : ''}
+      ${descText ? `<div style="color:var(--fg);line-height:1.7;max-width:65ch;margin-bottom:1.5em">${renderMarkdown(descText)}</div>` : ''}
       <div id="project-gallery" style="display:none;margin-bottom:1.5em"></div>
       ${locationHtml}
 
       ${isEvent ? '' : `
-      <div style="margin-bottom:2em">
-        <div style="display:flex;justify-content:space-between;font-size:0.9em;margin-bottom:0.4em">
-          <span style="color:var(--fg)" data-eth-wei="${p.goal || '0'}">${fundedEth} / ${goalEth} ETH</span>
-          <span style="color:${statusColor}">${pct}%</span>
+      <div class="pd-glass">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
+          <div>
+            <span style="color:var(--accent);font-size:1.4em;font-weight:700">${fundedEth}</span>
+            <span style="color:var(--muted);font-size:0.85em"> / ${goalEth} ETH</span>
+          </div>
+          <span style="color:${statusColor};font-weight:700;font-size:1.2em">${pct}%</span>
         </div>
         <div class="project-progress-bar"><div class="project-progress-fill" style="width:${Math.min(pct, 100)}%"></div></div>
+        <div style="display:flex;gap:2em;font-size:0.8em;color:var(--muted);margin-top:0.5em">
+          <span><span style="color:var(--fg);font-weight:600">${data.fundings.items.length}</span> backers</span>
+          ${deadlineDate ? `<span><span style="color:var(--fg);font-weight:600">${Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / 86400000))}</span> days left</span>` : ''}
+        </div>
       </div>
       `}
 
-      ${tiersHtml ? `<div style="margin-bottom:2em"><h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${isEvent ? 'tickets' : 'tiers'}</h3><div style="display:grid;gap:1em">${tiersHtml}</div></div>` : ''}
+      ${tiersHtml ? `<div class="pd-glass" style="padding:0;overflow:hidden">
+        <div style="padding:1em 1.25em 0"><div class="pd-section-title"><i class="ph ph-${isEvent ? 'ticket' : 'stack'}" style="margin-right:0.3ch"></i> ${isEvent ? 'tickets' : 'tiers'}</div></div>
+        ${tiersHtml}
+      </div>` : ''}
 
-      <div id="resale-tickets-section" style="margin-bottom:2em"></div>
+      <div id="resale-tickets-section"></div>
 
-      <div style="margin-bottom:2em">
-        <h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${isEvent ? 'organizers' : 'team'}</h3>
+      <div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-users-three" style="margin-right:0.3ch"></i> ${isEvent ? 'organizers' : 'team'}</div>
         ${teamHtml}
+        <div id="chat-links" style="margin-top:0.75em;display:flex;gap:0.5em"></div>
       </div>
 
-      ${fundersHtml ? `<div style="margin-bottom:2em"><h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${isEvent ? 'attendees' : 'backers'}</h3>${fundersHtml}</div>` : ''}
+      ${fundersHtml ? `<div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-hand-heart" style="margin-right:0.3ch"></i> ${isEvent ? 'attendees' : 'backers'}</div>
+        ${fundersHtml}
+        ${showAllFunders}
+      </div>` : ''}
 
       ${milestonesHtml}
-      ${actionsHtml}
-      ${revenueHtml}
 
-      <div id="project-comments" style="margin-top:2em;padding-top:1.5em;border-top:1px solid var(--border)"></div>
-      <div id="project-comment-form" style="margin-top:1.5em"></div>
+      <div id="credentials-section"></div>
+      <div id="checkin-section"></div>
+
+      ${revenueHtml}
+      ${actionsHtml}
+      ${editFormHtml}
+
+      <div id="activity-timeline"></div>
+
+      <div id="project-comments"></div>
+      <div id="project-comment-form"></div>
     `
 
     document.title = `${p.title} — project`
 
-    // wire up actions
+    // ── WIRE UP ACTIONS ──
 
-    async function execAction(fn, args, value, meta, { statusId = 'action-status', btnSelector = '#project-actions .buy-btn' } = {}) {
+    async function execAction(fn, args, value, meta, { statusId = 'action-status', btnSelector = '.pd-glass .buy-btn' } = {}) {
       const statusEl = document.getElementById(statusId)
       const addr = window.getWalletAddress?.()
       if (!addr) { if (statusEl) statusEl.textContent = 'connect wallet'; return }
@@ -637,7 +670,6 @@ async function initProjectDetail() {
               }))
             }
           } catch (e) { console.warn('auto-dm failed:', e?.message) }
-
           maybeCreateProjectGroup(projectId, p, data, addr).catch(() => {})
         }
 
@@ -663,6 +695,39 @@ async function initProjectDetail() {
     document.getElementById('action-dispute')?.addEventListener('click', () => execAction('dispute', [BigInt(projectId)]))
     document.getElementById('action-claim')?.addEventListener('click', () => execAction('claimFunds', []))
     document.getElementById('action-refund')?.addEventListener('click', () => execAction('claimRefund', [BigInt(projectId)]))
+    document.getElementById('action-withdraw')?.addEventListener('click', () => {
+      if (!confirm('withdraw your funding? you will receive a full refund.')) return
+      execAction('withdrawFunding', [BigInt(projectId)])
+    })
+    document.getElementById('action-timeout')?.addEventListener('click', () => {
+      if (!confirm('this project is past its deadline. timing out will cancel it and allow refunds.')) return
+      execAction('timeoutProject', [BigInt(projectId)])
+    })
+    document.getElementById('action-claim-invites')?.addEventListener('click', () => {
+      execAction('claimCompletionInvites', [BigInt(projectId)])
+    })
+
+    // ── EDIT PROJECT ──
+    document.getElementById('action-edit-toggle')?.addEventListener('click', () => {
+      const form = document.getElementById('edit-form')
+      if (form) {
+        form.classList.toggle('active')
+        document.getElementById('action-edit-toggle').textContent = form.classList.contains('active') ? 'cancel edit' : 'edit'
+      }
+    })
+    document.getElementById('edit-cancel')?.addEventListener('click', () => {
+      const form = document.getElementById('edit-form')
+      if (form) form.classList.remove('active')
+      const btn = document.getElementById('action-edit-toggle')
+      if (btn) btn.innerHTML = '<i class="ph ph-pencil-simple" style="margin-right:0.3ch"></i> edit'
+    })
+    document.getElementById('edit-save')?.addEventListener('click', async () => {
+      const title = document.getElementById('edit-title')?.value?.trim()
+      const description = document.getElementById('edit-description')?.value?.trim()
+      const projectType = document.getElementById('edit-type')?.value
+      if (!title) { document.getElementById('edit-status').textContent = 'title is required'; return }
+      await execAction('updateProject', [BigInt(projectId), title, description || '', projectType || 'other', p.metadataCid || ''], null, null, { statusId: 'edit-status' })
+    })
 
     // milestone actions
     contentEl.querySelectorAll('.ms-submit-btn').forEach(btn => {
@@ -673,7 +738,7 @@ async function initProjectDetail() {
     })
     contentEl.querySelectorAll('.ms-dispute-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (!confirm('dispute this milestone? if enough backers dispute (≥50% by value), the project is cancelled and all remaining funds are refundable.')) return
+        if (!confirm('dispute this milestone?')) return
         execAction('disputeMilestone', [BigInt(projectId), BigInt(btn.dataset.msIdx)], null, null, msOpts)
       })
     })
@@ -690,14 +755,9 @@ async function initProjectDetail() {
         msCountdownEls.forEach(el => {
           const end = parseInt(el.dataset.msEnd)
           const left = end - now
-          if (left <= 0) {
-            el.textContent = 'window closed — release available'
-            return
-          }
+          if (left <= 0) { el.textContent = 'window closed — release available'; return }
           anyActive = true
-          const d = Math.floor(left / 86400)
-          const h = Math.floor((left % 86400) / 3600)
-          const m = Math.floor((left % 3600) / 60)
+          const d = Math.floor(left / 86400), h = Math.floor((left % 86400) / 3600), m = Math.floor((left % 3600) / 60)
           el.textContent = `${d}d ${h}h ${m}m`
         })
         if (!anyActive) clearInterval(msInterval)
@@ -705,7 +765,41 @@ async function initProjectDetail() {
       window.addEventListener('spa-navigate', () => clearInterval(msInterval), { once: true })
     }
 
-    // fund tier buttons
+    // dispute window countdown
+    if (p.status == COMPLETING) {
+      const disputeEndsAt = p.disputeDeadline
+        ? Number(p.disputeDeadline)
+        : (p.completedAt ? Number(p.completedAt) + (3 * 86400) : Number(p.createdAt) + (3 * 86400))
+      const canFinalize = Math.floor(Date.now() / 1000) >= disputeEndsAt
+
+      if (!canFinalize) {
+        function updateCountdown() {
+          const now = Math.floor(Date.now() / 1000)
+          const left = disputeEndsAt - now
+          if (left <= 0) {
+            if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null }
+            const el = document.getElementById('dispute-countdown')
+            if (el) el.textContent = 'ended — finalize available'
+            const btn = document.getElementById('action-finalize')
+            if (btn) { btn.disabled = false }
+            return
+          }
+          const d = Math.floor(left / 86400), h = Math.floor((left % 86400) / 3600), m = Math.floor((left % 3600) / 60), s = left % 60
+          const el = document.getElementById('dispute-countdown')
+          if (el) el.textContent = `${d}d ${h}h ${m}m ${s}s`
+        }
+        setTimeout(() => {
+          updateCountdown()
+          if (_countdownInterval) clearInterval(_countdownInterval)
+          _countdownInterval = setInterval(updateCountdown, 1000)
+          window.addEventListener('spa-navigate', () => {
+            if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null }
+          }, { once: true })
+        }, 100)
+      }
+    }
+
+    // ── FUND TIER with ensureFundsForPurchase ──
     contentEl.querySelectorAll('.fund-tier-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const userAddr = await requireUser('fund this project')
@@ -715,9 +809,13 @@ async function initProjectDetail() {
         const qtyInput = contentEl.querySelector(`.fund-qty[data-tier-id="${btn.dataset.tierId}"]`)
         const qty = BigInt(Math.max(1, parseInt(qtyInput?.value) || 1))
         const totalValue = price * qty
-        const tier = (data.tiers?.items || []).find(t => String(t.tierId) === btn.dataset.tierId)
+        const statusEl = document.getElementById('action-status')
+
+        const funded = await ensureFundsForPurchase(totalValue, statusEl)
+        if (!funded) return
+
         execAction('fundTier', [BigInt(projectId), tierId, qty], totalValue, {
-          tierName: tier?.name || 'tier',
+          tierName: btn.dataset.tierName || 'tier',
           qty: Number(qty),
         })
       })
@@ -752,7 +850,21 @@ async function initProjectDetail() {
       }
     })
 
-    // --- project image gallery ---
+    // show all funders
+    document.getElementById('show-all-funders')?.addEventListener('click', function () {
+      const allHtml = data.fundings.items.map(f => {
+        const domain = resolve(f.funder)
+        const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatPriceSync(f.amount, ethPrices)
+        const dateStr = new Date(Number(f.timestamp) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        return `<div class="pd-row">
+          <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(f.funder, 20)}<a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${esc(domain)}</a></span>
+          <span style="display:flex;gap:1ch;align-items:center"><span style="color:#4ade80;font-variant-numeric:tabular-nums">${amtLabel}</span><span style="color:var(--dim);font-size:0.85em">${dateStr}</span></span>
+        </div>`
+      }).join('')
+      this.parentElement.innerHTML = `<div class="pd-section-title"><i class="ph ph-hand-heart" style="margin-right:0.3ch"></i> ${isEvent ? 'attendees' : 'backers'}</div>${allHtml}`
+    })
+
+    // ── GALLERY ──
     if (p.metadataCid) {
       const galleryEl = document.getElementById('project-gallery')
       if (galleryEl) {
@@ -764,20 +876,18 @@ async function initProjectDetail() {
             const isSingle = imgs.length === 1
             galleryEl.style.display = ''
             galleryEl.innerHTML = `<div style="display:${isSingle ? 'block' : 'grid'};${isSingle ? '' : 'grid-template-columns:repeat(auto-fill,minmax(200px,1fr));'}gap:0.5em">${
-              imgs.map(img => `<a href="/api/ipfs-proxy/${escapeHtml(img.cid)}" target="_blank" style="display:block;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><img src="/api/ipfs-proxy/${escapeHtml(img.cid)}" loading="lazy" style="width:100%;${isSingle ? 'max-height:400px;object-fit:cover' : 'height:200px;object-fit:cover'};display:block" alt="${escapeHtml(img.name || '')}"></a>`).join('')
+              imgs.map(img => `<a href="/api/ipfs-proxy/${esc(img.cid)}" target="_blank" style="display:block;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><img src="/api/ipfs-proxy/${esc(img.cid)}" loading="lazy" style="width:100%;${isSingle ? 'max-height:400px;object-fit:cover' : 'height:200px;object-fit:cover'};display:block" alt="${esc(img.name || '')}"></a>`).join('')
             }</div>`
           }
         } catch (e) { console.warn('gallery load error:', e) }
       }
     }
 
-    // --- resale tickets section ---
+    // ── RESALE TICKETS ──
     const resaleEl = document.getElementById('resale-tickets-section')
     if (resaleEl) {
       try {
         const listings = await getTicketListingsForProject(projectId)
-
-        // check if connected wallet owns any TICKET tokens for this project
         let ownedTickets = []
         if (myAddr) {
           try {
@@ -789,82 +899,68 @@ async function initProjectDetail() {
               }
             `, { holder: myAddr, projectId: String(projectId) })
             ownedTickets = credData.credentials?.items || []
-          } catch (e) { console.warn('owned tickets query error:', e) }
+          } catch {}
         }
 
-        // resolve seller addresses
         const sellerAddrs = listings.map(l => l.seller)
         const sellerDomains = await resolveAddresses(query, sellerAddrs).catch(() => ({}))
 
         let resaleHtml = ''
-
         if (listings.length > 0) {
-          resaleHtml += `<h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${t('tickets.resale')}</h3>`
+          resaleHtml += `<div class="pd-section-title"><i class="ph ph-storefront" style="margin-right:0.3ch"></i> ${t('tickets.resale')}</div>`
           for (const listing of listings) {
             const sellerDomain = sellerDomains[listing.seller.toLowerCase()] || `${listing.seller.slice(0, 6)}...${listing.seller.slice(-4)}`
             const priceEth = formatPriceSync(listing.price, ethPrices)
             const isMine = myAddr && listing.seller.toLowerCase() === myAddr
-
-            resaleHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.75em 0;border-bottom:1px solid var(--border);font-size:0.9em">
-              <div>
-                <a href="/network?artist=${listing.seller.toLowerCase()}" style="color:var(--fg)">${escapeHtml(sellerDomain)}</a>
-                <span style="color:var(--accent);margin-left:1ch">${priceEth}</span>
-              </div>
-              <div>
-                ${isMine
-                  ? `<button class="buy-btn cancel-ticket-btn" data-token-id="${escapeHtml(listing.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444">${t('tickets.cancel')}</button>`
-                  : `<button class="buy-btn buy-ticket-btn" data-token-id="${escapeHtml(listing.tokenId)}" data-price="${escapeHtml(listing.price)}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.buy')}</button>`
-                }
-              </div>
+            resaleHtml += `<div class="pd-row">
+              <span><a href="/network?artist=${listing.seller.toLowerCase()}" style="color:var(--fg)">${esc(sellerDomain)}</a> <span style="color:var(--accent);margin-left:0.5ch">${priceEth}</span></span>
+              ${isMine
+                ? `<button class="buy-btn cancel-ticket-btn" data-token-id="${esc(listing.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch;border-color:#ef4444;color:#ef4444;background:transparent;margin-top:0">${t('tickets.cancel')}</button>`
+                : `<button class="buy-btn buy-ticket-btn" data-token-id="${esc(listing.tokenId)}" data-price="${esc(listing.price)}" style="font-size:0.8em;padding:0.3em 1ch;margin-top:0">${t('tickets.buy')}</button>`
+              }
             </div>`
           }
         }
 
-        // show "list for resale" for owned tickets not currently listed
         const listedTokenIds = new Set(listings.map(l => l.tokenId.toString()))
         const unlistedTickets = ownedTickets.filter(t => !listedTokenIds.has(t.tokenId.toString()))
-
         if (unlistedTickets.length > 0) {
-          resaleHtml += `<h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-top:1.5em;margin-bottom:0.75em">${t('tickets.yourTickets')}</h3>`
+          resaleHtml += `<div class="pd-section-title" style="margin-top:1em"><i class="ph ph-ticket" style="margin-right:0.3ch"></i> ${t('tickets.yourTickets')}</div>`
           for (const ticket of unlistedTickets) {
             resaleHtml += `<div style="display:flex;gap:0.5ch;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);font-size:0.9em">
               <span style="color:var(--fg)">ticket #${ticket.tokenId}</span>
-              <input type="text" class="ticket-price-input project-input" data-token-id="${escapeHtml(ticket.tokenId)}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto">
+              <input type="text" class="ticket-price-input project-input" data-token-id="${esc(ticket.tokenId)}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto;padding:0.4em 0.6ch;font-size:0.85em">
               <span style="color:var(--dim);font-size:0.85em">ETH</span>
-              <button class="buy-btn list-ticket-btn" data-token-id="${escapeHtml(ticket.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch">${t('tickets.listForSale')}</button>
+              <button class="buy-btn list-ticket-btn" data-token-id="${esc(ticket.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch;margin-top:0">${t('tickets.listForSale')}</button>
             </div>`
           }
         }
 
         if (!resaleHtml && listings.length === 0) {
-          // only show "no listings" if there are ticket tiers for this project
           const hasTicketTiers = (data.tiers?.items || []).some(tier => tier.transferable)
           if (hasTicketTiers) {
-            resaleHtml = `<h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75em">${t('tickets.resale')}</h3>
+            resaleHtml = `<div class="pd-section-title"><i class="ph ph-storefront" style="margin-right:0.3ch"></i> ${t('tickets.resale')}</div>
               <p style="color:var(--dim);font-size:0.9em">${t('tickets.noListings')}</p>`
           }
         }
 
         if (resaleHtml) {
-          resaleEl.innerHTML = resaleHtml
-          resaleEl.insertAdjacentHTML('beforeend', '<p id="ticket-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>')
+          resaleEl.innerHTML = `<div class="pd-glass">${resaleHtml}<p id="ticket-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p></div>`
 
-          // wire up buy buttons
           resaleEl.querySelectorAll('.buy-ticket-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
               const statusEl = document.getElementById('ticket-status')
+              const funded = await ensureFundsForPurchase(BigInt(btn.dataset.price), statusEl)
+              if (!funded) return
               statusEl.textContent = 'confirm in wallet...'
               try {
                 await purchaseTicket(btn.dataset.tokenId, btn.dataset.price)
                 statusEl.textContent = t('tickets.purchased')
                 reloadAfterTx()
-              } catch (e) {
-                statusEl.textContent = formatTxError(e)
-              }
+              } catch (e) { statusEl.textContent = formatTxError(e) }
             })
           })
 
-          // wire up cancel buttons
           resaleEl.querySelectorAll('.cancel-ticket-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
               const statusEl = document.getElementById('ticket-status')
@@ -873,13 +969,10 @@ async function initProjectDetail() {
                 await cancelTicketListing(btn.dataset.tokenId)
                 statusEl.textContent = 'cancelled'
                 reloadAfterTx()
-              } catch (e) {
-                statusEl.textContent = formatTxError(e)
-              }
+              } catch (e) { statusEl.textContent = formatTxError(e) }
             })
           })
 
-          // wire up list buttons
           resaleEl.querySelectorAll('.list-ticket-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
               const statusEl = document.getElementById('ticket-status')
@@ -888,22 +981,167 @@ async function initProjectDetail() {
               if (!priceStr) { statusEl.textContent = t('tickets.enterPrice'); return }
               statusEl.textContent = 'confirm in wallet...'
               try {
-                const priceWei = parseEther(priceStr)
-                await listTicket(btn.dataset.tokenId, priceWei)
+                await listTicket(btn.dataset.tokenId, parseEther(priceStr))
                 statusEl.textContent = t('tickets.listed')
                 reloadAfterTx()
-              } catch (e) {
-                statusEl.textContent = formatTxError(e)
-              }
+              } catch (e) { statusEl.textContent = formatTxError(e) }
             })
           })
         }
-      } catch (e) {
-        console.warn('resale tickets error:', e)
-      }
+      } catch (e) { console.warn('resale tickets error:', e) }
     }
 
-    // --- comments section ---
+    // ── XMTP CHAT LINKS (conditional) ──
+    const chatLinksEl = document.getElementById('chat-links')
+    if (chatLinksEl) {
+      try {
+        const groupRes = await fetch(`/api/project-group?id=${projectId}`)
+        const groupData = await groupRes.json()
+        let linksHtml = ''
+        if (groupData.teamGroupId && isTeam) {
+          linksHtml += `<a href="/messages?group=${esc(groupData.teamGroupId)}" class="pd-chat-link"><i class="ph ph-chat-teardrop" style="font-size:1.1em"></i> team chat</a>`
+        }
+        if (groupData.communityGroupId) {
+          linksHtml += `<a href="/messages?group=${esc(groupData.communityGroupId)}" class="pd-chat-link"><i class="ph ph-chats" style="font-size:1.1em"></i> community chat</a>`
+        }
+        chatLinksEl.innerHTML = linksHtml
+      } catch {}
+    }
+
+    // ── CREDENTIAL HOLDERS ──
+    const credSection = document.getElementById('credentials-section')
+    if (credSection) {
+      try {
+        const credData = await query(`
+          query ProjectCredentials($projectId: BigInt!) {
+            credentials(where: { projectId: $projectId }, limit: 100) {
+              items { ${F.credential} }
+            }
+          }
+        `, { projectId: String(projectId) })
+        const creds = credData.credentials?.items || []
+        if (creds.length > 0) {
+          const credAddrs = [...new Set(creds.map(c => c.holder))].filter(a => !domainMap[a?.toLowerCase()])
+          if (credAddrs.length > 0) {
+            const newDomains = await resolveAddresses(query, credAddrs).catch(() => ({}))
+            Object.assign(domainMap, newDomains)
+          }
+          const tierMap = {}
+          for (const tier of (data.tiers?.items || [])) {
+            tierMap[String(tier.tierId)] = tier
+          }
+          const credHtml = creds.map(c => {
+            const domain = resolve(c.holder)
+            const tier = tierMap[String(c.tierId)]
+            const badgeLabel = tier?.name || (c.tokenType === 1 ? 'ticket' : 'producer')
+            const badgeColor = c.tokenType === 1 ? '#60a5fa' : '#a78bfa'
+            return `<div class="pd-row">
+              <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(c.holder, 20)}<a href="/network?artist=${c.holder.toLowerCase()}" style="color:var(--fg);font-size:0.9em">${esc(domain)}</a></span>
+              <span class="pd-credential-badge" style="background:${badgeColor};color:#000">${esc(badgeLabel)}</span>
+            </div>`
+          }).join('')
+          credSection.innerHTML = `<div class="pd-glass">
+            <div class="pd-section-title"><i class="ph ph-medal" style="margin-right:0.3ch"></i> credential holders</div>
+            ${credHtml}
+          </div>`
+        }
+      } catch (e) { console.warn('credentials load error:', e) }
+    }
+
+    // ── CHECK-IN (event organizers only) ──
+    const checkinSection = document.getElementById('checkin-section')
+    if (checkinSection && isEvent && isTeam && (p.status == CONFIRMED || p.status == COMPLETING || p.status == COMPLETED)) {
+      try {
+        const checkinData = await query(`
+          query ProjectCheckins($projectId: BigInt!) {
+            checkins(where: { projectId: $projectId }, limit: 200) {
+              items { tokenId projectId timestamp }
+            }
+          }
+        `, { projectId: String(projectId) })
+        const checkins = checkinData.checkins?.items || []
+        const totalTicketsSold = (data.tiers?.items || []).reduce((sum, t) => sum + Number(t.sold), 0)
+
+        checkinSection.innerHTML = `<div class="pd-glass">
+          <div class="pd-section-title"><i class="ph ph-qr-code" style="margin-right:0.3ch"></i> check-in</div>
+          <div style="display:flex;gap:2em;margin-bottom:1em;font-size:0.85em">
+            <span><span style="color:var(--accent);font-weight:700">${checkins.length}</span> checked in</span>
+            <span><span style="color:var(--accent);font-weight:700">${totalTicketsSold}</span> tickets sold</span>
+            ${totalTicketsSold > 0 ? `<span><span style="color:var(--accent);font-weight:700">${Math.round(checkins.length / totalTicketsSold * 100)}%</span> attendance</span>` : ''}
+          </div>
+          <div style="display:flex;gap:0.5ch;align-items:center">
+            <input type="text" id="checkin-token-id" class="project-input" placeholder="token ID" style="width:12ch;padding:0.5em 0.8ch;font-size:0.85em">
+            <button class="buy-btn" id="action-checkin" style="margin-top:0"><i class="ph ph-check-circle" style="margin-right:0.3ch"></i> check in</button>
+          </div>
+          <p id="checkin-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
+        </div>`
+
+        document.getElementById('action-checkin')?.addEventListener('click', async () => {
+          const tokenIdStr = document.getElementById('checkin-token-id')?.value?.trim()
+          const statusEl = document.getElementById('checkin-status')
+          if (!tokenIdStr) { statusEl.textContent = 'enter a token ID'; return }
+          await execAction('checkIn', [BigInt(projectId), BigInt(tokenIdStr)], null, null, { statusId: 'checkin-status' })
+        })
+      } catch (e) { console.warn('checkin section error:', e) }
+    }
+
+    // ── ACTIVITY TIMELINE ──
+    const timelineEl = document.getElementById('activity-timeline')
+    if (timelineEl) {
+      try {
+        const feedData = await query(`
+          query ProjectActivity($refId: String!) {
+            feedEntrys(where: { refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 50) {
+              items { id author eventType refId title timestamp }
+            }
+          }
+        `, { refId: String(projectId) })
+        const events = feedData.feedEntrys?.items || []
+        if (events.length > 0) {
+          const eventAddrs = [...new Set(events.map(e => e.author))].filter(a => !domainMap[a?.toLowerCase()])
+          if (eventAddrs.length > 0) {
+            const newDomains = await resolveAddresses(query, eventAddrs).catch(() => ({}))
+            Object.assign(domainMap, newDomains)
+          }
+
+          const eventTypeConfig = {
+            'project': { color: 'var(--fg)', icon: 'ph-flag' },
+            'funding': { color: '#4ade80', icon: 'ph-hand-heart' },
+            'project-confirmed': { color: '#60a5fa', icon: 'ph-check-circle' },
+            'project-completed': { color: '#4ade80', icon: 'ph-flag-checkered' },
+            'credential': { color: '#a78bfa', icon: 'ph-medal' },
+            'purchase': { color: '#4ade80', icon: 'ph-shopping-cart' },
+          }
+
+          const eventDescriptions = {
+            'project': (e) => `<strong>${esc(resolve(e.author))}</strong> proposed project`,
+            'funding': (e) => `<strong>${esc(resolve(e.author))}</strong> funded the project`,
+            'project-confirmed': (e) => `project confirmed`,
+            'project-completed': (e) => `project completed`,
+            'credential': (e) => `<strong>${esc(resolve(e.author))}</strong> earned ${esc(e.title || 'credential')}`,
+            'purchase': (e) => `<strong>${esc(resolve(e.author))}</strong> purchased`,
+          }
+
+          const timelineHtml = events.map(e => {
+            const config = eventTypeConfig[e.eventType] || { color: 'var(--dim)', icon: 'ph-circle' }
+            const desc = (eventDescriptions[e.eventType] || (() => `<strong>${esc(resolve(e.author))}</strong> ${esc(e.eventType)}`))(e)
+            const dateStr = new Date(Number(e.timestamp) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            return `<div class="pd-timeline-item">
+              <div class="pd-timeline-dot" style="background:${config.color}"></div>
+              <div style="flex:1;color:var(--muted)">${desc}</div>
+              <span style="color:var(--dim);font-size:0.85em;white-space:nowrap">${dateStr}</span>
+            </div>`
+          }).join('')
+
+          timelineEl.innerHTML = `<div class="pd-glass">
+            <div class="pd-section-title"><i class="ph ph-clock-counter-clockwise" style="margin-right:0.3ch"></i> activity</div>
+            ${timelineHtml}
+          </div>`
+        }
+      } catch (e) { console.warn('activity timeline error:', e) }
+    }
+
+    // ── COMMENTS ──
     const blogAddr = el.dataset.blog || document.body.dataset.blog
     await loadProjectComments(projectId, p.title, domainMap)
     if (blogAddr && window.getWalletAddress?.()) {
@@ -922,7 +1160,7 @@ async function initProjectDetail() {
   }
 }
 
-// --- Project comments (blog posts with refType=1, refId=projectId) ---
+// ── Project comments (blog posts with refType=1, refId=projectId) ──
 
 async function loadProjectComments(projectId, projectTitle, domainMap) {
   const commentsEl = document.getElementById('project-comments')
@@ -944,12 +1182,12 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
     const d = new Date(Number(c.timestamp) * 1000)
     const timeStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     const indent = isReply ? 'margin-left:2ch;' : ''
-    return `<div class="project-comment" data-comment-id="${escapeHtml(c.id)}" style="${indent}padding:1em 0;border-top:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;margin-bottom:0.5em">
-        <a href="/network?artist=${c.author.toLowerCase()}" style="color:var(--fg);font-size:0.85em">${escapeHtml(resolve(c.author))}</a>
+    return `<div class="project-comment" data-comment-id="${escapeHtml(c.id)}" style="${indent}padding:0.75em 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
+        <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(c.author, 20)}<a href="/network?artist=${c.author.toLowerCase()}" style="color:var(--fg);font-size:0.85em;font-weight:500">${escapeHtml(resolve(c.author))}</a></span>
         <time style="color:var(--dim);font-size:0.8em">${timeStr}</time>
       </div>
-      <div style="color:var(--fg);font-size:0.95em;line-height:1.6">${renderMarkdown(c.content)}</div>
+      <div style="color:var(--fg);font-size:0.9em;line-height:1.65">${renderMarkdown(c.content)}</div>
       <div class="comment-replies" id="replies-for-${escapeHtml(c.id)}"></div>
     </div>`
   }
@@ -975,20 +1213,21 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
     commentsHasMore = data.blogPosts?.pageInfo?.hasNextPage || false
 
     if (comments.length === 0) {
-      commentsEl.innerHTML = `<h3 style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1em">comments</h3>
-        <p style="color:var(--dim);font-size:0.9em">no comments yet</p>`
+      commentsEl.innerHTML = `<div class="pd-glass">
+        <div class="pd-section-title"><i class="ph ph-chat-dots" style="margin-right:0.3ch"></i> discussion</div>
+        <p style="color:var(--dim);font-size:0.9em">no comments yet</p>
+      </div>`
       return
     }
 
     await resolveNewAuthors(comments)
 
-    commentsEl.innerHTML = `
-      <h3 id="comments-heading" style="color:var(--muted);font-size:0.8em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1em">${totalCount} ${totalCount === 1 ? 'comment' : 'comments'}</h3>
+    commentsEl.innerHTML = `<div class="pd-glass">
+      <div class="pd-section-title"><i class="ph ph-chat-dots" style="margin-right:0.3ch"></i> ${totalCount} ${totalCount === 1 ? 'comment' : 'comments'}</div>
       <div id="comments-list">${comments.map(c => renderComment(c, false)).join('')}</div>
-      ${commentsHasMore ? `<button id="comments-load-more" class="buy-btn" style="margin-top:1em;width:100%">load more comments</button>` : ''}
-    `
+      ${commentsHasMore ? `<button id="comments-load-more" class="buy-btn" style="width:100%">load more</button>` : ''}
+    </div>`
 
-    // load replies for each comment (refType=3, refId=commentId)
     const commentIds = comments.map(c => c.id)
     await loadCommentReplies(commentIds, domainMap, resolve)
 
@@ -1010,20 +1249,13 @@ async function loadProjectComments(projectId, projectTitle, domainMap) {
         commentsHasMore = moreData.blogPosts?.pageInfo?.hasNextPage || false
 
         await resolveNewAuthors(newComments)
-
         const listEl = document.getElementById('comments-list')
         listEl.insertAdjacentHTML('beforeend', newComments.map(c => renderComment(c, false)).join(''))
-
-        // load replies for new comments
         const newIds = newComments.map(c => c.id)
         await loadCommentReplies(newIds, domainMap, resolve)
 
-        if (!commentsHasMore) {
-          btn.style.display = 'none'
-        } else {
-          btn.textContent = 'load more comments'
-          btn.disabled = false
-        }
+        if (!commentsHasMore) btn.style.display = 'none'
+        else { btn.textContent = 'load more'; btn.disabled = false }
       } catch (e) {
         btn.textContent = 'error loading'
         console.warn('load more comments error:', e)
@@ -1070,12 +1302,12 @@ async function loadCommentReplies(commentIds, domainMap, resolve) {
         repliesEl.innerHTML = replies.map(r => {
           const d = new Date(Number(r.timestamp) * 1000)
           const timeStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          return `<div style="margin-left:2ch;padding:0.75em 0;border-top:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;margin-bottom:0.25em">
-              <a href="/network?artist=${r.author.toLowerCase()}" style="color:var(--fg);font-size:0.8em">${escapeHtml(resolve(r.author))}</a>
+          return `<div style="margin-left:2ch;padding:0.6em 0;border-top:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25em">
+              <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(r.author, 18)}<a href="/network?artist=${r.author.toLowerCase()}" style="color:var(--fg);font-size:0.8em;font-weight:500">${escapeHtml(resolve(r.author))}</a></span>
               <time style="color:var(--dim);font-size:0.75em">${timeStr}</time>
             </div>
-            <div style="color:var(--fg);font-size:0.9em;line-height:1.6">${renderMarkdown(r.content)}</div>
+            <div style="color:var(--fg);font-size:0.88em;line-height:1.6">${renderMarkdown(r.content)}</div>
           </div>`
         }).join('')
       }
@@ -1088,15 +1320,13 @@ function renderCommentForm(blogAddr, projectId, projectTitle) {
   if (!formEl || formEl.dataset.rendered) return
   formEl.dataset.rendered = '1'
 
-  formEl.innerHTML = `
-    <div style="border-top:1px solid var(--border);padding-top:1.5em">
-      <textarea id="comment-content" placeholder="write a comment..." style="width:100%;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.75em 1ch;resize:vertical;min-height:4em;line-height:1.6"></textarea>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5em">
-        <span id="comment-status" style="color:var(--muted);font-size:0.85em"></span>
-        <button class="buy-btn" id="comment-submit" style="font-size:0.85em;padding:0.3em 1.5ch">comment</button>
-      </div>
+  formEl.innerHTML = `<div class="pd-glass">
+    <textarea id="comment-content" class="project-input" placeholder="add a comment..." style="min-height:4em;resize:vertical;line-height:1.6;margin-bottom:0.5em"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span id="comment-status" style="color:var(--muted);font-size:0.85em"></span>
+      <button class="buy-btn" id="comment-submit" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0"><i class="ph ph-paper-plane-tilt" style="margin-right:0.3ch"></i> comment</button>
     </div>
-  `
+  </div>`
 
   document.getElementById('comment-submit')?.addEventListener('click', async () => {
     const content = document.getElementById('comment-content').value.trim()
@@ -1109,7 +1339,6 @@ function renderCommentForm(blogAddr, projectId, projectTitle) {
     statusEl.textContent = 'confirm in wallet...'
     try {
       const publicClient = await getPublicClient()
-
       const title = `comment on ${projectTitle}`
       await window.ensureScroll?.()
       const commentAccount = await window.ensureAuthorized?.() || addr
