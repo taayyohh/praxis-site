@@ -6803,6 +6803,12 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-save-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .vault-save-btn:disabled { opacity: 0.4; cursor: default; }
 .vault-save-status { font-size: 0.75em; color: var(--muted); text-align: center; min-height: 1em; margin-top: 0.4em; }
+.vault-save-bal { font-size: 0.72em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.vault-save-field-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.25em; }
+.vault-presets { display: flex; gap: 0.35em; }
+.vault-preset { background: none; border: 1px solid var(--border, rgba(128,128,128,0.2)); color: var(--muted); font-family: inherit; font-size: 0.7em; padding: 0.2em 0.55em; border-radius: 6px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+.vault-preset:hover { border-color: var(--accent); color: var(--accent); }
+.vault-qr { width: 160px; height: 160px; margin: 0.75em auto; border-radius: 8px; overflow: hidden; }
 @media (max-width: 600px) {
   .vault-total-value { font-size: 1.6em; }
   .vault-action-btn span { font-size: 0.85em; }
@@ -6810,4 +6816,5 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .vault-save-dialog { max-width: 100% !important; margin: 0 0.5em; }
   .vault-save-input { font-size: 1.25em; }
   .vault-save-output { font-size: 1.25em; }
+  .vault-qr { width: 140px; height: 140px; }
 }

@@ -22,6 +22,32 @@ const STABILITY_POOLS = {
   rETH: '0xd442e41019b7f5c4dd78f50dc03726c446148695',
 }
 
+const WETH_MAINNET = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+const UNISWAP_QUOTER = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e'
+const UNISWAP_ROUTER = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45'
+
+const UNISWAP_QUOTER_ABI = [{
+  name: 'quoteExactInputSingle', type: 'function', stateMutability: 'nonpayable',
+  inputs: [{ name: 'params', type: 'tuple', components: [
+    { name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' },
+    { name: 'amountIn', type: 'uint256' }, { name: 'fee', type: 'uint24' },
+    { name: 'sqrtPriceLimitX96', type: 'uint160' },
+  ]}],
+  outputs: [{ name: 'amountOut', type: 'uint256' }, { name: 'sqrtPriceX96After', type: 'uint160' },
+    { name: 'initializedTicksCrossed', type: 'uint32' }, { name: 'gasEstimate', type: 'uint256' }],
+}]
+
+const UNISWAP_ROUTER_ABI = [{
+  name: 'exactInputSingle', type: 'function', stateMutability: 'payable',
+  inputs: [{ name: 'params', type: 'tuple', components: [
+    { name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' },
+    { name: 'fee', type: 'uint24' }, { name: 'recipient', type: 'address' },
+    { name: 'amountIn', type: 'uint256' }, { name: 'amountOutMinimum', type: 'uint256' },
+    { name: 'sqrtPriceLimitX96', type: 'uint160' },
+  ]}],
+  outputs: [{ name: 'amountOut', type: 'uint256' }],
+}]
+
 const ERC20_BALANCE_ABI = [
   { name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
 ]
@@ -124,7 +150,33 @@ async function fetchBoldYield() {
   return res.json()
 }
 
-async function getRelayQuote(amountWei, addr) {
+let _mainnetPc = null
+async function getMainnetClient() {
+  if (_mainnetPc) return _mainnetPc
+  const { createPublicClient, http, mainnet } = await import('./vendor.js')
+  _mainnetPc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  return _mainnetPc
+}
+
+async function getUniswapBoldQuote(ethAmountWei) {
+  const pc = await getMainnetClient()
+  const { encodeFunctionData } = await import('./vendor.js')
+  const fees = [3000, 10000, 500]
+  for (const fee of fees) {
+    try {
+      const calldata = encodeFunctionData({
+        abi: UNISWAP_QUOTER_ABI, functionName: 'quoteExactInputSingle',
+        args: [{ tokenIn: WETH_MAINNET, tokenOut: BOLD_MAINNET, amountIn: ethAmountWei, fee, sqrtPriceLimitX96: 0n }],
+      })
+      const result = await pc.call({ to: UNISWAP_QUOTER, data: calldata })
+      const amountOut = BigInt('0x' + result.data.slice(2, 66))
+      if (amountOut > 0n) return { amountOut, fee }
+    } catch {}
+  }
+  throw new Error('no BOLD liquidity')
+}
+
+async function getRelayBridgeQuote(amountWei, addr) {
   const { initRelay } = await import('./relay-bridge.js')
   const { getQuote } = await import('./vendor-relay.js')
   await initRelay()
@@ -132,7 +184,7 @@ async function getRelayQuote(amountWei, addr) {
     chainId: 10,
     toChainId: 1,
     currency: ETH_ZERO,
-    toCurrency: BOLD_MAINNET,
+    toCurrency: ETH_ZERO,
     amount: amountWei.toString(),
     user: addr,
     recipient: addr,
@@ -150,57 +202,73 @@ async function getSpDeposit(spAddress, depositor) {
   return { deposit, collGain }
 }
 
-async function executeRelaySwap(addr, amountWei, onStatus) {
+async function executeBridge(addr, amountWei, onStatus) {
   const { initRelay, _buildBridgeWalletClient } = await import('./relay-bridge.js')
   const { getQuote, execute } = await import('./vendor-relay.js')
   await initRelay()
 
-  onStatus?.('getting quote...')
+  onStatus?.('getting bridge quote...')
   const quote = await getQuote({
-    chainId: 10,
-    toChainId: 1,
-    currency: ETH_ZERO,
-    toCurrency: BOLD_MAINNET,
+    chainId: 10, toChainId: 1,
+    currency: ETH_ZERO, toCurrency: ETH_ZERO,
     amount: amountWei.toString(),
-    user: addr,
-    recipient: addr,
-    tradeType: 'EXACT_INPUT',
+    user: addr, recipient: addr, tradeType: 'EXACT_INPUT',
   })
 
-  onStatus?.('confirm in wallet...')
-
+  onStatus?.('confirm bridge...')
   let walletClient
-  try {
-    walletClient = await _buildBridgeWalletClient(10)
-  } catch {
+  try { walletClient = await _buildBridgeWalletClient(10) } catch {
     const { createWalletClient: cwc, custom: cst, optimism: op } = await import('./vendor.js')
     walletClient = cwc({ chain: op, transport: cst(getWalletProvider()), account: addr })
   }
 
   let lastHash = null
   return new Promise((resolve, reject) => {
-    execute({
-      quote,
-      wallet: walletClient,
-      onProgress: ({ currentStep, currentStepItem, txHashes, error }) => {
+    execute({ quote, wallet: walletClient,
+      onProgress: ({ currentStepItem, txHashes, error }) => {
         if (txHashes?.length) lastHash = txHashes[txHashes.length - 1]?.txHash || lastHash
         if (currentStepItem?.txHashes?.length) lastHash = currentStepItem.txHashes[currentStepItem.txHashes.length - 1]?.txHash || lastHash
-        if (error) { reject(new Error(error.message || 'swap failed')); return }
-        if (currentStep?.id === 'approve') onStatus?.('approving...')
-        else if (currentStepItem?.status === 'complete' && currentStep?.id === 'deposit') onStatus?.('swap submitted — BOLD arriving on Ethereum...')
-        else if (currentStepItem?.status === 'complete') { onStatus?.('BOLD received on Ethereum'); resolve(lastHash) }
-        else if (currentStepItem?.status === 'incomplete') onStatus?.('swapping + bridging...')
+        if (error) { reject(new Error(error.message || 'bridge failed')); return }
+        if (currentStepItem?.status === 'complete') { onStatus?.('ETH arrived on Ethereum'); resolve(lastHash) }
+        else if (currentStepItem?.status === 'incomplete') onStatus?.('bridging ETH to Ethereum...')
       },
-    }).then(() => { resolve(lastHash) }).catch(err => {
-      const msg = err?.message || ''
-      if (lastHash && (msg.includes('not found') || msg.includes('404'))) {
-        onStatus?.('in flight — BOLD arriving on Ethereum in ~2 min')
-        resolve(lastHash)
-        return
-      }
+    }).then(() => resolve(lastHash)).catch(err => {
+      if (lastHash && (err?.message || '').includes('not found')) { onStatus?.('bridge in flight...'); resolve(lastHash); return }
       reject(err)
     })
   })
+}
+
+async function swapEthToBold(addr, feeTier, onStatus) {
+  const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
+  const pc = await getMainnetClient()
+
+  const mainnetBal = await pc.getBalance({ address: addr })
+  const gasReserve = 50000000000000n
+  const swapAmount = mainnetBal > gasReserve ? mainnetBal - gasReserve : 0n
+  if (swapAmount <= 0n) throw new Error('insufficient ETH on Ethereum after bridge')
+
+  onStatus?.('quoting swap...')
+  const { amountOut } = await getUniswapBoldQuote(swapAmount)
+  const minOut = amountOut * 97n / 100n
+
+  onStatus?.('confirm swap...')
+  let walletClient
+  try { walletClient = await _buildBridgeWalletClient(1) } catch {
+    const { createWalletClient: cwc, custom: cst, mainnet: mn } = await import('./vendor.js')
+    walletClient = cwc({ chain: { ...mn, rpcUrls: { ...mn.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: cst(getWalletProvider()), account: addr })
+  }
+
+  const hash = await walletClient.writeContract({
+    address: UNISWAP_ROUTER, abi: UNISWAP_ROUTER_ABI, functionName: 'exactInputSingle',
+    args: [{ tokenIn: WETH_MAINNET, tokenOut: BOLD_MAINNET, fee: feeTier, recipient: addr,
+      amountIn: swapAmount, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }],
+    value: swapAmount,
+  })
+  onStatus?.('swap submitted...')
+  await pc.waitForTransactionReceipt({ hash, timeout: 120_000 })
+  onStatus?.('BOLD received')
+  return hash
 }
 
 async function depositToStabilityPool(spAddress, boldAmount, addr, onStatus) {
@@ -676,7 +744,7 @@ function renderVault(el, { ethBalance, boldBalance, unclaimed, earned, contribut
 
 // --- Modals ---
 
-function showReceiveModal(addr) {
+async function showReceiveModal(addr) {
   const existing = document.getElementById('vault-receive-modal')
   if (existing) { existing.remove(); return }
   const overlay = document.createElement('div')
@@ -684,20 +752,35 @@ function showReceiveModal(addr) {
   overlay.className = 'praxis-modal-overlay'
   overlay.style.zIndex = '10002'
   const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '420px'
+  dialog.className = 'praxis-modal-dialog vault-save-dialog'
+
+  let qrHtml = ''
+  try {
+    const { generateQR } = await import('./qr.js')
+    qrHtml = `<div class="vault-qr">${generateQR(addr)}</div>`
+  } catch (e) { console.warn('QR generation failed:', e) }
+
   dialog.innerHTML = `
-    <h3 class="vault-modal-title">receive</h3>
-    <p class="vault-modal-sub">send ETH or tokens on <strong>Optimism</strong> to this address</p>
+    <div class="vault-save-head">
+      <div class="vault-save-icon">${ETH_ICON}</div>
+      <div>
+        <div class="vault-save-title">receive</div>
+        <div class="vault-save-sub">send ETH or tokens on Optimism to this address</div>
+      </div>
+    </div>
+    ${qrHtml}
     <div class="vault-addr-box">${escapeHtml(addr)}</div>
-    <button id="vault-copy-addr" class="vault-modal-btn"><i class="ph ph-copy"></i> copy address</button>
+    <button id="vault-copy-addr" class="vault-save-btn" style="border-color:var(--accent);color:var(--accent)"><i class="ph ph-copy"></i> copy address</button>
   `
   overlay.appendChild(dialog)
   document.body.appendChild(overlay)
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
   dialog.querySelector('#vault-copy-addr').addEventListener('click', async () => {
     await navigator.clipboard.writeText(addr)
-    dialog.querySelector('#vault-copy-addr').innerHTML = '<i class="ph ph-check"></i> copied'
+    const btn = dialog.querySelector('#vault-copy-addr')
+    btn.innerHTML = '<i class="ph ph-check"></i> copied'
+    btn.style.borderColor = 'var(--green)'
+    btn.style.color = 'var(--green)'
     setTimeout(() => overlay.remove(), 1500)
   })
 }
@@ -731,6 +814,15 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     </label>`
   }).join('')
 
+  const ethBal = Number(ethBalance) / 1e18
+  const ethBalStr = formatEthAmount(ethBalance)
+  const ethBalFiat = ethRate ? formatFiat(ethBal * ethRate, currency) : ''
+
+  const presets = [25, 50, 75, 100].map(pct => {
+    const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.002 : 0))
+    return `<button class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+  }).join('')
+
   dialog.innerHTML = `
     <div class="vault-save-head">
       <div class="vault-save-icon">${BOLD_ICON}</div>
@@ -743,13 +835,16 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       <div class="vault-save-field">
         <div class="vault-save-field-head">
           <span class="vault-save-field-label">you send</span>
-          <button id="swap-max" class="vault-save-max">max</button>
+          <span class="vault-save-bal">${ethBalStr} ETH${ethBalFiat ? ' · ' + ethBalFiat : ''}</span>
         </div>
         <div class="vault-save-input-row">
           <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
           <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
         </div>
-        <div id="swap-fiat" class="vault-save-fiat"></div>
+        <div class="vault-save-field-foot">
+          <span id="swap-fiat" class="vault-save-fiat"></span>
+          <div class="vault-presets">${presets}</div>
+        </div>
       </div>
       <div class="vault-save-arrow"><i class="ph ph-arrow-down"></i></div>
       <div class="vault-save-field">
@@ -762,7 +857,8 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       </div>
       ${poolCards ? `<div class="vault-save-field-label" style="margin-top:0.5em">deposit into</div><div class="vault-pool-cards">${poolCards}</div>` : ''}
       <div class="vault-save-steps" id="swap-steps">
-        <div class="vault-save-step" data-step="swap"><span class="vault-save-step-dot"></span>swap + bridge via Relay</div>
+        <div class="vault-save-step" data-step="bridge"><span class="vault-save-step-dot"></span>bridge ETH to Ethereum</div>
+        <div class="vault-save-step" data-step="swap"><span class="vault-save-step-dot"></span>swap ETH → BOLD</div>
         <div class="vault-save-step" data-step="deposit"><span class="vault-save-step-dot"></span>deposit into stability pool</div>
       </div>
       <button id="swap-confirm" class="vault-save-btn" disabled>enter amount</button>
@@ -799,10 +895,11 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     if (state) el.classList.add(`vault-save-step-${state}`)
   }
 
-  dialog.querySelector('#swap-max')?.addEventListener('click', () => {
-    const maxEth = Math.max(0, Number(ethBalance) / 1e18 - 0.002)
-    swapInput.value = maxEth.toFixed(6)
-    swapInput.dispatchEvent(new Event('input'))
+  dialog.querySelectorAll('.vault-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      swapInput.value = parseFloat(btn.dataset.amount).toFixed(6)
+      swapInput.dispatchEvent(new Event('input'))
+    })
   })
 
   swapInput.addEventListener('input', () => {
@@ -828,25 +925,10 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     _quoteTimer = setTimeout(async () => {
       try {
         const amountIn = parseEther(val.toFixed(18))
-        const quote = await getRelayQuote(amountIn, addr)
-        const details = quote.details || {}
-        const outRaw = details.currencyOut?.amount || details.currencyOut?.amountFormatted
-        let boldOut = 0
-        if (outRaw) {
-          boldOut = typeof outRaw === 'string' && outRaw.includes('.') ? parseFloat(outRaw) : Number(outRaw) / 1e18
-        }
-        if (!boldOut || boldOut <= 0) {
-          const steps = quote.steps || []
-          for (const step of steps) {
-            for (const item of (step.items || [])) {
-              if (item.data?.amountOut) { boldOut = Number(item.data.amountOut) / 1e18; break }
-            }
-            if (boldOut > 0) break
-          }
-        }
-        if (!boldOut || boldOut <= 0) boldOut = val * ethRate
+        const uniQuote = await getUniswapBoldQuote(amountIn)
+        const boldOut = Number(uniQuote.amountOut) / 1e18
 
-        _lastQuote = { amountIn, boldOut }
+        _lastQuote = { amountIn, boldOut, fee: uniQuote.fee }
         outputEl.textContent = boldOut.toFixed(2)
         outputEl.style.color = 'var(--fg)'
         const rate = boldOut / val
@@ -854,13 +936,23 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         confirmBtn.disabled = false
         confirmBtn.textContent = 'save'
       } catch (e) {
-        console.warn('relay quote error:', e)
-        outputEl.textContent = 'no route'
-        outputEl.style.color = 'var(--dim)'
-        rateEl.textContent = ''
-        confirmBtn.disabled = true
-        confirmBtn.textContent = 'unavailable'
-        _lastQuote = null
+        console.warn('quote error:', e)
+        if (ethRate) {
+          const est = val * ethRate
+          _lastQuote = { amountIn: parseEther(val.toFixed(18)), boldOut: est, fee: 3000 }
+          outputEl.textContent = `≈ ${est.toFixed(2)}`
+          outputEl.style.color = 'var(--dim)'
+          rateEl.textContent = 'estimate — pool may vary'
+          confirmBtn.disabled = false
+          confirmBtn.textContent = 'save'
+        } else {
+          outputEl.textContent = 'unavailable'
+          outputEl.style.color = 'var(--dim)'
+          rateEl.textContent = ''
+          confirmBtn.disabled = true
+          confirmBtn.textContent = 'no liquidity'
+          _lastQuote = null
+        }
       }
     }, 600)
   })
@@ -875,26 +967,32 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     statusEl.style.color = 'var(--muted)'
 
     try {
-      // --- Step 1: Cross-chain swap ETH (Optimism) → BOLD (Ethereum) via Relay ---
-      markStep('swap', 'active')
-      confirmBtn.textContent = 'step 1/2: swapping...'
+      const fee = _lastQuote.fee || 3000
 
-      await executeRelaySwap(addr, amountIn, (msg) => { statusEl.textContent = msg })
+      // --- Step 1: Bridge ETH from Optimism to Ethereum mainnet ---
+      markStep('bridge', 'active')
+      confirmBtn.textContent = 'step 1/3: bridging...'
+      await executeBridge(addr, amountIn, (msg) => { statusEl.textContent = msg })
+      markStep('bridge', 'done')
+
+      // --- Step 2: Swap ETH → BOLD on Uniswap (Ethereum mainnet) ---
+      markStep('swap', 'active')
+      confirmBtn.textContent = 'step 2/3: swapping...'
+      statusEl.textContent = 'waiting for ETH on Ethereum...'
+      await new Promise(r => setTimeout(r, 5000))
+      await swapEthToBold(addr, fee, (msg) => { statusEl.textContent = msg })
       markStep('swap', 'done')
 
-      // --- Step 2: Deposit into stability pool ---
+      // --- Step 3: Deposit into stability pool ---
       if (selectedPool) {
         markStep('deposit', 'active')
-        confirmBtn.textContent = 'step 2/2: depositing...'
-        statusEl.textContent = 'waiting for BOLD on Ethereum...'
-        await new Promise(r => setTimeout(r, 10000))
-
+        confirmBtn.textContent = 'step 3/3: depositing...'
         const boldBal = await getBoldBalanceMainnet(addr)
         if (boldBal > 0n) {
           await depositToStabilityPool(selectedPool, boldBal, addr, (msg) => { statusEl.textContent = msg })
           markStep('deposit', 'done')
         } else {
-          statusEl.textContent = 'BOLD still arriving — deposit manually when ready'
+          statusEl.textContent = 'BOLD arriving — deposit manually when ready'
           markStep('deposit', 'done')
         }
       } else {
@@ -937,31 +1035,49 @@ export async function showSendModal(fromAddress) {
 
   const balance = await getCachedBalance(fromAddress).catch(() => 0n)
   const balEth = formatEthAmount(balance)
+  const ethBal = Number(balance) / 1e18
   let prices = await getEthPrices().catch(() => null)
   const currency = getUserCurrency()
+  const ethRate = prices?.[currency] || 0
+  const balFiat = ethRate ? formatFiat(ethBal * ethRate, currency) : ''
+
+  const presets = [25, 50, 75, 100].map(pct => {
+    const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.0005 : 0))
+    return `<button class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+  }).join('')
 
   dialog.innerHTML = `
-    <h3 class="vault-modal-title">send</h3>
-    <p class="vault-modal-sub">on Optimism &middot; balance: ${balEth} ETH</p>
-    <div class="vault-swap-fields">
+    <div class="vault-save-head">
+      <div class="vault-save-icon">${ETH_ICON}</div>
       <div>
-        <label class="vault-field-label">to</label>
-        <input id="send-to" type="text" placeholder="handle, address, or domain" class="vault-field-input vault-field-input-full">
-        <div id="send-resolved" class="vault-field-fiat" style="min-height:1.2em"></div>
+        <div class="vault-save-title">send</div>
+        <div class="vault-save-sub">on Optimism</div>
       </div>
-      <div>
-        <label class="vault-field-label">amount</label>
-        <div class="vault-field-row">
-          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-field-input">
-          <span style="color:var(--muted);font-size:0.9em;flex-shrink:0">ETH</span>
+    </div>
+    <div class="vault-save-body">
+      <div class="vault-save-field">
+        <span class="vault-save-field-label">to</span>
+        <div class="vault-save-input-row">
+          <input id="send-to" type="text" placeholder="handle, address, or domain" class="vault-save-input" style="font-size:0.95em;font-weight:400" autocomplete="off">
         </div>
-        <div class="vault-field-meta">
-          <span id="send-fiat" class="vault-field-fiat" style="min-height:1.2em"></span>
-          <button id="send-max" class="vault-field-max">max</button>
+        <div id="send-resolved" class="vault-save-fiat" style="min-height:1em"></div>
+      </div>
+      <div class="vault-save-field">
+        <div class="vault-save-field-head">
+          <span class="vault-save-field-label">amount</span>
+          <span class="vault-save-bal">${balEth} ETH${balFiat ? ' · ' + balFiat : ''}</span>
+        </div>
+        <div class="vault-save-input-row">
+          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
+          <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
+        </div>
+        <div class="vault-save-field-foot">
+          <span id="send-fiat" class="vault-save-fiat"></span>
+          <div class="vault-presets">${presets}</div>
         </div>
       </div>
-      <button id="send-confirm" class="vault-modal-btn vault-modal-btn-primary">send</button>
-      <div id="send-status" style="color:var(--muted);font-size:0.85em;text-align:center;min-height:1.2em"></div>
+      <button id="send-confirm" class="vault-save-btn">send</button>
+      <div id="send-status" class="vault-save-status"></div>
     </div>
   `
   overlay.appendChild(dialog)
@@ -974,17 +1090,17 @@ export async function showSendModal(fromAddress) {
   const toInput = dialog.querySelector('#send-to')
   const resolvedEl = dialog.querySelector('#send-resolved')
 
-  dialog.querySelector('#send-max').addEventListener('click', () => {
-    const maxEth = Math.max(0, Number(balance) / 1e18 - 0.0005)
-    amountInput.value = maxEth.toFixed(6)
-    amountInput.dispatchEvent(new Event('input'))
+  dialog.querySelectorAll('.vault-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      amountInput.value = parseFloat(btn.dataset.amount).toFixed(6)
+      amountInput.dispatchEvent(new Event('input'))
+    })
   })
 
   amountInput.addEventListener('input', () => {
     const val = parseFloat(amountInput.value)
-    if (!val || isNaN(val) || !prices) { fiatEl.textContent = ''; return }
-    const rate = prices?.[currency]
-    if (rate) fiatEl.textContent = `~${formatFiat(val * rate, currency)}`
+    if (!val || isNaN(val) || !ethRate) { fiatEl.textContent = ''; return }
+    fiatEl.textContent = `≈ ${formatFiat(val * ethRate, currency)}`
   })
 
   let resolvedAddress = null
