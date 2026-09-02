@@ -2,7 +2,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, formatTxError, getPublicClient, formatEthAmount, registerPage, isBlocked, requireUser, getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain, ensureFundsForPurchase, getProfilePic } from './utils.js'
+import { escapeHtml, resolveAddresses, formatTxError, getPublicClient, formatEthAmount, registerPage, isBlocked, requireUser, getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain, ensureFundsForPurchase, getProfilePic, getAuthToken } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
 import { getEthPrices, formatPriceSync } from './fiat.js'
@@ -21,6 +21,49 @@ const MS_LABELS = ['pending', 'submitted', 'released', 'disputed']
 const MS_COLORS = ['var(--dim)', '#fbbf24', '#4ade80', '#ef4444']
 const RELOAD_DELAY = 2000
 function reloadAfterTx() { setTimeout(() => location.reload(), RELOAD_DELAY) }
+
+async function _uploadEditImages(images, statusEl) {
+  const authToken = await getAuthToken()
+  if (!authToken) throw new Error('wallet authentication required')
+  const imageCids = []
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i]
+    if (img.cid) { imageCids.push({ cid: img.cid, name: img.file.name, type: img.file.type }); continue }
+    if (statusEl) statusEl.textContent = `uploading image ${i + 1}/${images.length}...`
+    const res = await fetch(`/api/ipfs?name=${encodeURIComponent(img.file.name)}`, {
+      method: 'POST', body: img.file,
+      headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': img.file.size.toString() },
+    })
+    if (!res.ok) throw new Error('image upload failed')
+    const { jobId } = await res.json()
+    for (let j = 0; j < 120; j++) {
+      await new Promise(r => setTimeout(r, 1000))
+      const poll = await fetch(`/api/ipfs/status/${jobId}`)
+      const pollData = await poll.json()
+      if (pollData.status === 'done') { img.cid = pollData.cid; break }
+      if (pollData.status === 'error') throw new Error(pollData.error || 'upload failed')
+    }
+    if (!img.cid) throw new Error('upload timed out')
+    imageCids.push({ cid: img.cid, name: img.file.name, type: img.file.type })
+  }
+  if (statusEl) statusEl.textContent = 'uploading metadata...'
+  const metadata = JSON.stringify({ images: imageCids })
+  const metaBlob = new Blob([metadata], { type: 'application/json' })
+  const metaRes = await fetch('/api/ipfs?name=project-metadata.json', {
+    method: 'POST', body: metaBlob,
+    headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': metaBlob.size.toString() },
+  })
+  if (!metaRes.ok) throw new Error('metadata upload failed')
+  const { jobId: metaJobId } = await metaRes.json()
+  for (let j = 0; j < 120; j++) {
+    await new Promise(r => setTimeout(r, 1000))
+    const poll = await fetch(`/api/ipfs/status/${metaJobId}`)
+    const pollData = await poll.json()
+    if (pollData.status === 'done') return pollData.cid
+    if (pollData.status === 'error') throw new Error(pollData.error || 'upload failed')
+  }
+  throw new Error('metadata upload timed out')
+}
 
 async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
   const client = window._xmtpClient
@@ -550,6 +593,14 @@ async function initProjectDetail() {
         <div class="pd-edit-label">category</div>
         <select class="project-input" id="edit-type" style="padding:0.6em 0.8ch">${PROJECT_TYPE_PRESETS.map(t => `<option value="${t}" ${t === typeName ? 'selected' : ''}>${t}</option>`).join('')}</select>
       </div>
+      <div class="pd-edit-field">
+        <div class="pd-edit-label">images</div>
+        <div id="edit-image-preview" style="display:flex;gap:0.5em;flex-wrap:wrap;margin-bottom:0.5em"></div>
+        <label class="buy-btn" style="display:inline-flex;cursor:pointer;margin-top:0;background:transparent;border:1px solid var(--border);color:var(--fg)">
+          <i class="ph ph-image" style="margin-right:0.3ch"></i> add images
+          <input type="file" id="edit-images" accept="image/*" multiple style="display:none">
+        </label>
+      </div>
       <div style="display:flex;gap:0.5em;justify-content:flex-end;margin-top:1em">
         <button class="buy-btn" id="edit-cancel" style="background:transparent;border:1px solid var(--border);color:var(--fg);margin-top:0">cancel</button>
         <button class="buy-btn" id="edit-save" style="margin-top:0"><i class="ph ph-check" style="margin-right:0.3ch"></i> save changes</button>
@@ -708,6 +759,7 @@ async function initProjectDetail() {
     })
 
     // ── EDIT PROJECT ──
+    const _editImages = []
     document.getElementById('action-edit-toggle')?.addEventListener('click', () => {
       const form = document.getElementById('edit-form')
       if (form) {
@@ -720,13 +772,38 @@ async function initProjectDetail() {
       if (form) form.classList.remove('active')
       const btn = document.getElementById('action-edit-toggle')
       if (btn) btn.innerHTML = '<i class="ph ph-pencil-simple" style="margin-right:0.3ch"></i> edit'
+      _editImages.length = 0
+    })
+    document.getElementById('edit-images')?.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || [])
+      const preview = document.getElementById('edit-image-preview')
+      for (const file of files) {
+        _editImages.push({ file, cid: null })
+        const url = URL.createObjectURL(file)
+        const img = document.createElement('div')
+        img.style.cssText = 'width:60px;height:60px;border-radius:4px;overflow:hidden;border:1px solid var(--border);position:relative'
+        img.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;display:block">`
+        preview.appendChild(img)
+      }
+      e.target.value = ''
     })
     document.getElementById('edit-save')?.addEventListener('click', async () => {
       const title = document.getElementById('edit-title')?.value?.trim()
       const description = document.getElementById('edit-description')?.value?.trim()
       const projectType = document.getElementById('edit-type')?.value
       if (!title) { document.getElementById('edit-status').textContent = 'title is required'; return }
-      await execAction('updateProject', [BigInt(projectId), title, description || '', projectType || 'other', p.metadataCid || ''], null, null, { statusId: 'edit-status' })
+
+      let metadataCid = p.metadataCid || ''
+      if (_editImages.length > 0) {
+        const statusEl = document.getElementById('edit-status')
+        try {
+          metadataCid = await _uploadEditImages(_editImages, statusEl)
+        } catch (e) {
+          statusEl.textContent = `image upload failed: ${e.message}`
+          return
+        }
+      }
+      await execAction('updateProject', [BigInt(projectId), title, description || '', projectType || 'other', metadataCid], null, null, { statusId: 'edit-status' })
     })
 
     // milestone actions
