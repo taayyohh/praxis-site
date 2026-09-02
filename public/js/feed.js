@@ -1,5 +1,5 @@
 // Social feed — shows blog posts from followed artists on the homepage
-import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard, renderTicketListedCard, renderTicketPurchasedCard, renderTransferCard, renderReferralCard, renderProjectCompletedCard, renderProjectConfirmedCard, renderOrgCreatedCard, renderCredentialCard } from './feed-cards.js'
+import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard, renderTicketListedCard, renderTicketPurchasedCard, renderTransferCard, renderReferralCard, renderProjectCompletedCard, renderProjectConfirmedCard, renderOrgCreatedCard, renderCredentialCard, renderProjectCompletingCard, renderProjectDisputedCard, renderProjectCancelledCard, renderProjectTimedOutCard, renderRevenueDistributedCard } from './feed-cards.js'
 
 // Named constants for magic numbers used across the module
 const PREVIEW_LEN_WITH_MEDIA = 200
@@ -186,6 +186,11 @@ function renderItem(item, domainMap, resolve) {
   if (item.type === 'project-confirmed') return renderProjectConfirmedCard(item.data, resolve)
   if (item.type === 'org-created') return renderOrgCreatedCard(item.data, resolve)
   if (item.type === 'credential') return renderCredentialCard(item.data, resolve)
+  if (item.type === 'project-completing') return renderProjectCompletingCard(item.data, resolve)
+  if (item.type === 'project-disputed') return renderProjectDisputedCard(item.data, resolve)
+  if (item.type === 'project-cancelled') return renderProjectCancelledCard(item.data, resolve)
+  if (item.type === 'project-timedout') return renderProjectTimedOutCard(item.data, resolve)
+  if (item.type === 'revenue-distributed') return renderRevenueDistributedCard(item.data, resolve)
   return ''
 }
 

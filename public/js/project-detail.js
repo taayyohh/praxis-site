@@ -292,36 +292,42 @@ async function initProjectDetail() {
       const priceEth = formatPriceSync(tier.price, ethPrices)
       const isFreeRsvp = Number(tier.price) <= 1000
       const remaining = Number(tier.maxSupply) - Number(tier.sold)
-      const badge = isEvent
-        ? (isFreeRsvp ? '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">free rsvp</span>' : '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">ticket</span>')
-        : (tier.transferable ? '<span style="color:#4ade80;font-size:0.7em;text-transform:uppercase">ticket</span>' : '<span style="color:#a78bfa;font-size:0.7em;text-transform:uppercase">producer</span>')
+      const badgeText = isEvent
+        ? (isFreeRsvp ? 'free rsvp' : 'ticket')
+        : (tier.transferable ? 'ticket' : 'producer')
+      const badgeColor = (tier.transferable || isEvent) ? '#4ade80' : '#a78bfa'
       const priceLabel = isEvent && isFreeRsvp ? 'free' : priceEth
       const capacityLabel = isEvent
         ? (remaining > 0 ? `${remaining} spot${remaining !== 1 ? 's' : ''} left` : 'sold out')
         : `${tier.sold}/${tier.maxSupply} sold`
       const btnLabel = isEvent ? (isFreeRsvp ? 'RSVP' : 'get tickets') : 'fund'
+      const soldOut = remaining <= 0
       const tierDateStr = tier.eventDate && BigInt(tier.eventDate) > 0n
         ? new Date(Number(tier.eventDate) * 1000).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
         : ''
       const tierLoc = unpackLocation(tier.location)
       const tierLocStr = tierLoc ? `${tierLoc.lat.toFixed(4)}, ${tierLoc.lng.toFixed(4)}` : ''
-      return `<div style="padding:1em 1.25em;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div>${badge}</div>
-            <div style="color:var(--accent);font-weight:600;margin:0.2em 0">${esc(tier.name)}</div>
-            ${tierDateStr ? `<div style="color:var(--dim);font-size:0.8em"><i class="ph ph-calendar" style="margin-right:0.3ch"></i> ${tierDateStr}</div>` : ''}
-            ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
+      return `<div class="pd-tier">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1em">
+          <div style="flex:1;min-width:0">
+            <span class="pd-tier-badge" style="background:color-mix(in srgb, ${badgeColor} 15%, transparent);color:${badgeColor}">${badgeText}</span>
+            <div class="pd-tier-name">${esc(tier.name)}</div>
+            ${tierDateStr ? `<div style="color:var(--dim);font-size:0.8em;margin-top:0.25em"><i class="ph ph-calendar" style="margin-right:0.3ch"></i> ${tierDateStr}</div>` : ''}
+            ${tierLocStr ? `<div style="color:var(--dim);font-size:0.8em;margin-top:0.15em"><i class="ph ph-map-pin" style="margin-right:0.3ch"></i> ${tierLocStr}</div>` : ''}
           </div>
-          <div style="text-align:right">
-            <div style="font-weight:700;color:var(--accent)">${priceLabel}</div>
-            <div style="color:var(--dim);font-size:0.8em">${capacityLabel}</div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="pd-tier-price">${priceLabel}</div>
+            <div class="pd-tier-meta">${capacityLabel}</div>
           </div>
         </div>
-        ${remaining > 0 && p.status <= FUNDED ? `<div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.75em;justify-content:flex-end">
-          <input type="number" class="fund-qty" data-tier-id="${esc(tier.tierId)}" value="1" min="1" max="${remaining}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center;border-radius:4px">
-          <button class="buy-btn fund-tier-btn" data-tier-id="${esc(tier.tierId)}" data-price="${esc(tier.price)}" data-tier-name="${esc(tier.name)}" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0">${btnLabel}</button>
-        </div>` : ''}
+        ${!soldOut && p.status <= FUNDED ? `<div class="pd-tier-footer">
+          <div class="pd-qty-stepper">
+            <button type="button" class="qty-minus" data-tier-id="${esc(tier.tierId)}">−</button>
+            <input type="number" class="fund-qty" data-tier-id="${esc(tier.tierId)}" value="1" min="1" max="${remaining}">
+            <button type="button" class="qty-plus" data-tier-id="${esc(tier.tierId)}">+</button>
+          </div>
+          <button class="pd-tier-cta fund-tier-btn" data-tier-id="${esc(tier.tierId)}" data-price="${esc(tier.price)}" data-tier-name="${esc(tier.name)}">${btnLabel}</button>
+        </div>` : (soldOut ? `<div class="pd-tier-footer"><button class="pd-tier-cta sold-out" disabled>sold out</button></div>` : '')}
       </div>`
     }).join('')
 
@@ -876,6 +882,20 @@ async function initProjectDetail() {
       }
     }
 
+    // ── QTY STEPPER ──
+    contentEl.querySelectorAll('.qty-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = contentEl.querySelector(`.fund-qty[data-tier-id="${btn.dataset.tierId}"]`)
+        if (input) input.value = Math.max(1, parseInt(input.value) - 1)
+      })
+    })
+    contentEl.querySelectorAll('.qty-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = contentEl.querySelector(`.fund-qty[data-tier-id="${btn.dataset.tierId}"]`)
+        if (input) input.value = Math.min(parseInt(input.max) || 999, parseInt(input.value) + 1)
+      })
+    })
+
     // ── FUND TIER with ensureFundsForPurchase ──
     contentEl.querySelectorAll('.fund-tier-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -1185,7 +1205,12 @@ async function initProjectDetail() {
             'project': { color: 'var(--fg)', icon: 'ph-flag' },
             'funding': { color: '#4ade80', icon: 'ph-hand-heart' },
             'project-confirmed': { color: '#60a5fa', icon: 'ph-check-circle' },
+            'project-completing': { color: '#fbbf24', icon: 'ph-hourglass' },
             'project-completed': { color: '#4ade80', icon: 'ph-flag-checkered' },
+            'project-disputed': { color: '#ef4444', icon: 'ph-warning' },
+            'project-cancelled': { color: '#666', icon: 'ph-x-circle' },
+            'project-timedout': { color: '#ef4444', icon: 'ph-clock-countdown' },
+            'revenue-distributed': { color: '#4ade80', icon: 'ph-chart-pie' },
             'credential': { color: '#a78bfa', icon: 'ph-medal' },
             'purchase': { color: '#4ade80', icon: 'ph-shopping-cart' },
           }
@@ -1194,7 +1219,12 @@ async function initProjectDetail() {
             'project': (e) => `<strong>${esc(resolve(e.author))}</strong> proposed project`,
             'funding': (e) => `<strong>${esc(resolve(e.author))}</strong> funded the project`,
             'project-confirmed': (e) => `project confirmed`,
+            'project-completing': (e) => `project entering dispute window`,
             'project-completed': (e) => `project completed`,
+            'project-disputed': (e) => `<strong>${esc(resolve(e.author))}</strong> disputed the project`,
+            'project-cancelled': (e) => `project was cancelled`,
+            'project-timedout': (e) => `project timed out past deadline`,
+            'revenue-distributed': (e) => `revenue distributed to backers`,
             'credential': (e) => `<strong>${esc(resolve(e.author))}</strong> earned ${esc(e.title || 'credential')}`,
             'purchase': (e) => `<strong>${esc(resolve(e.author))}</strong> purchased`,
           }

@@ -724,3 +724,78 @@ export function renderCredentialCard(d, resolve, opts = {}) {
     </div>
   `
 }
+
+export function renderProjectCompletingCard(d, resolve, opts = {}) {
+  const proposer = resolveDisplay(d.proposer, resolve)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  return `
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #fbbf24 20%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1.5em 1.75em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project entering dispute window
+        </div>
+      </div>
+    </a>
+  `
+}
+
+export function renderProjectDisputedCard(d, resolve, opts = {}) {
+  const disputer = resolveDisplay(d.disputer, resolve)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  return `
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #ef4444 20%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1.5em 1.75em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+          ${inlineAvatar(d.disputer)}<span style="color:var(--fg)">${esc(disputer)}</span> disputed this project
+        </div>
+      </div>
+    </a>
+  `
+}
+
+export function renderProjectCancelledCard(d, resolve, opts = {}) {
+  const proposer = resolveDisplay(d.proposer, resolve)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  return `
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1.5em 1.75em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project was cancelled
+        </div>
+      </div>
+    </a>
+  `
+}
+
+export function renderProjectTimedOutCard(d, resolve, opts = {}) {
+  const proposer = resolveDisplay(d.proposer, resolve)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  return `
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1.5em 1.75em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project timed out past deadline
+        </div>
+      </div>
+    </a>
+  `
+}
+
+export function renderRevenueDistributedCard(d, resolve, opts = {}) {
+  const proposer = resolveDisplay(d.proposer, resolve)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  return `
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #4ade80 15%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      <div style="padding:1.5em 1.75em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span> distributed revenue to backers
+        </div>
+      </div>
+    </a>
+  `
+}
