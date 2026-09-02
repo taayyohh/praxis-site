@@ -223,17 +223,17 @@ export function renderMediaCard(d, resolve) {
   const cid = d.ipfsCid || ''
   const metaCid = d.metadataCid || ''
   const isVideo = d.contentType?.startsWith('video')
-  const isPdf = d.contentType === 'application/pdf' || d.contentType?.startsWith('text/')
-  // If contentType is empty but metadataCid exists, it's likely audio with cover art (MP3 with album art)
-  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg' || (!d.contentType && metaCid && !isPdf)
-  const isUnknown = !d.contentType && !metaCid
-  // Art source: metadata cover → image content → video thumbnail → generic thumb probe
+  const isImage = d.contentType?.startsWith('image')
+  const isPdf = d.contentType === 'application/pdf'
+  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg'
+  const isUnknown = !isVideo && !isImage && !isPdf && !isAudio
   let artSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=200` : ''
-  if (!artSrc && cid && d.contentType?.startsWith('image')) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=200`
+  if (!artSrc && cid && isImage) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=200`
   if (!artSrc && cid && isVideo) artSrc = `/api/video-thumb?cid=${encodeURIComponent(cid)}`
+  if (!artSrc && cid && isUnknown && metaCid) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=200`
   const playBtn = isAudio && cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(artist)}" data-track-art="${esc(artSrc)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
   const buyBtn = buyBtnHtml(d.mediaId, d.price, title, { showFree: true })
-  const isWideThumb = isVideo // only confirmed video gets wide layout
+  const isWideThumb = isVideo
   const linkTarget = d.external ? 'target="_blank"' : ''
   const displayName = resolveDisplay(d.artist, resolve, d.artistName)
   const aPic = d.artistPic || null
@@ -341,18 +341,37 @@ export function renderBatchCard(d, resolve, opts = {}) {
   let totalWei = 0n
   for (const it of sorted) { try { totalWei += BigInt(it.price || '0') } catch {} }
 
+  // detect dominant content type in batch
+  const contentTypes = sorted.map(it => it.contentType || '').filter(Boolean)
+  const batchIsImage = contentTypes.length > 0 && contentTypes.every(ct => ct.startsWith('image'))
+  const batchIsVideo = contentTypes.length > 0 && contentTypes.every(ct => ct.startsWith('video'))
+  const batchIsAudio = !batchIsImage && !batchIsVideo
+  const countLabel = batchIsImage ? `${sorted.length} images` : batchIsVideo ? `${sorted.length} videos` : `${d.count || sorted.length} tracks`
+
   const tracklist = sorted.map((it, i) => {
     const cid = it.ipfsCid || ''
     let pw = 0n; try { pw = BigInt(it.price || '0') } catch {}
-    const playBtn = cid ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : ''
+    let actionBtn = ''
+    if (batchIsAudio && cid) {
+      actionBtn = `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>`
+    }
     const buyBtn = pw > 0n ? `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}" style="font-size:0.7em;padding:0.2em 0.6ch"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>` : ''
-    return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${playBtn}<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
+    return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${actionBtn}<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
   }).join('')
 
-  const albumBuyData = sorted.filter(it => { try { return BigInt(it.price || '0') > 0n } catch { return false } })
-  const buyAlbumBtn = albumBuyData.length > 0 ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} tracks)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') }) : ''
+  // image gallery: grid of thumbnails instead of tracklist
+  let galleryHtml = ''
+  if (batchIsImage) {
+    galleryHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:4px;margin-top:0.5em">${sorted.slice(0, 12).map(it => {
+      const imgSrc = it.ipfsCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(it.ipfsCid)}&w=160` : ''
+      return imgSrc ? `<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="display:block;aspect-ratio:1;border-radius:4px;overflow:hidden;border:1px solid var(--border)"><img src="${esc(imgSrc)}" alt="${esc(it.title || '')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block"></a>` : ''
+    }).join('')}${sorted.length > 12 ? `<div style="display:flex;align-items:center;justify-content:center;aspect-ratio:1;border-radius:4px;background:var(--surface);color:var(--muted);font-size:0.8em">+${sorted.length - 12}</div>` : ''}</div>`
+  }
 
-  const playableTracks = sorted.filter(it => it.ipfsCid)
+  const albumBuyData = sorted.filter(it => { try { return BigInt(it.price || '0') > 0n } catch { return false } })
+  const buyAlbumBtn = albumBuyData.length > 0 ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} items)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') }) : ''
+
+  const playableTracks = batchIsAudio ? sorted.filter(it => it.ipfsCid) : []
   let playAllBtn = ''
   if (playableTracks.length > 0) {
     const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(it => ({
@@ -372,11 +391,11 @@ export function renderBatchCard(d, resolve, opts = {}) {
       <div class="feed-media-card-info">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span class="feed-author">${esc(aliasName || (getArtistName(d.artist) || artist))}</span>
-          <span style="color:var(--dim);font-size:0.8em">${d.count || sorted.length} tracks</span>
+          <span style="color:var(--dim);font-size:0.8em">${countLabel}</span>
         </div>
         <a href="${esc(artLink)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(headline)}</a>
         <div class="feed-media-card-actions">${playAllBtn}${buyAlbumBtn}</div>
-        <div class="feed-batch-tracklist">${tracklist}</div>
+        ${batchIsImage ? galleryHtml : `<div class="feed-batch-tracklist">${tracklist}</div>`}
       </div>
     </div>
   `
@@ -460,13 +479,14 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   const metaCid = d.metadataCid || ''
   const cid = d.ipfsCid || ''
-  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg' || (!d.contentType && metaCid)
+  const isAudio = d.contentType?.startsWith('audio') || d.contentType === 'application/ogg'
   const isVideo = d.contentType?.startsWith('video')
-  const isUnknown = !d.contentType && !metaCid
+  const isImage = d.contentType?.startsWith('image')
+  const isUnknown = !isAudio && !isVideo && !isImage
   let artSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=200` : ''
-  if (!artSrc && cid && d.contentType?.startsWith('image')) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=200`
-  if (!artSrc && cid && (isVideo || isUnknown)) artSrc = `/api/video-thumb?cid=${encodeURIComponent(cid)}`
-  const isWideContent = isVideo || isUnknown
+  if (!artSrc && cid && isImage) artSrc = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=200`
+  if (!artSrc && cid && isVideo) artSrc = `/api/video-thumb?cid=${encodeURIComponent(cid)}`
+  const isWideContent = isVideo
   const videoSrc = cid ? `/api/ipfs-proxy/${encodeURIComponent(cid)}` : ''
   if (isWideContent && artSrc && videoSrc) {
     // Video collected: full-width video-lazy on top (same as listing)
@@ -527,7 +547,9 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   const sorted = [...(d.items || [])].sort((a, b) => {
     try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 }
   })
-  const playableTracks = sorted.filter(it => it.ipfsCid)
+  const batchCTs = sorted.map(it => it.contentType || '').filter(Boolean)
+  const purchaseBatchIsAudio = !batchCTs.length || batchCTs.some(ct => ct.startsWith('audio'))
+  const playableTracks = purchaseBatchIsAudio ? sorted.filter(it => it.ipfsCid) : []
   let playOverlay = ''
   if (playableTracks.length > 0) {
     const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(it => ({
@@ -535,12 +557,11 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
     }))))
     playOverlay = `<button class="album-play-btn feed-collected-play-overlay" data-queue="${queueData}"><i class="ph ph-play"></i></button>`
   }
-  // Build album buy button with real prices (same pattern as listing batch card)
   const albumBuyData = sorted.filter(it => { try { return BigInt(it.price || '0') > 0n } catch { return false } })
   let totalWei = 0n
   for (const it of albumBuyData) { try { totalWei += BigInt(it.price || '0') } catch {} }
   const buyAlbumBtn = albumBuyData.length > 0
-    ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} tracks)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') })
+    ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} items)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') })
     : ''
   const linkTarget = opts.external ? ' target="_blank"' : ''
   const artistLink = artist.includes('.') ? `https://${esc(artist)}` : '#'

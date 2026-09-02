@@ -231,8 +231,8 @@ async function initProjectDetail() {
 
     const [publicClient, ethPrices] = await Promise.all([getPublicClient(), getEthPrices().catch(() => null)])
 
-    const goalEth = formatEthAmount(p.fundingGoal)
-    const fundedEth = formatEthAmount(p.totalFunded)
+    const goalEth = formatPriceSync(p.fundingGoal, ethPrices)
+    const fundedEth = formatPriceSync(p.totalFunded, ethPrices)
     const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
     const typeName = p.projectType || 'other'
     const isEvent = typeName === 'show' || typeName === 'theater' || typeName === 'workshop'
@@ -372,10 +372,10 @@ async function initProjectDetail() {
 
       const releasedCount = milestones.filter(m => m.status === 2).length
       const progressPct = msCount > 0 ? Math.round(releasedCount * 100 / msCount) : 0
-      const releasedEth = formatEthAmount(releasedWei)
+      const releasedEth = formatPriceSync(releasedWei, ethPrices)
 
       milestonesHtml = `<div class="pd-glass">
-        <div class="pd-section-title"><i class="ph ph-flag-checkered" style="margin-right:0.3ch"></i> milestones — ${releasedCount}/${msCount} released · ${releasedEth} ETH distributed</div>
+        <div class="pd-section-title"><i class="ph ph-flag-checkered" style="margin-right:0.3ch"></i> milestones — ${releasedCount}/${msCount} released · ${releasedEth} distributed</div>
         <div style="margin-bottom:1em"><div class="project-progress-bar"><div class="project-progress-fill" style="width:${progressPct}%;background:#4ade80"></div></div></div>
         ${milestones.map((m, i) => {
           const pctVal = (m.bps / 100).toFixed(0)
@@ -643,7 +643,7 @@ async function initProjectDetail() {
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
           <div>
             <span style="color:var(--accent);font-size:1.4em;font-weight:700">${fundedEth}</span>
-            <span style="color:var(--muted);font-size:0.85em"> / ${goalEth} ETH</span>
+            <span style="color:var(--muted);font-size:0.85em"> / ${goalEth}</span>
           </div>
           <span style="color:${statusColor};font-weight:700;font-size:1.2em">${pct}%</span>
         </div>

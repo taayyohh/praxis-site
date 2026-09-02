@@ -252,10 +252,11 @@ function renderByExt(url, ext) {
     return renderPdf(url)
   }
   if (['mp3','wav','ogg','flac','aac','m4a','opus'].includes(ext)) {
-    return `<audio src="${safeUrl}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
+    const name = url.split('/').pop()?.split('?')[0] || 'audio'
+    return `<button class="track-play-btn" data-track-src="${safeUrl}" data-track-title="${escapeHtml(name)}" data-track-artist="" style="width:100%;margin:0.5em 0;padding:0.6em 1ch;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:0.9em;cursor:pointer;display:flex;align-items:center;gap:0.75ch"><i class="ph ph-play-circle" style="font-size:1.3em"></i> ${escapeHtml(name)}</button>`
   }
   if (['mp4','webm','mov','mkv','avi'].includes(ext)) {
-    return `<video src="${safeUrl}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
+    return `<video src="${safeUrl}" controls preload="none" playsinline style="max-width:100%;margin:0.5em 0"></video>`
   }
   return null
 }
@@ -458,9 +459,10 @@ async function detectAndRender(id, url) {
     } else if (ct === 'application/pdf') {
       el.innerHTML = renderPdf(url)
     } else if (ct.startsWith('audio/')) {
-      el.innerHTML = `<audio src="${safeUrl}" controls preload="none" style="width:100%;margin:0.5em 0"></audio>`
+      const name = url.split('/').pop()?.split('?')[0] || 'audio'
+      el.innerHTML = `<button class="track-play-btn" data-track-src="${safeUrl}" data-track-title="${escapeHtml(name)}" data-track-artist="" style="width:100%;margin:0.5em 0;padding:0.6em 1ch;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:0.9em;cursor:pointer;display:flex;align-items:center;gap:0.75ch"><i class="ph ph-play-circle" style="font-size:1.3em"></i> ${escapeHtml(name)}</button>`
     } else if (ct.startsWith('video/')) {
-      el.innerHTML = `<video src="${safeUrl}" controls preload="none" style="max-width:100%;margin:0.5em 0"></video>`
+      el.innerHTML = `<video src="${safeUrl}" controls preload="none" playsinline style="max-width:100%;margin:0.5em 0"></video>`
     } else {
       el.innerHTML = `<a href="${safeUrl}" target="_blank" style="color:var(--accent)">open file (${escapeHtml(ct) || 'unknown'})</a>`
     }
