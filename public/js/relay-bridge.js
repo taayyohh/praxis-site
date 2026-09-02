@@ -280,7 +280,7 @@ export async function bridgeToOptimism(fromChainId, address, amountWei, onStatus
 // Wraps the http transport to stub wallet_getCapabilities — Alchemy returns 400
 // for wallet_* methods (not a wallet RPC), and the Relay SDK probes this to check
 // for EIP-5792 atomic batch support. Without the stub, we get noisy console errors.
-async function _buildBridgeWalletClient(fromChainId) {
+export async function _buildBridgeWalletClient(fromChainId) {
   const { createWalletClient, custom, http, mainnet, arbitrum, optimism, base, polygon } = await import('./vendor.js')
   // Override default RPC URLs to use our proxy (avoids eth.merkle.io CORS issues)
   const proxyRpc = (c) => ({ ...c, rpcUrls: { ...c.rpcUrls, default: { http: [`/api/rpc/${c.id}`] } } })

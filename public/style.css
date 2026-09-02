@@ -6755,6 +6755,15 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-field-fiat { font-size: 0.75em; color: var(--dim); }
 .vault-field-max { background: none; border: none; color: var(--accent); font-family: inherit; font-size: 0.75em; cursor: pointer; padding: 0; }
 .vault-field-output { font-size: 1em; color: var(--dim); text-align: right; flex: 1; }
+.vault-steps { display: flex; flex-direction: column; gap: 0.25em; padding: 0.5em 0; }
+.vault-step { display: flex; align-items: center; gap: 0.5ch; font-size: 0.75em; color: var(--dim); padding: 0.2em 0; transition: color 0.2s; }
+.vault-step-num { width: 1.6em; height: 1.6em; border-radius: 50%; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 0.85em; flex-shrink: 0; transition: border-color 0.2s, background 0.2s, color 0.2s; }
+.vault-step-active { color: var(--accent); }
+.vault-step-active .vault-step-num { border-color: var(--accent); color: var(--accent); }
+.vault-step-done { color: var(--green); }
+.vault-step-done .vault-step-num { border-color: var(--green); background: var(--green); color: var(--bg, #0a0a0a); }
+.vault-step-error { color: var(--dim); }
+.vault-step-error .vault-step-num { border-color: var(--dim); }
 @media (max-width: 600px) {
   .vault-total-value { font-size: 1.6em; }
   .vault-action-btn span { font-size: 0.85em; }

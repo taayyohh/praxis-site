@@ -13,13 +13,23 @@ import { PRAXIS_ADDR, PRAXIS_ABI, MEDIA_ABI } from './contracts.js'
 
 const HISTORY_PAGE_SIZE = 20
 
-const BOLD_ADDR = '0xb3f1186ec30a2ecfe665b04d02785ea552cf6186'
+const BOLD_OPTIMISM = '0xb3f1186ec30a2ecfe665b04d02785ea552cf6186'
 const WETH_ADDR = '0x4200000000000000000000000000000000000006'
 const VELODROME_ROUTER = '0xa062aE8A9c5e11dEA47203A894fF77F90f4F3343'
 const VELODROME_FACTORY = '0x420DD381b31aEf6683db6B902084cB0FFECe40Da'
+const ETH_ZERO = '0x0000000000000000000000000000000000000000'
 
 const ERC20_BALANCE_ABI = [
   { name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
+]
+
+const ERC20_APPROVE_ABI = [
+  { name: 'approve', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }] },
+  { name: 'allowance', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }] },
 ]
 
 const ROUTE_TUPLE = { type: 'tuple[]', components: [
@@ -38,7 +48,19 @@ const VELODROME_ABI = [
     outputs: [{ name: 'amounts', type: 'uint256[]' }] },
 ]
 
-const SWAP_ROUTE = [{ from: WETH_ADDR, to: BOLD_ADDR, stable: false, factory: VELODROME_FACTORY }]
+const STABILITY_POOL_ABI = [
+  { name: 'provideToSP', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: '_topUp', type: 'uint256' }, { name: '_doClaim', type: 'bool' }],
+    outputs: [] },
+  { name: 'getCompoundedBoldDeposit', type: 'function', stateMutability: 'view',
+    inputs: [{ name: '_depositor', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'getDepositorCollGain', type: 'function', stateMutability: 'view',
+    inputs: [{ name: '_depositor', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }] },
+]
+
+const SWAP_ROUTE = [{ from: WETH_ADDR, to: BOLD_OPTIMISM, stable: false, factory: VELODROME_FACTORY }]
 const SLIPPAGE_BPS = 100n // 1%
 
 let _vaultBound = false
@@ -108,7 +130,7 @@ async function initVault() {
 
 async function getBoldBalance(addr) {
   const pc = await getPublicClient()
-  return pc.readContract({ address: BOLD_ADDR, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr] })
+  return pc.readContract({ address: BOLD_OPTIMISM, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr] })
 }
 
 async function fetchBoldYield() {
@@ -124,6 +146,112 @@ async function getSwapQuote(amountIn) {
     args: [amountIn, SWAP_ROUTE],
   })
   return amounts[amounts.length - 1]
+}
+
+async function getSpDeposit(spAddress, depositor) {
+  const { createPublicClient, http, mainnet } = await import('./vendor.js')
+  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  const [deposit, collGain] = await Promise.all([
+    pc.readContract({ address: spAddress, abi: STABILITY_POOL_ABI, functionName: 'getCompoundedBoldDeposit', args: [depositor] }),
+    pc.readContract({ address: spAddress, abi: STABILITY_POOL_ABI, functionName: 'getDepositorCollGain', args: [depositor] }),
+  ])
+  return { deposit, collGain }
+}
+
+async function bridgeBoldToMainnet(addr, boldAmount, onStatus) {
+  const { initRelay } = await import('./relay-bridge.js')
+  const { getQuote, execute } = await import('./vendor-relay.js')
+  await initRelay()
+
+  onStatus?.('getting bridge quote...')
+  const boldMainnet = _yieldData?.boldMainnet || ETH_ZERO
+  const quote = await getQuote({
+    chainId: 10,
+    toChainId: 1,
+    currency: BOLD_OPTIMISM,
+    toCurrency: boldMainnet !== ETH_ZERO ? boldMainnet : BOLD_OPTIMISM,
+    amount: boldAmount.toString(),
+    user: addr,
+    recipient: addr,
+    tradeType: 'EXACT_INPUT',
+  })
+
+  onStatus?.('confirm bridge in wallet...')
+
+  const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
+  let walletClient
+  try {
+    walletClient = await _buildBridgeWalletClient(10)
+  } catch {
+    const { createWalletClient, custom, optimism } = await import('./vendor.js')
+    walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()), account: addr })
+  }
+
+  let lastHash = null
+  return new Promise((resolve, reject) => {
+    execute({
+      quote,
+      wallet: walletClient,
+      onProgress: ({ currentStep, currentStepItem, txHashes, error }) => {
+        if (txHashes?.length) lastHash = txHashes[txHashes.length - 1]?.txHash || lastHash
+        if (currentStepItem?.txHashes?.length) lastHash = currentStepItem.txHashes[currentStepItem.txHashes.length - 1]?.txHash || lastHash
+        if (error) { reject(new Error(error.message || 'bridge failed')); return }
+        if (currentStep?.id === 'approve') onStatus?.('approving BOLD...')
+        else if (currentStepItem?.status === 'complete' && currentStep?.id === 'deposit') onStatus?.('bridge submitted — arriving on Ethereum...')
+        else if (currentStepItem?.status === 'complete') { onStatus?.('bridged to Ethereum'); resolve(lastHash) }
+        else if (currentStepItem?.status === 'incomplete') onStatus?.('bridging...')
+      },
+    }).then(() => { resolve(lastHash) }).catch(err => {
+      const msg = err?.message || ''
+      if (lastHash && (msg.includes('not found') || msg.includes('404'))) {
+        onStatus?.('bridge in flight — BOLD arriving on Ethereum in ~2 min')
+        resolve(lastHash)
+        return
+      }
+      reject(err)
+    })
+  })
+}
+
+async function depositToStabilityPool(spAddress, boldAmount, addr, onStatus) {
+  const { createWalletClient, createPublicClient, custom, http, mainnet } = await import('./vendor.js')
+
+  await window.ensureAuthorized?.()
+  const embeddedAcct = window.getEmbeddedAccount?.()
+  if (!embeddedAcct) throw new Error('wallet not available')
+
+  const rpcUrl = '/api/rpc/1'
+  const chainDef = { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrl] } } }
+  const pc = createPublicClient({ chain: chainDef, transport: http(rpcUrl) })
+
+  const boldMainnet = _yieldData?.boldMainnet
+  if (!boldMainnet) throw new Error('BOLD mainnet address not found')
+
+  onStatus?.('checking approval...')
+  const allowance = await pc.readContract({
+    address: boldMainnet, abi: ERC20_APPROVE_ABI, functionName: 'allowance',
+    args: [addr, spAddress],
+  })
+
+  const wc = createWalletClient({ chain: chainDef, account: embeddedAcct, transport: http(rpcUrl) })
+
+  if (allowance < boldAmount) {
+    onStatus?.('approving BOLD for stability pool...')
+    const approveTx = await wc.writeContract({
+      address: boldMainnet, abi: ERC20_APPROVE_ABI, functionName: 'approve',
+      args: [spAddress, boldAmount], account: embeddedAcct,
+    })
+    await pc.waitForTransactionReceipt({ hash: approveTx })
+  }
+
+  onStatus?.('depositing into stability pool...')
+  const depositTx = await wc.writeContract({
+    address: spAddress, abi: STABILITY_POOL_ABI, functionName: 'provideToSP',
+    args: [boldAmount, false], account: embeddedAcct,
+  })
+  await pc.waitForTransactionReceipt({ hash: depositTx })
+  onStatus?.('deposited!')
+  return depositTx
 }
 
 // --- Data fetching ---
@@ -589,23 +717,37 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
   if (existing) { existing.remove(); return }
   const ethRate = ethPrices?.[currency] || 0
   const bestApy = yieldData?.bestApy || 0
+  const pools = yieldData?.pools || []
+  const topPool = pools[0]
   const overlay = document.createElement('div')
   overlay.id = 'vault-swap-modal'
   overlay.className = 'praxis-modal-overlay'
   overlay.style.zIndex = '10002'
   const dialog = document.createElement('div')
   dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '420px'
+  dialog.style.maxWidth = '440px'
 
   let aprLine = ''
   if (bestApy > 0) aprLine = ` &middot; up to ${bestApy.toFixed(1)}% APR`
 
+  let poolSelect = ''
+  if (pools.length > 0) {
+    const opts = pools.filter(p => p.address).slice(0, 5).map((p, i) =>
+      `<option value="${escapeHtml(p.address)}" ${i === 0 ? 'selected' : ''}>${escapeHtml(p.name)} — ${p.apy.toFixed(1)}% APR</option>`
+    ).join('')
+    poolSelect = `
+      <div>
+        <label class="vault-field-label">stability pool</label>
+        <select id="swap-pool" class="vault-field-input vault-field-input-full" style="text-align:left">${opts}</select>
+      </div>`
+  }
+
   dialog.innerHTML = `
     <h3 class="vault-modal-title">save</h3>
-    <p class="vault-modal-sub">swap ETH for BOLD via Velodrome${aprLine}</p>
+    <p class="vault-modal-sub">ETH → BOLD → stability pool${aprLine}</p>
     <div class="vault-swap-fields">
       <div>
-        <label class="vault-field-label">from</label>
+        <label class="vault-field-label">amount (ETH on Optimism)</label>
         <div class="vault-field-row">
           <span class="vault-field-token">${ETH_ICON} ETH</span>
           <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-field-input">
@@ -617,16 +759,21 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       </div>
       <div style="text-align:center;color:var(--dim);padding:0.25em 0"><i class="ph ph-arrow-down" style="font-size:1.1em"></i></div>
       <div>
-        <label class="vault-field-label">to (estimated)</label>
+        <label class="vault-field-label">receive (estimated BOLD)</label>
         <div class="vault-field-row">
           <span class="vault-field-token">${BOLD_ICON} BOLD</span>
           <span id="swap-output" class="vault-field-output">—</span>
         </div>
         <div id="swap-rate" style="font-size:0.7em;color:var(--dim);margin-top:0.15em"></div>
       </div>
+      ${poolSelect}
+      <div class="vault-steps" id="swap-steps">
+        <div class="vault-step" data-step="swap"><span class="vault-step-num">1</span> swap ETH → BOLD on Optimism</div>
+        <div class="vault-step" data-step="bridge"><span class="vault-step-num">2</span> bridge BOLD to Ethereum via Relay</div>
+        <div class="vault-step" data-step="deposit"><span class="vault-step-num">3</span> deposit into stability pool</div>
+      </div>
       <button id="swap-confirm" class="vault-modal-btn vault-modal-btn-primary" disabled>enter amount</button>
       <div id="swap-status" style="color:var(--muted);font-size:0.8em;text-align:center;min-height:1.2em"></div>
-      <div style="color:var(--dim);font-size:0.7em;text-align:center">1% slippage tolerance &middot; routed via Velodrome on Optimism</div>
     </div>
   `
   overlay.appendChild(dialog)
@@ -639,9 +786,17 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
   const rateEl = dialog.querySelector('#swap-rate')
   const confirmBtn = dialog.querySelector('#swap-confirm')
   const statusEl = dialog.querySelector('#swap-status')
+  const stepsEl = dialog.querySelector('#swap-steps')
 
   let _quoteTimer = null
   let _lastQuote = null
+
+  function markStep(step, state) {
+    const el = stepsEl?.querySelector(`[data-step="${step}"]`)
+    if (!el) return
+    el.classList.remove('vault-step-active', 'vault-step-done', 'vault-step-error')
+    if (state) el.classList.add(`vault-step-${state}`)
+  }
 
   dialog.querySelector('#swap-max')?.addEventListener('click', () => {
     const maxEth = Math.max(0, Number(ethBalance) / 1e18 - 0.002)
@@ -680,7 +835,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         const rate = boldOut / val
         rateEl.textContent = `1 ETH = ${rate.toFixed(2)} BOLD`
         confirmBtn.disabled = false
-        confirmBtn.textContent = 'swap to BOLD'
+        confirmBtn.textContent = 'swap + bridge + deposit'
       } catch (e) {
         outputEl.textContent = 'no route'
         outputEl.style.color = 'var(--dim)'
@@ -695,20 +850,26 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
   confirmBtn.addEventListener('click', async () => {
     if (!_lastQuote) return
     const { amountIn, amountOut } = _lastQuote
+    const spAddress = dialog.querySelector('#swap-pool')?.value || topPool?.address
     confirmBtn.disabled = true
-    confirmBtn.textContent = 'confirm in wallet...'
+    swapInput.disabled = true
     statusEl.textContent = ''
     statusEl.style.color = 'var(--muted)'
 
     try {
+      // --- Step 1: Swap ETH → BOLD on Optimism ---
+      markStep('swap', 'active')
+      confirmBtn.textContent = 'step 1/3: swapping...'
+      statusEl.textContent = 'confirm swap in wallet'
+
       const account = await window.ensureAuthorized?.() || addr
       const provider = getWalletProvider()
       const wc = createWalletClient({ chain: optimism, transport: custom(provider) })
 
       const minOut = amountOut - (amountOut * SLIPPAGE_BPS / 10000n)
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200) // 20 min
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200)
 
-      const hash = await wc.writeContract({
+      const swapHash = await wc.writeContract({
         address: VELODROME_ROUTER,
         abi: VELODROME_ABI,
         functionName: 'swapExactETHForTokens',
@@ -717,22 +878,60 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         account,
       })
 
-      confirmBtn.textContent = 'swapping...'
-      statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
-
+      statusEl.textContent = `swap tx: ${swapHash.slice(0, 14)}...`
       const pc = await getPublicClient()
-      await pc.waitForTransactionReceipt({ hash })
+      await pc.waitForTransactionReceipt({ hash: swapHash })
+      markStep('swap', 'done')
 
-      confirmBtn.textContent = 'swapped!'
+      // Read actual BOLD balance received
+      const boldReceived = await pc.readContract({
+        address: BOLD_OPTIMISM, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr],
+      })
+
+      if (boldReceived === 0n) {
+        throw new Error('swap succeeded but no BOLD received — check Velodrome liquidity')
+      }
+
+      // --- Step 2: Bridge BOLD to Ethereum mainnet ---
+      markStep('bridge', 'active')
+      confirmBtn.textContent = 'step 2/3: bridging...'
+
+      await bridgeBoldToMainnet(addr, boldReceived, (msg) => { statusEl.textContent = msg })
+      markStep('bridge', 'done')
+
+      // --- Step 3: Deposit into stability pool ---
+      if (spAddress) {
+        markStep('deposit', 'active')
+        confirmBtn.textContent = 'step 3/3: depositing...'
+
+        // Wait a moment for bridge to settle
+        statusEl.textContent = 'waiting for BOLD on Ethereum...'
+        await new Promise(r => setTimeout(r, 15000))
+
+        await depositToStabilityPool(spAddress, boldReceived, addr, (msg) => { statusEl.textContent = msg })
+        markStep('deposit', 'done')
+      } else {
+        markStep('deposit', 'done')
+        statusEl.textContent = 'BOLD bridged — deposit into a stability pool at liquity.app/earn'
+      }
+
+      // --- Done ---
+      confirmBtn.textContent = 'done!'
       confirmBtn.style.borderColor = 'var(--green)'
       confirmBtn.style.color = 'var(--green)'
       statusEl.style.color = 'var(--green)'
-      statusEl.textContent = 'swap complete'
+      statusEl.textContent = spAddress ? 'deposited into stability pool — earning yield' : 'BOLD on Ethereum — ready to deposit'
       window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
-      setTimeout(() => overlay.remove(), 2500)
+      setTimeout(() => overlay.remove(), 4000)
     } catch (e) {
+      const failedStep = stepsEl?.querySelector('.vault-step-active')
+      if (failedStep) {
+        failedStep.classList.remove('vault-step-active')
+        failedStep.classList.add('vault-step-error')
+      }
       confirmBtn.disabled = false
-      confirmBtn.textContent = 'swap to BOLD'
+      swapInput.disabled = false
+      confirmBtn.textContent = 'retry'
       statusEl.style.color = 'var(--dim)'
       statusEl.textContent = e.code === 4001 ? 'cancelled' : formatTxError(e)
     }
