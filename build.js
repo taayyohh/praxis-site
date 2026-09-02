@@ -708,12 +708,13 @@ const artHtml = `<div id="art-page">
 </div>`
 out('art', wrap(artHtml, 'art', '/art', '/og/index.png'))
 
-// earnings page
-const earningsHtml = `<div id="earnings-page" style="max-width:680px;margin:0 auto">
-<h2 data-i18n="earnings.title">earnings</h2>
-<div id="earnings-content"><span class="praxis-loader"></span></div>
+// vault page (also serves legacy /earnings route)
+const vaultHtml = `<div id="vault-page" style="max-width:680px;margin:0 auto">
+<h2 style="color:var(--accent)">vault</h2>
+<div id="vault-content"><span class="praxis-loader"></span></div>
 </div>`
-out('earnings', wrap(earningsHtml, 'earnings', '/earnings', '/og/index.png', { noindex: true }))
+out('vault', wrap(vaultHtml, 'vault', '/vault', '/og/index.png', { noindex: true }))
+out('earnings', wrap(vaultHtml, 'vault', '/vault', '/og/index.png', { noindex: true }))
 
 // cashout guide page
 const cashoutHtml = `<div id="cashout-page" style="max-width:680px;margin:0 auto">
@@ -1046,6 +1047,7 @@ Allow: /
 Disallow: /api/
 Disallow: /journal
 Disallow: /messages
+Disallow: /vault
 Disallow: /earnings
 Disallow: /notifications
 Disallow: /settings

@@ -24,6 +24,7 @@ const ROUTE_MODULES = {
   '/blog': ['/js/post.js'],
   '/journal': ['/js/journal.js'],
   '/messages': ['/js/messages.js'],
+  '/vault': ['/js/earnings.js'],
   '/earnings': ['/js/earnings.js'],
   '/collection': ['/js/collection.js'],
   '/works': ['/js/works.js'],

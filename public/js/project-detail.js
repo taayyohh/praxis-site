@@ -70,16 +70,50 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
   const sdk = window._xmtpSdk
   if (!client || !sdk) return
 
+  const myAddr = window.getWalletAddress?.()?.toLowerCase()
+  const title = project.title || `Project #${projectId}`
+
+  async function resolveInboxId(addr) {
+    try {
+      let id = null
+      if (typeof client.findInboxIdByIdentifier === 'function') {
+        id = await client.findInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
+      }
+      if (!id && typeof client.fetchInboxIdByIdentifier === 'function') {
+        id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
+      }
+      return id
+    } catch { return null }
+  }
+
+  async function resolveInboxIds(addrs) {
+    const filtered = [...addrs].filter(a => a !== myAddr)
+    const results = await Promise.all(filtered.map(resolveInboxId))
+    return results.filter(Boolean)
+  }
+
+  let existing = null
   try {
     const checkRes = await fetch(`/api/project-group?id=${projectId}`)
-    const checkData = await checkRes.json()
-    if (checkData.teamGroupId || checkData.communityGroupId) return
-  } catch {
+    existing = await checkRes.json()
+  } catch { return }
+
+  if (existing?.communityGroupId && funderAddr) {
+    try {
+      const funderInboxId = await resolveInboxId(funderAddr.toLowerCase())
+      if (funderInboxId) {
+        const group = await client.conversations.getConversationById(existing.communityGroupId)
+        if (group) {
+          const members = await group.members()
+          const alreadyMember = members.some(m => m.inboxId === funderInboxId)
+          if (!alreadyMember) await group.addMembers([funderInboxId])
+        }
+      }
+    } catch (e) { console.warn('praxis: add funder to community group failed:', e?.message) }
     return
   }
 
-  const myAddr = window.getWalletAddress?.()?.toLowerCase()
-  const title = project.title || `Project #${projectId}`
+  if (existing?.teamGroupId || existing?.communityGroupId) return
 
   const teamAddrs = new Set()
   if (project.proposer) teamAddrs.add(project.proposer.toLowerCase())
@@ -89,23 +123,6 @@ async function maybeCreateProjectGroup(projectId, project, data, funderAddr) {
 
   const communityAddrs = new Set(teamAddrs)
   if (funderAddr) communityAddrs.add(funderAddr.toLowerCase())
-
-  async function resolveInboxIds(addrs) {
-    const filtered = addrs.filter(a => a !== myAddr)
-    const results = await Promise.all(filtered.map(async addr => {
-      try {
-        let id = null
-        if (typeof client.findInboxIdByIdentifier === 'function') {
-          id = await client.findInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
-        }
-        if (!id && typeof client.fetchInboxIdByIdentifier === 'function') {
-          id = await client.fetchInboxIdByIdentifier({ identifier: addr, identifierKind: sdk.IdentifierKind.Ethereum })
-        }
-        return id
-      } catch { return null }
-    }))
-    return results.filter(Boolean)
-  }
 
   try {
     const [teamIds, communityIds] = await Promise.all([

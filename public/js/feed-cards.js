@@ -430,7 +430,12 @@ export function renderProjectCard(p, resolve, opts = {}) {
   const statusColors = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
   const statusIcons = ['ph-clock', 'ph-check-circle', 'ph-handshake', 'ph-spinner', 'ph-star', 'ph-x-circle', 'ph-warning']
   const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
-  const deadlineStr = p.deadline > 0 ? new Date(Number(p.deadline) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+  let deadlineStr = ''
+  if (p.deadline > 0) {
+    const deadlineMs = Number(p.deadline) * 1000
+    const daysLeft = Math.ceil((deadlineMs - Date.now()) / 86400000)
+    deadlineStr = daysLeft > 0 ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left` : new Date(deadlineMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
   const linkTarget = opts.external ? ' target="_blank"' : ''
 
   const posterCid = p.posterCid || p.imageCid || ''
@@ -442,14 +447,14 @@ export function renderProjectCard(p, resolve, opts = {}) {
       <div style="padding:1.5em 1.75em">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
           <span style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3">${esc(p.title)}</span>
-          <span style="font-size:0.75em;color:${statusColors[p.status]};flex-shrink:0;margin-left:1ch">${statusLabels[p.status]}</span>
+          <span style="font-size:0.75em;color:${statusColors[p.status]};flex-shrink:0;margin-left:1ch;display:flex;align-items:center;gap:0.3ch"><i class="ph ${statusIcons[p.status]}" style="font-size:1.1em"></i>${statusLabels[p.status]}</span>
         </div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(p.proposer)}<span style="color:var(--fg)">${esc(domain)}</span>${deadlineStr ? ` · ${deadlineStr}` : ''}${typeName !== 'other' ? ` · ${esc(typeName)}` : ''}
         </div>
         ${p.description ? `<p style="color:var(--dim);font-size:0.8em;margin:1em 0 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description).slice(0, 200)}</p>` : ''}
         <div style="margin-top:1.25em">
-          <div style="background:var(--border);height:2px;border-radius:1px;overflow:hidden"><div style="background:var(--green);height:100%;width:${Math.min(pct, 100)}%"></div></div>
+          <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:${Math.min(pct, 100)}%"></div></div>
           <div style="font-size:0.75em;color:var(--dim);margin-top:0.5em">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</div>
         </div>
       </div>
@@ -461,12 +466,25 @@ export function renderFundedCard(d, resolve, opts = {}) {
   const funder = resolve(d.funder)
   const linkTarget = opts.external ? ' target="_blank"' : ''
   const fPic = getProfilePic(d.funder)
+  const posterCid = d.posterCid || ''
+  const posterSrc = posterCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(posterCid)}&w=280` : ''
+  let progressHtml = ''
+  try {
+    const goal = BigInt(d.fundingGoal || '0')
+    const funded = BigInt(d.totalFunded || '0')
+    if (goal > 0n) {
+      const pct = Number((funded * 100n) / goal)
+      progressHtml = `<div style="margin-top:0.5em"><div style="height:4px;border-radius:2px;background:color-mix(in srgb, var(--fg) 8%, transparent);overflow:hidden"><div style="height:100%;border-radius:2px;background:var(--green);width:${Math.min(pct, 100)}%"></div></div><div style="font-size:0.75em;color:var(--muted);margin-top:0.25em">${pct}% funded</div></div>`
+    }
+  } catch {}
   return `
     <a href="/project?id=${d.projectId}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.25em 1.75em;display:flex;align-items:center;gap:0.75em">
-        ${fPic ? `<img src="${esc(fPic)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
+      ${posterSrc ? `<div style="aspect-ratio:2/1;overflow:hidden;position:relative"><img src="${esc(posterSrc)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentElement.style.display='none'">${avatarOverlay(d.funder)}</div>` : ''}
+      <div style="padding:1em 1.25em;display:flex;align-items:flex-start;gap:0.75em">
+        ${!posterSrc && fPic ? `<img src="${esc(fPic)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div style="flex:1;min-width:0">
           <div style="font-size:0.9em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(funder)}</span> <span style="color:var(--muted)">funded</span> <span style="color:var(--accent);font-weight:600">${esc(d.projectTitle)}</span>${d.amount && d.amount !== '0' ? ` <span style="color:var(--muted)">for</span> <span style="color:var(--fg)" data-eth-wei="${esc(d.amount)}" data-fiat-primary="true"></span>` : ''}</div>
+          ${progressHtml}
         </div>
       </div>
     </a>
@@ -498,7 +516,7 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
           ${avatarOverlay(d.buyer)}
         </div>
         <div class="feed-media-card-info">
-          <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
+          <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected${d.price && d.price !== '0' ? ` for <span data-eth-wei="${esc(d.price)}" data-fiat-primary="true"></span>` : ''}</div>
           <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(title)}</a>
           <div class="feed-collected-actions">
             <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} class="feed-card-btn" style="text-decoration:none"><i class="ph ph-arrow-right"></i> view</a>
@@ -509,7 +527,8 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
     `
   }
   // Audio/image collected: side-by-side
-  const playOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(buyer)}" data-track-art="${esc(artSrc)}"><i class="ph ph-play"></i></button>` : ''
+  const artistName = d.artist ? resolveDisplay(d.artist, resolve) : buyer
+  const playOverlay = isAudio && cid ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(title)}" data-track-artist="${esc(artistName)}" data-track-art="${esc(artSrc)}"><i class="ph ph-play"></i></button>` : ''
   return `
     <div class="feed-item feed-collected-card">
       <div class="feed-collected-art-wrap">
@@ -518,7 +537,7 @@ export function renderPurchaseCard(d, resolve, opts = {}) {
         ${avatarOverlay(d.buyer)}
       </div>
       <div class="feed-collected-body">
-        <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
+        <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected${d.price && d.price !== '0' ? ` for <span data-eth-wei="${esc(d.price)}" data-fiat-primary="true"></span>` : ''}</div>
         <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${esc(title)}</a>
         <div class="feed-collected-actions">
           <a href="/art?media=${encodeURIComponent(d.mediaId)}"${linkTarget} class="feed-card-btn" style="text-decoration:none"><i class="ph ph-arrow-right"></i> view</a>
@@ -686,13 +705,20 @@ export function renderReferralCard(d, resolve, opts = {}) {
   `
 }
 
+function projectLifecyclePoster(posterCid) {
+  if (!posterCid) return ''
+  const src = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(posterCid)}&w=400`
+  return `<div style="aspect-ratio:2/1;overflow:hidden"><img src="${esc(src)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentElement.style.display='none'"></div>`
+}
+
 export function renderProjectCompletedCard(d, resolve, opts = {}) {
   const proposer = resolveDisplay(d.proposer, resolve)
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
-    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+    <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #4ade80 15%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project completed${d.totalFunded && d.totalFunded !== '0' ? ` · <span data-eth-wei="${esc(d.totalFunded)}" data-fiat-primary="true"></span> funded` : ''}
         </div>
@@ -707,8 +733,9 @@ export function renderProjectConfirmedCard(d, resolve, opts = {}) {
   const collabCount = d.collaboratorCount ? Number(d.collaboratorCount) : 0
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project confirmed${collabCount ? ` · ${collabCount} collaborator${collabCount !== 1 ? 's' : ''}` : ''}
         </div>
@@ -736,13 +763,19 @@ export function renderOrgCreatedCard(d, resolve, opts = {}) {
 export function renderCredentialCard(d, resolve, opts = {}) {
   const recipient = resolveDisplay(d.recipient, resolve)
   const rPic = getProfilePic(d.recipient)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+  const projectLink = d.projectId ? `/project?id=${esc(String(d.projectId))}` : '#'
   return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      <div style="padding:1.5em 1.75em;min-height:5em;display:flex;align-items:center;gap:0.75em">
-        ${rPic ? `<img src="${esc(rPic)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
-        <div style="font-size:0.9em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(recipient)}</span> <span style="color:var(--muted)">earned</span> <span style="color:var(--accent);font-weight:700">${esc(d.role || 'contributor')}</span> <span style="color:var(--muted)">from</span> <span style="color:var(--accent);font-weight:600">${esc(d.projectTitle || 'a project')}</span></div>
+    <a href="${projectLink}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, var(--accent) 15%, var(--border));border-radius:6px;text-decoration:none;color:inherit;overflow:hidden;padding:0">
+      <div style="padding:1.25em 1.5em;display:flex;align-items:center;gap:0.75em">
+        <div style="width:40px;height:40px;border-radius:50%;background:color-mix(in srgb, var(--accent) 15%, transparent);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ph ph-medal" style="font-size:18px;color:var(--accent)"></i></div>
+        ${rPic ? `<img src="${esc(rPic)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;margin-left:-0.5em" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.9em;line-height:1.5"><span style="color:var(--accent);font-weight:600">${esc(recipient)}</span> <span style="color:var(--muted)">earned</span> <span style="color:var(--accent);font-weight:700">${esc(d.role || 'contributor')}</span></div>
+          <div style="font-size:0.8em;color:var(--muted)">${esc(d.projectTitle || 'a project')}</div>
+        </div>
       </div>
-    </div>
+    </a>
   `
 }
 
@@ -751,8 +784,9 @@ export function renderProjectCompletingCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #fbbf24 20%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project entering dispute window
         </div>
@@ -766,8 +800,9 @@ export function renderProjectDisputedCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #ef4444 20%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.disputer)}<span style="color:var(--fg)">${esc(disputer)}</span> disputed this project
         </div>
@@ -781,8 +816,9 @@ export function renderProjectCancelledCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project was cancelled
         </div>
@@ -796,8 +832,9 @@ export function renderProjectTimedOutCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span>'s project timed out past deadline
         </div>
@@ -811,10 +848,11 @@ export function renderRevenueDistributedCard(d, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
   return `
     <a href="/project?id=${esc(String(d.projectId))}"${linkTarget} class="feed-item" style="display:block;border:1px solid color-mix(in srgb, #4ade80 15%, var(--border));border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
-      <div style="padding:1.5em 1.75em">
-        <div style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3;margin-bottom:0.5em">${esc(d.title || 'untitled')}</div>
+      ${projectLifecyclePoster(d.posterCid)}
+      <div style="padding:1.25em 1.5em">
+        <div style="color:var(--accent);font-weight:700;font-size:1.2em;line-height:1.3;margin-bottom:0.4em">${esc(d.title || 'untitled')}</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
-          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span> distributed revenue to backers
+          ${inlineAvatar(d.proposer)}<span style="color:var(--fg)">${esc(proposer)}</span> distributed revenue${d.amount && d.amount !== '0' ? ` · <span data-eth-wei="${esc(d.amount)}" data-fiat-primary="true"></span>` : ''}
         </div>
       </div>
     </a>
