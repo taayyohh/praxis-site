@@ -181,8 +181,8 @@ async function getRelayBridgeQuote(amountWei, addr) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      chainId: 10, toChainId: 1,
-      currency: ETH_ZERO, toCurrency: ETH_ZERO,
+      originChainId: 10, destinationChainId: 1,
+      originCurrency: ETH_ZERO, destinationCurrency: ETH_ZERO,
       amount: amountWei.toString(),
       user: addr, recipient: addr, tradeType: 'EXACT_INPUT',
     }),
