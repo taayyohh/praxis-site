@@ -6757,41 +6757,41 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-field-max { background: none; border: none; color: var(--accent); font-family: inherit; font-size: 0.75em; cursor: pointer; padding: 0; }
 .vault-field-output { font-size: 1em; color: var(--dim); text-align: right; flex: 1; }
 /* --- Save dialog --- */
-.vault-save-dialog { max-width: 420px !important; }
-.vault-save-head { display: flex; align-items: center; gap: 0.6em; margin-bottom: 1em; }
+.vault-save-dialog { max-width: 400px !important; }
+.vault-save-head { display: flex; align-items: center; gap: 0.6em; margin-bottom: 1.1em; }
 .vault-save-head svg { width: 28px; height: 28px; }
-.vault-save-title { font-size: 0.95em; font-weight: 600; color: var(--fg); }
-.vault-save-sub { font-size: 0.72em; color: var(--dim); }
+.vault-save-title { font-size: 1em; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; }
+.vault-save-sub { font-size: 0.72em; color: var(--dim); margin-top: 0.1em; }
 .vault-save-body { display: flex; flex-direction: column; gap: 0; }
-.vault-save-field { padding: 0.65em 0.75em; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0; }
+.vault-save-field { padding: 0.7em 0.8em; background: color-mix(in srgb, var(--fg) 3%, transparent); border: none; border-radius: 12px; margin-bottom: 0; }
 .vault-save-field + .vault-save-arrow + .vault-save-field { margin-top: 0; }
-.vault-save-field-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25em; }
-.vault-save-field-label { font-size: 0.7em; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
-.vault-save-max { background: none; border: none; color: var(--accent); font-family: inherit; font-size: 0.7em; cursor: pointer; padding: 0; letter-spacing: 0.04em; }
+.vault-save-field-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35em; }
+.vault-save-field-label { font-size: 0.72em; color: var(--dim); letter-spacing: 0.02em; }
 .vault-save-input-row { display: flex; align-items: center; gap: 0.5em; }
-.vault-save-input { flex: 1; background: none; border: none; color: var(--fg); font-family: inherit; font-size: 1.5em; font-weight: 600; padding: 0; min-width: 0; font-variant-numeric: tabular-nums; }
+.vault-save-input { flex: 1; background: none; border: none; color: var(--fg); font-family: inherit; font-size: 1.6em; font-weight: 600; padding: 0; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .vault-save-input:focus { outline: none; }
-.vault-save-input::placeholder { color: var(--dim); opacity: 0.5; }
-.vault-save-output { flex: 1; font-size: 1.5em; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
-.vault-save-token { display: flex; align-items: center; gap: 0.35em; font-size: 0.85em; font-weight: 600; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: 20px; padding: 0.3em 0.65em 0.3em 0.35em; flex-shrink: 0; }
-.vault-save-token svg { width: 20px; height: 20px; }
-.vault-save-fiat { font-size: 0.72em; color: var(--dim); margin-top: 0.2em; min-height: 1em; font-variant-numeric: tabular-nums; }
-.vault-save-arrow { text-align: center; color: var(--dim); padding: 0.15em 0; font-size: 0.9em; margin: -0.3em 0; position: relative; z-index: 1; }
+.vault-save-input::placeholder { color: var(--dim); opacity: 0.35; }
+.vault-save-output { flex: 1; font-size: 1.6em; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.vault-save-token { display: flex; align-items: center; gap: 0.3em; font-size: 0.82em; font-weight: 600; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 20px; padding: 0.3em 0.6em 0.3em 0.3em; flex-shrink: 0; }
+.vault-save-token svg { width: 18px; height: 18px; }
+.vault-save-fiat { font-size: 0.72em; color: var(--dim); min-height: 1em; font-variant-numeric: tabular-nums; }
+.vault-save-arrow { text-align: center; color: var(--dim); padding: 0.2em 0; font-size: 0.85em; margin: -0.15em 0; position: relative; z-index: 1; }
 /* Pool selector cards */
-.vault-pool-cards { display: flex; flex-direction: column; gap: 0.35em; margin-top: 0.35em; margin-bottom: 0.5em; }
-.vault-pool-card { display: block; padding: 0.55em 0.65em; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
-.vault-pool-card:hover { border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
-.vault-pool-card-selected { border-color: var(--green); background: color-mix(in srgb, var(--green) 5%, transparent); }
+.vault-pool-cards { display: flex; flex-direction: column; gap: 0.3em; margin-top: 0.4em; margin-bottom: 0.5em; }
+.vault-pool-card { display: block; padding: 0.5em 0.7em; background: color-mix(in srgb, var(--fg) 3%, transparent); border: 1.5px solid transparent; border-radius: 10px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.vault-pool-card:hover { border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+.vault-pool-card-selected { border-color: var(--green); background: color-mix(in srgb, var(--green) 6%, transparent); }
 .vault-pool-card-top { display: flex; justify-content: space-between; align-items: center; }
 .vault-pool-card-name { font-size: 0.8em; font-weight: 500; color: var(--fg); }
-.vault-pool-card-apy { font-size: 0.85em; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+.vault-pool-card-apy { font-size: 0.82em; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
 .vault-pool-card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 0.15em; }
 .vault-pool-card-tvl { font-size: 0.65em; color: var(--dim); font-variant-numeric: tabular-nums; }
 .vault-pool-card-7d { font-size: 0.65em; color: var(--dim); font-variant-numeric: tabular-nums; }
 /* Steps */
-.vault-save-steps { display: flex; align-items: center; gap: 0.5em; padding: 0.6em 0 0.25em; justify-content: center; }
-.vault-save-step { display: flex; align-items: center; gap: 0.35em; font-size: 0.7em; color: var(--dim); transition: color 0.2s; }
-.vault-save-step-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; transition: background 0.2s; }
+.vault-save-steps { display: flex; align-items: center; gap: 0.3em; padding: 0.65em 0 0.3em; justify-content: center; flex-wrap: wrap; }
+.vault-save-step { display: flex; align-items: center; gap: 0.25em; font-size: 0.65em; color: var(--dim); transition: color 0.2s; }
+.vault-save-step + .vault-save-step::before { content: ''; display: inline-block; width: 12px; height: 1px; background: var(--border); margin-right: 0.3em; }
+.vault-save-step-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border); flex-shrink: 0; transition: background 0.2s; }
 .vault-save-step-active { color: var(--accent); }
 .vault-save-step-active .vault-save-step-dot { background: var(--accent); }
 .vault-save-step-done { color: var(--green); }
@@ -6799,22 +6799,23 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-save-step-error { color: var(--dim); }
 .vault-save-step-error .vault-save-step-dot { background: var(--dim); }
 /* Primary action */
-.vault-save-btn { width: 100%; background: none; border: 1px solid var(--accent); color: var(--accent); font-family: inherit; font-size: 0.85em; font-weight: 500; padding: 0.65em 0; cursor: pointer; border-radius: 8px; margin-top: 0.5em; transition: background 0.15s, border-color 0.15s, color 0.15s; }
-.vault-save-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.vault-save-btn:disabled { opacity: 0.4; cursor: default; }
-.vault-save-status { font-size: 0.75em; color: var(--muted); text-align: center; min-height: 1em; margin-top: 0.4em; }
-.vault-save-bal { font-size: 0.72em; color: var(--muted); font-variant-numeric: tabular-nums; }
-.vault-save-field-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.25em; }
-.vault-presets { display: flex; gap: 0.35em; }
-.vault-preset { background: none; border: 1px solid var(--border, rgba(128,128,128,0.2)); color: var(--muted); font-family: inherit; font-size: 0.7em; padding: 0.2em 0.55em; border-radius: 6px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
-.vault-preset:hover { border-color: var(--accent); color: var(--accent); }
-.vault-qr { width: 160px; height: 160px; margin: 0.75em auto; border-radius: 8px; overflow: hidden; }
+.vault-save-btn { width: 100%; background: none; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); font-family: inherit; font-size: 0.85em; font-weight: 500; padding: 0.7em 0; cursor: pointer; border-radius: 10px; margin-top: 0.5em; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.vault-save-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }
+.vault-save-btn:disabled { opacity: 0.35; cursor: default; }
+.vault-save-status { font-size: 0.72em; color: var(--muted); text-align: center; min-height: 1em; margin-top: 0.4em; }
+.vault-save-bal { font-size: 0.72em; color: var(--dim); font-variant-numeric: tabular-nums; }
+.vault-save-field-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.35em; }
+.vault-presets { display: flex; gap: 0.3em; }
+.vault-preset { background: color-mix(in srgb, var(--fg) 6%, transparent); border: none; color: var(--muted); font-family: inherit; font-size: 0.7em; padding: 0.25em 0.6em; border-radius: 6px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.vault-preset:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.vault-qr { width: 160px; height: 160px; margin: 0.8em auto; border-radius: 10px; overflow: hidden; }
 @media (max-width: 600px) {
   .vault-total-value { font-size: 1.6em; }
   .vault-action-btn span { font-size: 0.85em; }
   .vault-stats { gap: 1em; }
   .vault-save-dialog { max-width: 100% !important; margin: 0 0.5em; }
-  .vault-save-input { font-size: 1.25em; }
-  .vault-save-output { font-size: 1.25em; }
+  .vault-save-input { font-size: 1.3em; }
+  .vault-save-output { font-size: 1.3em; }
   .vault-qr { width: 140px; height: 140px; }
+  .vault-preset { padding: 0.35em 0.7em; font-size: 0.75em; }
 }

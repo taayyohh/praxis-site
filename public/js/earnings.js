@@ -177,19 +177,19 @@ async function getUniswapBoldQuote(ethAmountWei) {
 }
 
 async function getRelayBridgeQuote(amountWei, addr) {
-  const { initRelay } = await import('./relay-bridge.js')
-  const { getQuote } = await import('./vendor-relay.js')
-  await initRelay()
-  return getQuote({
-    chainId: 10,
-    toChainId: 1,
-    currency: ETH_ZERO,
-    toCurrency: ETH_ZERO,
-    amount: amountWei.toString(),
-    user: addr,
-    recipient: addr,
-    tradeType: 'EXACT_INPUT',
+  const res = await fetch('/api/relay/quote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chainId: 10, toChainId: 1,
+      currency: ETH_ZERO, toCurrency: ETH_ZERO,
+      amount: amountWei.toString(),
+      user: addr, recipient: addr, tradeType: 'EXACT_INPUT',
+    }),
   })
+  const data = await res.json()
+  if (!res.ok || data.error) throw new Error(data.error || data.message || 'bridge quote failed')
+  return data
 }
 
 async function getSpDeposit(spAddress, depositor) {
@@ -203,40 +203,34 @@ async function getSpDeposit(spAddress, depositor) {
 }
 
 async function executeBridge(addr, amountWei, onStatus) {
-  const { initRelay, _buildBridgeWalletClient } = await import('./relay-bridge.js')
-  const { getQuote, execute } = await import('./vendor-relay.js')
-  await initRelay()
-
   onStatus?.('getting bridge quote...')
-  const quote = await getQuote({
-    chainId: 10, toChainId: 1,
-    currency: ETH_ZERO, toCurrency: ETH_ZERO,
-    amount: amountWei.toString(),
-    user: addr, recipient: addr, tradeType: 'EXACT_INPUT',
-  })
+  const quote = await getRelayBridgeQuote(amountWei, addr)
+
+  const steps = quote.steps || []
+  if (!steps.length || !steps[0]?.items?.length) throw new Error('no bridge steps in quote')
+  const txData = steps[0].items[0].data
+  if (!txData?.to) throw new Error('invalid bridge quote')
 
   onStatus?.('confirm bridge...')
+  const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
   let walletClient
   try { walletClient = await _buildBridgeWalletClient(10) } catch {
     const { createWalletClient: cwc, custom: cst, optimism: op } = await import('./vendor.js')
     walletClient = cwc({ chain: op, transport: cst(getWalletProvider()), account: addr })
   }
 
-  let lastHash = null
-  return new Promise((resolve, reject) => {
-    execute({ quote, wallet: walletClient,
-      onProgress: ({ currentStepItem, txHashes, error }) => {
-        if (txHashes?.length) lastHash = txHashes[txHashes.length - 1]?.txHash || lastHash
-        if (currentStepItem?.txHashes?.length) lastHash = currentStepItem.txHashes[currentStepItem.txHashes.length - 1]?.txHash || lastHash
-        if (error) { reject(new Error(error.message || 'bridge failed')); return }
-        if (currentStepItem?.status === 'complete') { onStatus?.('ETH arrived on Ethereum'); resolve(lastHash) }
-        else if (currentStepItem?.status === 'incomplete') onStatus?.('bridging ETH to Ethereum...')
-      },
-    }).then(() => resolve(lastHash)).catch(err => {
-      if (lastHash && (err?.message || '').includes('not found')) { onStatus?.('bridge in flight...'); resolve(lastHash); return }
-      reject(err)
-    })
+  onStatus?.('bridging ETH to Ethereum...')
+  const hash = await walletClient.sendTransaction({
+    to: txData.to,
+    data: txData.data,
+    value: BigInt(txData.value || '0'),
+    account: addr,
+    ...(txData.maxFeePerGas ? { maxFeePerGas: BigInt(txData.maxFeePerGas) } : {}),
+    ...(txData.maxPriorityFeePerGas ? { maxPriorityFeePerGas: BigInt(txData.maxPriorityFeePerGas) } : {}),
+    ...(txData.gas ? { gas: BigInt(txData.gas) } : {}),
   })
+  onStatus?.('bridge submitted — waiting for ETH on Ethereum...')
+  return hash
 }
 
 async function swapEthToBold(addr, feeTier, onStatus) {
@@ -828,17 +822,17 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       <div class="vault-save-icon">${BOLD_ICON}</div>
       <div>
         <div class="vault-save-title">save to BOLD</div>
-        <div class="vault-save-sub">ETH on Optimism → BOLD on Ethereum${bestApy > 0 ? ` · ${bestApy.toFixed(1)}% APR` : ''}</div>
+        <div class="vault-save-sub">${bestApy > 0 ? `${bestApy.toFixed(1)}% APR on Ethereum` : 'stability pool yield on Ethereum'}</div>
       </div>
     </div>
     <div class="vault-save-body">
       <div class="vault-save-field">
         <div class="vault-save-field-head">
-          <span class="vault-save-field-label">you send</span>
+          <span class="vault-save-field-label">send</span>
           <span class="vault-save-bal">${ethBalStr} ETH${ethBalFiat ? ' · ' + ethBalFiat : ''}</span>
         </div>
         <div class="vault-save-input-row">
-          <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
+          <input id="swap-amount" type="text" inputmode="decimal" placeholder="0" class="vault-save-input" autocomplete="off">
           <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
         </div>
         <div class="vault-save-field-foot">
@@ -848,18 +842,18 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       </div>
       <div class="vault-save-arrow"><i class="ph ph-arrow-down"></i></div>
       <div class="vault-save-field">
-        <span class="vault-save-field-label">you receive</span>
+        <span class="vault-save-field-label">receive</span>
         <div class="vault-save-input-row">
           <span id="swap-output" class="vault-save-output">—</span>
           <div class="vault-save-token">${BOLD_ICON}<span>BOLD</span></div>
         </div>
         <div id="swap-rate" class="vault-save-fiat"></div>
       </div>
-      ${poolCards ? `<div class="vault-save-field-label" style="margin-top:0.5em">deposit into</div><div class="vault-pool-cards">${poolCards}</div>` : ''}
+      ${poolCards ? `<div class="vault-save-field-label" style="margin-top:0.6em;margin-bottom:0.15em">deposit into</div><div class="vault-pool-cards">${poolCards}</div>` : ''}
       <div class="vault-save-steps" id="swap-steps">
-        <div class="vault-save-step" data-step="bridge"><span class="vault-save-step-dot"></span>bridge ETH to Ethereum</div>
-        <div class="vault-save-step" data-step="swap"><span class="vault-save-step-dot"></span>swap ETH → BOLD</div>
-        <div class="vault-save-step" data-step="deposit"><span class="vault-save-step-dot"></span>deposit into stability pool</div>
+        <div class="vault-save-step" data-step="bridge"><span class="vault-save-step-dot"></span>bridge</div>
+        <div class="vault-save-step" data-step="swap"><span class="vault-save-step-dot"></span>swap</div>
+        <div class="vault-save-step" data-step="deposit"><span class="vault-save-step-dot"></span>deposit</div>
       </div>
       <button id="swap-confirm" class="vault-save-btn" disabled>enter amount</button>
       <div id="swap-status" class="vault-save-status"></div>
