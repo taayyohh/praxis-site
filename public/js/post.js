@@ -861,8 +861,8 @@ function renderReplyForm(blogAddr, postId) {
       const publicClient = await getPublicClient()
 
       if (!await window.ensureOptimism?.()) return
-      const replyAccount = await window.ensureAuthorized?.() || addr
-      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const replyAccount = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await walletClient.writeContract({
         address: blogAddr, abi: BLOG_ABI, functionName: 'postWithRef',
         args: ['reply', content, 3, BigInt(postId)],

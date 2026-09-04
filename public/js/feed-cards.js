@@ -96,7 +96,7 @@ if (typeof document !== 'undefined') {
 
       ;(async () => {
         try {
-          const addr = await window.ensureAuthorized?.() || window.getWalletAddress?.()
+          const addr = await window.authorizedSigner?.(window.getWalletAddress?.())
           if (!addr) throw new Error('wallet not available')
 
           const { getPublicClient } = await import('./utils.js')

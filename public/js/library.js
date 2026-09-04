@@ -315,8 +315,8 @@ async function initLibrary() {
             if (!pending.length) return
             const addr = await ensureWallet()
             if (!addr) return
-            const tagAccount = await window.ensureAuthorized?.() || addr
-            if (!await window.ensureOptimism?.()) return
+            const tagAccount = await window.authorizedSigner?.(addr)
+          if (!await window.ensureOptimism?.()) return
             const submitBtn = wrap.querySelector('.li-tag-submit')
             submitBtn.textContent = t('library.tagging')
             submitBtn.disabled = true
@@ -571,8 +571,8 @@ function renderAddForm(libraryAddress) {
     // Activate embedded provider FIRST (sets window.praxisEthereum) so that
     // getWalletProvider() and ensureScroll() don't accidentally hijack
     // MetaMask/Brave when window.ethereum is locked by another wallet.
-    const addAccount = await window.ensureAuthorized?.() || addr
-    if (!await window.ensureOptimism?.()) { statusEl.textContent = t('projects.connectWallet'); return }
+    const addAccount = await window.authorizedSigner?.(addr)
+          if (!await window.ensureOptimism?.()) { statusEl.textContent = t('projects.connectWallet'); return }
 
     let ipfsCid = ''
 

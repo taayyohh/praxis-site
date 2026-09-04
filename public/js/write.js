@@ -239,8 +239,8 @@ async function submitPost() {
       fnArgs = [title, content]
     }
     if (!await window.ensureOptimism?.()) return
-    const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({
+    const currentAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({
       chain: optimism,
       transport: custom(getWalletProvider()),
     })

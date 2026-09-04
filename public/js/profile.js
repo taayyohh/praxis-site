@@ -325,8 +325,8 @@ async function showProfile(addr) {
       const statusEl = container.querySelector('.follow-status') || btn
       try {
         if (!await window.ensureOptimism?.()) { btn.textContent = isFollowing ? 'following' : 'follow'; return }
-        const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
           address: registryAddress,
           abi: [{ name: isFollowing ? 'unfollow' : 'follow', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'target', type: 'address' }], outputs: [] }],

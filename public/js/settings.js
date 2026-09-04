@@ -861,8 +861,8 @@ function renderIdentityTab(el) {
 
     statusEl.textContent = 'sign to confirm domain change...'
     try {
-      const currentAccount = await window.ensureAuthorized?.() || wallet
-      const { createWalletClient, custom } = await import('./vendor.js')
+      const currentAccount = await window.authorizedSigner?.(wallet)
+          const { createWalletClient, custom } = await import('./vendor.js')
       const { optimism } = await import('./vendor.js')
       const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 
@@ -1065,7 +1065,7 @@ async function handleOrgInvite(btn, fnName, orgId) {
       abi: ORG_ABI,
       functionName: fnName,
       args: [BigInt(orgId)],
-      account: addr,
+      account: window.getEmbeddedAccount?.() || addr,
     })
     const { getPublicClient } = await import('./utils.js')
     const pc = await getPublicClient()
@@ -1154,7 +1154,7 @@ async function showConvertToOrgModal() {
         abi: ORG_ABI,
         functionName: 'createOrg',
         args: [name, metadataCid],
-        account: addr,
+        account: window.getEmbeddedAccount?.() || addr,
       })
 
       statusEl.textContent = 'waiting for confirmation...'
@@ -1259,7 +1259,7 @@ async function showCreateOrgModal() {
         abi: ORG_ABI,
         functionName: 'createOrg',
         args: [name, metadataCid],
-        account: addr,
+        account: window.getEmbeddedAccount?.() || addr,
       })
 
       statusEl.textContent = 'waiting for confirmation...'

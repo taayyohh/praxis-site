@@ -734,8 +734,8 @@ function showAudiencePrompt(address, registryAddress, publicClient) {
 
       const { createWalletClient, custom, optimism } = await import('./vendor.js')
 
-      const currentAccount = await ensureAuthorized() || address
-      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const currentAccount = await authorizedSigner(address)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await walletClient.writeContract({
         address: registryAddress,
         abi: AUDIENCE_ABI,
@@ -1213,8 +1213,8 @@ function showRenewalBanner(domain, statusData, address) {
 
       // send ETH to treasury
       const { createWalletClient, custom, parseEther, optimism } = await import('./vendor.js')
-      const from = await ensureAuthorized() || addr
-      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const from = await authorizedSigner(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 
       // get treasury address from deploy-price endpoint
       const deployRes = await fetch(`${orchBase}/orchestrator/deploy-price`)
@@ -1224,7 +1224,7 @@ function showRenewalBanner(domain, statusData, address) {
       const txHash = await walletClient.sendTransaction({
         to: treasuryAddress,
         value: amountWei,
-        account: from,
+        account: window.getEmbeddedAccount?.() || from,
       })
 
       statusEl.textContent = 'confirming...'
@@ -1326,8 +1326,8 @@ async function showUnregisterConfirmation(address) {
       }
 
       // Ensure wallet is fully unlocked — prompt password if needed
-      currentAccount = await ensureAuthorized() || address
-      if (!currentAccount) { statusEl.textContent = 'sign in first'; confirmBtn.disabled = false; return }
+      currentAccount = await authorizedSigner(address)
+          if (!currentAccount) { statusEl.textContent = 'sign in first'; confirmBtn.disabled = false; return }
 
       const { encodeFunctionData } = await import('./vendor.js')
       const data = encodeFunctionData({ abi: REGISTRY_ABI, functionName: 'unregister', args: [] })
@@ -1342,7 +1342,7 @@ async function showUnregisterConfirmation(address) {
       } catch (txErr) {
         if (txErr.message?.includes('locked') || txErr.message?.includes('null') || txErr.message?.includes('address')) {
           statusEl.textContent = 'session expired — re-authenticating...'
-          currentAccount = await ensureAuthorized() || address
+          currentAccount = await authorizedSigner(address)
           if (!currentAccount) { statusEl.textContent = 'sign in to continue'; confirmBtn.disabled = false; return }
           hash = await getWalletProvider().request({
             method: 'eth_sendTransaction',
@@ -1499,6 +1499,17 @@ async function ensureAuthorized() {
   return window.getWalletAddress()
 }
 window.ensureAuthorized = ensureAuthorized
+
+// Ensure the wallet is unlocked, then return a viem-ready signer.
+// Prefer the embedded LocalAccount (needed for HTTP-transport wallet clients
+// that can't route eth_sendTransaction to a wallet shim). Falls back to the
+// address string when the user is on an external wallet, so viem still
+// dispatches through window.ethereum. Pass a fallback address if you have one.
+async function authorizedSigner(fallback) {
+  const addr = await authorizedSigner(fallback)
+          return window.getEmbeddedAccount?.() || addr
+}
+window.authorizedSigner = authorizedSigner
 
 // --- Ensure embedded wallet is unlocked before signing ---
 // intercept signing requests when wallet is locked

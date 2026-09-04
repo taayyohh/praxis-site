@@ -729,7 +729,7 @@ function renderNotificationsPage(contentEl, notifications) {
         const hash = await wc.writeContract({
           address: ORG_ADDRESS, abi: ORG_ABI,
           functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
-          args: [BigInt(orgId)], account: addr,
+          args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
         })
         const pc = await getPublicClient()
         await pc.waitForTransactionReceipt({ hash })
@@ -802,7 +802,7 @@ function renderPanel(notifications) {
           const hash = await wc.writeContract({
             address: ORG_ADDRESS, abi: ORG_ABI,
             functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
-            args: [BigInt(orgId)], account: addr,
+            args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
           })
           const pc = await getPublicClient()
           await pc.waitForTransactionReceipt({ hash })

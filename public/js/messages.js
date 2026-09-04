@@ -3599,8 +3599,8 @@ async function sendPayment(mode) {
 
   try {
     if (!await window.ensureOptimism?.()) return
-    const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const provider = window.getWalletProvider?.() || window.ethereum
+    const payAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const provider = window.getWalletProvider?.() || window.ethereum
     const walletClient = createWalletClient({ chain: optimism, transport: custom(provider) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,
@@ -3621,8 +3621,8 @@ async function _acceptMsgPayRequest(ethAmount) {
   if (!activeConvo || !activePeerAddr) return
   try {
     if (!await window.ensureOptimism?.()) return
-    const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const provider = window.getWalletProvider?.() || window.ethereum
+    const payAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const provider = window.getWalletProvider?.() || window.ethereum
     const walletClient = createWalletClient({ chain: optimism, transport: custom(provider) })
     const hash = await walletClient.sendTransaction({
       to: activePeerAddr,

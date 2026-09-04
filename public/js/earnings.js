@@ -162,6 +162,7 @@ async function getUniswapBoldQuote(ethAmountWei) {
   const pc = await getMainnetClient()
   const { encodeFunctionData } = await import('./vendor.js')
   const fees = [3000, 10000, 500]
+  const errors = []
   for (const fee of fees) {
     try {
       const calldata = encodeFunctionData({
@@ -169,11 +170,16 @@ async function getUniswapBoldQuote(ethAmountWei) {
         args: [{ tokenIn: WETH_MAINNET, tokenOut: BOLD_MAINNET, amountIn: ethAmountWei, fee, sqrtPriceLimitX96: 0n }],
       })
       const result = await pc.call({ to: UNISWAP_QUOTER, data: calldata })
+      if (!result?.data || result.data === '0x') { errors.push(`fee ${fee}: empty return`); continue }
       const amountOut = BigInt('0x' + result.data.slice(2, 66))
       if (amountOut > 0n) return { amountOut, fee }
-    } catch {}
+      errors.push(`fee ${fee}: amountOut=0`)
+    } catch (e) {
+      errors.push(`fee ${fee}: ${e?.shortMessage || e?.message || e}`)
+    }
   }
-  throw new Error('no BOLD liquidity')
+  console.warn('[bold-quote] no liquidity across fee tiers:', errors)
+  throw new Error(`no BOLD liquidity (${errors.join(' | ')})`)
 }
 
 async function getRelayBridgeQuote(amountWei, addr) {
@@ -216,7 +222,7 @@ async function executeBridge(addr, amountWei, onStatus) {
   let walletClient
   try { walletClient = await _buildBridgeWalletClient(10) } catch {
     const { createWalletClient: cwc, custom: cst, optimism: op } = await import('./vendor.js')
-    walletClient = cwc({ chain: op, transport: cst(getWalletProvider()), account: addr })
+    walletClient = cwc({ chain: op, transport: cst(getWalletProvider()), account: window.getEmbeddedAccount?.() || addr })
   }
 
   onStatus?.('bridging ETH to Ethereum...')
@@ -224,7 +230,6 @@ async function executeBridge(addr, amountWei, onStatus) {
     to: txData.to,
     data: txData.data,
     value: BigInt(txData.value || '0'),
-    account: addr,
     ...(txData.maxFeePerGas ? { maxFeePerGas: BigInt(txData.maxFeePerGas) } : {}),
     ...(txData.maxPriorityFeePerGas ? { maxPriorityFeePerGas: BigInt(txData.maxPriorityFeePerGas) } : {}),
     ...(txData.gas ? { gas: BigInt(txData.gas) } : {}),
@@ -250,7 +255,7 @@ async function swapEthToBold(addr, feeTier, onStatus) {
   let walletClient
   try { walletClient = await _buildBridgeWalletClient(1) } catch {
     const { createWalletClient: cwc, custom: cst, mainnet: mn } = await import('./vendor.js')
-    walletClient = cwc({ chain: { ...mn, rpcUrls: { ...mn.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: cst(getWalletProvider()), account: addr })
+    walletClient = cwc({ chain: { ...mn, rpcUrls: { ...mn.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: cst(getWalletProvider()), account: window.getEmbeddedAccount?.() || addr })
   }
 
   const hash = await walletClient.writeContract({
@@ -707,8 +712,8 @@ function renderVault(el, { ethBalance, boldBalance, unclaimed, earned, contribut
       btn.disabled = true
       try {
         const pc = await getPublicClient()
-        const claimAccount = await window.ensureAuthorized?.() || addr
-        const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const claimAccount = await window.authorizedSigner?.(addr)
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         if (btn.dataset.source === 'media') {
           const hash = await wc.writeContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'withdraw', args: [], account: claimAccount })
           if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
@@ -1156,7 +1161,7 @@ export async function showSendModal(fromAddress) {
       await wc.sendTransaction({
         to: toAddr,
         value: parseEther(amountStr),
-        account: fromAddress,
+        account: window.getEmbeddedAccount?.() || fromAddress,
       })
 
       status.style.color = 'var(--green)'

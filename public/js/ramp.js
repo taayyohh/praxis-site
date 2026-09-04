@@ -577,7 +577,7 @@ export async function fetchQuote(mode, amount, paymentMethod = 'venmo') {
         // getQuote only needs the address, not signing capability
         const addr = window.getWalletAddress?.()
         if (addr) {
-          wc = createWalletClient({ chain: BASE_CHAIN, transport: http(BASE_RPC), account: addr })
+          wc = createWalletClient({ chain: BASE_CHAIN, transport: http(BASE_RPC), account: window.getEmbeddedAccount?.() || addr })
         }
       }
       if (wc) await initZkp2pClient(wc)

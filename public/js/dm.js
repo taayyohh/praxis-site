@@ -948,8 +948,8 @@ async function sendPayment(mode) {
   if (payBtn) { payBtn.textContent = 'Sending...'; payBtn.disabled = true }
 
   try {
-    const sendAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({
+    const sendAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({
       chain: optimism,
       transport: custom(getWalletProvider()),
     })
@@ -976,8 +976,8 @@ async function _acceptPayRequest(ethAmount) {
   if (!activeConvo || !activePeerAddr) return
   try {
     if (!await window.ensureOptimism?.()) return
-    const sendAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({
+    const sendAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({
       chain: optimism,
       transport: custom(getWalletProvider()),
     })

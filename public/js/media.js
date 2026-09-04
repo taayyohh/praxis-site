@@ -21,8 +21,8 @@ export async function listMedia(title, ipfsCid, metadataCid, price, maxSupply, c
   if (!addr) throw new Error(t('status.connectWallet'))
   if (!await window.ensureOptimism?.()) return
 
-  const currentAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const currentAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
 
   const pc = await getPublicClient()
 
@@ -79,8 +79,8 @@ export async function purchaseMedia(mediaId, price) {
   const addr = await ensureFundsForPurchase(price)
   if (!addr) throw new Error(t('status.connectWallet'))
 
-  const purchaseAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const purchaseAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const hash = await wc.writeContract({
     address,
     abi: MEDIA_ABI,
@@ -109,8 +109,8 @@ export async function listBatchMedia(entries) {
   if (!addr) throw new Error(t('status.connectWallet'))
   if (!await window.ensureOptimism?.()) return
 
-  const currentAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const currentAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const pc = await getPublicClient()
 
   if (!currentAccount || !currentAccount.startsWith('0x')) throw new Error('wallet not connected')
@@ -181,8 +181,8 @@ export async function purchaseBatchMedia(mediaIds, totalPrice) {
   const addr = await ensureFundsForPurchase(totalPrice)
   if (!addr) throw new Error(t('status.connectWallet'))
 
-  const purchaseAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const purchaseAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const pc = await getPublicClient()
 
   if (mediaIds.length <= BATCH_MAX) {
@@ -315,8 +315,8 @@ export async function setMediaPrice(mediaId, priceEth) {
   const addr = await ensureWallet()
   if (!addr) throw new Error('connect wallet')
   if (!await window.ensureOptimism?.()) return
-  const priceAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const priceAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const hash = await wc.writeContract({
     address, abi: MEDIA_ABI, functionName: 'setPrice',
     args: [BigInt(mediaId), parseEther(String(priceEth))],
@@ -340,8 +340,8 @@ export async function delistMedia(mediaId) {
     address, abi: MEDIA_ABI, functionName: 'media', args: [BigInt(mediaId)],
   })
   const totalMinted = media[6] || 0n
-  const account = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const account = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const fn = totalMinted > 0n ? 'setMaxSupply' : 'setPrice'
   const args = totalMinted > 0n
     ? [BigInt(mediaId), BigInt(totalMinted)]
@@ -361,8 +361,8 @@ export async function withdrawEarnings() {
   if (!addr) throw new Error(t('status.connectWallet'))
   if (!await window.ensureOptimism?.()) return
 
-  const withdrawAccount = await window.ensureAuthorized?.() || addr
-  const wc = getWalletClient()
+  const withdrawAccount = await window.authorizedSigner?.(addr)
+          const wc = getWalletClient()
   const hash = await wc.writeContract({
     address,
     abi: MEDIA_ABI,

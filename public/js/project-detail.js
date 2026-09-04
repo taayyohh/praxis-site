@@ -719,8 +719,8 @@ async function initProjectDetail() {
       if (statusEl) statusEl.textContent = 'confirm in wallet...'
       try {
         await window.ensureScroll?.()
-        const currentAccount = await window.ensureAuthorized?.() || addr
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const action = walletClient.writeContract({
           address: praxisAddr, abi: PRAXIS_ABI,
           functionName: fn, args, account: currentAccount,
@@ -947,8 +947,8 @@ async function initProjectDetail() {
       statusEl.textContent = 'confirm in wallet...'
       try {
         await window.ensureScroll?.()
-        const revAccount = await window.ensureAuthorized?.() || addr
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const revAccount = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
           address: praxisAddr, abi: PRAXIS_ABI,
           functionName: 'distributeRevenue', args: [BigInt(projectId)],
@@ -1465,8 +1465,8 @@ function renderCommentForm(blogAddr, projectId, projectTitle) {
       const publicClient = await getPublicClient()
       const title = `comment on ${projectTitle}`
       await window.ensureScroll?.()
-      const commentAccount = await window.ensureAuthorized?.() || addr
-      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const commentAccount = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await walletClient.writeContract({
         address: blogAddr, abi: BLOG_ABI, functionName: 'postWithRef',
         args: [title, content, 1, BigInt(projectId)],

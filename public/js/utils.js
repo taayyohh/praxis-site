@@ -759,8 +759,8 @@ function _showInlineRegistration(address, registryAddress, publicClient, action)
 
         const { createWalletClient, custom, optimism } = await import('./vendor.js')
 
-        const currentAccount = await window.ensureAuthorized?.() || address
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(address)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
           address: registryAddress,
           abi: REGISTER_ABI,

@@ -608,8 +608,8 @@ async function buyItem(button) {
   button.textContent = 'confirming...'
 
   try {
-    const payAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const walletClient = createWalletClient({
+    const payAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({
       chain: optimism,
       transport: custom(getWalletProvider()),
     })

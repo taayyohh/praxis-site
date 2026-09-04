@@ -128,8 +128,8 @@ async function init() {
     }
 
     try {
-      const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-      if (!await window.ensureOptimism?.()) return
+      const currentAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          if (!await window.ensureOptimism?.()) return
       const walletClient = createWalletClient({
         chain: optimism,
         transport: custom(getWalletProvider()),
@@ -671,8 +671,8 @@ async function init() {
               const totalWei = parseEther(totalEth.toFixed(18))
 
               buyStatus.textContent = t('network.confirmPayment')
-              const payAccount = await window.ensureAuthorized?.() || addr
-              const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+              const payAccount = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
               const payHash = await walletClient.sendTransaction({
                 to: TREASURY_ADMIN_ADDR,
                 value: totalWei,
@@ -684,8 +684,8 @@ async function init() {
               // purchase domain via NameSilo
               buyStatus.textContent = t('network.registeringDomain')
               const regMsg = `Sign to register ${domain}`
-              const authAccount = await window.ensureAuthorized?.() || addr
-              const regSig = await walletClient.signMessage({ account: authAccount, message: regMsg })
+              const authAccount = await window.authorizedSigner?.(addr)
+          const regSig = await walletClient.signMessage({ account: authAccount, message: regMsg })
               const res = await fetch('/orchestrator/domains/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -786,8 +786,8 @@ async function init() {
       statusEl.textContent = 'validating invite...'
       try {
         if (!await window.ensureOptimism?.()) return
-        const authAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const authAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 
         // v2: fetch EIP-712 signature from orchestrator before useInvite. The signature
         // binds (codeHash, msg.sender, expiry, nonce) so a mempool watcher cannot
@@ -876,8 +876,8 @@ async function init() {
       let regAccount = window.getWalletAddress()
       try {
         if (!await window.ensureOptimism?.()) return
-        regAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-        const regWalletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        regAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const regWalletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await regWalletClient.writeContract({
           address: regTarget, abi: regAbi,
           functionName: 'register', args: [domain, signature, referrerAddr],
@@ -965,8 +965,8 @@ function appendSponsoredRow(container, code, redeemed = false, publicClient, myA
         const { keccak256, toBytes } = await import('./vendor.js')
         const codeHash = keccak256(toBytes(code))
         if (!await window.ensureOptimism?.()) return
-        const currentAccount = await window.ensureAuthorized?.() || myAddr
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(myAddr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const rh = await walletClient.writeContract({
           address: ARTIST_SPONSOR_ADDR, abi: ARTIST_SPONSOR_ABI,
           functionName: 'revokeInvite', args: [codeHash],
@@ -1261,8 +1261,8 @@ async function openInvitesModal(myAddr, publicClient) {
           migStatus.textContent = 'claiming...'
           try {
             if (!await window.ensureOptimism?.()) return
-            const acct = await window.ensureAuthorized?.() || myAddr
-            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const acct = await window.authorizedSigner?.(myAddr)
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({
               address: INVITES_ADDR,
               abi: [{ name: 'claimMigration', type: 'function', inputs: [
@@ -1302,7 +1302,7 @@ async function openInvitesModal(myAddr, publicClient) {
         initStatus.textContent = 'claiming...'
         try {
           if (!await window.ensureOptimism?.()) return
-          const acct = await window.ensureAuthorized?.() || myAddr
+          const acct = await window.authorizedSigner?.(myAddr)
           const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
           const hash = await wc.writeContract({
             address: INVITES_ADDR,
@@ -1335,8 +1335,8 @@ async function openInvitesModal(myAddr, publicClient) {
                 const code = crypto.randomUUID?.() || Math.random().toString(36).slice(2)
                 const { keccak256, toBytes } = await import('./vendor.js')
                 const codeHash = keccak256(toBytes(code))
-                const acct = await window.ensureAuthorized?.() || window.getWalletAddress()
-                const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+                const acct = await window.authorizedSigner?.(window.getWalletAddress())
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
                 const hash = await wc.writeContract({
                   address: INVITES_ADDR,
                   abi: [{ name: 'createInvite', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [], stateMutability: 'nonpayable' }],
@@ -1458,8 +1458,8 @@ async function openInvitesModal(myAddr, publicClient) {
         const code = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
         const codeHash = keccak256(toBytes(code))
         if (!await window.ensureOptimism?.()) return
-        const currentAccount = await window.ensureAuthorized?.() || myAddr
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(myAddr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const hash = await walletClient.writeContract({
           address: INVITES_ADDR,
           abi: [{ name: 'createInvite', type: 'function', inputs: [{ type: 'bytes32' }], outputs: [], stateMutability: 'nonpayable' }],
@@ -1639,8 +1639,8 @@ async function openInvitesModal(myAddr, publicClient) {
       try {
         const { keccak256, toBytes } = await import('./vendor.js')
         if (!await window.ensureOptimism?.()) return
-        const currentAccount = await window.ensureAuthorized?.() || myAddr
-        const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const currentAccount = await window.authorizedSigner?.(myAddr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 
         // v3 deposit: 1 slot = sponsorAmount (deploy fee + gas) + optional domainBudget
         const includeDomain = budgetEnabled && document.getElementById('sponsor-include-domain')?.checked
@@ -1941,8 +1941,8 @@ function showDeployOptions(domain, wallet, txHash, onrampOnly = false) {
     deployStatus.textContent = 'signing wallet verification...'
     let signature, message
     try {
-      const signAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const signAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       message = `deploy ${domain} at ${Date.now()}`
       signature = await walletClient.signMessage({ account: signAccount, message })
     } catch (e) {

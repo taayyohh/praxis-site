@@ -540,8 +540,8 @@ async function initJournal() {
             if (!blogAddr) { confirmBtn.textContent = 'error: no blog contract'; return }
             const pubTitle = document.getElementById('journal-title')?.value.trim() || ''
             if (!await window.ensureOptimism?.()) return
-            const account = await window.ensureAuthorized?.() || window.getWalletAddress()
-            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const account = await window.authorizedSigner?.(window.getWalletAddress())
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({
               address: blogAddr, abi: BLOG_ABI, functionName: 'post',
               args: [pubTitle, content], account,

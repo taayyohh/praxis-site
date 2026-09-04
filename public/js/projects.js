@@ -334,8 +334,8 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
           const cs = document.getElementById('claim-status')
           cs.textContent = t('projects.claiming')
           try {
-            const claimAcct = await window.ensureAuthorized?.() || wallet
-            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const claimAcct = await window.authorizedSigner?.(wallet)
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: claimAcct })
             cs.textContent = `tx: ${hash.slice(0, 14)}...`
             await publicClient.waitForTransactionReceipt({ hash })
@@ -351,8 +351,8 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
           // first claim the funds on-chain
           cs.textContent = t('projects.claimingOnChain')
           try {
-            const cashAcct = await window.ensureAuthorized?.() || wallet
-            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const cashAcct = await window.authorizedSigner?.(wallet)
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
             const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: cashAcct })
             await publicClient.waitForTransactionReceipt({ hash })
             cs.textContent = t('projects.claimedOfframp')
@@ -732,8 +732,8 @@ async function txAction(btn, hubAddress, publicClient, action) {
   if (statusEl) statusEl.textContent = t('projects.confirming')
 
   try {
-    const currentAccount = await window.ensureAuthorized?.() || window.getWalletAddress()
-    const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+    const currentAccount = await window.authorizedSigner?.(window.getWalletAddress())
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
     const hash = await action(wc, currentAccount)
     if (statusEl) statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
     await publicClient.waitForTransactionReceipt({ hash })
@@ -2181,8 +2181,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       }
 
       ps.textContent = t('projects.confirming')
-      const proposeAcct = await window.ensureAuthorized?.() || window.getWalletAddress()
-      const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const proposeAcct = await window.authorizedSigner?.(window.getWalletAddress())
+          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const hash = await wc.writeContract({
         address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
         args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
