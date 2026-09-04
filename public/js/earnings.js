@@ -16,6 +16,17 @@ const HISTORY_PAGE_SIZE = 20
 const BOLD_MAINNET = '0x6440f144b7e50d6a8439336510312d2f54beb01d'
 const ETH_ZERO = '0x0000000000000000000000000000000000000000'
 
+// Chains where the gas token is ETH. Polygon (137) is skipped because its
+// native token is POL/MATIC and we don't price it. zkSync is included but
+// often has flaky RPC — treat failures as zero.
+const ETH_CHAINS = [
+  { chainId: 10, name: 'Optimism' },
+  { chainId: 1, name: 'Ethereum' },
+  { chainId: 8453, name: 'Base' },
+  { chainId: 42161, name: 'Arbitrum' },
+  { chainId: 324, name: 'zkSync Era' },
+]
+
 const STABILITY_POOLS = {
   ETH: '0x5721cbbd64fc7ae3ef44a0a3f9a790a9264cf9bf',
   wstETH: '0x9502b7c397e9aa22fe9db7ef7daf21cd2aebe56b',
@@ -23,30 +34,40 @@ const STABILITY_POOLS = {
 }
 
 const WETH_MAINNET = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+const USDC_MAINNET = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const UNISWAP_QUOTER = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e'
 const UNISWAP_ROUTER = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45'
 
+// Liquity v2 BOLD has no direct WETH/BOLD Uniswap V3 pool — all direct-pair
+// liquidity is on V4. On V3 we route ETH -> USDC -> BOLD via QuoterV2/SwapRouter02
+// multi-hop. WETH/USDC 0.05% and BOLD/USDC 0.05% both have real V3 depth.
 const UNISWAP_QUOTER_ABI = [{
-  name: 'quoteExactInputSingle', type: 'function', stateMutability: 'nonpayable',
-  inputs: [{ name: 'params', type: 'tuple', components: [
-    { name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' },
-    { name: 'amountIn', type: 'uint256' }, { name: 'fee', type: 'uint24' },
-    { name: 'sqrtPriceLimitX96', type: 'uint160' },
-  ]}],
-  outputs: [{ name: 'amountOut', type: 'uint256' }, { name: 'sqrtPriceX96After', type: 'uint160' },
-    { name: 'initializedTicksCrossed', type: 'uint32' }, { name: 'gasEstimate', type: 'uint256' }],
+  name: 'quoteExactInput', type: 'function', stateMutability: 'nonpayable',
+  inputs: [{ name: 'path', type: 'bytes' }, { name: 'amountIn', type: 'uint256' }],
+  outputs: [{ name: 'amountOut', type: 'uint256' }, { name: 'sqrtPriceX96AfterList', type: 'uint160[]' },
+    { name: 'initializedTicksCrossedList', type: 'uint32[]' }, { name: 'gasEstimate', type: 'uint256' }],
 }]
 
 const UNISWAP_ROUTER_ABI = [{
-  name: 'exactInputSingle', type: 'function', stateMutability: 'payable',
+  name: 'exactInput', type: 'function', stateMutability: 'payable',
   inputs: [{ name: 'params', type: 'tuple', components: [
-    { name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' },
-    { name: 'fee', type: 'uint24' }, { name: 'recipient', type: 'address' },
+    { name: 'path', type: 'bytes' }, { name: 'recipient', type: 'address' },
     { name: 'amountIn', type: 'uint256' }, { name: 'amountOutMinimum', type: 'uint256' },
-    { name: 'sqrtPriceLimitX96', type: 'uint160' },
   ]}],
   outputs: [{ name: 'amountOut', type: 'uint256' }],
 }]
+
+// V3 path: token(20) + fee(3, big-endian uint24) + token(20) + fee(3) + token(20) ...
+function encodeV3Path(tokens, fees) {
+  if (tokens.length !== fees.length + 1) throw new Error('bad path')
+  let out = '0x'
+  for (let i = 0; i < fees.length; i++) {
+    out += tokens[i].slice(2).toLowerCase()
+    out += fees[i].toString(16).padStart(6, '0')
+  }
+  out += tokens[tokens.length - 1].slice(2).toLowerCase()
+  return out
+}
 
 const ERC20_BALANCE_ABI = [
   { name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
@@ -109,8 +130,8 @@ async function initVault() {
   const mediaAddr = document.body.dataset.media || ''
 
   try {
-    const [ethBalance, boldBalance, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
-      getCachedBalance(addr).catch(() => 0n),
+    const [chainBalances, boldBalance, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
+      fetchChainBalances(addr).catch(() => [{ chainId: 10, name: 'Optimism', balance: 0n }]),
       getBoldBalanceMainnet(addr).catch(() => 0n),
       getPendingWithdrawals(addr),
       fetchEarned(addrLower),
@@ -119,6 +140,7 @@ async function initVault() {
       getEthPrices().catch(() => null),
       fetchBoldYield().catch(() => null),
     ])
+    const ethBalance = chainBalances.reduce((s, c) => s + c.balance, 0n)
 
     const addressesToResolve = [
       ...earned.mediaSales.map(s => s.buyer),
@@ -131,11 +153,29 @@ async function initVault() {
     _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
     _historyShown = 0
 
-    renderVault(contentEl, { ethBalance, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
+    renderVault(contentEl, { ethBalance, chainBalances, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
   } catch (e) {
     console.warn('vault load error:', e)
     contentEl.innerHTML = `<p style="color:var(--muted)">failed to load vault</p>`
   }
+}
+
+async function fetchChainBalances(addr) {
+  const results = await Promise.all(ETH_CHAINS.map(async ({ chainId, name }) => {
+    try {
+      const res = await fetch(`/api/rpc/${chainId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [addr, 'latest'] }),
+      })
+      const data = await res.json()
+      const balance = data?.result ? BigInt(data.result) : 0n
+      return { chainId, name, balance }
+    } catch {
+      return { chainId, name, balance: 0n }
+    }
+  }))
+  return results
 }
 
 async function getBoldBalanceMainnet(addr) {
@@ -158,27 +198,38 @@ async function getMainnetClient() {
   return _mainnetPc
 }
 
+// Multi-hop V3 quote for ETH -> USDC -> BOLD. Tries a few fee-tier combos on
+// each leg. Returns { amountOut, path } where `path` is the V3 path bytes to
+// hand to SwapRouter02.exactInput.
 async function getUniswapBoldQuote(ethAmountWei) {
   const pc = await getMainnetClient()
   const { encodeFunctionData } = await import('./vendor.js')
-  const fees = [3000, 10000, 500]
+  // Leg 1 (WETH/USDC): 0.05% has the deepest V3 liquidity, then 0.3%.
+  // Leg 2 (USDC/BOLD): the live V3 pool is 0.05% (~$1.4M TVL).
+  const combos = [
+    [500, 500],
+    [3000, 500],
+    [500, 100],
+    [500, 3000],
+  ]
   const errors = []
-  for (const fee of fees) {
+  for (const [fee1, fee2] of combos) {
+    const path = encodeV3Path([WETH_MAINNET, USDC_MAINNET, BOLD_MAINNET], [fee1, fee2])
     try {
       const calldata = encodeFunctionData({
-        abi: UNISWAP_QUOTER_ABI, functionName: 'quoteExactInputSingle',
-        args: [{ tokenIn: WETH_MAINNET, tokenOut: BOLD_MAINNET, amountIn: ethAmountWei, fee, sqrtPriceLimitX96: 0n }],
+        abi: UNISWAP_QUOTER_ABI, functionName: 'quoteExactInput',
+        args: [path, ethAmountWei],
       })
       const result = await pc.call({ to: UNISWAP_QUOTER, data: calldata })
-      if (!result?.data || result.data === '0x') { errors.push(`fee ${fee}: empty return`); continue }
+      if (!result?.data || result.data === '0x') { errors.push(`${fee1}/${fee2}: empty return`); continue }
       const amountOut = BigInt('0x' + result.data.slice(2, 66))
-      if (amountOut > 0n) return { amountOut, fee }
-      errors.push(`fee ${fee}: amountOut=0`)
+      if (amountOut > 0n) return { amountOut, path }
+      errors.push(`${fee1}/${fee2}: amountOut=0`)
     } catch (e) {
-      errors.push(`fee ${fee}: ${e?.shortMessage || e?.message || e}`)
+      errors.push(`${fee1}/${fee2}: ${e?.shortMessage || e?.message || e}`)
     }
   }
-  console.warn('[bold-quote] no liquidity across fee tiers:', errors)
+  console.warn('[bold-quote] no route via USDC:', errors)
   throw new Error(`no BOLD liquidity (${errors.join(' | ')})`)
 }
 
@@ -238,7 +289,7 @@ async function executeBridge(addr, amountWei, onStatus) {
   return hash
 }
 
-async function swapEthToBold(addr, feeTier, onStatus) {
+async function swapEthToBold(addr, path, onStatus) {
   const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
   const pc = await getMainnetClient()
 
@@ -247,8 +298,12 @@ async function swapEthToBold(addr, feeTier, onStatus) {
   const swapAmount = mainnetBal > gasReserve ? mainnetBal - gasReserve : 0n
   if (swapAmount <= 0n) throw new Error('insufficient ETH on Ethereum after bridge')
 
+  // Re-quote against the actual mainnet balance (may differ from the modal quote
+  // after bridge fees) and pick up a fresh path in case the fallback path is stale.
   onStatus?.('quoting swap...')
-  const { amountOut } = await getUniswapBoldQuote(swapAmount)
+  const quote = await getUniswapBoldQuote(swapAmount)
+  const amountOut = quote.amountOut
+  const swapPath = quote.path || path || encodeV3Path([WETH_MAINNET, USDC_MAINNET, BOLD_MAINNET], [500, 500])
   const minOut = amountOut * 97n / 100n
 
   onStatus?.('confirm swap...')
@@ -259,9 +314,8 @@ async function swapEthToBold(addr, feeTier, onStatus) {
   }
 
   const hash = await walletClient.writeContract({
-    address: UNISWAP_ROUTER, abi: UNISWAP_ROUTER_ABI, functionName: 'exactInputSingle',
-    args: [{ tokenIn: WETH_MAINNET, tokenOut: BOLD_MAINNET, fee: feeTier, recipient: addr,
-      amountIn: swapAmount, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }],
+    address: UNISWAP_ROUTER, abi: UNISWAP_ROUTER_ABI, functionName: 'exactInput',
+    args: [{ path: swapPath, recipient: addr, amountIn: swapAmount, amountOutMinimum: minOut }],
     value: swapAmount,
   })
   onStatus?.('swap submitted...')
@@ -534,7 +588,7 @@ function renderHistoryItems(items, ethPrices) {
 const ETH_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 12.5L12 16.5L20 12.5L12 2Z" fill="var(--accent)" opacity="0.7"/><path d="M12 2L4 12.5L12 10.5V2Z" fill="var(--accent)"/><path d="M12 18L4 14L12 22L20 14L12 18Z" fill="var(--accent)" opacity="0.7"/><path d="M12 18L4 14L12 22V18Z" fill="var(--accent)"/></svg>`
 const BOLD_ICON = `<svg width="24" height="24" viewBox="0 0 20 21" fill="none"><rect y="0.5" width="20" height="20" rx="10" fill="#63D77D"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.28 3.83H5.05V17.17H9.5V16.63C10.17 16.97 10.92 17.17 11.72 17.17C14.42 17.17 16.61 14.98 16.61 12.28C16.61 9.58 14.43 7.39 11.72 7.39C10.93 7.39 10.17 7.58 9.5 7.92V4.41V3.83H7.28ZM9.5 7.92C7.92 8.73 6.83 10.38 6.83 12.28C6.83 14.18 7.93 15.82 9.5 16.63V7.92Z" fill="#1C1D4F"/></svg>`
 
-function renderVault(el, { ethBalance, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
+function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
   const totalUnclaimed = unclaimed.praxis + unclaimed.media + ticketUnclaimed
   const totalEarned = earned.mediaTotal + earned.projectEarnings
   const totalContributed = contributed.fundingTotal + contributed.purchaseTotal
@@ -552,13 +606,20 @@ function renderVault(el, { ethBalance, boldBalance, unclaimed, earned, contribut
   html += `<div class="vault-total-label">total balance</div>`
   html += `<div class="vault-total-value">${formatFiat(totalFiat, currency)}</div>`
 
-  // Token rows
+  // Token rows — one per chain with a non-zero ETH balance. Always show
+  // Optimism (the app's home chain) even when empty; hide other chains until
+  // they hold funds so the panel doesn't get noisy.
   html += `<div class="vault-tokens">`
-  html += `<div class="vault-token">`
-  html += `<div class="vault-token-icon">${ETH_ICON}</div>`
-  html += `<div class="vault-token-info"><span class="vault-token-name">ETH</span><span class="vault-token-chain">Optimism</span></div>`
-  html += `<div class="vault-token-amounts"><span class="vault-token-bal">${formatEthAmount(ethBalance)}</span><span class="vault-token-fiat">${ethRate ? formatFiat(ethFiat, currency) : ''}</span></div>`
-  html += `</div>`
+  const rows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+    .filter(c => c.balance > 0n || c.chainId === 10)
+  for (const c of rows) {
+    const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
+    html += `<div class="vault-token">`
+    html += `<div class="vault-token-icon">${ETH_ICON}</div>`
+    html += `<div class="vault-token-info"><span class="vault-token-name">ETH</span><span class="vault-token-chain">${c.name}</span></div>`
+    html += `<div class="vault-token-amounts"><span class="vault-token-bal">${formatEthAmount(c.balance)}</span><span class="vault-token-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span></div>`
+    html += `</div>`
+  }
 
   if (boldBalance > 0n) {
     const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
@@ -927,7 +988,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         const uniQuote = await getUniswapBoldQuote(amountIn)
         const boldOut = Number(uniQuote.amountOut) / 1e18
 
-        _lastQuote = { amountIn, boldOut, fee: uniQuote.fee }
+        _lastQuote = { amountIn, boldOut, path: uniQuote.path }
         outputEl.textContent = boldOut.toFixed(2)
         outputEl.style.color = 'var(--fg)'
         const rate = boldOut / val
@@ -938,7 +999,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         console.warn('quote error:', e)
         if (ethRate) {
           const est = val * ethRate
-          _lastQuote = { amountIn: parseEther(val.toFixed(18)), boldOut: est, fee: 3000 }
+          _lastQuote = { amountIn: parseEther(val.toFixed(18)), boldOut: est, path: null }
           outputEl.textContent = `≈ ${est.toFixed(2)}`
           outputEl.style.color = 'var(--dim)'
           rateEl.textContent = 'estimate — pool may vary'
@@ -966,8 +1027,6 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     statusEl.style.color = 'var(--muted)'
 
     try {
-      const fee = _lastQuote.fee || 3000
-
       // --- Step 1: Bridge ETH from Optimism to Ethereum mainnet ---
       markStep('bridge', 'active')
       confirmBtn.textContent = 'step 1/3: bridging...'
@@ -979,7 +1038,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       confirmBtn.textContent = 'step 2/3: swapping...'
       statusEl.textContent = 'waiting for ETH on Ethereum...'
       await new Promise(r => setTimeout(r, 5000))
-      await swapEthToBold(addr, fee, (msg) => { statusEl.textContent = msg })
+      await swapEthToBold(addr, _lastQuote.path, (msg) => { statusEl.textContent = msg })
       markStep('swap', 'done')
 
       // --- Step 3: Deposit into stability pool ---
