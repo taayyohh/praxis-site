@@ -46,15 +46,31 @@ async function _fetchGasPrice(chainId) {
 }
 
 // Wei to keep back from a source-chain balance so the tx doesn't fail with
-// "total cost exceeds balance". Uses live gas price + a 1.5x safety buffer.
-// Falls back to a chain-specific static floor when the RPC is unreachable.
+// "total cost exceeds balance". Trusts the live RPC gas price + a 1.5x safety
+// buffer as the primary source. Falls back to a small static reserve only
+// when the RPC is unreachable — the previous "always floor at 0.008 ETH"
+// approach was reserving ~$19 on mainnet at a 1-gwei fee window, which
+// crushed usable balance for anyone with under 0.01 ETH.
 async function computeGasReserve(chainId) {
-  const staticFloor = chainId === 1 ? 8000000000000000n /* 0.008 ETH */ : 200000000000000n /* 0.0002 ETH */
   const gasPrice = await _fetchGasPrice(chainId)
-  if (gasPrice === 0n) return staticFloor
   const units = GAS_UNITS[chainId] || 250000n
-  const est = (gasPrice * units * 3n) / 2n
-  return est > staticFloor ? est : staticFloor
+  if (gasPrice === 0n) {
+    return chainId === 1 ? 2500000000000000n /* 0.0025 ETH — RPC-fallback only */ : 100000000000000n /* 0.0001 ETH */
+  }
+  return (gasPrice * units * 3n) / 2n
+}
+
+// Return the raw gas price alongside the reserve — the UI displays both.
+async function computeGasBreakdown(chainId) {
+  const gasPrice = await _fetchGasPrice(chainId)
+  const units = GAS_UNITS[chainId] || 250000n
+  if (gasPrice === 0n) {
+    const reserve = chainId === 1 ? 2500000000000000n : 100000000000000n
+    return { reserve, estimated: reserve, gasPrice: 0n, units }
+  }
+  const estimated = gasPrice * units
+  const reserve = (estimated * 3n) / 2n
+  return { reserve, estimated, gasPrice, units }
 }
 
 const STABILITY_POOLS = {
@@ -959,7 +975,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
       </p>
 
       <section class="vault-save-body">
-        <div class="vault-chain-picker${canPickChain ? '' : ' vault-chain-picker-static'}" id="chain-picker" aria-expanded="false">
+        <div class="vault-chain-picker vault-save-col-full${canPickChain ? '' : ' vault-chain-picker-static'}" id="chain-picker" aria-expanded="false">
           <div class="vault-save-field-head">
             <span class="vault-save-field-label">${t('save.from') || 'From'}</span>
           </div>
@@ -967,7 +983,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
           <div class="vault-chain-list" id="chain-list" hidden></div>
         </div>
 
-        <div class="vault-swap-card">
+        <div class="vault-swap-card vault-save-col-left">
           <div class="vault-swap-half vault-swap-send">
             <div class="vault-save-field-head">
               <span class="vault-save-field-label">${t('save.amount') || 'Amount'}</span>
@@ -997,21 +1013,44 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
         </div>
 
         ${poolCards ? `
-        <div class="vault-pools-field">
+        <div class="vault-pools-field vault-save-col-right">
           <div class="vault-save-field-head">
             <span class="vault-save-field-label">${t('save.pool') || 'Deposit into'}</span>
           </div>
           <div class="vault-pool-cards">${poolCards}</div>
         </div>` : ''}
 
-        <div class="vault-steps-field">
+        <div class="vault-steps-field vault-save-col-left">
           <div class="vault-save-field-head">
             <span class="vault-save-field-label">${t('save.happens') || 'What happens'}</span>
           </div>
           <ol class="vault-save-steps" id="swap-steps"></ol>
         </div>
 
-        <div class="vault-save-actions">
+        <div class="vault-summary-field vault-save-col-right" id="swap-summary">
+          <div class="vault-save-field-head">
+            <span class="vault-save-field-label">${t('save.summary') || 'Summary'}</span>
+          </div>
+          <dl class="vault-summary-list">
+            <div class="vault-summary-row">
+              <dt>${t('save.summaryDeposit') || 'Deposit'}</dt>
+              <dd id="summary-deposit" class="vault-summary-val">—</dd>
+            </div>
+            <div class="vault-summary-row">
+              <dt>
+                ${t('save.summaryGas') || 'Network fee'}
+                <span id="summary-gas-detail" class="vault-summary-sub"></span>
+              </dt>
+              <dd id="summary-gas" class="vault-summary-val">—</dd>
+            </div>
+            <div class="vault-summary-row vault-summary-total">
+              <dt>${t('save.summaryTotal') || 'From wallet'}</dt>
+              <dd id="summary-total" class="vault-summary-val">—</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="vault-save-actions vault-save-col-full">
           <p class="vault-save-withdraw">${t('save.withdraw') || 'Withdraw anytime · no lockup'}</p>
           <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'Enter an amount'}</button>
           <div id="swap-status" class="vault-save-status"></div>
@@ -1067,6 +1106,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
         renderChainCurrent()
         renderPresets()
         renderSteps()
+        renderSummary()
         renderCta()
         // clear any stale quote/amount, then refresh reserve for the new chain
         swapInput.value = ''
@@ -1090,17 +1130,22 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     else collapseChainList()
   })
 
-  // Cache gas reserve per chain — fetched lazily on first selection and
-  // whenever the user picks a new source, so presets and max always reflect
-  // what the network will actually allow the sender to keep.
+  // Cache gas reserve + breakdown per chain — fetched lazily on first
+  // selection and whenever the user picks a new source, so presets, max,
+  // and the summary panel always reflect what the network will actually
+  // allow the sender to keep.
   const _gasReserves = new Map()
+  const _gasBreakdowns = new Map()
   let _pendingReserveChain = null
   async function ensureGasReserve(chainId) {
     if (_gasReserves.has(chainId)) return _gasReserves.get(chainId)
     _pendingReserveChain = chainId
-    const reserve = await computeGasReserve(chainId)
-    if (_pendingReserveChain === chainId) _gasReserves.set(chainId, reserve)
-    return reserve
+    const bd = await computeGasBreakdown(chainId)
+    if (_pendingReserveChain === chainId) {
+      _gasReserves.set(chainId, bd.reserve)
+      _gasBreakdowns.set(chainId, bd)
+    }
+    return bd.reserve
   }
   function usableFor(c) {
     const reserve = _gasReserves.get(c.chainId)
@@ -1126,8 +1171,59 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     const c = currentChain()
     await ensureGasReserve(c.chainId)
     renderPresets()
+    renderSummary()
     // If the current input now exceeds the usable balance, revalidate the CTA.
     renderCta()
+  }
+
+  function fiatFor(wei) {
+    if (!ethRate || wei == null) return null
+    return Number(wei) / 1e18 * ethRate
+  }
+  function ethStr(wei) {
+    return `${formatEthAmount(wei)} ETH`
+  }
+  function feeStr(wei) {
+    const fiat = fiatFor(wei)
+    return fiat != null ? `~${formatFiat(fiat, currency)}` : `~${ethStr(wei)}`
+  }
+  function renderSummary() {
+    const summary = dialog.querySelector('#swap-summary')
+    const depositEl = summary?.querySelector('#summary-deposit')
+    const gasEl = summary?.querySelector('#summary-gas')
+    const gasDetailEl = summary?.querySelector('#summary-gas-detail')
+    const totalEl = summary?.querySelector('#summary-total')
+    if (!depositEl) return
+    const c = currentChain()
+    const val = parseFloat(swapInput.value) || 0
+    let depositWei = 0n
+    try { depositWei = val > 0 ? parseEther(val.toFixed(18)) : 0n } catch { depositWei = 0n }
+    const reserve = _gasReserves.get(c.chainId) || 0n
+    const bd = _gasBreakdowns.get(c.chainId)
+    const estFee = bd?.estimated || reserve
+    // "Deposit" row — what actually goes into BOLD (may be estimated).
+    if (val > 0) {
+      const fiatBold = ethRate ? formatFiat(val * ethRate, currency) : ''
+      depositEl.textContent = fiatBold ? `${fiatBold} · ${formatEthAmount(depositWei)} ETH` : `${formatEthAmount(depositWei)} ETH`
+      depositEl.classList.remove('vault-summary-val-empty')
+    } else {
+      depositEl.textContent = t('save.summaryPlaceholder') || 'Enter an amount above'
+      depositEl.classList.add('vault-summary-val-empty')
+    }
+    // "Network fee" row + gwei detail
+    gasEl.textContent = feeStr(estFee)
+    if (bd?.gasPrice && bd.gasPrice > 0n) {
+      const gwei = Number(bd.gasPrice) / 1e9
+      const gweiStr = gwei >= 1 ? gwei.toFixed(1) : gwei.toFixed(3)
+      gasDetailEl.textContent = ` · ${c.name} · ${gweiStr} gwei`
+    } else {
+      gasDetailEl.textContent = ` · ${c.name}`
+    }
+    // "From wallet" — deposit + fee
+    const total = depositWei + estFee
+    totalEl.textContent = val > 0 ? feeStr(total).replace('~', '') : '—'
+    if (val <= 0) totalEl.classList.add('vault-summary-val-empty')
+    else totalEl.classList.remove('vault-summary-val-empty')
   }
 
   function renderSteps() {
@@ -1199,6 +1295,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   renderChainCurrent()
   renderPresets()
   renderSteps()
+  renderSummary()
   // Kick off a gas-price fetch so presets settle on the real usable balance.
   refreshChainReserve()
 
@@ -1212,6 +1309,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 
   swapInput.addEventListener('input', () => {
     const val = parseFloat(swapInput.value)
+    renderSummary()
     if (!val || isNaN(val) || val <= 0) {
       swapFiat.textContent = ethRate ? `≈ ${formatFiat(0, currency)}` : ''
       setOutput('0.00', true)

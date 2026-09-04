@@ -630,5 +630,10 @@
   "save.cancelled": "Cancelled",
   "save.ctaOverBalance": "Amount exceeds usable balance",
   "save.gasReserve": "Leaving ~{eth} ETH for network fees on {chain}",
-  "save.gasBlown": "Network fees have spiked — pick a smaller amount and try again."
+  "save.gasBlown": "Network fees have spiked — pick a smaller amount and try again.",
+  "save.summary": "Summary",
+  "save.summaryDeposit": "Deposit",
+  "save.summaryGas": "Network fee",
+  "save.summaryTotal": "From wallet",
+  "save.summaryPlaceholder": "Enter an amount above"
 }

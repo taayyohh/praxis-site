@@ -6783,6 +6783,40 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 
 .vault-save-body { display: flex; flex-direction: column; gap: 0.7em; }
 .vault-save-field { padding: 0.7em 0.85em; background: color-mix(in srgb, var(--fg) 3%, transparent); border: none; border-radius: 12px; margin-bottom: 0; }
+
+/* Summary — receipt-style breakdown so the user can see WHY their usable
+   balance differs from their total balance. */
+.vault-summary-field { padding: 0.85em 0.95em; background: color-mix(in srgb, var(--fg) 3%, transparent); border-radius: 12px; }
+.vault-summary-list { margin: 0.5em 0 0; padding: 0; }
+.vault-summary-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.4em 0; gap: 1em; }
+.vault-summary-row + .vault-summary-row { border-top: 1px solid color-mix(in srgb, var(--fg) 5%, transparent); }
+.vault-summary-row dt { font-size: 0.83em; color: var(--muted); margin: 0; }
+.vault-summary-row dd { font-size: 0.85em; color: var(--fg); font-variant-numeric: tabular-nums; margin: 0; text-align: right; }
+.vault-summary-sub { color: var(--dim); font-size: 0.85em; font-weight: 400; }
+.vault-summary-total dt { color: var(--fg); font-weight: 500; }
+.vault-summary-total dd { color: var(--fg); font-weight: 600; }
+.vault-summary-val-empty { color: var(--dim) !important; font-weight: 400 !important; font-size: 0.83em !important; }
+
+/* Desktop layout — two-column grid above 900px so the form column stays
+   near swap-card width but the summary/pools/steps get their own column
+   instead of stacking below. Below 900px everything reverts to a single
+   column and reads as a mobile sheet. */
+@media (min-width: 900px) {
+  .vault-save-page { max-width: 860px; padding-top: 3.6em; }
+  .vault-save-body { display: grid; grid-template-columns: 1fr 1fr; column-gap: 1.1em; row-gap: 0.9em; align-items: start; }
+  .vault-save-col-full { grid-column: 1 / -1; }
+  .vault-save-col-left { grid-column: 1; }
+  .vault-save-col-right { grid-column: 2; }
+  .vault-save-hero { grid-template-columns: 40px 1fr auto; gap: 0.9em; }
+  .vault-save-icon svg { width: 40px; height: 40px; }
+  .vault-save-title { font-size: 1.35em; }
+  .vault-save-sub { font-size: 0.85em; }
+  .vault-save-apr-value { font-size: 1.5em; }
+  .vault-save-explainer { font-size: 0.9em; }
+}
+@media (min-width: 1100px) {
+  .vault-save-page { max-width: 960px; }
+}
 .vault-save-field-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35em; }
 .vault-save-field-label { font-size: 0.72em; color: var(--dim); letter-spacing: 0.02em; }
 .vault-save-input-row { display: flex; align-items: center; gap: 0.5em; }
