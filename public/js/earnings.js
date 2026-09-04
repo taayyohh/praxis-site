@@ -27,6 +27,36 @@ const ETH_CHAINS = [
   { chainId: 324, name: 'zkSync Era' },
 ]
 
+// Conservative gas-unit estimates per chain for the tx we're about to send.
+// - Ethereum mainnet: multi-hop V3 swap (~250k) with 1.5x buffer.
+// - L2s: bridge tx to Ethereum. Arbitrum-flavored chains price L1 calldata
+//   so we bump the unit count to reflect real cost, not just execution gas.
+const GAS_UNITS = { 1: 300000n, 10: 220000n, 8453: 220000n, 42161: 1200000n, 324: 1200000n }
+
+async function _fetchGasPrice(chainId) {
+  try {
+    const res = await fetch(`/api/rpc/${chainId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }),
+    })
+    const data = await res.json()
+    return data?.result ? BigInt(data.result) : 0n
+  } catch { return 0n }
+}
+
+// Wei to keep back from a source-chain balance so the tx doesn't fail with
+// "total cost exceeds balance". Uses live gas price + a 1.5x safety buffer.
+// Falls back to a chain-specific static floor when the RPC is unreachable.
+async function computeGasReserve(chainId) {
+  const staticFloor = chainId === 1 ? 8000000000000000n /* 0.008 ETH */ : 200000000000000n /* 0.0002 ETH */
+  const gasPrice = await _fetchGasPrice(chainId)
+  if (gasPrice === 0n) return staticFloor
+  const units = GAS_UNITS[chainId] || 250000n
+  const est = (gasPrice * units * 3n) / 2n
+  return est > staticFloor ? est : staticFloor
+}
+
 const STABILITY_POOLS = {
   ETH: '0x5721cbbd64fc7ae3ef44a0a3f9a790a9264cf9bf',
   wstETH: '0x9502b7c397e9aa22fe9db7ef7daf21cd2aebe56b',
@@ -296,7 +326,10 @@ async function swapEthToBold(addr, path, onStatus) {
   const pc = await getMainnetClient()
 
   const mainnetBal = await pc.getBalance({ address: addr })
-  const gasReserve = 50000000000000n
+  // Reserve real gas for the mainnet swap — the RPC will reject the tx if
+  // value + gas fee > balance. Live gas price with a 1.5x buffer beats the
+  // old 0.00005 ETH floor by ~100x during a normal mainnet fee window.
+  const gasReserve = await computeGasReserve(1)
   const swapAmount = mainnetBal > gasReserve ? mainnetBal - gasReserve : 0n
   if (swapAmount <= 0n) throw new Error('insufficient ETH on Ethereum after bridge')
 
@@ -1035,9 +1068,10 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
         renderPresets()
         renderSteps()
         renderCta()
-        // clear any stale quote/amount
+        // clear any stale quote/amount, then refresh reserve for the new chain
         swapInput.value = ''
         swapInput.dispatchEvent(new Event('input'))
+        refreshChainReserve()
       })
     })
   }
@@ -1056,19 +1090,44 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     else collapseChainList()
   })
 
+  // Cache gas reserve per chain — fetched lazily on first selection and
+  // whenever the user picks a new source, so presets and max always reflect
+  // what the network will actually allow the sender to keep.
+  const _gasReserves = new Map()
+  let _pendingReserveChain = null
+  async function ensureGasReserve(chainId) {
+    if (_gasReserves.has(chainId)) return _gasReserves.get(chainId)
+    _pendingReserveChain = chainId
+    const reserve = await computeGasReserve(chainId)
+    if (_pendingReserveChain === chainId) _gasReserves.set(chainId, reserve)
+    return reserve
+  }
+  function usableFor(c) {
+    const reserve = _gasReserves.get(c.chainId)
+    if (reserve == null) return c.balance // optimistic until reserve arrives
+    return c.balance > reserve ? c.balance - reserve : 0n
+  }
   function renderPresets() {
     const c = currentChain()
-    const ethBal = Number(c.balance) / 1e18
+    const usable = Number(usableFor(c)) / 1e18
     presetsEl.innerHTML = [25, 50, 75, 100].map(pct => {
-      const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.002 : 0))
-      return `<button type="button" class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+      const amt = Math.max(0, usable * pct / 100)
+      return `<button type="button" class="vault-preset" data-amount="${amt.toFixed(6)}" ${usable <= 0 ? 'disabled' : ''}>${pct === 100 ? 'max' : pct + '%'}</button>`
     }).join('')
     presetsEl.querySelectorAll('.vault-preset').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.disabled) return
         swapInput.value = parseFloat(btn.dataset.amount).toFixed(6)
         swapInput.dispatchEvent(new Event('input'))
       })
     })
+  }
+  async function refreshChainReserve() {
+    const c = currentChain()
+    await ensureGasReserve(c.chainId)
+    renderPresets()
+    // If the current input now exceeds the usable balance, revalidate the CTA.
+    renderCta()
   }
 
   function renderSteps() {
@@ -1095,9 +1154,29 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 
   function renderCta() {
     const val = parseFloat(swapInput.value)
+    // Clear any stale inline warning by default; specific branches re-set it.
+    statusEl.textContent = ''
+    statusEl.style.color = 'var(--muted)'
     if (!val || isNaN(val) || val <= 0) {
       confirmBtn.disabled = true
       confirmBtn.textContent = t('save.ctaNoAmount') || 'Enter an amount'
+      return
+    }
+    // Guard against amounts that would leave the sender unable to pay gas.
+    const c = currentChain()
+    const usable = usableFor(c)
+    const usableEth = Number(usable) / 1e18
+    if (val > usableEth + 1e-9) {
+      confirmBtn.disabled = true
+      confirmBtn.textContent = t('save.ctaOverBalance') || 'Amount exceeds usable balance'
+      const reserve = _gasReserves.get(c.chainId)
+      if (reserve != null && reserve > 0n) {
+        const reserveEth = Number(reserve) / 1e18
+        statusEl.style.color = 'var(--dim)'
+        statusEl.textContent = (t('save.gasReserve') || 'Leaving ~{eth} ETH for network fees on {chain}')
+          .replace('{eth}', reserveEth.toFixed(6))
+          .replace('{chain}', c.name)
+      }
       return
     }
     if (!_lastQuote) {
@@ -1120,6 +1199,8 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   renderChainCurrent()
   renderPresets()
   renderSteps()
+  // Kick off a gas-price fetch so presets settle on the real usable balance.
+  refreshChainReserve()
 
   function setOutput(text, empty) {
     outputEl.textContent = text
@@ -1230,7 +1311,20 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
       confirmBtn.disabled = false
       confirmBtn.textContent = t('save.retry') || 'Try again'
       statusEl.style.color = 'var(--dim)'
-      statusEl.textContent = e.code === 4001 ? (t('save.cancelled') || 'Cancelled') : formatTxError(e)
+      const msg = (e?.message || e?.shortMessage || '').toString()
+      if (e?.code === 4001) {
+        statusEl.textContent = t('save.cancelled') || 'Cancelled'
+      } else if (/exceeds the balance|insufficient funds|gas.*exceeds/i.test(msg)) {
+        // Live gas ate more than the sender's balance could cover. Invalidate
+        // the cached reserve so the next preset pick reflects the new price,
+        // and nudge the user to a smaller amount.
+        _gasReserves.delete(selectedChainId)
+        refreshChainReserve()
+        statusEl.style.color = 'var(--muted)'
+        statusEl.textContent = t('save.gasBlown') || 'Network fees have spiked — pick a smaller amount and try again.'
+      } else {
+        statusEl.textContent = formatTxError(e)
+      }
     }
   })
 }

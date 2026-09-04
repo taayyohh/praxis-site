@@ -627,5 +627,8 @@
   "save.done": "Deposited — earning yield",
   "save.doneNoPool": "BOLD received — ready to deposit",
   "save.retry": "Try again",
-  "save.cancelled": "Cancelled"
+  "save.cancelled": "Cancelled",
+  "save.ctaOverBalance": "Amount exceeds usable balance",
+  "save.gasReserve": "Leaving ~{eth} ETH for network fees on {chain}",
+  "save.gasBlown": "Network fees have spiked — pick a smaller amount and try again."
 }
