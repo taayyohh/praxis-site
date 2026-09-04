@@ -61,9 +61,6 @@ function loadModules() {
   const techItems = [...(site.engineering || []), ...(site.portfolio || [])]
   if (techItems.length) modules.push({ type: 'technology', enabled: nav.includes('engineering') || nav.includes('portfolio'), order: order++, data: techItems })
 
-  // store
-  if (site.store?.length) modules.push({ type: 'store', enabled: nav.includes('store'), order: order++, data: site.store })
-
   return modules
 }
 
@@ -309,8 +306,6 @@ function fill(tpl, vars) {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '')
 }
 
-const NETWORK_SECTIONS = ['network', 'collaborate', 'projects', 'library', 'graph']
-
 function wrap(content, title, canonicalPath, ogImage, { description: descOverride, noindex } = {}) {
   const portfolioNavHtml = buildPortfolioNav()
 
@@ -319,8 +314,8 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
   const accent = site.theme?.accent || '#ffffff'
   const palette = deriveFullPalette(bg, fg, accent)
 
-  const description = descOverride || site.bio?.slice(0, 160) || ''
-  const ogTitle = title ? `${title} — ${site.name}` : site.name
+  const description = escapeForHtml(descOverride || site.bio?.slice(0, 160) || '')
+  const ogTitle = escapeForHtml(title ? `${title} — ${site.name}` : site.name)
 
   // JSON-LD structured data (homepage only)
   const jsonLd = (!title || canonicalPath === '/')
@@ -332,11 +327,11 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
   const ogImageUrl = `https://${site.domain}${ogImagePath}`
 
   return fill(layout, {
-    title: title ? `${title} — ${site.name}` : site.name,
+    title: escapeForHtml(title ? `${title} — ${site.name}` : site.name),
     portfolioNav: portfolioNavHtml,
     content,
-    name: site.name,
-    domain: site.domain,
+    name: escapeForHtml(site.name),
+    domain: escapeForHtml(site.domain),
     wallet: site.wallet || '',
     blogRegistry: site.network?.blogRegistryAddress || '',
     mediaRegistry: site.network?.mediaAddress || site.media?.contractAddress || '',
@@ -375,82 +370,6 @@ function sectionPage(heading, content, title, i18nKey, { description, noindex } 
   const inner = fill(sectionHtml, { heading: title || heading, content, headingKey })
   const ogImage = `/og/${heading}.png`
   out(heading, wrap(inner, title || heading, `/${heading}`, ogImage, { description, noindex }))
-}
-
-// render sections
-
-function renderMusic() {
-  let html = ''
-  for (const alias of site.music.aliases) {
-    if (!alias || typeof alias !== 'object' || !alias.name) continue
-    html += `<div class="alias">\n`
-    html += `<h3 class="alias-name">${alias.name}</h3>\n`
-    for (const album of (alias.albums || [])) {
-      html += `<div class="album">\n`
-      html += `<img src="/api/img?url=${encodeURIComponent(album.art)}&w=600" alt="${album.title}" loading="lazy" onerror="this.style.display='none'">\n`
-      html += `<div class="album-info"><span class="album-title">${album.title}</span> <span class="album-year">(${album.year})</span></div>\n`
-      html += `</div>\n`
-    }
-    html += `</div>\n`
-  }
-  if (site.music.label) {
-    html += `<p class="label-credit">label: <a href="${site.music.label.url}">${site.music.label.name}</a></p>`
-  }
-  return html
-}
-
-function renderTheater() {
-  let html = '<h3>acting</h3>\n'
-  for (const c of site.theater.acting) {
-    html += `<div class="credit"><span class="credit-title">${c.role}</span> in <em>${c.production}</em> <span class="credit-detail">— ${c.company}, ${c.year}</span></div>\n`
-  }
-  html += '<h3>composing</h3>\n'
-  for (const c of site.theater.composing) {
-    html += `<div class="credit"><span class="credit-detail">${c.description}</span></div>\n`
-  }
-  return html
-}
-
-function renderFilm() {
-  return site.film
-    .map(f => `<div class="credit"><span class="credit-title">${f.title}</span> <span class="credit-detail">— ${f.role}, dir. ${f.director}, ${f.year}</span></div>`)
-    .join('\n')
-}
-
-function renderTV() {
-  return site.tv
-    .map(t => `<div class="credit"><span class="credit-title">${t.title}</span> <span class="credit-detail">— ${t.role}. ${t.note}, ${t.year}</span></div>`)
-    .join('\n')
-}
-
-function renderEngineering() {
-  return site.engineering
-    .map(p => {
-      const link = p.url ? `<a href="${p.url}">${p.name}</a>` : p.name
-      return `<div class="project"><span class="project-name">${link}</span> <span class="project-role">— ${p.role}</span><br>${p.description}</div>`
-    })
-    .join('\n')
-}
-
-function renderPortfolio() {
-  if (!site.portfolio) return ''
-  return site.portfolio
-    .map(p => {
-      const link = p.url ? `<a href="${p.url}">${p.name}</a>` : p.name
-      return `<div class="project"><span class="project-name">${link}</span> <span class="project-role">— ${p.year}</span><br>${p.description}</div>`
-    })
-    .join('\n')
-}
-
-function renderStore() {
-  return site.store
-    .map(item => `<div class="store-item">
-<div class="store-item-title">${item.title}</div>
-<p>${item.description}</p>
-<div class="store-item-price">${item.price} ${item.currency}</div>
-<button class="buy-btn" data-id="${item.id}" data-price="${item.price}" data-currency="${item.currency}" data-recipient="${item.recipient}">buy</button>
-</div>`)
-    .join('\n')
 }
 
 function renderNetwork() {
@@ -531,61 +450,6 @@ function renderLibrary() {
 </div>`
 }
 
-function renderGraph() {
-  const regAddr = site.network?.registryAddress || ''
-  return `<div id="graph-container" data-registry="${regAddr}">
-<p id="graph-status"><span class="praxis-loader"></span></p>
-<canvas id="graph-canvas" style="width:100%;border:1px solid #1a1a1a;margin-top:1em"></canvas>
-</div>`
-}
-
-function renderHighlights() {
-  let html = ''
-
-  // music highlights
-  if (site.music?.aliases?.length) {
-    const recentAlbums = site.music.aliases
-      .flatMap(a => (a.albums || []).map(al => ({ ...al, alias: a.name })))
-      .sort((a, b) => b.year - a.year)
-      .slice(0, 3)
-
-    if (recentAlbums.length) {
-      html += `<div class="highlights-section"><h3>${getTemplateLabel('music', siteModules.find(m => m.type === 'music'))}</h3>`
-      for (const al of recentAlbums) {
-        html += `<div class="album"><img src="/api/img?url=${encodeURIComponent(al.art)}&w=600" alt="${al.title}" loading="lazy" onerror="this.style.display='none'"><div class="album-info"><span class="album-title">${al.title}</span> <span class="album-year">(${al.year})</span><br><span style="color:#666">${al.alias}</span></div></div>`
-      }
-      html += '</div>'
-    }
-  }
-
-  // theater/film highlights
-  const credits = [
-    ...(site.theater?.acting || []).map(c => ({ title: c.production, detail: `${c.role} — ${c.company}`, year: c.year })),
-    ...(site.film || []).map(f => ({ title: f.title, detail: `${f.role}, dir. ${f.director}`, year: f.year })),
-    ...(site.tv || []).map(t => ({ title: t.title, detail: `${t.role}. ${t.note}`, year: t.year })),
-  ].sort((a, b) => b.year - a.year).slice(0, 3)
-
-  if (credits.length) {
-    html += `<div class="highlights-section"><h3>${getTemplateLabel('credits', siteModules.find(m => m.type === 'credits'))}</h3>`
-    for (const c of credits) {
-      html += `<div class="credit"><span class="credit-title">${c.title}</span> <span class="credit-detail">— ${c.detail}, ${c.year}</span></div>`
-    }
-    html += '</div>'
-  }
-
-  // engineering highlights
-  if (site.engineering?.length) {
-    html += `<div class="highlights-section"><h3>${getTemplateLabel('technology', siteModules.find(m => m.type === 'technology'))}</h3>`
-    for (const p of site.engineering.slice(0, 3)) {
-      const link = p.url ? `<a href="${p.url}">${p.name}</a>` : p.name
-      html += `<div class="project"><span class="project-name">${link}</span> <span class="project-role">— ${p.role}</span></div>`
-    }
-    html += '</div>'
-  }
-
-  return html
-}
-
 // 1. build index
 
 mkdirSync(distDir, { recursive: true })
@@ -613,7 +477,7 @@ if (site.supporter) {
 
   indexContent = `<header style="padding-left:0;margin-bottom:2em">
   <h1>${escapeForHtml(site.name)}</h1>
-  <p class="bio">${site.bio || ''}</p>
+  <p class="bio">${escapeForHtml(site.bio || '')}</p>
   <div id="owner-badges"></div>
 </header>
 
@@ -630,15 +494,15 @@ ${myArtistsSection}
 </div>`
 } else {
   indexContent = fill(indexTpl, {
-    name: site.name,
-    bio: site.bio || '',
-    shortBio: site.shortBio || (site.bio && site.bio.length > 160 ? site.bio.slice(0, site.bio.lastIndexOf(' ', 160)) + '...' : site.bio || ''),
+    name: escapeForHtml(site.name),
+    bio: escapeForHtml(site.bio || ''),
+    shortBio: escapeForHtml(site.shortBio || (site.bio && site.bio.length > 160 ? site.bio.slice(0, site.bio.lastIndexOf(' ', 160)) + '...' : site.bio || '')),
     highlights: buildHighlights(),
     cv: buildCV(),
     blogRegistry: blogRegistryAddr,
     wallet: site.wallet || '',
-    representation: site.representation || '',
-    tagline: site.tagline || '',
+    representation: escapeForHtml(site.representation || ''),
+    tagline: escapeForHtml(site.tagline || ''),
     reel: site.reel || '',
     profilePic: site.profilePic || '',
     profilePicTag: site.profilePic ? `<img class="header-pic" src="${escapeForHtml(site.profilePic)}" alt="" loading="lazy">` : '',
@@ -710,7 +574,7 @@ out('art', wrap(artHtml, 'art', '/art', '/og/index.png'))
 
 // vault page (also serves legacy /earnings route)
 const vaultHtml = `<div id="vault-page" style="max-width:680px;margin:0 auto">
-<h2 style="color:var(--accent)">vault</h2>
+<h2 style="color:var(--fg)">vault</h2>
 <div id="vault-content"><span class="praxis-loader"></span></div>
 </div>`
 out('vault', wrap(vaultHtml, 'vault', '/vault', '/og/index.png', { noindex: true }))

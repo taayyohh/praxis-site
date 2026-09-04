@@ -868,16 +868,13 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 
   const overlay = document.createElement('div')
   overlay.id = 'vault-swap-modal'
-  overlay.className = 'praxis-modal-overlay'
-  overlay.style.zIndex = '10002'
-  const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog vault-save-dialog'
+  overlay.className = 'wizard-overlay vault-save-overlay'
 
   const poolCards = pools.slice(0, 3).map((p, i) => {
     const tvlStr = p.tvl >= 1e6 ? `$${(p.tvl / 1e6).toFixed(1)}M` : `$${(p.tvl / 1e3).toFixed(0)}K`
     const spAddr = STABILITY_POOLS[p.collateral] || ''
-    return `<label class="vault-pool-card${i === 0 ? ' vault-pool-card-selected' : ''}" data-sp="${spAddr}" data-name="${escapeHtml(p.collateral)}">
-      <input type="radio" name="sp-pool" value="${spAddr}" ${i === 0 ? 'checked' : ''} style="display:none">
+    return `<label class="vault-pool-card${i === 0 ? ' vault-pool-card-selected' : ''}" data-sp="${spAddr}" data-name="${escapeHtml(p.collateral)} pool">
+      <input type="radio" name="sp-pool" value="${spAddr}" ${i === 0 ? 'checked' : ''} style="position:absolute;opacity:0;pointer-events:none">
       <div class="vault-pool-card-top">
         <span class="vault-pool-card-name">${escapeHtml(p.collateral)} pool</span>
         <span class="vault-pool-card-apy">${p.apy.toFixed(1)}%</span>
@@ -901,85 +898,97 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     return `<span class="vault-chain-icon">${ETH_ICON}</span><span class="vault-chain-name">${escapeHtml(c.name)}</span>${right}`
   }
 
+  const canPickChain = visibleChains.length > 1
+  const caretSvg = `<svg class="vault-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
   const earningLine = bestApy > 0
     ? (t('save.earningLine') || 'Currently earning {apr}% APR').replace('{apr}', bestApy.toFixed(1))
     : ''
 
-  dialog.innerHTML = `
-    <div class="vault-save-head">
-      <div class="vault-save-icon">${BOLD_ICON}</div>
-      <div class="vault-save-headtext">
-        <div class="vault-save-title">${t('save.title') || 'save to BOLD'}</div>
-        <div class="vault-save-sub">${t('save.subtitle') || 'USD savings, backed by ETH'}</div>
-      </div>
-      ${earningLine ? `<div class="vault-save-apr"><span class="vault-save-apr-value">${bestApy.toFixed(1)}%</span><span class="vault-save-apr-label">APR</span></div>` : ''}
-    </div>
-
-    <p class="vault-save-explainer">
-      ${t('save.explainer') || 'BOLD is a US-dollar stablecoin backed by ETH. Your balance earns yield when Liquity loans are liquidated.'}
-      <a class="vault-save-learnmore" href="https://liquity.org" target="_blank" rel="noopener">${t('save.learnMore') || 'learn more'} →</a>
-    </p>
-
-    <div class="vault-save-body">
-      <div class="vault-save-field vault-chain-picker" id="chain-picker" aria-expanded="false">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">${t('save.from') || 'From'}</span>
+  overlay.innerHTML = `
+    <button class="wizard-close vault-save-close" aria-label="close">×</button>
+    <div class="vault-save-page">
+      <header class="vault-save-hero">
+        <div class="vault-save-icon">${BOLD_ICON}</div>
+        <div class="vault-save-headtext">
+          <h1 class="vault-save-title">${t('save.title') || 'save to BOLD'}</h1>
+          <p class="vault-save-sub">${t('save.subtitle') || 'USD savings, backed by ETH'}</p>
         </div>
-        <button type="button" class="vault-chain-row vault-chain-row-current" id="chain-current"></button>
-        <div class="vault-chain-list" id="chain-list" hidden></div>
-      </div>
+        ${earningLine ? `<div class="vault-save-apr" title="${earningLine}">
+          <span class="vault-save-apr-caption">Earning</span>
+          <span class="vault-save-apr-value">${bestApy.toFixed(1)}%</span>
+          <span class="vault-save-apr-unit">APR</span>
+        </div>` : ''}
+      </header>
 
-      <div class="vault-save-field">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">${t('save.amount') || 'Amount'}</span>
-          <span class="vault-save-bal" id="chain-bal-hint"></span>
-        </div>
-        <div class="vault-save-input-row">
-          <input id="swap-amount" type="text" inputmode="decimal" placeholder="0" class="vault-save-input" autocomplete="off">
-          <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
-        </div>
-        <div class="vault-save-field-foot">
-          <span id="swap-fiat" class="vault-save-fiat"></span>
-          <div class="vault-presets" id="swap-presets"></div>
-        </div>
-      </div>
+      <p class="vault-save-explainer">
+        ${t('save.explainer') || 'BOLD is a US-dollar stablecoin fully backed by ETH collateral. Earns interest from Liquity borrowers.'}
+        <a class="vault-save-learnmore" href="https://liquity.org" target="_blank" rel="noopener">${t('save.learnMore') || 'learn more'}</a>
+      </p>
 
-      <div class="vault-save-connector" aria-hidden="true">→</div>
-
-      <div class="vault-save-field">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">${t('save.receive') || "You'll receive"}</span>
+      <section class="vault-save-body">
+        <div class="vault-chain-picker${canPickChain ? '' : ' vault-chain-picker-static'}" id="chain-picker" aria-expanded="false">
+          <div class="vault-save-field-head">
+            <span class="vault-save-field-label">${t('save.from') || 'From'}</span>
+          </div>
+          <button type="button" class="vault-chain-row vault-chain-row-current" id="chain-current" ${canPickChain ? '' : 'disabled aria-disabled="true"'}></button>
+          <div class="vault-chain-list" id="chain-list" hidden></div>
         </div>
-        <div class="vault-save-input-row">
-          <span id="swap-output" class="vault-save-output">—</span>
-          <div class="vault-save-token">${BOLD_ICON}<span>BOLD</span></div>
-        </div>
-        <div id="swap-rate" class="vault-save-fiat"></div>
-      </div>
 
-      ${poolCards ? `
-      <div class="vault-save-field vault-pools-field">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">${t('save.pool') || 'Deposit into'}</span>
+        <div class="vault-swap-card">
+          <div class="vault-swap-half vault-swap-send">
+            <div class="vault-save-field-head">
+              <span class="vault-save-field-label">${t('save.amount') || 'Amount'}</span>
+              <div class="vault-presets" id="swap-presets"></div>
+            </div>
+            <div class="vault-save-input-row">
+              <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
+              <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
+            </div>
+            <div class="vault-save-field-foot">
+              <span id="swap-fiat" class="vault-save-fiat">≈ $0.00</span>
+            </div>
+          </div>
+          <div class="vault-swap-divider" aria-hidden="true">
+            <span class="vault-swap-divider-pill">${caretSvg}</span>
+          </div>
+          <div class="vault-swap-half vault-swap-receive">
+            <div class="vault-save-field-head">
+              <span class="vault-save-field-label">${t('save.receive') || "You'll receive"}</span>
+            </div>
+            <div class="vault-save-input-row">
+              <span id="swap-output" class="vault-save-output vault-save-output-empty">0.00</span>
+              <div class="vault-save-token">${BOLD_ICON}<span>BOLD</span></div>
+            </div>
+            <div id="swap-rate" class="vault-save-fiat">&nbsp;</div>
+          </div>
         </div>
-        <div class="vault-pool-cards">${poolCards}</div>
-      </div>` : ''}
 
-      <div class="vault-save-field vault-steps-field">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">${t('save.happens') || 'What happens'}</span>
+        ${poolCards ? `
+        <div class="vault-pools-field">
+          <div class="vault-save-field-head">
+            <span class="vault-save-field-label">${t('save.pool') || 'Deposit into'}</span>
+          </div>
+          <div class="vault-pool-cards">${poolCards}</div>
+        </div>` : ''}
+
+        <div class="vault-steps-field">
+          <div class="vault-save-field-head">
+            <span class="vault-save-field-label">${t('save.happens') || 'What happens'}</span>
+          </div>
+          <ol class="vault-save-steps" id="swap-steps"></ol>
         </div>
-        <ol class="vault-save-steps" id="swap-steps"></ol>
-      </div>
 
-      <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'Enter an amount'}</button>
-      <p class="vault-save-withdraw">${t('save.withdraw') || 'Withdraw anytime · no lockup'}</p>
-      <div id="swap-status" class="vault-save-status"></div>
+        <div class="vault-save-actions">
+          <p class="vault-save-withdraw">${t('save.withdraw') || 'Withdraw anytime · no lockup'}</p>
+          <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'Enter an amount'}</button>
+          <div id="swap-status" class="vault-save-status"></div>
+        </div>
+      </section>
     </div>
   `
-  overlay.appendChild(dialog)
   document.body.appendChild(overlay)
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  const dialog = overlay
+  overlay.querySelector('.vault-save-close')?.addEventListener('click', () => overlay.remove())
 
   dialog.querySelectorAll('.vault-pool-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -1001,7 +1010,6 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   const chainCurrent = dialog.querySelector('#chain-current')
   const chainList = dialog.querySelector('#chain-list')
   const chainPicker = dialog.querySelector('#chain-picker')
-  const chainBalHint = dialog.querySelector('#chain-bal-hint')
 
   function currentChain() {
     return chains.find(c => c.chainId === selectedChainId) || chains[0]
@@ -1009,11 +1017,8 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   function renderChainCurrent() {
     const c = currentChain()
     const canExpand = visibleChains.length > 1
-    chainCurrent.innerHTML = `${chainRowInner(c)}${canExpand ? '<span class="vault-chain-chev">›</span>' : ''}`
+    chainCurrent.innerHTML = `${chainRowInner(c)}${canExpand ? `<span class="vault-chain-chev">${caretSvg}</span>` : ''}`
     chainCurrent.disabled = !canExpand
-    chainBalHint.textContent = c.balance > 0n
-      ? `${formatEthAmount(c.balance)} ETH${chainFiat(c.balance) ? ' · ' + chainFiat(c.balance) : ''}`
-      : ''
   }
   function renderChainList() {
     chainList.innerHTML = visibleChains.map(c => `
@@ -1105,7 +1110,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     confirmBtn.disabled = false
     confirmBtn.textContent = (t('save.cta') || 'Save {amount} to {pool}')
       .replace('{amount}', fiat)
-      .replace('{pool}', `${poolName} pool`)
+      .replace('{pool}', poolName)
   }
 
   let _quoteTimer = null
@@ -1116,12 +1121,20 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   renderPresets()
   renderSteps()
 
+  function setOutput(text, empty) {
+    outputEl.textContent = text
+    outputEl.classList.toggle('vault-save-output-empty', !!empty)
+  }
+  function setRate(text) {
+    rateEl.innerHTML = text || '&nbsp;'
+  }
+
   swapInput.addEventListener('input', () => {
     const val = parseFloat(swapInput.value)
     if (!val || isNaN(val) || val <= 0) {
-      swapFiat.textContent = ''
-      outputEl.textContent = '—'
-      rateEl.textContent = ''
+      swapFiat.textContent = ethRate ? `≈ ${formatFiat(0, currency)}` : ''
+      setOutput('0.00', true)
+      setRate('')
       _lastQuote = null
       renderCta()
       return
@@ -1129,9 +1142,8 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     if (ethRate) swapFiat.textContent = `≈ ${formatFiat(val * ethRate, currency)}`
 
     clearTimeout(_quoteTimer)
-    outputEl.textContent = '…'
-    outputEl.style.color = 'var(--dim)'
-    rateEl.textContent = ''
+    setOutput('…', true)
+    setRate('')
     _lastQuote = null
     renderCta()
 
@@ -1142,24 +1154,21 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
         const boldOut = Number(uniQuote.amountOut) / 1e18
 
         _lastQuote = { amountIn, boldOut, path: uniQuote.path }
-        outputEl.textContent = boldOut.toFixed(2)
-        outputEl.style.color = 'var(--fg)'
+        setOutput(boldOut.toFixed(2), false)
         const rate = boldOut / val
-        rateEl.textContent = (t('save.rate') || '1 ETH ≈ {amount} BOLD').replace('{amount}', rate.toFixed(2))
+        setRate((t('save.rate') || '1 ETH ≈ {amount} BOLD').replace('{amount}', rate.toFixed(2)))
         renderCta()
       } catch (e) {
         console.warn('quote error:', e)
         if (ethRate) {
           const est = val * ethRate
           _lastQuote = { amountIn: parseEther(val.toFixed(18)), boldOut: est, path: null }
-          outputEl.textContent = `≈ ${est.toFixed(2)}`
-          outputEl.style.color = 'var(--dim)'
-          rateEl.textContent = t('save.estimate') || 'estimate — rate updates each quote'
+          setOutput(`≈ ${est.toFixed(2)}`, false)
+          setRate(t('save.estimate') || 'estimate — rate updates each quote')
           renderCta()
         } else {
-          outputEl.textContent = '—'
-          outputEl.style.color = 'var(--dim)'
-          rateEl.textContent = ''
+          setOutput('0.00', true)
+          setRate('')
           _lastQuote = null
           confirmBtn.disabled = true
           confirmBtn.textContent = t('save.noRoute') || 'no route available'

@@ -604,7 +604,7 @@
   "save.title": "save to BOLD",
   "save.subtitle": "USD savings, backed by ETH",
   "save.earningLine": "Currently earning {apr}% APR",
-  "save.explainer": "BOLD is a US-dollar stablecoin backed by ETH. Your balance earns yield when Liquity loans are liquidated.",
+  "save.explainer": "BOLD is a US-dollar stablecoin fully backed by ETH collateral. Earns interest from Liquity borrowers.",
   "save.learnMore": "learn more",
   "save.from": "From",
   "save.chainBalance": "{amount} ETH · {fiat}",
