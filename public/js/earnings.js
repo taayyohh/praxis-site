@@ -233,12 +233,12 @@ async function getUniswapBoldQuote(ethAmountWei) {
   throw new Error(`no BOLD liquidity (${errors.join(' | ')})`)
 }
 
-async function getRelayBridgeQuote(amountWei, addr) {
+async function getRelayBridgeQuote(fromChainId, amountWei, addr) {
   const res = await fetch('/api/relay/quote', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      originChainId: 10, destinationChainId: 1,
+      originChainId: fromChainId, destinationChainId: 1,
       originCurrency: ETH_ZERO, destinationCurrency: ETH_ZERO,
       amount: amountWei.toString(),
       user: addr, recipient: addr, tradeType: 'EXACT_INPUT',
@@ -259,9 +259,9 @@ async function getSpDeposit(spAddress, depositor) {
   return { deposit, collGain }
 }
 
-async function executeBridge(addr, amountWei, onStatus) {
+async function executeBridge(fromChainId, addr, amountWei, onStatus) {
   onStatus?.('getting bridge quote...')
-  const quote = await getRelayBridgeQuote(amountWei, addr)
+  const quote = await getRelayBridgeQuote(fromChainId, amountWei, addr)
 
   const steps = quote.steps || []
   if (!steps.length || !steps[0]?.items?.length) throw new Error('no bridge steps in quote')
@@ -271,9 +271,11 @@ async function executeBridge(addr, amountWei, onStatus) {
   onStatus?.('confirm bridge...')
   const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
   let walletClient
-  try { walletClient = await _buildBridgeWalletClient(10) } catch {
-    const { createWalletClient: cwc, custom: cst, optimism: op } = await import('./vendor.js')
-    walletClient = cwc({ chain: op, transport: cst(getWalletProvider()), account: window.getEmbeddedAccount?.() || addr })
+  try { walletClient = await _buildBridgeWalletClient(fromChainId) } catch {
+    const { createWalletClient: cwc, custom: cst, optimism: op, mainnet: mn, base: bs, arbitrum: ar } = await import('./vendor.js')
+    const chainMap = { 10: op, 1: mn, 8453: bs, 42161: ar }
+    const chain = chainMap[fromChainId] || op
+    walletClient = cwc({ chain, transport: cst(getWalletProvider()), account: window.getEmbeddedAccount?.() || addr })
   }
 
   onStatus?.('bridging ETH to Ethereum...')
@@ -761,7 +763,7 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, ea
   document.getElementById('vault-receive-btn')?.addEventListener('click', () => showReceiveModal(addr))
 
   // Save/Swap button
-  const swapHandler = () => showSwapModal(addr, ethBalance, ethPrices, currency, yieldData)
+  const swapHandler = () => showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBalances)
   document.getElementById('vault-swap-btn')?.addEventListener('click', swapHandler)
   document.getElementById('vault-save-btn')?.addEventListener('click', swapHandler)
 
@@ -845,12 +847,25 @@ async function showReceiveModal(addr) {
   })
 }
 
-function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
+function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBalances) {
   const existing = document.getElementById('vault-swap-modal')
   if (existing) { existing.remove(); return }
   const ethRate = ethPrices?.[currency] || 0
   const bestApy = yieldData?.bestApy || 0
   const pools = yieldData?.pools || []
+
+  // Source-of-funds accordion. Rank the picker: the chain with the largest
+  // balance goes first (highest signal), Optimism is always shown as the
+  // home account even when empty, and everything with zero is hidden until
+  // it holds funds so the list doesn't grow noisy over time.
+  const chains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+  const chainOrder = [...chains].sort((a, b) => {
+    if (b.balance !== a.balance) return b.balance > a.balance ? 1 : -1
+    return 0
+  })
+  const visibleChains = chainOrder.filter(c => c.balance > 0n || c.chainId === 10)
+  let selectedChainId = (visibleChains.find(c => c.balance > 0n) || visibleChains[0]).chainId
+
   const overlay = document.createElement('div')
   overlay.id = 'vault-swap-modal'
   overlay.className = 'praxis-modal-overlay'
@@ -861,7 +876,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
   const poolCards = pools.slice(0, 3).map((p, i) => {
     const tvlStr = p.tvl >= 1e6 ? `$${(p.tvl / 1e6).toFixed(1)}M` : `$${(p.tvl / 1e3).toFixed(0)}K`
     const spAddr = STABILITY_POOLS[p.collateral] || ''
-    return `<label class="vault-pool-card${i === 0 ? ' vault-pool-card-selected' : ''}" data-sp="${spAddr}">
+    return `<label class="vault-pool-card${i === 0 ? ' vault-pool-card-selected' : ''}" data-sp="${spAddr}" data-name="${escapeHtml(p.collateral)}">
       <input type="radio" name="sp-pool" value="${spAddr}" ${i === 0 ? 'checked' : ''} style="display:none">
       <div class="vault-pool-card-top">
         <span class="vault-pool-card-name">${escapeHtml(p.collateral)} pool</span>
@@ -874,28 +889,50 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     </label>`
   }).join('')
 
-  const ethBal = Number(ethBalance) / 1e18
-  const ethBalStr = formatEthAmount(ethBalance)
-  const ethBalFiat = ethRate ? formatFiat(ethBal * ethRate, currency) : ''
+  function chainFiat(bal) {
+    return ethRate ? formatFiat(Number(bal) / 1e18 * ethRate, currency) : ''
+  }
+  function chainRowInner(c) {
+    const eth = formatEthAmount(c.balance)
+    const fiat = chainFiat(c.balance)
+    const right = c.balance > 0n
+      ? `<span class="vault-chain-bal">${eth} ETH${fiat ? ` · ${fiat}` : ''}</span>`
+      : `<span class="vault-chain-bal vault-chain-bal-empty">${t('save.emptyChain') || 'no ETH'}</span>`
+    return `<span class="vault-chain-icon">${ETH_ICON}</span><span class="vault-chain-name">${escapeHtml(c.name)}</span>${right}`
+  }
 
-  const presets = [25, 50, 75, 100].map(pct => {
-    const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.002 : 0))
-    return `<button class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
-  }).join('')
+  const earningLine = bestApy > 0
+    ? (t('save.earningLine') || 'Currently earning {apr}% APR').replace('{apr}', bestApy.toFixed(1))
+    : ''
 
   dialog.innerHTML = `
     <div class="vault-save-head">
       <div class="vault-save-icon">${BOLD_ICON}</div>
-      <div>
-        <div class="vault-save-title">save to BOLD</div>
-        <div class="vault-save-sub">${bestApy > 0 ? `${bestApy.toFixed(1)}% APR on Ethereum` : 'stability pool yield on Ethereum'}</div>
+      <div class="vault-save-headtext">
+        <div class="vault-save-title">${t('save.title') || 'save to BOLD'}</div>
+        <div class="vault-save-sub">${t('save.subtitle') || 'USD savings, backed by ETH'}</div>
       </div>
+      ${earningLine ? `<div class="vault-save-apr"><span class="vault-save-apr-value">${bestApy.toFixed(1)}%</span><span class="vault-save-apr-label">APR</span></div>` : ''}
     </div>
+
+    <p class="vault-save-explainer">
+      ${t('save.explainer') || 'BOLD is a US-dollar stablecoin backed by ETH. Your balance earns yield when Liquity loans are liquidated.'}
+      <a class="vault-save-learnmore" href="https://liquity.org" target="_blank" rel="noopener">${t('save.learnMore') || 'learn more'} →</a>
+    </p>
+
     <div class="vault-save-body">
+      <div class="vault-save-field vault-chain-picker" id="chain-picker" aria-expanded="false">
+        <div class="vault-save-field-head">
+          <span class="vault-save-field-label">${t('save.from') || 'From'}</span>
+        </div>
+        <button type="button" class="vault-chain-row vault-chain-row-current" id="chain-current"></button>
+        <div class="vault-chain-list" id="chain-list" hidden></div>
+      </div>
+
       <div class="vault-save-field">
         <div class="vault-save-field-head">
-          <span class="vault-save-field-label">send</span>
-          <span class="vault-save-bal">${ethBalStr} ETH${ethBalFiat ? ' · ' + ethBalFiat : ''}</span>
+          <span class="vault-save-field-label">${t('save.amount') || 'Amount'}</span>
+          <span class="vault-save-bal" id="chain-bal-hint"></span>
         </div>
         <div class="vault-save-input-row">
           <input id="swap-amount" type="text" inputmode="decimal" placeholder="0" class="vault-save-input" autocomplete="off">
@@ -903,25 +940,40 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         </div>
         <div class="vault-save-field-foot">
           <span id="swap-fiat" class="vault-save-fiat"></span>
-          <div class="vault-presets">${presets}</div>
+          <div class="vault-presets" id="swap-presets"></div>
         </div>
       </div>
-      <div class="vault-save-arrow"><i class="ph ph-arrow-down"></i></div>
+
+      <div class="vault-save-connector" aria-hidden="true">→</div>
+
       <div class="vault-save-field">
-        <span class="vault-save-field-label">receive</span>
+        <div class="vault-save-field-head">
+          <span class="vault-save-field-label">${t('save.receive') || "You'll receive"}</span>
+        </div>
         <div class="vault-save-input-row">
           <span id="swap-output" class="vault-save-output">—</span>
           <div class="vault-save-token">${BOLD_ICON}<span>BOLD</span></div>
         </div>
         <div id="swap-rate" class="vault-save-fiat"></div>
       </div>
-      ${poolCards ? `<div class="vault-save-field-label" style="margin-top:0.6em;margin-bottom:0.15em">deposit into</div><div class="vault-pool-cards">${poolCards}</div>` : ''}
-      <div class="vault-save-steps" id="swap-steps">
-        <div class="vault-save-step" data-step="bridge"><span class="vault-save-step-dot"></span>bridge</div>
-        <div class="vault-save-step" data-step="swap"><span class="vault-save-step-dot"></span>swap</div>
-        <div class="vault-save-step" data-step="deposit"><span class="vault-save-step-dot"></span>deposit</div>
+
+      ${poolCards ? `
+      <div class="vault-save-field vault-pools-field">
+        <div class="vault-save-field-head">
+          <span class="vault-save-field-label">${t('save.pool') || 'Deposit into'}</span>
+        </div>
+        <div class="vault-pool-cards">${poolCards}</div>
+      </div>` : ''}
+
+      <div class="vault-save-field vault-steps-field">
+        <div class="vault-save-field-head">
+          <span class="vault-save-field-label">${t('save.happens') || 'What happens'}</span>
+        </div>
+        <ol class="vault-save-steps" id="swap-steps"></ol>
       </div>
-      <button id="swap-confirm" class="vault-save-btn" disabled>enter amount</button>
+
+      <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'Enter an amount'}</button>
+      <p class="vault-save-withdraw">${t('save.withdraw') || 'Withdraw anytime · no lockup'}</p>
       <div id="swap-status" class="vault-save-status"></div>
     </div>
   `
@@ -934,6 +986,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       dialog.querySelectorAll('.vault-pool-card').forEach(c => c.classList.remove('vault-pool-card-selected'))
       card.classList.add('vault-pool-card-selected')
       card.querySelector('input').checked = true
+      renderCta()
     })
   })
 
@@ -944,9 +997,89 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
   const confirmBtn = dialog.querySelector('#swap-confirm')
   const statusEl = dialog.querySelector('#swap-status')
   const stepsEl = dialog.querySelector('#swap-steps')
+  const presetsEl = dialog.querySelector('#swap-presets')
+  const chainCurrent = dialog.querySelector('#chain-current')
+  const chainList = dialog.querySelector('#chain-list')
+  const chainPicker = dialog.querySelector('#chain-picker')
+  const chainBalHint = dialog.querySelector('#chain-bal-hint')
 
-  let _quoteTimer = null
-  let _lastQuote = null
+  function currentChain() {
+    return chains.find(c => c.chainId === selectedChainId) || chains[0]
+  }
+  function renderChainCurrent() {
+    const c = currentChain()
+    const canExpand = visibleChains.length > 1
+    chainCurrent.innerHTML = `${chainRowInner(c)}${canExpand ? '<span class="vault-chain-chev">›</span>' : ''}`
+    chainCurrent.disabled = !canExpand
+    chainBalHint.textContent = c.balance > 0n
+      ? `${formatEthAmount(c.balance)} ETH${chainFiat(c.balance) ? ' · ' + chainFiat(c.balance) : ''}`
+      : ''
+  }
+  function renderChainList() {
+    chainList.innerHTML = visibleChains.map(c => `
+      <button type="button" class="vault-chain-row${c.chainId === selectedChainId ? ' vault-chain-row-selected' : ''}" data-chain="${c.chainId}">
+        ${chainRowInner(c)}
+        ${c.chainId === selectedChainId ? '<span class="vault-chain-check">✓</span>' : ''}
+      </button>
+    `).join('')
+    chainList.querySelectorAll('[data-chain]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedChainId = parseInt(btn.dataset.chain)
+        collapseChainList()
+        renderChainCurrent()
+        renderPresets()
+        renderSteps()
+        renderCta()
+        // clear any stale quote/amount
+        swapInput.value = ''
+        swapInput.dispatchEvent(new Event('input'))
+      })
+    })
+  }
+  function expandChainList() {
+    if (visibleChains.length <= 1) return
+    renderChainList()
+    chainList.hidden = false
+    chainPicker.setAttribute('aria-expanded', 'true')
+  }
+  function collapseChainList() {
+    chainList.hidden = true
+    chainPicker.setAttribute('aria-expanded', 'false')
+  }
+  chainCurrent.addEventListener('click', () => {
+    if (chainList.hidden) expandChainList()
+    else collapseChainList()
+  })
+
+  function renderPresets() {
+    const c = currentChain()
+    const ethBal = Number(c.balance) / 1e18
+    presetsEl.innerHTML = [25, 50, 75, 100].map(pct => {
+      const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.002 : 0))
+      return `<button type="button" class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+    }).join('')
+    presetsEl.querySelectorAll('.vault-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        swapInput.value = parseFloat(btn.dataset.amount).toFixed(6)
+        swapInput.dispatchEvent(new Event('input'))
+      })
+    })
+  }
+
+  function renderSteps() {
+    const isMainnet = selectedChainId === 1
+    const selectedPoolName = dialog.querySelector('.vault-pool-card-selected')?.dataset.name || 'pool'
+    const steps = []
+    if (!isMainnet) steps.push({ key: 'bridge', label: t('save.stepBridge') || 'Move ETH to Ethereum' })
+    steps.push({ key: 'swap', label: t('save.stepSwap') || 'Convert ETH to BOLD' })
+    steps.push({ key: 'deposit', label: (t('save.stepDeposit') || 'Deposit into {pool}').replace('{pool}', selectedPoolName) })
+    stepsEl.innerHTML = steps.map((s, i) => `
+      <li class="vault-save-step" data-step="${s.key}">
+        <span class="vault-save-step-idx">${i + 1}</span>
+        <span class="vault-save-step-label">${s.label}</span>
+      </li>
+    `).join('')
+  }
 
   function markStep(step, state) {
     const el = stepsEl?.querySelector(`[data-step="${step}"]`)
@@ -955,12 +1088,33 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     if (state) el.classList.add(`vault-save-step-${state}`)
   }
 
-  dialog.querySelectorAll('.vault-preset').forEach(btn => {
-    btn.addEventListener('click', () => {
-      swapInput.value = parseFloat(btn.dataset.amount).toFixed(6)
-      swapInput.dispatchEvent(new Event('input'))
-    })
-  })
+  function renderCta() {
+    const val = parseFloat(swapInput.value)
+    if (!val || isNaN(val) || val <= 0) {
+      confirmBtn.disabled = true
+      confirmBtn.textContent = t('save.ctaNoAmount') || 'Enter an amount'
+      return
+    }
+    if (!_lastQuote) {
+      confirmBtn.disabled = true
+      confirmBtn.textContent = t('save.ctaQuoting') || 'Getting rate…'
+      return
+    }
+    const poolName = dialog.querySelector('.vault-pool-card-selected')?.dataset.name || 'pool'
+    const fiat = ethRate ? formatFiat(val * ethRate, currency) : `${val} ETH`
+    confirmBtn.disabled = false
+    confirmBtn.textContent = (t('save.cta') || 'Save {amount} to {pool}')
+      .replace('{amount}', fiat)
+      .replace('{pool}', `${poolName} pool`)
+  }
+
+  let _quoteTimer = null
+  let _lastQuote = null
+
+  // Initial paint of dynamic sections
+  renderChainCurrent()
+  renderPresets()
+  renderSteps()
 
   swapInput.addEventListener('input', () => {
     const val = parseFloat(swapInput.value)
@@ -968,19 +1122,18 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
       swapFiat.textContent = ''
       outputEl.textContent = '—'
       rateEl.textContent = ''
-      confirmBtn.disabled = true
-      confirmBtn.textContent = 'enter amount'
       _lastQuote = null
+      renderCta()
       return
     }
     if (ethRate) swapFiat.textContent = `≈ ${formatFiat(val * ethRate, currency)}`
 
     clearTimeout(_quoteTimer)
-    outputEl.textContent = '...'
+    outputEl.textContent = '…'
     outputEl.style.color = 'var(--dim)'
     rateEl.textContent = ''
-    confirmBtn.disabled = true
-    confirmBtn.textContent = 'quoting...'
+    _lastQuote = null
+    renderCta()
 
     _quoteTimer = setTimeout(async () => {
       try {
@@ -992,9 +1145,8 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         outputEl.textContent = boldOut.toFixed(2)
         outputEl.style.color = 'var(--fg)'
         const rate = boldOut / val
-        rateEl.textContent = `1 ETH ≈ ${rate.toFixed(2)} BOLD`
-        confirmBtn.disabled = false
-        confirmBtn.textContent = 'save'
+        rateEl.textContent = (t('save.rate') || '1 ETH ≈ {amount} BOLD').replace('{amount}', rate.toFixed(2))
+        renderCta()
       } catch (e) {
         console.warn('quote error:', e)
         if (ethRate) {
@@ -1002,16 +1154,15 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
           _lastQuote = { amountIn: parseEther(val.toFixed(18)), boldOut: est, path: null }
           outputEl.textContent = `≈ ${est.toFixed(2)}`
           outputEl.style.color = 'var(--dim)'
-          rateEl.textContent = 'estimate — pool may vary'
-          confirmBtn.disabled = false
-          confirmBtn.textContent = 'save'
+          rateEl.textContent = t('save.estimate') || 'estimate — rate updates each quote'
+          renderCta()
         } else {
-          outputEl.textContent = 'unavailable'
+          outputEl.textContent = '—'
           outputEl.style.color = 'var(--dim)'
           rateEl.textContent = ''
-          confirmBtn.disabled = true
-          confirmBtn.textContent = 'no liquidity'
           _lastQuote = null
+          confirmBtn.disabled = true
+          confirmBtn.textContent = t('save.noRoute') || 'no route available'
         }
       }
     }, 600)
@@ -1021,30 +1172,29 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
     if (!_lastQuote) return
     const { amountIn } = _lastQuote
     const selectedPool = dialog.querySelector('input[name="sp-pool"]:checked')?.value
+    const isMainnet = selectedChainId === 1
     confirmBtn.disabled = true
     swapInput.disabled = true
+    chainCurrent.disabled = true
     statusEl.textContent = ''
     statusEl.style.color = 'var(--muted)'
+    confirmBtn.textContent = t('save.ctaWorking') || 'Saving…'
 
     try {
-      // --- Step 1: Bridge ETH from Optimism to Ethereum mainnet ---
-      markStep('bridge', 'active')
-      confirmBtn.textContent = 'step 1/3: bridging...'
-      await executeBridge(addr, amountIn, (msg) => { statusEl.textContent = msg })
-      markStep('bridge', 'done')
+      if (!isMainnet) {
+        markStep('bridge', 'active')
+        await executeBridge(selectedChainId, addr, amountIn, (msg) => { statusEl.textContent = msg })
+        markStep('bridge', 'done')
+        statusEl.textContent = 'waiting for ETH on Ethereum…'
+        await new Promise(r => setTimeout(r, 5000))
+      }
 
-      // --- Step 2: Swap ETH → BOLD on Uniswap (Ethereum mainnet) ---
       markStep('swap', 'active')
-      confirmBtn.textContent = 'step 2/3: swapping...'
-      statusEl.textContent = 'waiting for ETH on Ethereum...'
-      await new Promise(r => setTimeout(r, 5000))
       await swapEthToBold(addr, _lastQuote.path, (msg) => { statusEl.textContent = msg })
       markStep('swap', 'done')
 
-      // --- Step 3: Deposit into stability pool ---
       if (selectedPool) {
         markStep('deposit', 'active')
-        confirmBtn.textContent = 'step 3/3: depositing...'
         const boldBal = await getBoldBalanceMainnet(addr)
         if (boldBal > 0n) {
           await depositToStabilityPool(selectedPool, boldBal, addr, (msg) => { statusEl.textContent = msg })
@@ -1057,23 +1207,21 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData) {
         markStep('deposit', 'done')
       }
 
-      confirmBtn.textContent = 'done'
-      confirmBtn.style.borderColor = 'var(--green)'
-      confirmBtn.style.color = 'var(--green)'
+      confirmBtn.textContent = t('save.done') || 'Deposited — earning yield'
+      confirmBtn.classList.add('vault-save-btn-done')
       statusEl.style.color = 'var(--green)'
-      statusEl.textContent = selectedPool ? 'deposited — earning yield' : 'BOLD on Ethereum — ready to deposit'
+      statusEl.textContent = selectedPool ? (t('save.done') || 'Deposited — earning yield') : (t('save.doneNoPool') || 'BOLD received — ready to deposit')
       window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
       setTimeout(() => overlay.remove(), 4000)
     } catch (e) {
       const failedStep = stepsEl?.querySelector('.vault-save-step-active')
-      if (failedStep) {
-        failedStep.className = 'vault-save-step vault-save-step-error'
-      }
-      confirmBtn.disabled = false
+      if (failedStep) failedStep.className = 'vault-save-step vault-save-step-error'
       swapInput.disabled = false
-      confirmBtn.textContent = 'retry'
+      chainCurrent.disabled = visibleChains.length <= 1
+      confirmBtn.disabled = false
+      confirmBtn.textContent = t('save.retry') || 'Try again'
       statusEl.style.color = 'var(--dim)'
-      statusEl.textContent = e.code === 4001 ? 'cancelled' : formatTxError(e)
+      statusEl.textContent = e.code === 4001 ? (t('save.cancelled') || 'Cancelled') : formatTxError(e)
     }
   })
 }
