@@ -2,7 +2,7 @@
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase, slugify, getAuthToken } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicClient , formatEthAmount, registerPage , getWalletProvider, unpackLocation as unpackLocationBase, slugify, getAuthToken, uploadToIpfs, resizeImageFile } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
@@ -1359,12 +1359,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       const img = _projectImages[i]
       if (img.cid) { imageCids.push({ cid: img.cid, name: img.file.name, type: img.file.type }); continue }
       if (statusEl) statusEl.textContent = `uploading image ${i + 1}/${_projectImages.length}...`
-      const res = await fetch(`/api/ipfs?name=${encodeURIComponent(img.file.name)}`, {
-        method: 'POST', body: img.file,
-        headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': img.file.size.toString() },
-      })
-      if (!res.ok) throw new Error('image upload failed')
-      const { jobId } = await res.json()
+      // Project images render at card and detail-page widths — 2048px is
+      // more than enough. Skip already-CID'd files (edits reusing prior uploads).
+      const resized = await resizeImageFile(img.file, 2048, 0.9)
+      const { jobId } = await uploadToIpfs(resized.name || img.file.name, resized, authToken)
       const cid = await _pollUploadJob(jobId)
       img.cid = cid
       imageCids.push({ cid, name: img.file.name, type: img.file.type })
@@ -1372,12 +1370,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     if (statusEl) statusEl.textContent = 'uploading metadata...'
     const metadata = JSON.stringify({ images: imageCids })
     const metaBlob = new Blob([metadata], { type: 'application/json' })
-    const metaRes = await fetch('/api/ipfs?name=project-metadata.json', {
-      method: 'POST', body: metaBlob,
-      headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Length': metaBlob.size.toString() },
-    })
-    if (!metaRes.ok) throw new Error('metadata upload failed')
-    const { jobId: metaJobId } = await metaRes.json()
+    const { jobId: metaJobId } = await uploadToIpfs('project-metadata.json', metaBlob, authToken)
     return _pollUploadJob(metaJobId)
   }
 

@@ -128,6 +128,146 @@ export function ipfsUrl(cid) {
   return `/api/ipfs-proxy/${cid}`
 }
 
+// --- Upload helpers ---
+//
+// Two shared utilities every upload path should use:
+//
+// 1. resizeImageFile(file, maxDim, quality) — downsize an image before it
+//    hits the network. Home ISPs / bufferbloat-heavy routers routinely
+//    tail-drop long single-connection uploads once the burst overflows the
+//    upstream buffer. A 6 MB camera JPEG that renders at 256px on screen
+//    is wasted bandwidth AND the exact shape of upload that triggers the
+//    reset. Downsize to what the UI will actually display.
+//
+// 2. uploadToIpfs(name, body, token, opts) — POST to /api/ipfs with a
+//    retry loop on network-level failures. Server-returned errors bail
+//    immediately (retrying won't change the answer). Optional onProgress
+//    callback for XHR-based progress display. Callers that need fine-
+//    grained progress control can still hand-roll XHR, but should adopt
+//    the same networkFail-detection + retry pattern.
+export async function resizeImageFile(file, maxDim, quality) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file
+  if (/gif|svg/.test(file.type)) return file
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image()
+      i.onload = () => resolve(i)
+      i.onerror = () => reject(new Error('image decode failed'))
+      i.src = url
+    })
+    if (Math.max(img.width, img.height) <= maxDim) return file
+    const scale = maxDim / Math.max(img.width, img.height)
+    const w = Math.round(img.width * scale)
+    const h = Math.round(img.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0, w, h)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+    if (!blob) return file
+    return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() })
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+async function _doIpfsFetch(name, body, token, extraParams) {
+  const qs = new URLSearchParams({ name })
+  if (extraParams) for (const [k, v] of Object.entries(extraParams)) qs.append(k, v)
+  const res = await fetch(`/api/ipfs?${qs.toString()}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(data.error || `upload failed (${res.status})`)
+    err.status = res.status
+    err.serverFail = true
+    throw err
+  }
+  return data
+}
+
+export async function uploadToIpfs(name, body, token, opts = {}) {
+  const attempts = opts.attempts ?? 3
+  const onRetry = opts.onRetry
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await _doIpfsFetch(name, body, token, opts.extraParams)
+    } catch (e) {
+      lastErr = e
+      // Only retry on network-level failures (fetch itself threw). If the
+      // server responded with an error, retrying won't help.
+      const isNetFail = !e.serverFail && (
+        e.name === 'TypeError' ||
+        /network|failed to fetch|load failed|abort|reset|timeout/i.test(e.message || '')
+      )
+      if (!isNetFail || attempt === attempts) throw e
+      const wait = 1000 * (2 ** (attempt - 1))
+      try { onRetry?.(attempt, attempts, wait) } catch {}
+      await new Promise(r => setTimeout(r, wait))
+    }
+  }
+  throw lastErr
+}
+
+// XHR-based upload with retry — use this when you need upload progress
+// (fetch() has no progress events for the request body). Resolves with the
+// parsed JSON response. onProgress receives a 0-100 integer.
+export async function uploadToIpfsXhr(name, blob, token, opts = {}) {
+  const attempts = opts.attempts ?? 3
+  const onProgress = opts.onProgress
+  const onRetry = opts.onRetry
+  const timeout = opts.timeout ?? 30 * 60 * 1000
+  const extraParams = opts.extraParams
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const qs = new URLSearchParams({ name })
+      if (extraParams) for (const [k, v] of Object.entries(extraParams)) qs.append(k, v)
+      const result = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `/api/ipfs?${qs.toString()}`)
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(Math.round((e.loaded / e.total) * 100), attempt)
+          }
+        }
+        xhr.onload = () => {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+            else {
+              const err = new Error(data.error || `upload failed (${xhr.status})`)
+              err.status = xhr.status
+              err.serverFail = true
+              reject(err)
+            }
+          } catch { reject(Object.assign(new Error(xhr.statusText || 'upload failed'), { networkFail: true })) }
+        }
+        xhr.onerror = () => reject(Object.assign(new Error('upload failed'), { networkFail: true }))
+        xhr.ontimeout = () => reject(Object.assign(new Error('upload timeout'), { networkFail: true }))
+        xhr.timeout = timeout
+        xhr.send(blob)
+      })
+      return result
+    } catch (e) {
+      lastErr = e
+      const isNetFail = e.networkFail === true
+      if (!isNetFail || attempt === attempts) throw e
+      const wait = 1000 * (2 ** (attempt - 1))
+      try { onRetry?.(attempt, attempts, wait) } catch {}
+      await new Promise(r => setTimeout(r, wait))
+    }
+  }
+  throw lastErr
+}
+
 // Fix 8: IPFS request deduplication — concurrent fetches for same CID share one request
 // 30s timeout ensures inflight entries don't stick forever on hung requests
 const _ipfsFetchInflight = new Map()

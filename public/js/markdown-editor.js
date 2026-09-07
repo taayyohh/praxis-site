@@ -2,7 +2,7 @@
 // Usage: const editor = createMarkdownEditor(containerEl, { placeholder, rows, value })
 //        editor.getValue() / editor.setValue(text)
 
-import { escapeHtml, renderMarkdown, getAuthToken } from './utils.js'
+import { escapeHtml, renderMarkdown, getAuthToken, uploadToIpfs, resizeImageFile } from './utils.js'
 
 export function createMarkdownEditor(container, opts = {}) {
   const { placeholder = 'write something...', rows = 6, value = '', onInput } = opts
@@ -98,9 +98,12 @@ export function createMarkdownEditor(container, opts = {}) {
     textarea.placeholder = `uploading ${file.name}...`
     try {
       const authToken = await getAuthToken()
-      const buf = await file.arrayBuffer()
-      const uploadRes = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: buf })
-      const uploadData = await uploadRes.json()
+      // Blog images render at typography-column widths (~700px on desktop,
+      // full-bleed to viewport on mobile). 2048px longest edge is plenty
+      // for retina + zoom without shipping 12MB DSLR JPEGs over the wire.
+      const resized = await resizeImageFile(file, 2048, 0.9)
+      const buf = await resized.arrayBuffer()
+      const uploadData = await uploadToIpfs(resized.name || file.name, buf, authToken)
       if (uploadData.jobId) {
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 1000))

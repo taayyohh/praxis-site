@@ -3,7 +3,7 @@
 
 import { t } from './i18n.js'
 import { contrastRatio, deriveFullPalette, hexToHsl } from './contrast.js'
-import { getWalletProvider, escapeHtml, prettifyFilename } from './utils.js'
+import { getWalletProvider, escapeHtml, prettifyFilename, resizeImageFile, uploadToIpfs, uploadToIpfsXhr } from './utils.js'
 import { parseEther } from './vendor.js'
 
 let settingsToken = ''
@@ -953,7 +953,7 @@ function renderIdentityTab(el) {
       const preview = document.getElementById('s-pfp-preview')
       if (preview) preview.innerHTML = `<img src="${escapeHtml(url)}" style="width:100%;height:100%;object-fit:cover">`
       saveSettings()
-    }, 'image/*', { transformFile: (f) => _resizeImage(f, 512, 0.88) }))
+    }, 'image/*', { transformFile: (f) => resizeImageFile(f, 512, 0.88) }))
   }
   const pfpRemoveBtn = document.getElementById('s-pfp-remove')
   if (pfpRemoveBtn) {
@@ -1122,12 +1122,7 @@ async function showConvertToOrgModal() {
       const token = await getSettingsToken()
       if (!token) { statusEl.textContent = 'auth required'; return }
 
-      const uploadRes = await fetch('/api/ipfs?name=org-metadata.json', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: await blob.arrayBuffer(),
-      })
-      const uploadData = await uploadRes.json()
+      const uploadData = await uploadToIpfs('org-metadata.json', await blob.arrayBuffer(), token)
 
       let metadataCid = ''
       if (uploadData.cid) {
@@ -1226,12 +1221,7 @@ async function showCreateOrgModal() {
       const token = await getSettingsToken()
       if (!token) { statusEl.textContent = 'auth required'; return }
 
-      const uploadRes = await fetch('/api/ipfs?name=org-metadata.json', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: await blob.arrayBuffer(),
-      })
-      const uploadData = await uploadRes.json()
+      const uploadData = await uploadToIpfs('org-metadata.json', await blob.arrayBuffer(), token)
 
       let metadataCid = ''
       if (uploadData.cid) {
@@ -3509,37 +3499,6 @@ function showLocalMediaPreview(btn, file) {
   } catch (e) { /* non-fatal */ }
 }
 
-// Downsize an image File to fit within maxDim×maxDim (longest edge). Returns
-// a JPEG Blob at the given quality. Used for profile pics and any other case
-// where a 4K camera photo would just get resized on the server anyway.
-async function _resizeImage(file, maxDim, quality) {
-  if (!file || !file.type || !file.type.startsWith('image/')) return file
-  // GIFs and SVGs can't be flattened to JPEG without losing animation/vector data.
-  if (/gif|svg/.test(file.type)) return file
-  const url = URL.createObjectURL(file)
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const i = new Image()
-      i.onload = () => resolve(i)
-      i.onerror = () => reject(new Error('image decode failed'))
-      i.src = url
-    })
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
-    const w = Math.round(img.width * scale)
-    const h = Math.round(img.height * scale)
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(img, 0, 0, w, h)
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-    if (!blob) return file
-    return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() })
-  } finally {
-    URL.revokeObjectURL(url)
-  }
-}
-
 async function uploadFile(btn, callback, acceptTypes, options) {
   // Prevent concurrent uploads on the same button
   if (btn.dataset.uploading === '1') return
@@ -3594,48 +3553,19 @@ async function uploadFile(btn, callback, acceptTypes, options) {
       }
 
       // Phase 1: Stream file to server temp disk via XHR (shows upload progress).
-      // Retry on transient network errors — home ISPs / bufferbloat routers
-      // routinely reset a single connection mid-upload, and starting over on a
-      // fresh socket usually works. Retries only cover network-level failures;
-      // server-returned errors (rate limit, auth, etc.) are returned as-is.
-      let queueData = null
-      let _lastNetErr = null
-      const MAX_UPLOAD_ATTEMPTS = 3
-      for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
-        try {
-          queueData = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', `/api/ipfs?name=${encodeURIComponent(file.name)}`)
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-            const suffix = attempt > 1 ? ` (retry ${attempt - 1}/${MAX_UPLOAD_ATTEMPTS - 1})` : ''
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100)
-                btn.textContent = `${pct}%${suffix}`
-                btn.style.background = `linear-gradient(to right, var(--green) ${pct}%, transparent ${pct}%)`
-              }
-            }
-            xhr.onload = () => {
-              btn.style.background = ''
-              try { resolve(JSON.parse(xhr.responseText)) }
-              catch { reject(Object.assign(new Error(xhr.statusText || 'upload failed'), { networkFail: true })) }
-            }
-            xhr.onerror = () => { btn.style.background = ''; reject(Object.assign(new Error('upload failed'), { networkFail: true })) }
-            xhr.ontimeout = () => { btn.style.background = ''; reject(Object.assign(new Error('upload timeout'), { networkFail: true })) }
-            xhr.timeout = 30 * 60 * 1000 // 30 min — matches server.timeout for large video/audio
-            xhr.send(file)
-          })
-          break
-        } catch (e) {
-          _lastNetErr = e
-          if (!e.networkFail || attempt === MAX_UPLOAD_ATTEMPTS) throw e
-          // Exponential backoff: 1s, 3s
-          const wait = 1000 * (2 ** (attempt - 1))
+      // Retries + network-failure handling live in the shared helper.
+      const queueData = await uploadToIpfsXhr(file.name, file, token, {
+        onProgress: (pct, attempt) => {
+          const suffix = attempt > 1 ? ` (retry ${attempt - 1})` : ''
+          btn.textContent = `${pct}%${suffix}`
+          btn.style.background = `linear-gradient(to right, var(--green) ${pct}%, transparent ${pct}%)`
+        },
+        onRetry: (attempt, total, wait) => {
+          btn.style.background = ''
           btn.textContent = `reconnecting in ${Math.round(wait / 1000)}s…`
-          await new Promise(r => setTimeout(r, wait))
-        }
-      }
-      if (!queueData) throw _lastNetErr || new Error('upload failed')
+        },
+      })
+      btn.style.background = ''
 
       if (queueData.error) {
         btn.textContent = queueData.error.slice(0, 30)
@@ -3666,12 +3596,7 @@ async function uploadFile(btn, callback, acceptTypes, options) {
           if (posterBlob) {
             const posterBuffer = await posterBlob.arrayBuffer()
             // Poster upload also goes through the queue
-            const posterRes = await fetch(`/api/ipfs?name=poster-${cid}.jpg`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
-              body: posterBuffer,
-            })
-            const posterQueue = await posterRes.json()
+            const posterQueue = await uploadToIpfs(`poster-${cid}.jpg`, posterBuffer, token)
             if (posterQueue.jobId) {
               btn.textContent = 'uploading poster...'
               const posterResult = await _pollUploadJob(posterQueue.jobId, btn)
@@ -3941,9 +3866,11 @@ function renderThemeTab(el) {
           if (authData.token) { authToken = authData.token; sessionStorage.setItem('praxis-auth-token', authToken) }
         }
       }
-      const buf = await file.arrayBuffer()
-      const uploadRes = await fetch(`/api/ipfs?name=pwa-icon.png`, { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: buf })
-      const uploadData = await uploadRes.json()
+      // PWA icons are always small (512px max), so a plain fetch-with-retry
+      // is sufficient — no progress bar needed for a ~50KB payload.
+      const resized = await resizeImageFile(file, 512, 0.92)
+      const buf = await resized.arrayBuffer()
+      const uploadData = await uploadToIpfs('pwa-icon.png', buf, authToken)
       if (uploadData.jobId) {
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 1000))

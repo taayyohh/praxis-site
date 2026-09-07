@@ -2,7 +2,7 @@
 // Replaces the old compose modal with a dedicated route
 
 import { t, whenReady as i18nReady } from './i18n.js'
-import { escapeHtml, getWalletProvider, registerPage, getPublicClient, ipfsUrl, renderMarkdown, formatTxError, getAuthToken } from './utils.js'
+import { escapeHtml, getWalletProvider, registerPage, getPublicClient, ipfsUrl, renderMarkdown, formatTxError, getAuthToken, uploadToIpfs, uploadToIpfsXhr, resizeImageFile } from './utils.js'
 import { query } from './ponder.js'
 import { F } from './fragments.js'
 import { createWalletClient, custom, optimism } from './vendor.js'
@@ -440,14 +440,12 @@ function initWrite() {
       try {
         const token = await getAuthToken()
         if (!token) { statusEl.textContent = t('compose.walletRequired'); return }
-        const buffer = await file.arrayBuffer()
-        const res = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Length': String(buffer.byteLength) },
-          body: buffer,
-        })
-        if (!res.ok) { statusEl.textContent = `upload failed: ${res.status}`; return }
-        const data = await res.json()
+        // Blog inline images: cap at 2048px so we don't ship raw camera JPEGs.
+        const resized = await resizeImageFile(file, 2048, 0.9)
+        const buffer = await resized.arrayBuffer()
+        let data
+        try { data = await uploadToIpfs(resized.name || file.name, buffer, token) }
+        catch (e) { statusEl.textContent = `upload failed: ${e.message}`; return }
         let cid = data.cid
         if (!cid && data.jobId) {
           cid = await _composePollJob(data.jobId, statusEl, (msg) => { statusEl.textContent = msg })
@@ -528,25 +526,16 @@ function initWrite() {
         return
       }
 
-      const queueData = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `/api/ipfs?name=${encodeURIComponent(file.name)}`)
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100)
-            updatePlaceholder(pct)
-            statusEl.textContent = `uploading... ${pct}%`
-          }
-        }
-        xhr.onload = () => {
-          try { resolve(JSON.parse(xhr.responseText)) }
-          catch { reject(new Error(xhr.statusText || 'upload failed')) }
-        }
-        xhr.onerror = () => reject(new Error('upload failed'))
-        xhr.ontimeout = () => reject(new Error('upload timeout'))
-        xhr.timeout = 10 * 60 * 1000
-        xhr.send(file)
+      const queueData = await uploadToIpfsXhr(file.name, file, token, {
+        timeout: 10 * 60 * 1000,
+        onProgress: (pct, attempt) => {
+          const suffix = attempt > 1 ? ` (retry ${attempt - 1})` : ''
+          updatePlaceholder(pct)
+          statusEl.textContent = `uploading${suffix}... ${pct}%`
+        },
+        onRetry: (attempt, total, wait) => {
+          statusEl.textContent = `reconnecting in ${Math.round(wait / 1000)}s…`
+        },
       })
 
       if (queueData.error) {

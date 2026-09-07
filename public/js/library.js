@@ -4,7 +4,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider, prettifyFilename, getAuthToken, resolveDomain } from './utils.js'
+import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, ipfsUrl, renderMedia, getPublicClient, registerPage, openMediaSheet , getWalletProvider, prettifyFilename, getAuthToken, resolveDomain, uploadToIpfs } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
 
@@ -581,15 +581,7 @@ function renderAddForm(libraryAddress) {
       statusEl.textContent = 'uploading to IPFS...'
       try {
         const buffer = await file.arrayBuffer()
-        const res = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`,
-            'Content-Length': String(buffer.byteLength),
-          },
-          body: buffer,
-        })
-        const data = await res.json()
+        const data = await uploadToIpfs(file.name, buffer, await getAuthToken())
         // The /api/ipfs endpoint is now async and returns a jobId; we must poll
         // /api/ipfs/status/:jobId until done. Synchronous { cid } is preserved
         // as a backwards-compatible fast path in case the server changes again.

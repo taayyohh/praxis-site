@@ -4,7 +4,7 @@ import { query } from './ponder.js'
 import { t } from './i18n.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
-import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic } from './utils.js'
+import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic, uploadToIpfs } from './utils.js'
 
 // Sign a message via the embedded wallet, falling back to window.ethereum.
 // Critical: when another wallet (Phantom, Coinbase, Rabby) has locked window.ethereum
@@ -599,13 +599,15 @@ async function initMessages() {
         if (!authToken) { console.error('[attach] no auth token'); const { toast } = await import('./toast.js'); toast.error('authentication required'); continue }
         console.log('[attach] uploading', file.size, 'bytes...')
         const arrayBuf = await file.arrayBuffer()
-        const uploadRes = await fetch(`/api/ipfs?name=${encodeURIComponent(file.name)}&ephemeral=1`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(arrayBuf.byteLength), 'Authorization': `Bearer ${authToken}` },
-          body: arrayBuf,
-        })
-        console.log('[attach] upload response:', uploadRes.status)
-        const uploadData = await uploadRes.json()
+        let uploadData
+        try {
+          uploadData = await uploadToIpfs(file.name, arrayBuf, authToken, { extraParams: { ephemeral: '1' } })
+        } catch (e) {
+          console.error('upload failed:', e)
+          const { toast } = await import('./toast.js'); toast.error('upload failed — try again')
+          if (inputEl) inputEl.placeholder = 'type a message...'
+          continue
+        }
         if (!uploadData.jobId) { console.error('upload failed:', uploadData); if (inputEl) inputEl.placeholder = 'type a message...'; continue }
 
         // Poll for completion
