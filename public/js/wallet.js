@@ -1107,15 +1107,41 @@ function showConnectButton() {
 // run auto-connect
 autoConnect()
 
+// Mainnet BOLD contract (Liquity V2). Read balance via the RPC proxy so the
+// wallet dropdown can surface BOLD alongside ETH.
+const BOLD_MAINNET_ADDR = '0x6440f144b7e50d6a8439336510312d2f54beb01d'
+
+async function fetchBoldBalanceMainnet(address) {
+  // ERC-20 balanceOf(address) selector + padded arg
+  const selector = '0x70a08231'
+  const arg = address.toLowerCase().replace(/^0x/, '').padStart(64, '0')
+  const data = selector + arg
+  try {
+    const res = await fetch('/api/rpc/1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'eth_call',
+        params: [{ to: BOLD_MAINNET_ADDR, data }, 'latest'],
+      }),
+    })
+    if (!res.ok) return 0n
+    const body = await res.json()
+    if (!body?.result || body.result === '0x') return 0n
+    return BigInt(body.result)
+  } catch { return 0n }
+}
+
 async function loadTopBarBalance(address) {
   const el = document.getElementById('top-balance')
   if (!el) return
   try {
     const { getCachedBalance } = await import('/js/utils.js')
     const { getEthPrices, formatFiat, getUserCurrency } = await import('/js/fiat.js')
-    const [balance, prices] = await Promise.all([
+    const [balance, prices, boldBal] = await Promise.all([
       getCachedBalance(address),
       getEthPrices().catch(() => null),
+      fetchBoldBalanceMainnet(address),
     ])
     const eth = (Number(balance) / 1e18).toFixed(4)
     let text = `${eth}Ξ`
@@ -1126,6 +1152,12 @@ async function loadTopBarBalance(address) {
         const fiatVal = Number(balance) / 1e18 * rate
         text += ` <span style="color:var(--muted);font-size:0.85em">(~${formatFiat(fiatVal, currency)})</span>`
       }
+    }
+    // BOLD row — only when the user actually holds any. BOLD is ~$1 by design.
+    if (boldBal > 0n) {
+      const bold = Number(boldBal) / 1e18
+      const boldStr = bold >= 1 ? bold.toFixed(2) : bold.toFixed(4)
+      text += ` <span style="display:block;color:var(--muted);font-size:0.85em;margin-top:0.15em">${boldStr} BOLD <span style="opacity:0.7">(savings)</span></span>`
     }
     el.innerHTML = text
   } catch (e) { console.warn('praxis: loadTopBarBalance failed:', e?.message) }

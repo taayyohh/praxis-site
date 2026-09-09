@@ -176,9 +176,10 @@ async function initVault() {
   const mediaAddr = document.body.dataset.media || ''
 
   try {
-    const [chainBalances, boldBalance, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
+    const [chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
       fetchChainBalances(addr).catch(() => [{ chainId: 10, name: 'Optimism', balance: 0n }]),
       getBoldBalanceMainnet(addr).catch(() => 0n),
+      getStabilityDeposits(addr).catch(() => ({ total: 0n, pools: [] })),
       getPendingWithdrawals(addr),
       fetchEarned(addrLower),
       fetchContributed(addrLower),
@@ -199,7 +200,7 @@ async function initVault() {
     _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
     _historyShown = 0
 
-    renderVault(contentEl, { ethBalance, chainBalances, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
+    renderVault(contentEl, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
   } catch (e) {
     console.warn('vault load error:', e)
     contentEl.innerHTML = `<p style="color:var(--muted)">failed to load vault</p>`
@@ -228,6 +229,26 @@ async function getBoldBalanceMainnet(addr) {
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
   const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
   return pc.readContract({ address: BOLD_MAINNET, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr] })
+}
+
+// Liquity V2 SP view: current BOLD deposit balance (including yield share).
+const SP_DEPOSIT_ABI = [{
+  type: 'function', name: 'getCompoundedBoldDeposit', stateMutability: 'view',
+  inputs: [{ name: '_depositor', type: 'address' }],
+  outputs: [{ name: '', type: 'uint256' }],
+}]
+
+async function getStabilityDeposits(addr) {
+  const { createPublicClient, http, mainnet } = await import('./vendor.js')
+  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  const entries = Object.entries(STABILITY_POOLS)
+  const results = await Promise.all(entries.map(async ([name, spAddr]) =>
+    pc.readContract({ address: spAddr, abi: SP_DEPOSIT_ABI, functionName: 'getCompoundedBoldDeposit', args: [addr] })
+      .then(bal => ({ name, spAddr, balance: bal }))
+      .catch(() => ({ name, spAddr, balance: 0n }))
+  ))
+  const total = results.reduce((s, r) => s + r.balance, 0n)
+  return { total, pools: results }
 }
 
 async function fetchBoldYield() {
@@ -697,7 +718,7 @@ function renderHistoryItems(items, ethPrices) {
 const ETH_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 12.5L12 16.5L20 12.5L12 2Z" fill="var(--accent)" opacity="0.7"/><path d="M12 2L4 12.5L12 10.5V2Z" fill="var(--accent)"/><path d="M12 18L4 14L12 22L20 14L12 18Z" fill="var(--accent)" opacity="0.7"/><path d="M12 18L4 14L12 22V18Z" fill="var(--accent)"/></svg>`
 const BOLD_ICON = `<svg width="24" height="24" viewBox="0 0 20 21" fill="none"><rect y="0.5" width="20" height="20" rx="10" fill="#63D77D"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.28 3.83H5.05V17.17H9.5V16.63C10.17 16.97 10.92 17.17 11.72 17.17C14.42 17.17 16.61 14.98 16.61 12.28C16.61 9.58 14.43 7.39 11.72 7.39C10.93 7.39 10.17 7.58 9.5 7.92V4.41V3.83H7.28ZM9.5 7.92C7.92 8.73 6.83 10.38 6.83 12.28C6.83 14.18 7.93 15.82 9.5 16.63V7.92Z" fill="#1C1D4F"/></svg>`
 
-function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
+function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
   const totalUnclaimed = unclaimed.praxis + unclaimed.media + ticketUnclaimed
   const totalEarned = earned.mediaTotal + earned.projectEarnings
   const totalContributed = contributed.fundingTotal + contributed.purchaseTotal
@@ -705,7 +726,9 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, ea
   const ethRate = ethPrices?.[currency] || 0
 
   const ethFiat = ethRate ? Number(ethBalance) / 1e18 * ethRate : 0
-  const boldFiat = Number(boldBalance) / 1e18
+  const spTotal = spDeposits?.total || 0n
+  // BOLD is a USD-pegged stablecoin. Combine liquid + deposited for total.
+  const boldFiat = (Number(boldBalance) + Number(spTotal)) / 1e18
   const totalFiat = ethFiat + boldFiat
 
   let html = ''
@@ -768,9 +791,30 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, ea
   }
   html += `</div>`
 
-  if (boldBalance > 0n) {
-    const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
-    html += `<div class="vault-savings-bal">${boldFormatted} <span style="color:var(--dim)">BOLD</span></div>`
+  // Show what the user is actually earning yield on (SP deposits), plus any
+  // liquid BOLD sitting in the wallet waiting to be deposited. Sum of the two
+  // is the user's true BOLD position.
+  const spTotalBold = spDeposits?.total || 0n
+  const liquidBold = boldBalance
+  const totalBold = spTotalBold + liquidBold
+  if (totalBold > 0n) {
+    const totalStr = (Number(totalBold) / 1e18).toFixed(2)
+    html += `<div class="vault-savings-bal">${totalStr} <span style="color:var(--dim)">BOLD</span></div>`
+    // Break down deposited vs liquid when both exist.
+    const parts = []
+    if (spTotalBold > 0n) parts.push(`${(Number(spTotalBold) / 1e18).toFixed(2)} earning yield`)
+    if (liquidBold > 0n) parts.push(`${(Number(liquidBold) / 1e18).toFixed(2)} liquid`)
+    if (parts.length > 0) {
+      html += `<div style="color:var(--dim);font-size:0.85em;margin-top:0.2em">${parts.join(' · ')}</div>`
+    }
+    // Per-pool breakdown when the user is deposited across more than one SP.
+    const activePools = (spDeposits?.pools || []).filter(p => p.balance > 0n)
+    if (activePools.length > 1) {
+      const lines = activePools.map(p =>
+        `${p.name}: ${(Number(p.balance) / 1e18).toFixed(2)}`
+      ).join(' · ')
+      html += `<div style="color:var(--dim);font-size:0.8em;margin-top:0.15em">${escapeHtml(lines)}</div>`
+    }
   } else {
     html += `<div class="vault-savings-bal" style="color:var(--dim)">no deposits yet</div>`
   }
@@ -991,21 +1035,37 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   overlay.id = 'vault-swap-modal'
   overlay.className = 'wizard-overlay vault-save-overlay'
 
-  const poolCards = pools.slice(0, 3).map((p, i) => {
-    const tvlStr = p.tvl >= 1e6 ? `$${(p.tvl / 1e6).toFixed(1)}M` : `$${(p.tvl / 1e3).toFixed(0)}K`
+  // Fallback: if /api/bold/yield is down, still offer the ETH pool so the
+  // flow works. Uses the pinned STABILITY_POOLS.ETH address + a placeholder
+  // APY the user can visually distinguish from a live-data card.
+  const poolInput = (pools.length > 0 ? pools : [{
+    collateral: 'ETH', apy: 0, apy7d: 0, tvl: 0,
+  }])
+  // Sort highest-APY first so the default selection is the best current yield.
+  const sortedPools = [...poolInput].sort((a, b) => (b.apy || 0) - (a.apy || 0))
+  const POOL_TAGLINES = {
+    ETH: 'backed by ETH',
+    wstETH: 'backed by staked ETH',
+    rETH: 'backed by Rocket Pool ETH',
+  }
+  const poolCards = sortedPools.slice(0, 3).map((p, i) => {
     const spAddr = STABILITY_POOLS[p.collateral] || ''
+    if (!spAddr) return ''
+    const tvlStr = p.tvl >= 1e6 ? `$${(p.tvl / 1e6).toFixed(1)}M` : (p.tvl > 0 ? `$${(p.tvl / 1e3).toFixed(0)}K` : '—')
+    const apyStr = p.apy > 0 ? `${p.apy.toFixed(1)}%` : '—'
+    const apy7dStr = p.apy7d > 0 ? `30d avg ${p.apy7d.toFixed(1)}%` : (POOL_TAGLINES[p.collateral] || '')
     return `<label class="vault-pool-card${i === 0 ? ' vault-pool-card-selected' : ''}" data-sp="${spAddr}" data-name="${escapeHtml(p.collateral)} pool">
       <input type="radio" name="sp-pool" value="${spAddr}" ${i === 0 ? 'checked' : ''} style="position:absolute;opacity:0;pointer-events:none">
       <div class="vault-pool-card-top">
         <span class="vault-pool-card-name">${escapeHtml(p.collateral)} pool</span>
-        <span class="vault-pool-card-apy">${p.apy.toFixed(1)}%</span>
+        <span class="vault-pool-card-apy">${apyStr}</span>
       </div>
       <div class="vault-pool-card-bottom">
-        <span class="vault-pool-card-tvl">${tvlStr} TVL</span>
-        <span class="vault-pool-card-7d">30d avg ${p.apy7d.toFixed(1)}%</span>
+        <span class="vault-pool-card-tvl">${tvlStr}${p.tvl > 0 ? ' TVL' : ''}</span>
+        <span class="vault-pool-card-7d">${apy7dStr}</span>
       </div>
     </label>`
-  }).join('')
+  }).filter(Boolean).join('')
 
   function chainFiat(bal) {
     return ethRate ? formatFiat(Number(bal) / 1e18 * ethRate, currency) : ''
