@@ -181,7 +181,11 @@ function showAddress(address) {
       if (trigger) trigger.parentNode.insertBefore(bell, trigger)
     }
 
-    // populate praxis dropdown with wallet items
+    // populate praxis dropdown — three flat full-width buttons.
+    // praxis → /network (home for community: network + projects + library tabs)
+    // vault  → /earnings (home for money: send, receive, save, add funds, cash out)
+    // manage → settings overlay (owner-only)
+    // Switchers + sign-out live in the muted footer.
     const dropdown = document.getElementById('praxis-menu-dropdown')
     const walletTop = document.getElementById('top-bar-wallet-top')
     const closeFn = () => {
@@ -190,10 +194,9 @@ function showAddress(address) {
       if (trig) trig.classList.remove('menu-open')
     }
 
-    // enable two-column grid layout
     if (dropdown) dropdown.classList.add('menu-logged-in')
 
-    // top section: balance + address on one row
+    // Header row: balance + address (unchanged)
     if (walletTop) {
       walletTop.innerHTML = `
         <div class="wallet-top-row">
@@ -210,69 +213,53 @@ function showAddress(address) {
       })
     }
 
-    // wallet actions (right column, alongside praxis nav)
+    // Three flat buttons — same visual weight. `manage` only for site owner.
     topBarWallet.innerHTML = `
-      <div class="praxis-menu-section">
-        <div class="praxis-menu-section-label">wallet</div>
-        ${isOwnerView ? `<a href="/earnings" class="wallet-menu-link" id="dd-earnings">earnings</a>` : ''}
-        <button class="wallet-menu-link" id="dd-fund">add funds</button>
-        <button class="wallet-menu-link" id="dd-send">send</button>
-        <button class="wallet-menu-link" id="dd-cashout">cash out</button>
+      <div class="dd-nav">
+        <a href="/network" class="dd-nav-btn" id="dd-praxis"><span>praxis</span><i class="ph ph-arrow-up-right"></i></a>
+        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><span>vault</span><i class="ph ph-arrow-up-right"></i></a>
+        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><span data-i18n="settings.title">manage</span><i class="ph ph-arrow-up-right"></i></button>` : ''}
       </div>
     `
 
-    // move switchers to top bar (next to praxis mark, with separator)
+    // Footer: switchers + sign-out. Language and currency stay one-tap away.
     document.getElementById('praxis-menu-bottom')?.remove()
     if (dropdown) {
+      // The template still ships lang + currency selects in .praxis-menu-row.
+      // Reuse them but re-parent into the footer for a single tight row.
       const menuRow = dropdown.querySelector('.praxis-menu-row')
       const langSwitcher = menuRow?.querySelector('#lang-switcher')
       const currSwitcher = menuRow?.querySelector('#currency-switcher')
 
-      // insert switchers into top bar after the praxis trigger (far right)
-      const trigger = document.getElementById('praxis-menu-trigger')
-      if (trigger && langSwitcher && !document.getElementById('top-bar-switchers')) {
-        const wrap = document.createElement('span')
-        wrap.id = 'top-bar-switchers'
-        wrap.appendChild(langSwitcher)
-        if (currSwitcher) wrap.appendChild(currSwitcher)
-        trigger.parentNode.insertBefore(wrap, trigger.nextSibling)
-      }
-
-      // bottom bar: manage + sign out
       const bottom = document.createElement('div')
       bottom.id = 'praxis-menu-bottom'
-      bottom.innerHTML = `
-        ${isOwnerView ? `<button class="wallet-menu-link" id="dd-manage" style="padding:0" data-i18n="settings.title">manage</button>` : ''}
-        <button class="wallet-menu-signout" id="dd-disconnect">sign out</button>
-      `
+      bottom.className = 'dd-footer'
+      const switchers = document.createElement('span')
+      switchers.className = 'dd-footer-switchers'
+      if (langSwitcher) switchers.appendChild(langSwitcher)
+      if (currSwitcher) switchers.appendChild(currSwitcher)
+      bottom.appendChild(switchers)
+      const signout = document.createElement('button')
+      signout.type = 'button'
+      signout.id = 'dd-disconnect'
+      signout.className = 'dd-signout'
+      signout.textContent = 'sign out'
+      bottom.appendChild(signout)
       dropdown.appendChild(bottom)
 
-      bottom.querySelector('#dd-manage')?.addEventListener('click', () => {
-        closeFn()
-        window.dispatchEvent(new CustomEvent('open-settings'))
-      })
-      bottom.querySelector('#dd-disconnect')?.addEventListener('click', () => { closeFn(); disconnect() })
+      signout.addEventListener('click', () => { closeFn(); disconnect() })
+
+      // remove the old top-bar switcher wrap if a previous render left one
+      document.getElementById('top-bar-switchers')?.remove()
     }
-    topBarWallet.querySelector('#dd-fund')?.addEventListener('click', async () => {
+
+    // Click handlers for the three buttons (navigation for praxis/vault, modal for manage)
+    topBarWallet.querySelector('#dd-praxis')?.addEventListener('click', () => closeFn())
+    topBarWallet.querySelector('#dd-vault')?.addEventListener('click', () => closeFn())
+    topBarWallet.querySelector('#dd-manage')?.addEventListener('click', () => {
       closeFn()
-      try {
-        const { showFundingSheet } = await import('./pay.js')
-        await showFundingSheet(address, 0n)
-        loadTopBarBalance(address)
-      } catch (e) { console.warn('fund sheet error:', e) }
+      window.dispatchEvent(new CustomEvent('open-settings'))
     })
-    topBarWallet.querySelector('#dd-cashout')?.addEventListener('click', () => {
-      closeFn()
-      window.location.href = '/cashout'
-    })
-    topBarWallet.querySelector('#dd-send')?.addEventListener('click', async () => {
-      closeFn()
-      try {
-        const { showSendModal } = await import('./earnings.js')
-        showSendModal(address)
-      } catch (e) { console.warn('send modal error:', e) }
-    })
-    topBarWallet.querySelector('#dd-earnings')?.addEventListener('click', () => closeFn())
   }
 
   // show floating dock only for site owner

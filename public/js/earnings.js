@@ -683,10 +683,14 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, ea
   html += `</div>`
 
   // Action buttons
+  // Vault actions: send / receive / save (day-to-day) then add funds / cash out
+  // (moving money in and out of the ecosystem). Two visual groups, one row.
   html += `<div class="vault-actions">`
   html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i><span>send</span></button>`
   html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i><span>receive</span></button>`
   html += `<button class="vault-action-btn" id="vault-swap-btn"><i class="ph ph-swap"></i><span>save</span></button>`
+  html += `<button class="vault-action-btn" id="vault-fund-btn"><i class="ph ph-plus"></i><span>add funds</span></button>`
+  html += `<button class="vault-action-btn" id="vault-cashout-btn"><i class="ph ph-arrow-square-out"></i><span>cash out</span></button>`
   html += `</div>`
   html += `</div>`
 
@@ -807,6 +811,16 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, unclaimed, ea
 
   // Send button
   document.getElementById('vault-send-btn')?.addEventListener('click', () => showSendModal(addr))
+  document.getElementById('vault-fund-btn')?.addEventListener('click', async () => {
+    try {
+      const { showFundingSheet } = await import('./pay.js')
+      await showFundingSheet(addr, 0n)
+      window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
+    } catch (e) { console.warn('fund sheet error:', e) }
+  })
+  document.getElementById('vault-cashout-btn')?.addEventListener('click', () => {
+    window.location.href = '/cashout'
+  })
 
   // Receive button
   document.getElementById('vault-receive-btn')?.addEventListener('click', () => showReceiveModal(addr))

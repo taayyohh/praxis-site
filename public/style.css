@@ -194,23 +194,52 @@ input[type="number"] {
   transform: translateY(-4px);
 }
 
-/* two-column mode when logged in */
+/* Logged-in dropdown — single column, three flat full-width buttons.
+   Balance/address header, three nav buttons at equal visual weight, muted
+   footer with switchers + sign-out. No section labels, no nesting. */
 #praxis-menu-dropdown.menu-logged-in {
-  grid-template-columns: 1fr 1fr;
   min-width: 300px;
+  padding: 0.35em 0;
 }
+#praxis-menu-dropdown.menu-logged-in > * { grid-column: 1 / -1; }
+#praxis-menu-dropdown.menu-logged-in #praxis-nav-section { display: none; }
+#praxis-menu-dropdown.menu-logged-in .praxis-menu-row { display: none; }
 
-#praxis-menu-dropdown.menu-logged-in #top-bar-wallet-top {
-  grid-column: 1 / -1;
+.dd-nav { display: flex; flex-direction: column; gap: 0.05em; padding: 0.25em 0; }
+.dd-nav-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 0.7em 1.25ch;
+  background: none; border: none; border-radius: 0;
+  color: var(--fg); font-family: inherit; font-size: 0.95em; font-weight: 500;
+  text-decoration: none; text-align: left; letter-spacing: -0.005em;
+  cursor: pointer; transition: background 0.12s, color 0.12s;
 }
+.dd-nav-btn i { color: var(--dim); font-size: 0.9em; transition: color 0.12s, transform 0.12s; }
+.dd-nav-btn:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.dd-nav-btn:hover i { color: var(--accent); transform: translate(1px, -1px); }
 
-#praxis-menu-dropdown.menu-logged-in .praxis-menu-row {
-  grid-column: 1 / -1;
+.dd-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.55em 1.25ch 0.35em;
+  margin-top: 0.15em;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
 }
+.dd-footer-switchers { display: flex; gap: 4px; }
+.dd-signout {
+  background: none; border: none; padding: 0.15em 0;
+  color: var(--dim); font-family: inherit; font-size: 0.78em;
+  cursor: pointer; transition: color 0.12s;
+}
+.dd-signout:hover { color: var(--fg); }
 
-#praxis-menu-dropdown.menu-logged-in #praxis-menu-bottom {
-  grid-column: 1 / -1;
-}
+/* Praxis hub tab strip — prepended to /network, /projects, /library.
+   Three text links; active gets accent + a thin underline. Sits above the
+   page content, flush to the left column so it reads as a nav row, not a
+   card. */
+.praxis-hub-nav { display: flex; gap: 1.5ch; margin: 0 0 1.2em; padding: 0 0 0.4em; border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); }
+.praxis-hub-tab { color: var(--dim); text-decoration: none; font-size: 0.9em; padding: 0.25em 0.15ch; border-bottom: 2px solid transparent; margin-bottom: -0.42em; transition: color 0.12s, border-color 0.12s; }
+.praxis-hub-tab:hover { color: var(--fg); }
+.praxis-hub-tab-active { color: var(--fg); border-color: var(--accent); }
 
 #praxis-menu-dropdown a {
   display: block;
@@ -6687,7 +6716,9 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-token-amounts { display: flex; flex-direction: column; align-items: flex-end; }
 .vault-token-bal { font-size: 0.85em; color: var(--fg); font-variant-numeric: tabular-nums; }
 .vault-token-fiat { font-size: 0.7em; color: var(--dim); font-variant-numeric: tabular-nums; }
-.vault-actions { display: flex; gap: 0.5em; }
+.vault-actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5em; }
+@media (max-width: 720px) { .vault-actions { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 460px) { .vault-actions { grid-template-columns: repeat(2, 1fr); } }
 .vault-action-btn { flex: 1; background: none; border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 0.8em; padding: 0.65em 0; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 0.4ch; transition: border-color 0.15s, color 0.15s; }
 .vault-action-btn:hover { border-color: var(--accent); color: var(--accent); }
 .vault-action-btn i { font-size: 1.1em; }

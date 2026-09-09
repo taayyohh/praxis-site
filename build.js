@@ -532,8 +532,25 @@ const networkDescriptions = {
   library: `shared knowledge base. PDFs, articles, and essays curated by ${site.name}.`,
 }
 
+// Shared praxis-hub tab strip prepended to network/projects/library so all
+// three surfaces are one click apart. Active tab highlights on the current
+// page. Kept small + text-only to match the app's calm aesthetic.
+function hubNav(active) {
+  const tabs = [
+    { key: 'network', label: 'network', i18n: 'nav.network' },
+    { key: 'projects', label: 'projects', i18n: 'nav.projects' },
+    { key: 'library', label: 'library', i18n: 'nav.library' },
+  ]
+  const links = tabs.map(t => {
+    const cls = 'praxis-hub-tab' + (t.key === active ? ' praxis-hub-tab-active' : '')
+    return `<a href="/${t.key}" class="${cls}" data-i18n="${t.i18n}">${t.label}</a>`
+  }).join('')
+  return `<nav class="praxis-hub-nav" aria-label="praxis">${links}</nav>`
+}
+
 for (const [name, content] of Object.entries(networkSections)) {
-  sectionPage(name, content, undefined, undefined, { description: networkDescriptions[name] })
+  const wrapped = hubNav(name) + content
+  sectionPage(name, wrapped, undefined, undefined, { description: networkDescriptions[name] })
 }
 
 // journal page (always built, shown only to owner via JS)
