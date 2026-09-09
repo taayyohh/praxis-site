@@ -249,7 +249,6 @@ async function getMainnetClient() {
 // hand to SwapRouter02.exactInput.
 async function getUniswapBoldQuote(ethAmountWei) {
   const pc = await getMainnetClient()
-  const { encodeFunctionData } = await import('./vendor.js')
   // Leg 1 (WETH/USDC): 0.05% has the deepest V3 liquidity, then 0.3%.
   // Leg 2 (USDC/BOLD): the live V3 pool is 0.05% (~$1.4M TVL).
   const combos = [
@@ -262,13 +261,14 @@ async function getUniswapBoldQuote(ethAmountWei) {
   for (const [fee1, fee2] of combos) {
     const path = encodeV3Path([WETH_MAINNET, USDC_MAINNET, BOLD_MAINNET], [fee1, fee2])
     try {
-      const calldata = encodeFunctionData({
-        abi: UNISWAP_QUOTER_ABI, functionName: 'quoteExactInput',
-        args: [path, ethAmountWei],
+      // QuoterV2 is nonpayable — viem's simulateContract handles the
+      // revert-decode round-trip correctly. Raw pc.call() returned '0x'
+      // under simulation and broke every fee-tier probe.
+      const { result } = await pc.simulateContract({
+        address: UNISWAP_QUOTER, abi: UNISWAP_QUOTER_ABI,
+        functionName: 'quoteExactInput', args: [path, ethAmountWei],
       })
-      const result = await pc.call({ to: UNISWAP_QUOTER, data: calldata })
-      if (!result?.data || result.data === '0x') { errors.push(`${fee1}/${fee2}: empty return`); continue }
-      const amountOut = BigInt('0x' + result.data.slice(2, 66))
+      const amountOut = Array.isArray(result) ? BigInt(result[0]) : BigInt(result)
       if (amountOut > 0n) return { amountOut, path }
       errors.push(`${fee1}/${fee2}: amountOut=0`)
     } catch (e) {
@@ -305,6 +305,37 @@ async function getSpDeposit(spAddress, depositor) {
   return { deposit, collGain }
 }
 
+// Poll mainnet balance after a bridge until the funds arrive. Relay L2->L1
+// can take 30s–15min; the previous 5-second sleep guaranteed swapEthToBold
+// would throw "insufficient ETH on Ethereum after bridge" for every user
+// who picked a non-mainnet source chain. Returns the observed delta.
+async function waitForBridgedFunds(addr, expectedMinIncrease, onStatus) {
+  const pc = await getMainnetClient()
+  const before = await pc.getBalance({ address: addr })
+  // Consider the bridge landed when at least 90% of the expected amount
+  // arrives (Relay fees + gas eat some) — but never accept less than 50%
+  // of expected, which would indicate a partial/failed bridge.
+  const target = before + (expectedMinIncrease * 90n) / 100n
+  const floor = before + (expectedMinIncrease * 50n) / 100n
+  const startedAt = Date.now()
+  const TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+  const POLL_MS = 5000
+  let last = before
+  while (Date.now() - startedAt < TIMEOUT_MS) {
+    await new Promise(r => setTimeout(r, POLL_MS))
+    let current = last
+    try { current = await pc.getBalance({ address: addr }) } catch {}
+    if (current >= target) return current - before
+    last = current
+    const secs = Math.round((Date.now() - startedAt) / 1000)
+    onStatus?.(`bridging to Ethereum — waiting ${secs}s… (typical 30s–15min)`)
+  }
+  // Final check: accept if partial funds landed, else throw.
+  const final = await pc.getBalance({ address: addr }).catch(() => last)
+  if (final >= floor) return final - before
+  throw new Error('bridge timed out after 15 minutes — check your source chain tx and try the swap step manually')
+}
+
 async function executeBridge(fromChainId, addr, amountWei, onStatus) {
   onStatus?.('getting bridge quote...')
   const quote = await getRelayBridgeQuote(fromChainId, amountWei, addr)
@@ -337,7 +368,14 @@ async function executeBridge(fromChainId, addr, amountWei, onStatus) {
   return hash
 }
 
-async function swapEthToBold(addr, path, onStatus) {
+// Swap ETH -> BOLD via Uniswap V3 multi-hop (WETH/USDC + USDC/BOLD).
+// `bridgedAmount` is what the bridge deposited (0 if source chain was
+// already mainnet); it caps the swap amount so pre-existing mainnet ETH
+// isn't consumed. Returns { hash, amountOut } — the exact BOLD delta the
+// caller should deposit into the SP (don't re-read wallet balance,
+// which is subject to RPC read-after-write lag and picks up unrelated
+// liquid BOLD the user wanted to keep).
+async function swapEthToBold(addr, path, onStatus, bridgedAmount = 0n) {
   const { _buildBridgeWalletClient } = await import('./relay-bridge.js')
   const pc = await getMainnetClient()
 
@@ -346,16 +384,24 @@ async function swapEthToBold(addr, path, onStatus) {
   // value + gas fee > balance. Live gas price with a 1.5x buffer beats the
   // old 0.00005 ETH floor by ~100x during a normal mainnet fee window.
   const gasReserve = await computeGasReserve(1)
-  const swapAmount = mainnetBal > gasReserve ? mainnetBal - gasReserve : 0n
+  const spendable = mainnetBal > gasReserve ? mainnetBal - gasReserve : 0n
+  // Cap by the bridged amount if we bridged — otherwise the swap consumes
+  // whatever unrelated ETH sat on mainnet before the flow started.
+  const swapAmount = bridgedAmount > 0n
+    ? (bridgedAmount < spendable ? bridgedAmount : spendable)
+    : spendable
   if (swapAmount <= 0n) throw new Error('insufficient ETH on Ethereum after bridge')
 
   // Re-quote against the actual mainnet balance (may differ from the modal quote
   // after bridge fees) and pick up a fresh path in case the fallback path is stale.
   onStatus?.('quoting swap...')
   const quote = await getUniswapBoldQuote(swapAmount)
-  const amountOut = quote.amountOut
+  const quotedOut = quote.amountOut
   const swapPath = quote.path || path || encodeV3Path([WETH_MAINNET, USDC_MAINNET, BOLD_MAINNET], [500, 500])
-  const minOut = amountOut * 97n / 100n
+  // BOLD/USDC 0.05% has ~$1.4M TVL so a $5k swap can move price ≥3%.
+  // 5% slippage is friendlier than 3% here — the previous 97/100 was
+  // reverting on real depth.
+  const minOut = quotedOut * 95n / 100n
 
   onStatus?.('confirm swap...')
   let walletClient
@@ -364,6 +410,12 @@ async function swapEthToBold(addr, path, onStatus) {
     walletClient = cwc({ chain: { ...mn, rpcUrls: { ...mn.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: cst(getWalletProvider()), account: window.getEmbeddedAccount?.() || addr })
   }
 
+  // Snapshot BOLD balance before + after so we get the exact swap output
+  // regardless of any pre-existing BOLD the user held.
+  const boldBefore = await pc.readContract({
+    address: BOLD_MAINNET, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr],
+  }).catch(() => 0n)
+
   const hash = await walletClient.writeContract({
     address: UNISWAP_ROUTER, abi: UNISWAP_ROUTER_ABI, functionName: 'exactInput',
     args: [{ path: swapPath, recipient: addr, amountIn: swapAmount, amountOutMinimum: minOut }],
@@ -371,8 +423,13 @@ async function swapEthToBold(addr, path, onStatus) {
   })
   onStatus?.('swap submitted...')
   await pc.waitForTransactionReceipt({ hash, timeout: 120_000 })
+
+  const boldAfter = await pc.readContract({
+    address: BOLD_MAINNET, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr],
+  }).catch(() => 0n)
+  const amountOut = boldAfter > boldBefore ? boldAfter - boldBefore : 0n
   onStatus?.('BOLD received')
-  return hash
+  return { hash, amountOut }
 }
 
 async function depositToStabilityPool(spAddress, boldAmount, addr, onStatus) {
@@ -386,8 +443,9 @@ async function depositToStabilityPool(spAddress, boldAmount, addr, onStatus) {
   const chainDef = { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrl] } } }
   const pc = createPublicClient({ chain: chainDef, transport: http(rpcUrl) })
 
-  const boldMainnet = _yieldData?.boldMainnet
-  if (!boldMainnet) throw new Error('BOLD mainnet address not found')
+  // fetchBoldYield catches to null on failure — fall back to the pinned
+  // constant so the deposit still works when /api/bold/yield is down.
+  const boldMainnet = _yieldData?.boldMainnet || BOLD_MAINNET
 
   onStatus?.('checking approval...')
   const allowance = await pc.readContract({
@@ -1383,23 +1441,38 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
     confirmBtn.textContent = t('save.ctaWorking') || 'Saving…'
 
     try {
+      // Ensure the embedded wallet is unlocked before any funds move —
+      // failing mid-flow after the bridge already ran is unrecoverable.
+      await window.ensureAuthorized?.()
+
+      let bridgedAmount = 0n
       if (!isMainnet) {
         markStep('bridge', 'active')
         await executeBridge(selectedChainId, addr, amountIn, (msg) => { statusEl.textContent = msg })
+        // Poll mainnet balance until the bridge lands (up to 15 min).
+        // The old 5-second sleep dropped straight into the swap, which
+        // then threw "insufficient ETH on Ethereum after bridge".
+        bridgedAmount = await waitForBridgedFunds(addr, amountIn, (msg) => { statusEl.textContent = msg })
         markStep('bridge', 'done')
-        statusEl.textContent = 'waiting for ETH on Ethereum…'
-        await new Promise(r => setTimeout(r, 5000))
+      } else {
+        // Source is already mainnet — the "bridged amount" is just what
+        // the user asked to swap; cap swapAmount at that.
+        bridgedAmount = amountIn
       }
 
       markStep('swap', 'active')
-      await swapEthToBold(addr, _lastQuote.path, (msg) => { statusEl.textContent = msg })
+      const { amountOut: boldReceived } = await swapEthToBold(
+        addr, _lastQuote.path, (msg) => { statusEl.textContent = msg }, bridgedAmount,
+      )
       markStep('swap', 'done')
 
       if (selectedPool) {
         markStep('deposit', 'active')
-        const boldBal = await getBoldBalanceMainnet(addr)
-        if (boldBal > 0n) {
-          await depositToStabilityPool(selectedPool, boldBal, addr, (msg) => { statusEl.textContent = msg })
+        if (boldReceived > 0n) {
+          // Use the exact swap output, NOT the wallet balance — that
+          // would (a) miss the deposit under RPC read-after-write lag
+          // and (b) sweep pre-existing liquid BOLD.
+          await depositToStabilityPool(selectedPool, boldReceived, addr, (msg) => { statusEl.textContent = msg })
           markStep('deposit', 'done')
         } else {
           statusEl.textContent = 'BOLD arriving — deposit manually when ready'
