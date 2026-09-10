@@ -49,11 +49,17 @@ function _saveBookmark(item) {
   if (bookmarks.some(b => b.id === item.id)) return
   bookmarks.push({ ...item, savedAt: Date.now() })
   _setBookmarks(bookmarks)
+  // feed.js listens on this event to push the encrypted blob to
+  // /api/bookmarks. Without it, a heart-click on /post writes to
+  // localStorage locally but the server copy only catches up on the
+  // next wallet-connect event on a page that loads feed.js.
+  try { window.dispatchEvent(new CustomEvent('bookmarks-changed', { detail: bookmarks })) } catch {}
 }
 
 function _removeBookmark(itemId) {
   const bookmarks = _getBookmarks().filter(b => b.id !== itemId)
   _setBookmarks(bookmarks)
+  try { window.dispatchEvent(new CustomEvent('bookmarks-changed', { detail: bookmarks })) } catch {}
 }
 
 registerPage('post-page', initPost)
