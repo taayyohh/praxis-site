@@ -234,17 +234,27 @@ function showAddress(address) {
     // Three flat buttons — same visual weight. `manage` only for site owner.
     topBarWallet.innerHTML = `
       <div class="dd-nav">
-        <a href="/network" class="dd-nav-btn" id="dd-praxis"><i class="dd-nav-icon" data-icon="praxis"></i><span>praxis</span><i class="ph ph-arrow-up-right"></i></a>
-        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span>vault</span><i class="ph ph-arrow-up-right"></i></a>
-        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span data-i18n="settings.title">manage</span><i class="ph ph-arrow-up-right"></i></button>` : ''}
+        <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label">praxis</span></a>
+        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label">vault</span></a>
+        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="settings.title">manage</span></button>` : ''}
       </div>
     `
-    // Praxis logo — inline SVG matches the wordmark's shape so we don't
-    // need to fetch another asset. The two other icons use Phosphor Icons.
+    // Praxis logo — same mark as the landing favicon (a circle with a
+    // vertical "hidden slice", the praxis symbol). Uses currentColor so
+    // it inherits the button's text color and matches on hover.
     const praxisIconHost = topBarWallet.querySelector('.dd-nav-icon[data-icon="praxis"]')
     if (praxisIconHost) {
-      praxisIconHost.classList.remove('ph')
-      praxisIconHost.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>`
+      praxisIconHost.innerHTML = `
+        <svg viewBox="0 0 32 32" width="1em" height="1em" aria-hidden="true">
+          <defs>
+            <mask id="dd-praxis-mask">
+              <rect width="32" height="32" fill="white"/>
+              <rect x="15.2" y="6" width="1.6" height="7.8" fill="black"/>
+              <rect x="15.2" y="18.2" width="1.6" height="7.8" fill="black"/>
+            </mask>
+          </defs>
+          <circle cx="16" cy="16" r="10" fill="currentColor" mask="url(#dd-praxis-mask)"/>
+        </svg>`
     }
 
     // Footer: switchers + sign-out. Language and currency stay one-tap away.
