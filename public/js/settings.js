@@ -518,7 +518,8 @@ async function openSettings() {
 let _savingInFlight = false
 
 async function closeSettings() {
-  if (_settingsAnimating) return
+  // Don't bail if openSettings' opening animation flag is still latched —
+  // that leaves the close button feeling broken if the user clicks it fast.
   // if there's an unsaved autosave pending, flush it now
   if (_savingInFlight) {
     const statusEl = document.getElementById('settings-status')
