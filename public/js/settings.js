@@ -3733,6 +3733,7 @@ function renderThemeTab(el) {
     { value: "Georgia, 'Times New Roman', serif", label: t('settings.theme.serif'), key: 'Georgia' },
     { value: "'Courier New', monospace", label: t('settings.theme.monospace'), key: 'Courier' },
   ]
+  const customPresets = Array.isArray(theme.presets) ? theme.presets : []
   el.innerHTML = `
     <div style="max-width:520px">
       <div style="margin-bottom:1em">
@@ -3746,6 +3747,27 @@ function renderThemeTab(el) {
             </button>
           `).join('')}
           <button type="button" id="theme-reset" style="border:1px solid var(--border);padding:0.35em 0.9ch;background:transparent;color:var(--dim);font-size:0.85em;cursor:pointer">revert to saved</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom:1em">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5em">
+          <div class="settings-label">your palettes</div>
+          <button type="button" id="theme-save-preset" style="border:1px solid var(--border);padding:0.3em 0.9ch;background:transparent;color:var(--fg);font-size:0.8em;cursor:pointer">save current +</button>
+        </div>
+        <div id="theme-custom-presets" style="display:flex;flex-wrap:wrap;gap:0.6ch">
+          ${customPresets.length === 0 ? `<span style="color:var(--dim);font-size:0.8em">save your current colors as a named palette to reuse later</span>` : customPresets.map((p, i) => `
+            <div class="theme-custom-preset" data-index="${i}"
+              style="border:1px solid var(--border);padding:0.35em 0.9ch;background:${escapeHtml(p.bg)};color:${escapeHtml(p.fg)};font-size:0.85em;display:inline-flex;align-items:center;gap:0.5ch">
+              <button type="button" class="theme-custom-apply" data-index="${i}"
+                style="background:transparent;border:0;color:inherit;font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:0.5ch;padding:0">
+                <span style="display:inline-block;width:0.7em;height:0.7em;background:${escapeHtml(p.accent)};border-radius:50%"></span>
+                ${escapeHtml(p.name || 'unnamed')}
+              </button>
+              <button type="button" class="theme-custom-remove" data-index="${i}" aria-label="delete palette"
+                style="background:transparent;border:0;color:inherit;font:inherit;cursor:pointer;opacity:0.6;padding:0 0 0 0.2ch">×</button>
+            </div>
+          `).join('')}
         </div>
       </div>
 
@@ -3966,6 +3988,41 @@ function renderThemeTab(el) {
     setColorInput('s-theme-bg', saved.bg || '#0a0a0a')
     setColorInput('s-theme-fg', saved.fg || '#c0c0c0')
     setColorInput('s-theme-accent', saved.accent || '#ffffff')
+  })
+  document.getElementById('theme-save-preset')?.addEventListener('click', () => {
+    const name = (prompt('name this palette') || '').trim().slice(0, 40)
+    if (!name) return
+    const bg = document.getElementById('s-theme-bg').value
+    const fg = document.getElementById('s-theme-fg').value
+    const accent = document.getElementById('s-theme-accent').value
+    if (!siteData.theme) siteData.theme = {}
+    const presets = Array.isArray(siteData.theme.presets) ? siteData.theme.presets : []
+    presets.push({ name, bg, fg, accent })
+    // Cap to 12 to keep the payload reasonable.
+    siteData.theme.presets = presets.slice(-12)
+    renderThemeTab(el)
+    // Nudge autosave — panel input event debounces to a PUT.
+    document.getElementById('settings-panel')?.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  el.querySelectorAll('.theme-custom-apply').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.index, 10)
+      const p = (siteData.theme?.presets || [])[i]
+      if (!p) return
+      setColorInput('s-theme-bg', p.bg)
+      setColorInput('s-theme-fg', p.fg)
+      setColorInput('s-theme-accent', p.accent)
+    })
+  })
+  el.querySelectorAll('.theme-custom-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.index, 10)
+      const presets = siteData.theme?.presets || []
+      if (i < 0 || i >= presets.length) return
+      presets.splice(i, 1)
+      renderThemeTab(el)
+      document.getElementById('settings-panel')?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
   })
   // Font preview cards
   el.querySelectorAll('.font-preview-card').forEach(card => {
