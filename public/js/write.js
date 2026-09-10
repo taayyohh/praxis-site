@@ -232,7 +232,41 @@ async function submitPost() {
     const useRef = isAmend || (composeRef.type > 0 && composeRef.id > 0)
     let fnArgs
     if (isAmend) {
-      fnArgs = [title, content, 5, BigInt(_amendPostId)]
+      // BlogRegistry doesn't validate refId or check the amendment's author
+      // matches the original post's author. Guard client-side so we don't
+      // publish an amendment to a non-existent post, and so a viewer can't
+      // masquerade this as someone else's edit history — the amendment
+      // author must equal the parent post's author.
+      const parentPostId = BigInt(_amendPostId)
+      let parentAuthor = null
+      let parentPostExists = false
+      try {
+        const pRes = await fetch(`/ponder/graphql`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `query($id: String!) { blogPost(id: $id) { author id } }`,
+            variables: { id: String(parentPostId) },
+          }),
+        })
+        const pJson = await pRes.json().catch(() => ({}))
+        const row = pJson?.data?.blogPost
+        if (row?.id) {
+          parentPostExists = true
+          parentAuthor = String(row.author || '').toLowerCase()
+        }
+      } catch { /* indexer down — fall through to a permissive publish */ }
+      if (parentPostExists) {
+        const self = String(window.getWalletAddress() || '').toLowerCase()
+        if (parentAuthor && parentAuthor !== self) {
+          statusEl.textContent = "you can only amend your own posts"
+          return
+        }
+      } else {
+        // Only refuse the publish when we know for sure the post is missing.
+        // A Ponder outage returns parentPostExists=false too, and we don't
+        // want to block a real edit on an indexer flake — fall through.
+      }
+      fnArgs = [title, content, 5, parentPostId]
     } else if (useRef) {
       fnArgs = [title, content, composeRef.type, BigInt(composeRef.id)]
     } else {

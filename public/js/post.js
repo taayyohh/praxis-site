@@ -182,7 +182,14 @@ async function initPost() {
         : Promise.resolve(null)
     ])
 
-    const amendments = amendData?.blogPosts?.items || []
+    // Authorship guard: BlogRegistry doesn't verify the amendment's author
+    // equals the parent post's author. Filter here so a spoofed refType=5
+    // by someone else can't rewrite this post's rendered content.
+    const rawAmendments = amendData?.blogPosts?.items || []
+    const parentAuthor = String(post.author || '').toLowerCase()
+    const amendments = rawAmendments.filter(a =>
+      String(a.author || '').toLowerCase() === parentAuthor
+    )
     const latestAmendment = amendments[0] || null
     const displayPost = latestAmendment || post
 

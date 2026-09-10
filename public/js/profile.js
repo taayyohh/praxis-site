@@ -111,15 +111,24 @@ async function showProfile(addr) {
     const allFollowers = followersResult.items
 
     // Filter posts: exclude amendments (refType=5) and replace amended originals
-    // with their latest amendment version
+    // with their latest amendment version. Authorship guard: BlogRegistry
+    // doesn't check that the amendment's author matches the parent post's
+    // author, so a bad actor can post refType=5 with someone else's refId.
+    // Only fold amendments where the author matches the parent post.
     const rawPosts = postsResult.items
+    const postById = {}
+    for (const p of rawPosts) postById[String(p.id)] = p
     const amendmentsByRef = {}
     for (const p of rawPosts) {
-      if (Number(p.refType) === 5 && p.refId) {
-        const refKey = String(p.refId)
-        if (!amendmentsByRef[refKey] || Number(p.timestamp) > Number(amendmentsByRef[refKey].timestamp)) {
-          amendmentsByRef[refKey] = p
-        }
+      if (Number(p.refType) !== 5 || !p.refId) continue
+      const parent = postById[String(p.refId)]
+      if (!parent) continue // orphan: original wasn't in this author's post set
+      const parentAuthor = String(parent.author || '').toLowerCase()
+      const amendAuthor = String(p.author || '').toLowerCase()
+      if (parentAuthor && amendAuthor && parentAuthor !== amendAuthor) continue
+      const refKey = String(p.refId)
+      if (!amendmentsByRef[refKey] || Number(p.timestamp) > Number(amendmentsByRef[refKey].timestamp)) {
+        amendmentsByRef[refKey] = p
       }
     }
     const allPosts = rawPosts
@@ -555,14 +564,23 @@ function wireLoadMore(container, addr, artist, resolve) {
         _postsCursor = result.cursor
         _postsHasMore = result.hasMore
 
-        // Filter amendments from paginated results too
+        // Filter amendments from paginated results too — authorship-guarded
+        // (see the first-page filter for why: BlogRegistry doesn't check that
+        // the amendment's author matches the parent post's).
         const moreAmendments = {}
+        const pageById = {}
+        for (const p of result.items) pageById[String(p.id)] = p
         for (const p of result.items) {
-          if (Number(p.refType) === 5 && p.refId) {
-            const refKey = String(p.refId)
-            if (!moreAmendments[refKey] || Number(p.timestamp) > Number(moreAmendments[refKey].timestamp)) {
-              moreAmendments[refKey] = p
-            }
+          if (Number(p.refType) !== 5 || !p.refId) continue
+          const parent = pageById[String(p.refId)]
+          if (parent) {
+            const parentAuthor = String(parent.author || '').toLowerCase()
+            const amendAuthor = String(p.author || '').toLowerCase()
+            if (parentAuthor && amendAuthor && parentAuthor !== amendAuthor) continue
+          }
+          const refKey = String(p.refId)
+          if (!moreAmendments[refKey] || Number(p.timestamp) > Number(moreAmendments[refKey].timestamp)) {
+            moreAmendments[refKey] = p
           }
         }
         const filteredPosts = result.items

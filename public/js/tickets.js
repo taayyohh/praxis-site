@@ -47,6 +47,27 @@ export async function purchaseTicket(tokenId, priceWei) {
   const addr = await ensureFundsForPurchase(priceWei)
   if (!addr) throw new Error(t('status.connectWallet'))
 
+  // Client-side self-buy guard: the contract doesn't reject buying your
+  // own listing, so the tx would just move your ETH to pendingWithdrawals
+  // and burn gas. Look up the listing's seller and refuse locally.
+  try {
+    const pcCheck = await getPublicClient()
+    const listing = await pcCheck.readContract({
+      address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
+      functionName: 'listings', args: [BigInt(tokenId)],
+    })
+    // listings() returns (seller, price, active) or similar tuple; the
+    // seller is at index 0 in the current ABI.
+    const seller = Array.isArray(listing) ? listing[0] : listing?.seller
+    if (seller && addr.toLowerCase() === String(seller).toLowerCase()) {
+      throw new Error("that's your own listing — cancel it instead of buying")
+    }
+  } catch (e) {
+    if (e?.message?.startsWith("that's your own")) throw e
+    // Read failure (bad ABI, RPC glitch) — fall through and let the
+    // on-chain path run. Better to over-permit than block a real buy.
+  }
+
   const purchaseAccount = await window.authorizedSigner?.(addr)
           const wc = getWalletClient()
   const hash = await wc.writeContract({

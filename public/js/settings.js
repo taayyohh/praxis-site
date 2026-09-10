@@ -4074,13 +4074,20 @@ async function saveSettings() {
     siteData.theme.font = font?.value || "-apple-system, 'Helvetica Neue', Arial, sans-serif"
   }
 
-  // PWA settings
-  const pwaName = document.getElementById('s-pwa-name')?.value?.trim()
-  const pwaBg = document.getElementById('s-pwa-bg')?.value
-  if (pwaName || pwaBg) {
+  // PWA settings — only persist a value the user actually typed or picked.
+  // The s-pwa-bg input's initial value falls back to theme.bg, so writing
+  // it unconditionally locks a stale bg into siteData.pwa.background on
+  // every save, which then drifts the theme swatch on the next re-render.
+  const pwaNameEl = document.getElementById('s-pwa-name')
+  const pwaBgEl = document.getElementById('s-pwa-bg')
+  const pwaName = pwaNameEl?.value?.trim()
+  const pwaBg = pwaBgEl?.value
+  const pwaNameDirty = !!pwaNameEl && pwaName !== (siteData.pwa?.name || '')
+  const pwaBgDirty = !!pwaBgEl && pwaBg && pwaBg !== (siteData.pwa?.background || '')
+  if (pwaNameDirty || pwaBgDirty) {
     if (!siteData.pwa) siteData.pwa = {}
-    if (pwaName) siteData.pwa.name = pwaName
-    if (pwaBg) siteData.pwa.background = pwaBg
+    if (pwaNameDirty) siteData.pwa.name = pwaName
+    if (pwaBgDirty) siteData.pwa.background = pwaBg
   }
 
   try {
