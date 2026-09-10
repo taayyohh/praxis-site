@@ -196,12 +196,19 @@ function showAddress(address) {
 
     if (dropdown) dropdown.classList.add('menu-logged-in')
 
-    // Header row: balance + address (unchanged)
+    // Header row: greeting + balance + address. When the current wallet
+    // owns this site, we greet with the site's name (from data-name). For
+    // audience sessions on someone else's site, we greet with the short
+    // wallet address so it's still personal without a lookup call.
     if (walletTop) {
+      const siteName = document.body.dataset.name || ''
+      const shortAddr = `${address.slice(0,6)}...${address.slice(-4)}`
+      const greetingName = isOwnerView && siteName ? siteName : shortAddr
       walletTop.innerHTML = `
+        <div class="wallet-greeting">Hi, ${escapeHtml(greetingName)}</div>
         <div class="wallet-top-row">
-          <span class="wallet-menu-balance" id="top-balance">${address.slice(0,6)}...${address.slice(-4)}</span>
-          <button class="wallet-menu-addr" id="dd-copy">${address.slice(0,6)}...${address.slice(-4)} <i class="ph ph-copy"></i></button>
+          <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
+          <button class="wallet-menu-addr" id="dd-copy">${shortAddr} <i class="ph ph-copy"></i></button>
         </div>
       `
       walletTop.querySelector('#dd-copy')?.addEventListener('click', async () => {
