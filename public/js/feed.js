@@ -25,9 +25,14 @@ _ensureSiteModules()
 
 import { F } from './fragments.js'
 import { query } from './ponder.js'
-import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, isBookmarked as _isBookmarked, saveBookmark as _saveBookmark, removeBookmark as _removeBookmark, getBookmarks as _getBookmarks, getWalletProvider, renderMarkdown, getProfilePic, resolveDomain, getAuthToken, formatEthAmount } from './utils.js'
+import { escapeHtml, resolveAddresses, getAllFollows, isBlocked, registerPage, openMediaSheet, renderMarkdown, getProfilePic, resolveDomain, formatEthAmount } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getCached, setCache, invalidate, TTL } from './cache.js'
+import { startBookmarkSync } from './bookmarks-sync.js'
+
+// Defensive — spa.js already calls this on module load; this call is
+// idempotent and covers the case where feed.js gets imported standalone.
+startBookmarkSync()
 
 // Temporary map used during renderCachedFeed to collect replies and inject
 // them under their parent post card. Set to {} before rendering, null after.
@@ -752,161 +757,9 @@ function renderLibraryActivity(item, resolve) {
 
 // renderSupporterCard, renderPurchaseCard now imported from feed-cards.js
 
-// --- Bookmark server sync (localStorage base in utils.js) ---
-let _bookmarkToken = ''
-window.addEventListener('wallet-connected', () => { _bookmarkToken = ''; _bookmarkCryptoKey = null; _bookmarkKeyDerived = false })
-window.addEventListener('wallet-disconnected', () => { _bookmarkToken = ''; _bookmarkCryptoKey = null; _bookmarkKeyDerived = false })
-window.addEventListener('bookmarks-changed', (e) => { if (e.detail) _pushBookmarksToServer(e.detail) })
-let _bookmarkKeyDerived = false
-let _bookmarkCryptoKey = null
-
-function _bmHexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substr(i, 2), 16)
-  return bytes
-}
-function _bmBytesToHex(bytes) {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-async function _bmEncrypt(plaintext) {
-  if (!_bookmarkCryptoKey) throw new Error('bookmarks locked')
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const enc = new TextEncoder()
-  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _bookmarkCryptoKey, enc.encode(plaintext))
-  const cipherBytes = new Uint8Array(cipherBuf)
-  const encrypted = cipherBytes.slice(0, -16)
-  const tag = cipherBytes.slice(-16)
-  return `${_bmBytesToHex(iv)}:${_bmBytesToHex(encrypted)}:${_bmBytesToHex(tag)}`
-}
-
-async function _bmDecrypt(data) {
-  if (!_bookmarkCryptoKey) throw new Error('bookmarks locked')
-  const [ivHex, encHex, tagHex] = data.split(':')
-  const iv = _bmHexToBytes(ivHex)
-  const encrypted = _bmHexToBytes(encHex)
-  const tag = _bmHexToBytes(tagHex)
-  const combined = new Uint8Array(encrypted.length + tag.length)
-  combined.set(encrypted)
-  combined.set(tag, encrypted.length)
-  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _bookmarkCryptoKey, combined)
-  return new TextDecoder().decode(plainBuf)
-}
-let _bookmarkSyncing = false
-
-function _localBookmarkKey() {
-  const addr = window.getWalletAddress?.()?.toLowerCase()
-  return addr ? `praxis:bookmarks:${addr}` : null
-}
-
-function _setLocalBookmarks(bookmarks) {
-  const key = _localBookmarkKey()
-  if (!key) return
-  try { localStorage.setItem(key, JSON.stringify(bookmarks)) } catch {}
-}
-
-async function _pushBookmarksToServer(bookmarks) {
-  if (!_bookmarkToken || !_bookmarkKeyDerived || !_bookmarkCryptoKey) return
-  try {
-    const encrypted = await _bmEncrypt(JSON.stringify(bookmarks))
-    await fetch('/api/bookmarks', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_bookmarkToken}` },
-      body: JSON.stringify({ data: encrypted }),
-    })
-  } catch { /* server push failed, localStorage still has the data */ }
-}
-
-// Wrap utils bookmark functions with server push
-function saveBookmark(item) {
-  _saveBookmark(item)
-  _pushBookmarksToServer(_getBookmarks())
-}
-
-function removeBookmark(itemId) {
-  _removeBookmark(itemId)
-  _pushBookmarksToServer(_getBookmarks())
-}
-
-function isBookmarked(itemId) {
-  return _isBookmarked(itemId)
-}
-
-function getBookmarks() {
-  return _getBookmarks()
-}
-
-// Sync bookmarks from server — called on wallet connect
-// Requires wallet signature to derive AES key (same as journal)
-async function syncBookmarks() {
-  if (_bookmarkSyncing) return
-  _bookmarkSyncing = true
-  const addr = window.getWalletAddress?.()
-  if (!addr || !getWalletProvider()) { _bookmarkSyncing = false; return }
-
-  try {
-    // authenticate (get session token)
-    if (!_bookmarkToken) {
-      _bookmarkToken = await getAuthToken()
-      if (!_bookmarkToken) { _bookmarkSyncing = false; return }
-    }
-
-    // derive encryption key (same deterministic message as journal)
-    if (!_bookmarkKeyDerived) {
-      const keyMsg = `praxis:journal-key:v1:${addr.toLowerCase()}`
-      const keySig = await getWalletProvider().request({
-        method: 'personal_sign',
-        params: [keyMsg, addr],
-      })
-      const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
-      const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes)
-      const keyBytes = new Uint8Array(hashBuffer)
-      _bookmarkCryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
-      _bookmarkKeyDerived = true
-    }
-
-    // fetch server bookmarks
-    const res = await fetch('/api/bookmarks', {
-      headers: { 'Authorization': `Bearer ${_bookmarkToken}` },
-    })
-    const result = await res.json()
-
-    if (result.encrypted) {
-      const decrypted = await _bmDecrypt(result.encrypted)
-      const serverBookmarks = JSON.parse(decrypted)
-      const localBookmarks = getBookmarks()
-
-      // merge: union by id, prefer newer savedAt
-      const merged = new Map()
-      for (const b of serverBookmarks) merged.set(b.id, b)
-      for (const b of localBookmarks) {
-        const existing = merged.get(b.id)
-        if (!existing || (b.savedAt && (!existing.savedAt || b.savedAt > existing.savedAt))) {
-          merged.set(b.id, b)
-        }
-      }
-      const mergedList = [...merged.values()].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
-
-      _setLocalBookmarks(mergedList)
-
-      // push merged result back if there were local-only items
-      if (mergedList.length !== serverBookmarks.length) {
-        _pushBookmarksToServer(mergedList)
-      }
-    } else {
-      // no server data — push local bookmarks up
-      const local = getBookmarks()
-      if (local.length > 0) _pushBookmarksToServer(local)
-    }
-  } catch {
-    // sync failed — localStorage still has the data
-  } finally {
-    _bookmarkSyncing = false
-  }
-}
-
-// auto-sync when wallet connects (non-blocking)
-window.addEventListener('wallet-connected', () => { syncBookmarks().catch(() => {}) })
+// Bookmark server sync has moved to public/js/bookmarks-sync.js — mounted
+// at startup by spa.js (and defensively by feed.js above), so every route
+// participates, not only the ones that load feed.js.
 
 // --- Library item bottom sheet (delegates to shared openMediaSheet in utils.js) ---
 document.addEventListener('click', (e) => {

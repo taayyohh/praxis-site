@@ -290,6 +290,41 @@ repeatBtn.addEventListener('click', () => {
   updateRepeatBtn()
 })
 
+// --- Same-origin cross-tab sync (BroadcastChannel) ---
+// Local defense-in-depth alongside the SSE cross-DEVICE relay: two tabs on
+// the same origin should not both play at once even when the relay is
+// unreachable (offline, blocked, or first-load timing). Falls through silently
+// if BroadcastChannel is unavailable (e.g. Safari private mode).
+const _syncTabId = (typeof crypto !== 'undefined' && crypto.randomUUID?.()) || Math.random().toString(36).slice(2)
+let _syncChannel = null
+try {
+  if (typeof BroadcastChannel === 'function') _syncChannel = new BroadcastChannel('praxis-player-sync')
+} catch { _syncChannel = null }
+
+function _broadcastPlayerState(type) {
+  if (!_syncChannel) return
+  try { _syncChannel.postMessage({ type, tabId: _syncTabId, src: currentSrc || null }) } catch {}
+}
+
+if (_syncChannel) {
+  _syncChannel.addEventListener('message', (e) => {
+    const data = e?.data
+    if (!data || typeof data !== 'object' || data.tabId === _syncTabId) return
+    if (data.type === 'playing') {
+      // Another same-origin tab claimed the floor. Yield locally; UI stays sane.
+      if (!audio.paused) { audio.pause(); saveState() }
+      if (!video.paused) video.pause()
+      playBtn.innerHTML = '<i class="ph ph-play"></i>'
+      playBtn.setAttribute('aria-label', 'play')
+      syncTrackButtons()
+    }
+    // 'paused' is informational: a still-open tab is free to resume on its own timing.
+  })
+}
+
+// Exposed for tests + debugging.
+window._playerTabId = () => _syncTabId
+
 function fmt(seconds) {
   if (!seconds || !isFinite(seconds)) return '0:00'
   const s = Math.floor(seconds)
@@ -374,6 +409,7 @@ function playTrack(src, title, artist, art) {
   startSaving()
   syncTrackButtons()
   updateMediaSession()
+  _broadcastPlayerState('playing')
 }
 
 // Play a list of tracks starting from a given index
@@ -539,6 +575,7 @@ function pauseTrack() {
   audio.pause()
   playBtn.innerHTML = '<i class="ph ph-play"></i>'
   saveState()
+  _broadcastPlayerState('paused')
 }
 
 function isPlaying() {
@@ -589,6 +626,7 @@ async function playVideo(src, title, poster) {
   }
   showBar()
   playBtn.innerHTML = '<i class="ph ph-pause"></i>'
+  _broadcastPlayerState('playing')
 }
 
 // --- Events ---

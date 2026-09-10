@@ -2,6 +2,7 @@
 import { F } from './fragments.js'
 import { query } from './ponder.js'
 import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider, slugify, resolveDomain } from './utils.js'
+import { pushBookmarks } from './bookmarks-sync.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 
 // Sanitize script HTML: only allow <p> with fountain-*/stageplay-* classes
@@ -49,16 +50,18 @@ function _saveBookmark(item) {
   if (bookmarks.some(b => b.id === item.id)) return
   bookmarks.push({ ...item, savedAt: Date.now() })
   _setBookmarks(bookmarks)
-  // feed.js listens on this event to push the encrypted blob to
-  // /api/bookmarks. Without it, a heart-click on /post writes to
-  // localStorage locally but the server copy only catches up on the
-  // next wallet-connect event on a page that loads feed.js.
+  // Direct call: guarantees the encrypted PUT even if no listener has
+  // attached yet (e.g. `bookmarks-sync.js` still finishing its dynamic
+  // import when the user's first click lands).
+  pushBookmarks(bookmarks)
+  // Event dispatch: redundant fallback for legacy listeners.
   try { window.dispatchEvent(new CustomEvent('bookmarks-changed', { detail: bookmarks })) } catch {}
 }
 
 function _removeBookmark(itemId) {
   const bookmarks = _getBookmarks().filter(b => b.id !== itemId)
   _setBookmarks(bookmarks)
+  pushBookmarks(bookmarks)
   try { window.dispatchEvent(new CustomEvent('bookmarks-changed', { detail: bookmarks })) } catch {}
 }
 

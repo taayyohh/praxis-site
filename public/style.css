@@ -5900,6 +5900,36 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
   color: var(--dim);
 }
 
+/* dual dialogue — two characters speaking in parallel columns
+   (Fountain convention: second character line marked with trailing `^`) */
+.dual-dialogue {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  margin: 1em 0;
+}
+.dual-dialogue-col {
+  min-width: 0;
+}
+.dual-dialogue-col .script-character,
+.dual-dialogue-col .fountain-character {
+  text-align: center;
+  margin-top: 0;
+}
+.dual-dialogue-col .script-dialogue,
+.dual-dialogue-col .fountain-dialogue {
+  margin-left: 0;
+  margin-right: 0;
+}
+.dual-dialogue-col .script-paren,
+.dual-dialogue-col .fountain-paren {
+  margin-left: 10%;
+  margin-right: 10%;
+}
+@media (max-width: 600px) {
+  .dual-dialogue { grid-template-columns: 1fr; }
+}
+
 /* stage play / teleplay element types */
 .script-act {
   text-transform: uppercase;

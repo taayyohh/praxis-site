@@ -6,6 +6,12 @@
 // domain. Self-initializes from a localStorage flag; fires and forgets.
 import('./dns-banner.js').catch(() => {})
 
+// Encrypted bookmark server-sync. Every artist template loads spa.js, so
+// mounting here guarantees the wallet-connected / bookmarks-changed
+// listeners are installed on every route — not only routes that lazy-load
+// feed.js. startBookmarkSync() is idempotent.
+import('./bookmarks-sync.js').then(m => m.startBookmarkSync()).catch(() => {})
+
 const EXCLUDE_PATHS = ['/api/']
 
 // --- Dynamic module loading ---

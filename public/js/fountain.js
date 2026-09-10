@@ -58,8 +58,9 @@ export function detectLineType(text, prevType) {
   // parenthetical — line in parens after character or dialogue
   if (/^\(.*\)$/.test(trimmed) && (prevType === 'character' || prevType === 'dialogue')) return 'paren'
 
-  // character — all-caps line (min 2 chars, no lowercase), optional extension like (V.O.), (O.S.), (CONT'D)
-  if (/^[A-Z][A-Z0-9 .'-]{1,}(\s*\([A-Z.'\s]+\))?$/.test(trimmed) && prevType !== 'character' && prevType !== 'dialogue' && prevType !== 'paren') return 'character'
+  // character — all-caps line (min 2 chars, no lowercase), optional extension like (V.O.), (O.S.), (CONT'D),
+  // and an optional trailing `^` (Fountain dual-dialogue marker on the second speaker)
+  if (/^[A-Z][A-Z0-9 .'-]{1,}(\s*\([A-Z.'\s]+\))?(\s*\^)?$/.test(trimmed) && prevType !== 'character' && prevType !== 'dialogue' && prevType !== 'paren') return 'character'
 
   // dialogue follows character or paren
   if (prevType === 'character' || prevType === 'paren') return 'dialogue'
@@ -80,7 +81,12 @@ export function parseFountain(text) {
   let prevType = 'action'
   for (const line of lines) {
     const type = detectLineType(line, prevType)
-    result.push({ text: line, type })
+    const entry = { text: line, type }
+    // Fountain dual-dialogue: a character line ending in `^` marks the
+    // second speaker of a side-by-side pair. Flag the entry so the renderer
+    // can retroactively pair it with the previous character block.
+    if (type === 'character' && /\^\s*$/.test(line.trim())) entry.dualDialogue = true
+    result.push(entry)
     prevType = line.trim() ? type : 'action'
   }
   return result
@@ -92,7 +98,12 @@ export function parseFountain(text) {
 export function stripForcedMarker(text, type) {
   const trimmed = text.trim()
   if (type === 'scene' && trimmed.startsWith('.') && trimmed[1] !== '.') return trimmed.slice(1)
-  if (type === 'character' && trimmed.startsWith('@')) return trimmed.slice(1)
+  if (type === 'character') {
+    let out = trimmed.startsWith('@') ? trimmed.slice(1) : text
+    // Strip the trailing `^` dual-dialogue marker (with any whitespace before it) from display.
+    out = out.replace(/\s*\^\s*$/, '')
+    return out
+  }
   if (type === 'transition' && trimmed.startsWith('>')) return trimmed.slice(1).trim()
   return text
 }
@@ -307,15 +318,41 @@ export function getFormatFunctions(format) {
  */
 export function fountainToHtml(text) {
   const parsed = parseFountain(text)
-  const lines = []
-  for (const item of parsed) {
+  const renderP = (item) => {
     const escaped = item.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const display = stripForcedMarker(escaped, item.type)
-    if (!display.trim()) {
-      lines.push('<p class="fountain-blank">&nbsp;</p>')
+    if (!display.trim()) return '<p class="fountain-blank">&nbsp;</p>'
+    return `<p class="fountain-${item.type}">${display}</p>`
+  }
+  const lines = []
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i]
+    if (item.dualDialogue) {
+      // Retroactively pair with the previous character block. Walk `lines`
+      // backwards, popping trailing blank paragraphs, then peel off the
+      // preceding character/paren/dialogue paragraphs into the left column.
+      const rightItems = [item]
+      let j = i + 1
+      while (j < parsed.length && (parsed[j].type === 'dialogue' || parsed[j].type === 'paren')) {
+        rightItems.push(parsed[j]); j++
+      }
+      while (lines.length && lines[lines.length - 1] === '<p class="fountain-blank">&nbsp;</p>') lines.pop()
+      const leftBuf = []
+      while (lines.length) {
+        const last = lines[lines.length - 1]
+        if (/^<p class="fountain-(character|dialogue|paren)"/.test(last)) {
+          leftBuf.unshift(lines.pop())
+        } else break
+      }
+      const rightHtml = rightItems.map(renderP).join('\n')
+      const leftHtml = leftBuf.join('\n')
+      lines.push(
+        `<div class="dual-dialogue">\n<div class="dual-dialogue-col">\n${leftHtml}\n</div>\n<div class="dual-dialogue-col">\n${rightHtml}\n</div>\n</div>`
+      )
+      i = j - 1
       continue
     }
-    lines.push(`<p class="fountain-${item.type}">${display}</p>`)
+    lines.push(renderP(item))
   }
   return lines.join('\n')
 }
