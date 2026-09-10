@@ -215,7 +215,7 @@ function showAddress(address) {
       walletTop.innerHTML = `
         <div class="wallet-greeting">
           ${avatarHtml}
-          <span class="wallet-greeting-name">Hi, ${escapeHtml(greetingName)}</span>
+          <span class="wallet-greeting-name">${escapeHtml(t('wallet.greeting'))}, ${escapeHtml(greetingName)}</span>
         </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
