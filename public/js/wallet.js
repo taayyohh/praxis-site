@@ -1,5 +1,5 @@
 import { t } from './i18n.js'
-import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken } from './utils.js'
+import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic } from './utils.js'
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const status = document.getElementById('wallet-status')
@@ -204,8 +204,19 @@ function showAddress(address) {
       const siteName = document.body.dataset.name || ''
       const shortAddr = `${address.slice(0,6)}...${address.slice(-4)}`
       const greetingName = isOwnerView && siteName ? siteName : shortAddr
+      // Try to render a real avatar next to the greeting. Fall back to
+      // the wallet address's initial letter in a colored circle if there
+      // isn't a profile pic on file for this wallet.
+      const pfp = getProfilePic(address)
+      const initial = escapeHtml((greetingName || address).slice(0, 1).toUpperCase())
+      const avatarHtml = pfp
+        ? `<img class="wallet-greeting-avatar" src="${escapeHtml(pfp)}" alt="">`
+        : `<span class="wallet-greeting-avatar wallet-greeting-avatar--fallback">${initial}</span>`
       walletTop.innerHTML = `
-        <div class="wallet-greeting">Hi, ${escapeHtml(greetingName)}</div>
+        <div class="wallet-greeting">
+          ${avatarHtml}
+          <span class="wallet-greeting-name">Hi, ${escapeHtml(greetingName)}</span>
+        </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
           <button class="wallet-menu-addr" id="dd-copy">${shortAddr} <i class="ph ph-copy"></i></button>
@@ -223,11 +234,18 @@ function showAddress(address) {
     // Three flat buttons — same visual weight. `manage` only for site owner.
     topBarWallet.innerHTML = `
       <div class="dd-nav">
-        <a href="/network" class="dd-nav-btn" id="dd-praxis"><span>praxis</span><i class="ph ph-arrow-up-right"></i></a>
-        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><span>vault</span><i class="ph ph-arrow-up-right"></i></a>
-        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><span data-i18n="settings.title">manage</span><i class="ph ph-arrow-up-right"></i></button>` : ''}
+        <a href="/network" class="dd-nav-btn" id="dd-praxis"><i class="dd-nav-icon" data-icon="praxis"></i><span>praxis</span><i class="ph ph-arrow-up-right"></i></a>
+        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span>vault</span><i class="ph ph-arrow-up-right"></i></a>
+        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span data-i18n="settings.title">manage</span><i class="ph ph-arrow-up-right"></i></button>` : ''}
       </div>
     `
+    // Praxis logo — inline SVG matches the wordmark's shape so we don't
+    // need to fetch another asset. The two other icons use Phosphor Icons.
+    const praxisIconHost = topBarWallet.querySelector('.dd-nav-icon[data-icon="praxis"]')
+    if (praxisIconHost) {
+      praxisIconHost.classList.remove('ph')
+      praxisIconHost.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>`
+    }
 
     // Footer: switchers + sign-out. Language and currency stay one-tap away.
     document.getElementById('praxis-menu-bottom')?.remove()
