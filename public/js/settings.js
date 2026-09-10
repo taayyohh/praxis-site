@@ -3995,6 +3995,14 @@ function renderThemeTab(el) {
     const bg = document.getElementById('s-theme-bg').value
     const fg = document.getElementById('s-theme-fg').value
     const accent = document.getElementById('s-theme-accent').value
+    // Belt-and-suspenders: validate hex at save-time. Every reader that
+    // renders these into a style attribute goes through escapeHtml, but
+    // that doesn't escape CSS metacharacters (; ( ) whitespace), so if
+    // one of these values were ever a `red;background:url(evil)` string
+    // it'd break out of the swatch's style. Enforce here so the payload
+    // that lands on-chain can never contain non-hex.
+    const HEX = /^#[0-9a-fA-F]{3,8}$/
+    if (!HEX.test(bg) || !HEX.test(fg) || !HEX.test(accent)) return
     if (!siteData.theme) siteData.theme = {}
     const presets = Array.isArray(siteData.theme.presets) ? siteData.theme.presets : []
     presets.push({ name, bg, fg, accent })

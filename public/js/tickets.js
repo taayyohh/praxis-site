@@ -44,28 +44,28 @@ export async function listTicket(tokenId, priceWei) {
 }
 
 export async function purchaseTicket(tokenId, priceWei) {
-  const addr = await ensureFundsForPurchase(priceWei)
+  // Run the self-buy read in parallel with the fund check so we don't add
+  // an extra sequential RPC hop before the wallet-confirm dialog opens.
+  const pcCheckP = getPublicClient()
+  const listingP = pcCheckP.then(pc =>
+    pc.readContract({
+      address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
+      functionName: 'listings', args: [BigInt(tokenId)],
+    }).catch(() => null)
+  )
+  const [addr, listing] = await Promise.all([
+    ensureFundsForPurchase(priceWei),
+    listingP,
+  ])
   if (!addr) throw new Error(t('status.connectWallet'))
 
   // Client-side self-buy guard: the contract doesn't reject buying your
   // own listing, so the tx would just move your ETH to pendingWithdrawals
-  // and burn gas. Look up the listing's seller and refuse locally.
-  try {
-    const pcCheck = await getPublicClient()
-    const listing = await pcCheck.readContract({
-      address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
-      functionName: 'listings', args: [BigInt(tokenId)],
-    })
-    // listings() returns (seller, price, active) or similar tuple; the
-    // seller is at index 0 in the current ABI.
-    const seller = Array.isArray(listing) ? listing[0] : listing?.seller
-    if (seller && addr.toLowerCase() === String(seller).toLowerCase()) {
-      throw new Error("that's your own listing — cancel it instead of buying")
-    }
-  } catch (e) {
-    if (e?.message?.startsWith("that's your own")) throw e
-    // Read failure (bad ABI, RPC glitch) — fall through and let the
-    // on-chain path run. Better to over-permit than block a real buy.
+  // and burn gas. If the listings() read failed we fall through and let
+  // the on-chain path run — better to over-permit than block a real buy.
+  const seller = Array.isArray(listing) ? listing[0] : listing?.seller
+  if (seller && addr.toLowerCase() === String(seller).toLowerCase()) {
+    throw new Error("that's your own listing — cancel it instead of buying")
   }
 
   const purchaseAccount = await window.authorizedSigner?.(addr)

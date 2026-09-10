@@ -237,32 +237,22 @@ async function submitPost() {
       // publish an amendment to a non-existent post, and so a viewer can't
       // masquerade this as someone else's edit history — the amendment
       // author must equal the parent post's author.
+      // Uses the hardened query() helper — timeout + circuit breaker so a
+      // Ponder hang can't strand the publish button.
       const parentPostId = BigInt(_amendPostId)
       let parentAuthor = null
       let parentLookup = 'skipped' // 'ok' | 'missing' | 'error' | 'skipped'
       try {
-        const pRes = await fetch(`/ponder/graphql`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `query($id: String!) { blogPost(id: $id) { author id } }`,
-            variables: { id: String(parentPostId) },
-          }),
-        })
-        if (!pRes.ok) {
-          parentLookup = 'error'
+        const data = await query(
+          `query($id: BigInt!) { blogPost(id: $id) { id author } }`,
+          { id: String(parentPostId) }
+        )
+        const row = data?.blogPost
+        if (row?.id) {
+          parentLookup = 'ok'
+          parentAuthor = String(row.author || '').toLowerCase()
         } else {
-          const pJson = await pRes.json().catch(() => ({}))
-          if (pJson?.errors) {
-            parentLookup = 'error'
-          } else {
-            const row = pJson?.data?.blogPost
-            if (row?.id) {
-              parentLookup = 'ok'
-              parentAuthor = String(row.author || '').toLowerCase()
-            } else {
-              parentLookup = 'missing'
-            }
-          }
+          parentLookup = 'missing'
         }
       } catch {
         parentLookup = 'error'

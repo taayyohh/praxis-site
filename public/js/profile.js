@@ -573,11 +573,10 @@ function wireLoadMore(container, addr, artist, resolve) {
         for (const p of result.items) {
           if (Number(p.refType) !== 5 || !p.refId) continue
           const parent = pageById[String(p.refId)]
-          if (parent) {
-            const parentAuthor = String(parent.author || '').toLowerCase()
-            const amendAuthor = String(p.author || '').toLowerCase()
-            if (parentAuthor && amendAuthor && parentAuthor !== amendAuthor) continue
-          }
+          if (!parent) continue // symmetric with first-page filter — no parent, no fold
+          const parentAuthor = String(parent.author || '').toLowerCase()
+          const amendAuthor = String(p.author || '').toLowerCase()
+          if (!parentAuthor || !amendAuthor || parentAuthor !== amendAuthor) continue
           const refKey = String(p.refId)
           if (!moreAmendments[refKey] || Number(p.timestamp) > Number(moreAmendments[refKey].timestamp)) {
             moreAmendments[refKey] = p
