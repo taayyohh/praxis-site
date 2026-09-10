@@ -239,7 +239,7 @@ async function submitPost() {
       // author must equal the parent post's author.
       const parentPostId = BigInt(_amendPostId)
       let parentAuthor = null
-      let parentPostExists = false
+      let parentLookup = 'skipped' // 'ok' | 'missing' | 'error' | 'skipped'
       try {
         const pRes = await fetch(`/ponder/graphql`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -248,24 +248,37 @@ async function submitPost() {
             variables: { id: String(parentPostId) },
           }),
         })
-        const pJson = await pRes.json().catch(() => ({}))
-        const row = pJson?.data?.blogPost
-        if (row?.id) {
-          parentPostExists = true
-          parentAuthor = String(row.author || '').toLowerCase()
+        if (!pRes.ok) {
+          parentLookup = 'error'
+        } else {
+          const pJson = await pRes.json().catch(() => ({}))
+          if (pJson?.errors) {
+            parentLookup = 'error'
+          } else {
+            const row = pJson?.data?.blogPost
+            if (row?.id) {
+              parentLookup = 'ok'
+              parentAuthor = String(row.author || '').toLowerCase()
+            } else {
+              parentLookup = 'missing'
+            }
+          }
         }
-      } catch { /* indexer down — fall through to a permissive publish */ }
-      if (parentPostExists) {
+      } catch {
+        parentLookup = 'error'
+      }
+      if (parentLookup === 'ok') {
         const self = String(window.getWalletAddress() || '').toLowerCase()
         if (parentAuthor && parentAuthor !== self) {
           statusEl.textContent = "you can only amend your own posts"
           return
         }
-      } else {
-        // Only refuse the publish when we know for sure the post is missing.
-        // A Ponder outage returns parentPostExists=false too, and we don't
-        // want to block a real edit on an indexer flake — fall through.
+      } else if (parentLookup === 'missing') {
+        statusEl.textContent = "that post doesn't exist — nothing to amend"
+        return
       }
+      // parentLookup === 'error' (Ponder down / non-200 / network) falls
+      // through so a real edit isn't blocked by an indexer flake.
       fnArgs = [title, content, 5, parentPostId]
     } else if (useRef) {
       fnArgs = [title, content, composeRef.type, BigInt(composeRef.id)]
