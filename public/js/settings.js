@@ -3714,22 +3714,47 @@ function lightnessShift(original, corrected) {
   return Math.abs(origL - corrL)
 }
 
+const THEME_PRESETS = [
+  { key: 'dark',       label: 'dark',        bg: '#0a0a0a', fg: '#c0c0c0', accent: '#ffffff' },
+  { key: 'terminal',   label: 'terminal',    bg: '#0a0a0a', fg: '#c0c0c0', accent: '#00ff41' },
+  { key: 'paper',      label: 'paper',       bg: '#f5f2ea', fg: '#2a2a2a', accent: '#a04000' },
+  { key: 'high',       label: 'high contrast', bg: '#000000', fg: '#ffffff', accent: '#ffff00' },
+  { key: 'blueprint',  label: 'blueprint',   bg: '#0c1a2b', fg: '#c9d4e0', accent: '#4aa3ff' },
+  { key: 'garden',     label: 'garden',      bg: '#f8f6ee', fg: '#3a3a2a', accent: '#3a7d3a' },
+]
+
 function renderThemeTab(el) {
   const theme = siteData.theme || {}
+  // Cache the last saved theme so users can bail out of an experiment.
+  el._lastSavedTheme = { bg: theme.bg || '#0a0a0a', fg: theme.fg || '#c0c0c0', accent: theme.accent || '#ffffff', font: theme.font || "-apple-system, 'Helvetica Neue', Arial, sans-serif" }
   const fonts = [
     { value: "-apple-system, 'Helvetica Neue', Arial, sans-serif", label: t('settings.theme.systemDefault'), key: 'apple-system' },
     { value: "Georgia, 'Times New Roman', serif", label: t('settings.theme.serif'), key: 'Georgia' },
     { value: "'Courier New', monospace", label: t('settings.theme.monospace'), key: 'Courier' },
   ]
   el.innerHTML = `
-    <div style="max-width:500px">
+    <div style="max-width:520px">
+      <div style="margin-bottom:1em">
+        <div class="settings-label" style="margin-bottom:0.5em">quick presets</div>
+        <div id="theme-presets" style="display:flex;flex-wrap:wrap;gap:0.6ch">
+          ${THEME_PRESETS.map(p => `
+            <button type="button" class="theme-preset-btn" data-preset="${p.key}"
+              style="border:1px solid var(--border);padding:0.35em 0.9ch;background:${p.bg};color:${p.fg};font-size:0.85em;cursor:pointer;display:inline-flex;align-items:center;gap:0.5ch">
+              <span style="display:inline-block;width:0.7em;height:0.7em;background:${p.accent};border-radius:50%"></span>
+              ${p.label}
+            </button>
+          `).join('')}
+          <button type="button" id="theme-reset" style="border:1px solid var(--border);padding:0.35em 0.9ch;background:transparent;color:var(--dim);font-size:0.85em;cursor:pointer">revert to saved</button>
+        </div>
+      </div>
+
       <div class="settings-field">
         <label class="settings-label">${t('settings.theme.background')}</label>
         <div style="display:flex;align-items:center;gap:1.5ch">
           <label class="settings-swatch" style="background:${theme.bg || '#0a0a0a'};position:relative;overflow:hidden">
             <input type="color" id="s-theme-bg" value="${theme.bg || '#0a0a0a'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
           </label>
-          <span style="color:var(--dim);font-size:0.85em;font-family:monospace">${theme.bg || '#0a0a0a'}</span>
+          <span id="s-theme-bg-hex" style="color:var(--dim);font-size:0.85em;font-family:monospace">${theme.bg || '#0a0a0a'}</span>
         </div>
       </div>
       <div class="settings-field">
@@ -3738,6 +3763,7 @@ function renderThemeTab(el) {
           <label class="settings-swatch" style="background:${theme.fg || '#c0c0c0'};position:relative;overflow:hidden">
             <input type="color" id="s-theme-fg" value="${theme.fg || '#c0c0c0'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
           </label>
+          <span id="s-theme-fg-hex" style="color:var(--dim);font-size:0.85em;font-family:monospace">${theme.fg || '#c0c0c0'}</span>
           <span id="contrast-badge-fg"></span>
         </div>
       </div>
@@ -3747,6 +3773,7 @@ function renderThemeTab(el) {
           <label class="settings-swatch" style="background:${theme.accent || '#ffffff'};position:relative;overflow:hidden">
             <input type="color" id="s-theme-accent" value="${theme.accent || '#ffffff'}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
           </label>
+          <span id="s-theme-accent-hex" style="color:var(--dim);font-size:0.85em;font-family:monospace">${theme.accent || '#ffffff'}</span>
           <span id="contrast-badge-accent"></span>
         </div>
       </div>
@@ -3888,20 +3915,56 @@ function renderThemeTab(el) {
     setTimeout(() => { btn.textContent = 'upload icon' }, 3000)
   })
 
+  // Set a specific color input + reflect in swatch + hex label + preview.
+  // Dispatches an 'input' event so the panel-level autosave debounce picks it up.
+  function setColorInput(id, value) {
+    const input = document.getElementById(id)
+    if (!input) return
+    input.value = value
+    const swatch = input.closest('.settings-swatch')
+    if (swatch) swatch.style.background = value
+    const hex = document.getElementById(id + '-hex')
+    if (hex) hex.textContent = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
   document.getElementById('s-theme-bg')?.addEventListener('input', () => {
+    const v = document.getElementById('s-theme-bg').value
     const swatch = document.getElementById('s-theme-bg')?.closest('.settings-swatch')
-    if (swatch) swatch.style.background = document.getElementById('s-theme-bg').value
+    if (swatch) swatch.style.background = v
+    const hex = document.getElementById('s-theme-bg-hex')
+    if (hex) hex.textContent = v
     updatePreview()
   })
   document.getElementById('s-theme-fg')?.addEventListener('input', () => {
+    const v = document.getElementById('s-theme-fg').value
     const swatch = document.getElementById('s-theme-fg')?.closest('.settings-swatch')
-    if (swatch) swatch.style.background = document.getElementById('s-theme-fg').value
+    if (swatch) swatch.style.background = v
+    const hex = document.getElementById('s-theme-fg-hex')
+    if (hex) hex.textContent = v
     updatePreview()
   })
   document.getElementById('s-theme-accent')?.addEventListener('input', () => {
+    const v = document.getElementById('s-theme-accent').value
     const swatch = document.getElementById('s-theme-accent')?.closest('.settings-swatch')
-    if (swatch) swatch.style.background = document.getElementById('s-theme-accent').value
+    if (swatch) swatch.style.background = v
+    const hex = document.getElementById('s-theme-accent-hex')
+    if (hex) hex.textContent = v
     updatePreview()
+  })
+  el.querySelectorAll('.theme-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = THEME_PRESETS.find(x => x.key === btn.dataset.preset)
+      if (!p) return
+      setColorInput('s-theme-bg', p.bg)
+      setColorInput('s-theme-fg', p.fg)
+      setColorInput('s-theme-accent', p.accent)
+    })
+  })
+  document.getElementById('theme-reset')?.addEventListener('click', () => {
+    const saved = el._lastSavedTheme || {}
+    setColorInput('s-theme-bg', saved.bg || '#0a0a0a')
+    setColorInput('s-theme-fg', saved.fg || '#c0c0c0')
+    setColorInput('s-theme-accent', saved.accent || '#ffffff')
   })
   // Font preview cards
   el.querySelectorAll('.font-preview-card').forEach(card => {
