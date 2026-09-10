@@ -16,7 +16,7 @@ export async function listTicket(tokenId, priceWei) {
 
   const pc = await getPublicClient()
   const currentAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
 
   // check operator approval
   const approved = await pc.readContract({
@@ -69,7 +69,7 @@ export async function purchaseTicket(tokenId, priceWei) {
   }
 
   const purchaseAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
     functionName: 'purchase', args: [BigInt(tokenId)],
@@ -87,7 +87,7 @@ export async function cancelTicketListing(tokenId) {
   if (!await window.ensureOptimism?.()) return
 
   const cancelAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
     functionName: 'cancel', args: [BigInt(tokenId)],
@@ -104,7 +104,7 @@ export async function withdrawTicketEarnings() {
   if (!await window.ensureOptimism?.()) return
 
   const withdrawAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
     functionName: 'withdraw', args: [],
