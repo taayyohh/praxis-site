@@ -731,12 +731,33 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   const boldFiat = (Number(boldBalance) + Number(spTotal)) / 1e18
   const totalFiat = ethFiat + boldFiat
 
+  const totalEarnedFiat = ethRate ? Number(totalEarned) / 1e18 * ethRate : 0
+  const totalSpentFiat = ethRate ? Number(totalContributed) / 1e18 * ethRate : 0
+  const netFiat = totalEarnedFiat - totalSpentFiat
+
   let html = ''
 
   // --- Balance hero ---
+  // Hero surfaces the essentials — total balance, lifetime earned/spent,
+  // net position — right at the top, no scroll required. Details live
+  // in the OVERVIEW section further down.
   html += `<div class="vault-hero">`
   html += `<div class="vault-total-label">total balance</div>`
   html += `<div class="vault-total-value">${formatFiat(totalFiat, currency)}</div>`
+
+  // Earned + spent chips right under the balance. Even a first-time user
+  // sees their position without scrolling.
+  if (totalEarned > 0n || totalContributed > 0n) {
+    html += `<div class="vault-hero-summary">`
+    html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">earned</span><span class="vault-hero-chip-value" style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></div>`
+    html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">spent</span><span class="vault-hero-chip-value">${formatFiat(totalSpentFiat, currency)}</span></div>`
+    if (Math.abs(netFiat) > 0.01) {
+      const netColor = netFiat >= 0 ? 'var(--green)' : 'var(--muted)'
+      const netSign = netFiat >= 0 ? '+' : '−'
+      html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">net</span><span class="vault-hero-chip-value" style="color:${netColor}">${netSign}${formatFiat(Math.abs(netFiat), currency)}</span></div>`
+    }
+    html += `</div>`
+  }
 
   // Token rows — one per chain with a non-zero ETH balance. Always show
   // Optimism (the app's home chain) even when empty; hide other chains until
@@ -778,6 +799,25 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // --- BOLD savings card ---
   const bestApy = yieldData?.bestApy || 0
   const pools = yieldData?.pools || []
+  const spTotalBold = spDeposits?.total || 0n
+  const liquidBold = boldBalance
+  const totalBold = spTotalBold + liquidBold
+
+  // Compute the user's actual yield estimate — per-pool APY × their
+  // balance in that pool, summed. This turns an abstract APR number
+  // into a concrete dollar figure.
+  let projectedYearlyYield = 0
+  if (spDeposits?.pools?.length) {
+    const poolApyByName = Object.fromEntries((pools || []).map(p => [p.name, p.apy || 0]))
+    for (const p of spDeposits.pools) {
+      const apy = poolApyByName[p.name] ?? bestApy
+      const boldAmount = Number(p.balance) / 1e18
+      projectedYearlyYield += boldAmount * (apy / 100)
+    }
+  } else if (spTotalBold > 0n && bestApy > 0) {
+    projectedYearlyYield = (Number(spTotalBold) / 1e18) * (bestApy / 100)
+  }
+  const projectedMonthlyYield = projectedYearlyYield / 12
 
   html += `<div class="vault-savings">`
   html += `<div class="vault-savings-header">`
@@ -791,47 +831,59 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   }
   html += `</div>`
 
-  // Show what the user is actually earning yield on (SP deposits), plus any
-  // liquid BOLD sitting in the wallet waiting to be deposited. Sum of the two
-  // is the user's true BOLD position.
-  const spTotalBold = spDeposits?.total || 0n
-  const liquidBold = boldBalance
-  const totalBold = spTotalBold + liquidBold
   if (totalBold > 0n) {
     const totalStr = (Number(totalBold) / 1e18).toFixed(2)
-    html += `<div class="vault-savings-bal">${totalStr} <span style="color:var(--dim)">BOLD</span></div>`
+    html += `<div class="vault-savings-bal">${totalStr} <span style="color:var(--dim)">BOLD</span> <span class="vault-savings-fiat">${formatFiat(Number(totalBold) / 1e18, currency)}</span></div>`
+
+    // Yield estimate — concrete dollars, not just an APR number.
+    if (projectedYearlyYield > 0) {
+      html += `<div class="vault-savings-yield">`
+      html += `<span class="vault-savings-yield-value">${formatFiat(projectedMonthlyYield, currency)}<span class="vault-savings-yield-unit">/mo</span></span>`
+      html += `<span class="vault-savings-yield-sep">·</span>`
+      html += `<span class="vault-savings-yield-year">${formatFiat(projectedYearlyYield, currency)}/yr projected</span>`
+      html += `</div>`
+    }
+
     // Break down deposited vs liquid when both exist.
     const parts = []
     if (spTotalBold > 0n) parts.push(`${(Number(spTotalBold) / 1e18).toFixed(2)} earning yield`)
     if (liquidBold > 0n) parts.push(`${(Number(liquidBold) / 1e18).toFixed(2)} liquid`)
     if (parts.length > 0) {
-      html += `<div style="color:var(--dim);font-size:0.85em;margin-top:0.2em">${parts.join(' · ')}</div>`
+      html += `<div class="vault-savings-position">${parts.join(' · ')}</div>`
     }
-    // Per-pool breakdown when the user is deposited across more than one SP.
     const activePools = (spDeposits?.pools || []).filter(p => p.balance > 0n)
     if (activePools.length > 1) {
       const lines = activePools.map(p =>
         `${p.name}: ${(Number(p.balance) / 1e18).toFixed(2)}`
       ).join(' · ')
-      html += `<div style="color:var(--dim);font-size:0.8em;margin-top:0.15em">${escapeHtml(lines)}</div>`
+      html += `<div class="vault-savings-position">${escapeHtml(lines)}</div>`
     }
   } else {
     html += `<div class="vault-savings-bal" style="color:var(--dim)">no deposits yet</div>`
+    if (bestApy > 0) {
+      html += `<div class="vault-savings-yield-empty">save $100 → earn ~${formatFiat(100 * (bestApy / 100), currency)}/yr</div>`
+    }
   }
 
   if (pools.length > 0) {
     html += `<div class="vault-pools">`
+    // Compact 3-column header row so each pool is scannable
+    html += `<div class="vault-pools-head"><span>pool</span><span>APR</span><span>size</span></div>`
     for (const pool of pools.slice(0, 4)) {
       const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
-      html += `<div class="vault-pool-row">`
-      html += `<div class="vault-pool-info"><span class="vault-pool-name">${escapeHtml(pool.name)}</span><span class="vault-pool-tvl">${tvlStr} TVL</span></div>`
-      html += `<div class="vault-pool-rates"><span class="vault-pool-apr">${pool.apy.toFixed(1)}%</span><span class="vault-pool-7d">30d ${pool.apy7d.toFixed(1)}%</span></div>`
+      // Highlight the pool(s) the user is deposited in
+      const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.name)?.balance || 0n
+      const active = userAmount > 0n
+      html += `<div class="vault-pool-row${active ? ' vault-pool-row-active' : ''}">`
+      html += `<span class="vault-pool-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-badge">${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
+      html += `<span class="vault-pool-apr">${pool.apy.toFixed(1)}%</span>`
+      html += `<span class="vault-pool-tvl">${tvlStr}</span>`
       html += `</div>`
     }
     html += `</div>`
   }
 
-  html += `<button class="vault-save-cta" id="vault-save-btn">save ETH to BOLD</button>`
+  html += `<button class="vault-save-cta" id="vault-save-btn"><i class="ph ph-plus-circle"></i> ${totalBold > 0n ? 'save more' : 'save ETH to BOLD'}</button>`
   html += `</div>`
 
   // --- Unclaimed banner ---
