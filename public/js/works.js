@@ -573,9 +573,32 @@ async function renderGroupedListings(listings) {
     await resolveAlbumArt(toResolve)
   }
 
+  // Merge pass: albums listed in multiple on-chain batches get separate
+  // metadataCids but resolve to the SAME site.json album (matched by
+  // albumName + artUrl). Fold them into one card. Preserves site.json's
+  // track order via `trackIndex` when we have it.
+  const mergedGroups = new Map() // mergeKey -> { mcid (primary), items }
+  for (const [mcid, items] of albumGroups) {
+    const cached = _albumArtCache.get(mcid)
+    // Group by (albumName + artUrl) when resolved; fall back to mcid alone
+    // so groups that didn't match site.json stay unmerged (safe default).
+    const mergeKey = (cached?.albumName && cached?.artUrl)
+      ? `resolved:${cached.albumName.toLowerCase()}|${cached.artUrl}`
+      : `mcid:${mcid}`
+    const existing = mergedGroups.get(mergeKey)
+    if (existing) {
+      // De-dupe by id in case the same listing appears in both batches
+      // (shouldn't, but defensive).
+      const seen = new Set(existing.items.map(i => i.id))
+      for (const it of items) if (!seen.has(it.id)) existing.items.push(it)
+    } else {
+      mergedGroups.set(mergeKey, { mcid, items: [...items] })
+    }
+  }
+
   let html = ''
   // Albums first
-  for (const [mcid, items] of albumGroups) {
+  for (const [, { mcid, items }] of mergedGroups) {
     if (items.length >= 2) {
       html += renderAlbumCard(mcid, items)
     } else {
