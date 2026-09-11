@@ -206,37 +206,54 @@ input[type="number"] {
 #praxis-menu-dropdown.menu-logged-in .praxis-menu-row { display: none; }
 
 .dd-nav { display: flex; flex-direction: column; padding: 0.35em 0; }
-/* Explicit font-size in rem on every .dd-nav-btn (button + a). Chromium
- * resolves <button>'s default 13.333px against a bare `font-size: 1.05em`
- * differently than <a>, and even `font: inherit` behaves inconsistently
- * across browser versions. Fixed rem is unambiguous. */
-.dd-nav-btn {
-  display: flex; align-items: center; gap: 1.25ch;
-  width: 100%; padding: 1em 1.75ch;
-  background: none; border: none; border-radius: 0;
-  color: var(--fg);
-  font-family: inherit;
-  font-size: 1rem;
-  font-weight: 500;
-  line-height: 1;
-  text-decoration: none; text-align: left; letter-spacing: -0.005em;
-  cursor: pointer; transition: background 0.12s, color 0.12s;
-  box-sizing: border-box;
+/* Nuclear normalization: every property that could vary between
+ * <button> and <a> is set on both explicitly. Fixed rem sizes so no
+ * em-cascade shenanigans, and font-weight pinned to 500 on both the
+ * container and the label so <button>'s bolder UA default can't win. */
+a.dd-nav-btn,
+button.dd-nav-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.9rem !important;
+  width: 100% !important;
+  padding: 0.9rem 1.1rem !important;
+  background: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--fg) !important;
+  font-family: inherit !important;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.005em !important;
+  text-decoration: none !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  transition: background 0.12s, color 0.12s !important;
+  box-sizing: border-box !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
 }
-button.dd-nav-btn { font-size: 1rem; }
-.dd-nav-btn .dd-nav-label {
+a.dd-nav-btn .dd-nav-label,
+button.dd-nav-btn .dd-nav-label {
   flex: 1 1 auto;
-  font-size: 1rem;
-  line-height: 1;
-  font-weight: 500;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  font-family: inherit !important;
 }
-.dd-nav-btn .dd-nav-icon {
+a.dd-nav-btn .dd-nav-icon,
+button.dd-nav-btn .dd-nav-icon {
   color: var(--dim);
   flex: 0 0 auto;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 1.4rem; height: 1.4rem;
-  font-size: 1.4rem;
-  line-height: 1;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  font-size: 1.25rem !important;
+  line-height: 1 !important;
   transition: color 0.12s;
 }
 .dd-nav-btn .dd-nav-icon svg { width: 1em; height: 1em; display: block; }
