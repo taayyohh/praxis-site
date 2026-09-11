@@ -7249,6 +7249,58 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   color: var(--dim);
   font-weight: 400;
 }
+
+/* Savings empty state — give BOLD a visible identity so an artist who
+ * hasn't deposited yet knows what they're being offered. Subtle green
+ * wash + coin mark + one-line pitch. NOT a chunky card — just enough
+ * texture to read as "a thing you can put money into". */
+.vault-savings-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 1em;
+  padding: 1em 1.1em;
+  border: 1px solid color-mix(in srgb, var(--green) 25%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--green) 5%, transparent);
+  margin: 0.5em 0 1em;
+}
+.vault-savings-empty-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+.vault-savings-empty-mark svg { width: 44px; height: 44px; display: block; }
+.vault-savings-empty-copy { flex: 1 1 auto; min-width: 0; }
+.vault-savings-empty-title {
+  font-size: 1.05em;
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
+  margin-bottom: 0.35em;
+}
+.vault-savings-empty-teaser {
+  font-size: 0.88em;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* Loud, unmissable error status inside the save modal. Anything less
+ * lets a failure slip past the user's eye. */
+.vault-save-status-error {
+  color: var(--fg) !important;
+  padding: 0.75em 1em !important;
+  border: 1px solid #cc3333 !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, #cc3333 8%, transparent) !important;
+  margin-top: 0.75em !important;
+  line-height: 1.55 !important;
+  font-size: 0.92em !important;
+}
+.vault-save-status-error strong { color: #ff6666; font-weight: 700; }
 .vault-act-yield {
   font-size: 0.9em;
   color: var(--muted);

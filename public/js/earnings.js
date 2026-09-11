@@ -935,11 +935,21 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
       html += `<div class="vault-act-sub">${escapeHtml(lines)}</div>`
     }
   } else {
-    html += `<div class="vault-act-figure vault-act-figure-empty">no deposits yet</div>`
+    // Empty-state savings block: the BOLD coin gets prominence + a
+    // subtle green wash so the artist can *see* what this thing is
+    // before they deposit. Reads as "here's the savings coin you can
+    // fill with money", not as body text.
+    html += `<div class="vault-savings-empty">`
+    html += `<div class="vault-savings-empty-mark">${BOLD_ICON}</div>`
+    html += `<div class="vault-savings-empty-copy">`
+    html += `<div class="vault-savings-empty-title">A dollar-stable savings coin</div>`
     if (bestApy > 0) {
-      // $100 → APR%/yr, in the user's currency
-      html += `<div class="vault-act-yield">save ${formatFiat(100 * usdToLocal, currency)} → earn ~${formatFiat(100 * (bestApy / 100) * usdToLocal, currency)}/yr</div>`
+      html += `<div class="vault-savings-empty-teaser">Save ${formatFiat(100 * usdToLocal, currency)} → earn about <span style="color:var(--green);font-weight:600">${formatFiat(100 * (bestApy / 100) * usdToLocal, currency)}/year</span> at today's ${bestApy.toFixed(1)}% rate. No lockup, no fees, withdraw anytime.</div>`
+    } else {
+      html += `<div class="vault-savings-empty-teaser">Convert your ETH into BOLD — a US-dollar-pegged stablecoin backed by ETH — and start earning interest as soon as the tx settles.</div>`
     }
+    html += `</div>`
+    html += `</div>`
   }
 
   // Pools rendered inline as a table — no separate box. Highlight the
@@ -1222,13 +1232,23 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   // balance goes first (highest signal), Optimism is always shown as the
   // home account even when empty, and everything with zero is hidden until
   // it holds funds so the list doesn't grow noisy over time.
+  // If the user has ETH on mainnet, prefer it as the source — usually means
+  // a prior save flow bridged successfully but the swap didn't complete,
+  // so we're picking up where they left off (no re-bridging).
   const chains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
   const chainOrder = [...chains].sort((a, b) => {
     if (b.balance !== a.balance) return b.balance > a.balance ? 1 : -1
     return 0
   })
   const visibleChains = chainOrder.filter(c => c.balance > 0n || c.chainId === 10)
-  let selectedChainId = (visibleChains.find(c => c.balance > 0n) || visibleChains[0]).chainId
+  // Prefer mainnet if the user already has ETH there — likely a prior
+  // save bridged successfully but the swap step didn't fire, so their
+  // funds are already at the pool's home chain. Skips the bridge step
+  // entirely, saves gas + time. Otherwise, first chain with a balance.
+  const mainnetChain = visibleChains.find(c => c.chainId === 1 && c.balance > 0n)
+  let selectedChainId = mainnetChain
+    ? 1
+    : (visibleChains.find(c => c.balance > 0n) || visibleChains[0]).chainId
 
   const overlay = document.createElement('div')
   overlay.id = 'vault-swap-modal'
@@ -1744,24 +1764,30 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
       window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
       setTimeout(() => overlay.remove(), 4000)
     } catch (e) {
+      console.warn('save flow error:', e)
       const failedStep = stepsEl?.querySelector('.vault-save-step-active')
+      const failedStepKey = failedStep?.dataset.step || ''
       if (failedStep) failedStep.className = 'vault-save-step vault-save-step-error'
       swapInput.disabled = false
       chainCurrent.disabled = visibleChains.length <= 1
       confirmBtn.disabled = false
       confirmBtn.textContent = t('save.retry') || 'Try again'
-      statusEl.style.color = 'var(--dim)'
+      statusEl.classList.add('vault-save-status-error')
       const msg = (e?.message || e?.shortMessage || '').toString()
-      if (e?.code === 4001) {
-        statusEl.textContent = t('save.cancelled') || 'Cancelled'
+      if (e?.code === 4001 || /user rejected|denied/i.test(msg)) {
+        statusEl.classList.remove('vault-save-status-error')
+        statusEl.style.color = 'var(--dim)'
+        statusEl.textContent = t('save.cancelled') || 'Cancelled — no funds moved.'
       } else if (/exceeds the balance|insufficient funds|gas.*exceeds/i.test(msg)) {
-        // Live gas ate more than the sender's balance could cover. Invalidate
-        // the cached reserve so the next preset pick reflects the new price,
-        // and nudge the user to a smaller amount.
         _gasReserves.delete(selectedChainId)
         refreshChainReserve()
-        statusEl.style.color = 'var(--muted)'
         statusEl.textContent = t('save.gasBlown') || 'Network fees have spiked — pick a smaller amount and try again.'
+      } else if (failedStepKey === 'swap') {
+        // Bridge already completed → user's ETH is safe on mainnet.
+        // Tell them exactly that + how to resume.
+        statusEl.innerHTML = `<strong>Swap failed — but your ETH is safe on Ethereum.</strong><br>Re-open this modal and pick <em>Ethereum</em> as the source to complete the deposit. No re-bridge needed.<br><span style="color:var(--dim);font-size:0.85em">${escapeHtml(formatTxError(e))}</span>`
+      } else if (failedStepKey === 'deposit') {
+        statusEl.innerHTML = `<strong>Deposit failed — but your BOLD landed.</strong><br>Your ${(Number(spTotalHead || 0) / 1e18).toFixed(2)} BOLD is now liquid on Ethereum. Try the deposit again from the same modal, or hold BOLD as-is.<br><span style="color:var(--dim);font-size:0.85em">${escapeHtml(formatTxError(e))}</span>`
       } else {
         statusEl.textContent = formatTxError(e)
       }
