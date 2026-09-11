@@ -383,7 +383,12 @@ function addSaveButton(postId, displayPost, domain) {
   const saveBtn = document.createElement('button')
   saveBtn.id = 'post-save-btn'
   saveBtn.className = 'buy-btn'
-  saveBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--dim);display:inline-flex;align-items:center;font-family:inherit;padding:0;font-size:inherit;line-height:1'
+  saveBtn.setAttribute('aria-label', 'save post')
+  // Explicit min-size so the button remains a real hit-target (and visible
+  // to any layout-based visibility check) even when the Phosphor icon
+  // font hasn't finished loading — otherwise the :before glyph is zero-
+  // width and the button collapses to a 0×0 hit region.
+  saveBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;font-family:inherit;padding:0.2em;font-size:1.05em;line-height:1;min-width:1.2em;min-height:1.2em'
   const heartOutline = '<i class="ph ph-heart"></i>'
   const heartFilled = '<svg width="1em" height="1em" viewBox="0 0 256 256" fill="currentColor" style="vertical-align:-0.125em"><path d="M240,98a57.63,57.63,0,0,1-17,41L128,233.09,33,139a58,58,0,0,1,82-82.05L128,69.42l13-12.42a58,58,0,0,1,99,41Z"/></svg>'
   saveBtn.innerHTML = saved ? heartFilled : heartOutline

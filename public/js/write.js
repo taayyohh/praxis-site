@@ -790,10 +790,9 @@ function initWrite() {
     scheduleAutoPreview()
   })
 
-  // Start in preview mode if there's content (e.g., restored draft)
-  if (contentInput.value.trim()) {
-    showPreview()
-  }
+  // Restored drafts stay in edit mode — user came back to keep writing,
+  // not to admire the rendered output. Manual toggle still available.
+  _isEditing = true
 
   // Click-to-focus on editor area (when in edit mode or empty)
   page.querySelector('.write-editor')?.addEventListener('click', (e) => {
