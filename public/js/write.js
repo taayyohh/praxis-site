@@ -16,6 +16,13 @@ const UPLOAD_POLL_MAX = 300
 
 let composeRef = { type: 0, id: 0 }
 let _amendPostId = null
+// Tracks whether initWrite loaded a draft from localStorage into the inputs.
+// saveDraft uses this to decide whether an empty form on unload means "user
+// intentionally cleared the draft" (remove localStorage) or "form never had
+// content since page load" (leave localStorage untouched — important when
+// another tab or an external actor seeded a draft that this page hasn't
+// consumed yet).
+let _draftWasLoaded = false
 
 // --- Reference picker ---
 
@@ -450,8 +457,8 @@ function initWrite() {
     } catch {}
   }
 
-  if (restoredTitle && titleInput) titleInput.value = restoredTitle
-  if (restoredContent && contentInput) contentInput.value = restoredContent
+  if (restoredTitle && titleInput) { titleInput.value = restoredTitle; _draftWasLoaded = true }
+  if (restoredContent && contentInput) { contentInput.value = restoredContent; _draftWasLoaded = true }
 
   // Close button — navigate back
   document.getElementById('compose-close')?.addEventListener('click', () => {
@@ -906,6 +913,11 @@ function initWrite() {
 function saveDraft() {
   const title = document.getElementById('compose-title')?.value?.trim() || ''
   const body = document.getElementById('compose-content')?.value?.trim() || ''
+  // Empty form + no draft was loaded this session → don't touch localStorage.
+  // Prevents a page whose form was never populated (e.g. a background tab
+  // that loaded before another tab seeded a draft) from wiping the shared
+  // storage on its own unload.
+  if (!title && !body && !_draftWasLoaded) return
   if (title || body) {
     try { localStorage.setItem('praxis-blog-draft', JSON.stringify({ title, body, ts: Date.now() })) } catch {}
   } else {

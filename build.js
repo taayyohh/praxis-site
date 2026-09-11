@@ -642,6 +642,7 @@ out('write', wrap(writeHtml, 'write', '/write', '/og/index.png', { noindex: true
 
 // notifications page
 const notificationsHtml = `<div id="notifications-page" style="max-width:680px;margin:0 auto">
+<h2 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">notifications</h2>
 <div id="notifications-content"><span class="praxis-loader"></span></div>
 </div>`
 out('notifications', wrap(notificationsHtml, 'notifications', '/notifications', '/og/index.png', { noindex: true }))

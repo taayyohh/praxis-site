@@ -146,6 +146,12 @@ let _historyShown = 0
 let _ethPrices = null
 let _yieldData = null
 let _mediaArtMap = {}
+// mediaId → cover-art CID for media you PURCHASED from other artists.
+// Populated once per initVault by multicalling PraxisMedia.media(id) so the
+// activity feed's "collected" rows show the actual record cover instead of
+// a generic cart icon. Cross-artist buys aren't in our local site.json,
+// which is what _mediaArtMap covers.
+let _purchaseArtMap = {}
 
 // Walk site.json music/audio/video modules and build a lowercase-title →
 // cover-art URL lookup. Used by the activity feed so a track sale row
@@ -176,6 +182,41 @@ async function _buildArtMap() {
       // video / film / gallery / demos / writing — items[] { title, poster/art/cover }
       const items = d.items || d.works || d.publications || d.images || []
       for (const it of items) add(it.title, it.poster || it.art || it.cover || it.src)
+    }
+    return map
+  } catch { return {} }
+}
+
+// Look up cover art for a batch of purchased mediaIds. Multicalls
+// PraxisMedia.media(id) — the 4th return value (`metadataCid`) is used
+// on-chain as the album/track cover CID (see modules/music.js listBatch
+// entries). Returns { [mediaId]: '<coverCid>' }; failures fall through so
+// the row still renders with the fallback cart icon rather than blocking.
+async function _fetchPurchaseCovers(mediaIds) {
+  const ids = [...new Set(mediaIds || [])].filter(Boolean)
+  if (ids.length === 0) return {}
+  // PraxisMedia is a canonical contract shared across all artists (CLAUDE.md);
+  // fall back to the hard-coded address when the body tag isn't stamped so
+  // the vault still resolves covers for tenants that didn't ship the attr.
+  const mediaAddr = document.body.dataset.media || '0x429dd05cd2edd2e516970373bc0bbf83e2ab7eae'
+  try {
+    const pc = await getPublicClient()
+    const calls = ids.map(id => ({
+      address: mediaAddr, abi: MEDIA_ABI,
+      functionName: 'media', args: [BigInt(id)],
+    }))
+    const map = {}
+    for (let i = 0; i < calls.length; i += 50) {
+      const chunk = calls.slice(i, i + 50)
+      const chunkIds = ids.slice(i, i + 50)
+      const results = await pc.multicall({ contracts: chunk, allowFailure: true })
+      for (let j = 0; j < results.length; j++) {
+        const r = results[j]
+        if (r?.status !== 'success') continue
+        // media() returns [artist, title, ipfsCid, metadataCid, price, ...]
+        const metadataCid = Array.isArray(r.result) ? r.result[3] : r.result?.metadataCid
+        if (metadataCid) map[chunkIds[j]] = String(metadataCid)
+      }
     }
     return map
   } catch { return {} }
@@ -215,9 +256,9 @@ async function initVault() {
       fetchChainBalances(addr).catch(() => [{ chainId: 10, name: 'Optimism', balance: 0n }]),
       getBoldBalanceMainnet(addr).catch(() => 0n),
       getStabilityDeposits(addr).catch(() => ({ total: 0n, pools: [] })),
-      getPendingWithdrawals(addr),
-      fetchEarned(addrLower),
-      fetchContributed(addrLower),
+      getPendingWithdrawals(addr).catch(() => ({ praxis: 0n, media: 0n })),
+      fetchEarned(addrLower).catch(() => ({ mediaSales: [], mediaTotal: 0n, projectEarnings: 0n, projectItems: [] })),
+      fetchContributed(addrLower).catch(() => ({ fundingTotal: 0n, fundingItems: [], purchaseTotal: 0n, purchaseItems: [] })),
       getTicketPendingWithdrawals(addr).catch(() => 0n),
       getEthPrices().catch(() => null),
       fetchBoldYield().catch(() => null),
@@ -236,6 +277,9 @@ async function initVault() {
     // activity feed can show real thumbnails (a track sale reads as
     // "someone bought THAT record", not "an abstract media sale").
     _mediaArtMap = await _buildArtMap().catch(() => ({}))
+    // Resolve cover art for cross-artist purchases so "collected" rows in
+    // the activity feed show real thumbnails, not generic cart icons.
+    _purchaseArtMap = await _fetchPurchaseCovers(contributed.purchaseItems.map(p => p.mediaId)).catch(() => ({}))
     _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
     _historyShown = 0
 
@@ -688,6 +732,9 @@ async function fetchContributed(addrLower) {
     purchaseTotal += price
     purchaseItems.push({
       type: 'purchase',
+      // mediaId travels alongside so the activity feed can look up the
+      // cover art (via _purchaseArtMap → PraxisMedia.media()).
+      mediaId: p.mediaId.toString(),
       title: mediaTitles[p.mediaId.toString()] || `media #${p.mediaId}`,
       amount: price,
       time: Number(p.timestamp) * 1000,
@@ -740,10 +787,17 @@ function timeAgo(ts) {
 function renderHistoryItems(items, ethPrices) {
   return items.map(h => {
     const color = h.sign === '+' ? 'var(--green)' : 'var(--muted)'
-    // Prefer a real cover thumbnail when we have one for this title.
-    // Fallback to the type icon so the row still reads as a media event.
+    // Prefer a real cover thumbnail when we have one. Two sources:
+    //   - _mediaArtMap: our OWN site's music/audio module, keyed by
+    //     lowercased title — covers "media sale" rows (someone bought a
+    //     record we published).
+    //   - _purchaseArtMap: cross-artist media we've BOUGHT, keyed by
+    //     mediaId — the on-chain metadataCid resolved for "collected"
+    //     rows via multicall to PraxisMedia.media().
+    // Both fall back to the type icon so the row still reads as an event.
     const title = String(h.title || h.detail || '').trim().toLowerCase()
-    const art = _mediaArtMap[title] || h.art || null
+    const purchaseCover = h.mediaId ? _purchaseArtMap[h.mediaId] : null
+    const art = purchaseCover || _mediaArtMap[title] || h.art || null
     const artUrl = art ? (art.startsWith('http') || art.startsWith('/') ? art : `/api/ipfs-proxy/${art}`) : null
     const thumb = artUrl
       ? `<div class="vault-tx-thumb"><img loading="lazy" src="/api/img?url=${encodeURIComponent(artUrl)}&w=80" alt=""></div>`

@@ -44,39 +44,33 @@ export async function listTicket(tokenId, priceWei) {
 }
 
 export async function purchaseTicket(tokenId, priceWei) {
-  // Run the self-buy read in parallel with the fund check so we don't add
-  // an extra sequential RPC hop before the wallet-confirm dialog opens.
-  const pcCheckP = getPublicClient()
-  const listingP = pcCheckP.then(pc =>
-    pc.readContract({
-      address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
-      functionName: 'listings', args: [BigInt(tokenId)],
-    }).catch(() => null)
-  )
-  const [addr, listing] = await Promise.all([
-    ensureFundsForPurchase(priceWei),
-    listingP,
-  ])
-  if (!addr) throw new Error(t('status.connectWallet'))
-
-  // Client-side self-buy guard: the contract doesn't reject buying your
-  // own listing, so the tx would just move your ETH to pendingWithdrawals
-  // and burn gas. If the listings() read failed we fall through and let
-  // the on-chain path run — better to over-permit than block a real buy.
+  // Self-buy guard runs FIRST, before we prompt the user for funding —
+  // rejecting a self-buy is cheap and instant; ensureFundsForPurchase can
+  // open a funding sheet whose UX shouldn't block on a hopeless attempt.
+  // If the listings() read fails, we fall through — better to over-permit
+  // on an RPC glitch than block a real buy.
+  const addr = window.getWalletAddress?.() || null
+  const pc = await getPublicClient()
+  const listing = await pc.readContract({
+    address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
+    functionName: 'listings', args: [BigInt(tokenId)],
+  }).catch(() => null)
   const seller = Array.isArray(listing) ? listing[0] : listing?.seller
-  if (seller && addr.toLowerCase() === String(seller).toLowerCase()) {
+  if (seller && addr && addr.toLowerCase() === String(seller).toLowerCase()) {
     throw new Error("that's your own listing — cancel it instead of buying")
   }
 
-  const purchaseAccount = await window.authorizedSigner?.(addr)
-          const wc = await getWalletClient()
+  const fundedAddr = await ensureFundsForPurchase(priceWei)
+  if (!fundedAddr) throw new Error(t('status.connectWallet'))
+
+  const purchaseAccount = await window.authorizedSigner?.(fundedAddr)
+  const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: TICKET_MARKET_ADDR, abi: TICKET_MARKET_ABI,
     functionName: 'purchase', args: [BigInt(tokenId)],
     value: BigInt(priceWei),
     account: purchaseAccount,
   })
-  const pc = await getPublicClient()
   await pc.waitForTransactionReceipt({ hash })
   return hash
 }
