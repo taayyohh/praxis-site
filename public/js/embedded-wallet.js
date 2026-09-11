@@ -935,7 +935,22 @@ function createEmbeddedProvider(account) {
         case 'eth_getTransactionByHash':
         case 'eth_blockNumber':
         case 'eth_getBlockByNumber':
-        case 'eth_getLogs': {
+        case 'eth_getLogs':
+        // LocalAccount signing (commit 7eea2ab) makes viem build the tx
+        // locally, which needs the nonce + fee inputs from the SAME
+        // transport it's using to send. Proxy those to the Optimism RPC
+        // so writeContract via the embedded wallet succeeds — otherwise
+        // every user-triggered write (follow, unfollow, DM, purchase,
+        // ticket buy, blog post, journal publish...) throws
+        // "unsupported method: eth_getTransactionCount".
+        case 'eth_getTransactionCount':
+        case 'eth_gasPrice':
+        case 'eth_maxPriorityFeePerGas':
+        case 'eth_feeHistory':
+        case 'eth_getCode':
+        case 'eth_getStorageAt':
+        case 'eth_getBlockByHash':
+        case 'eth_getBlockTransactionCountByNumber': {
           // proxy read calls to Optimism RPC
           const resp = await fetch(OPTIMISM_RPC, {
             method: 'POST',
