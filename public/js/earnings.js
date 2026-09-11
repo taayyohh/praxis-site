@@ -737,76 +737,50 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
 
   let html = ''
 
-  // --- Balance hero ---
-  // Hero surfaces the essentials — total balance, lifetime earned/spent/net —
-  // and the action row. Chain balances moved into the left column of the
-  // dashboard grid below so the hero stays compact.
-  html += `<div class="vault-hero vault-hero-compact">`
-  html += `<div class="vault-hero-left">`
-  html += `<div class="vault-total-label">total balance</div>`
-  html += `<div class="vault-total-value">${formatFiat(totalFiat, currency)}</div>`
-  html += `</div>`
+  // Per docs/design-philosophy.md: the vault is a document, not a
+  // dashboard. Reads top to bottom. One story: "here is your money —
+  // where it lives, what it's earning, what's moving." Every element
+  // earns its size from the number it carries.
 
-  // Earned + spent chips: right side of the hero, aligned to the right so
-  // they read as a summary, not a competing focal point.
+  html += `<div class="vault-doc">`
+
+  // --- The number ---
+  // The largest number on the page: total balance. First glance = done.
+  html += `<section class="vault-lead">`
+  html += `<div class="vault-lead-label">total balance</div>`
+  html += `<div class="vault-lead-value">${formatFiat(totalFiat, currency)}</div>`
   if (totalEarned > 0n || totalContributed > 0n) {
-    html += `<div class="vault-hero-summary">`
-    html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">earned</span><span class="vault-hero-chip-value" style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></div>`
-    html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">spent</span><span class="vault-hero-chip-value">${formatFiat(totalSpentFiat, currency)}</span></div>`
+    html += `<div class="vault-lead-meta">`
+    html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">earned</span> <span style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></span>`
+    html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">spent</span> ${formatFiat(totalSpentFiat, currency)}</span>`
     if (Math.abs(netFiat) > 0.01) {
       const netColor = netFiat >= 0 ? 'var(--green)' : 'var(--muted)'
       const netSign = netFiat >= 0 ? '+' : '−'
-      html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">net</span><span class="vault-hero-chip-value" style="color:${netColor}">${netSign}${formatFiat(Math.abs(netFiat), currency)}</span></div>`
+      html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">net</span> <span style="color:${netColor}">${netSign}${formatFiat(Math.abs(netFiat), currency)}</span></span>`
     }
     html += `</div>`
   }
+  // Actions live with the hero as small text links — subordinate to the
+  // number, not competing with it.
+  html += `<div class="vault-lead-verbs">`
+  html += `<button type="button" class="vault-verb" id="vault-send-btn">send</button>`
+  html += `<button type="button" class="vault-verb" id="vault-receive-btn">receive</button>`
+  html += `<button type="button" class="vault-verb" id="vault-fund-btn">add funds</button>`
+  html += `<button type="button" class="vault-verb" id="vault-cashout-btn">cash out</button>`
   html += `</div>`
+  html += `</section>`
 
-  // Action row directly under the hero — full width, one line.
-  html += `<div class="vault-actions">`
-  html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i><span>send</span></button>`
-  html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i><span>receive</span></button>`
-  html += `<button class="vault-action-btn vault-action-btn-primary" id="vault-swap-btn"><i class="ph ph-piggy-bank"></i><span>save</span></button>`
-  html += `<button class="vault-action-btn" id="vault-fund-btn"><i class="ph ph-plus"></i><span>add funds</span></button>`
-  html += `<button class="vault-action-btn" id="vault-cashout-btn"><i class="ph ph-arrow-square-out"></i><span>cash out</span></button>`
-  html += `</div>`
-
-  // --- Dashboard grid ---
-  // Two columns that fit the viewport on desktop. Left carries the
-  // "where your money lives" story (chain balances + income/outflow
-  // breakdown). Right carries the "what it's doing" story (savings
-  // yield + recent activity).
-  html += `<div class="vault-grid">`
-
-  // LEFT COLUMN — chain balances + income/outflow breakdown
-  html += `<div class="vault-grid-col">`
-
-  // Chain balance panel — one row per chain with a non-zero balance;
-  // always show Optimism (the app's home chain) so a fresh account
-  // still has structure.
-  html += `<div class="vault-panel">`
-  html += `<div class="vault-panel-title">chains</div>`
-  html += `<div class="vault-tokens vault-tokens-plain">`
-  const rows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
-    .filter(c => c.balance > 0n || c.chainId === 10)
-  for (const c of rows) {
-    const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
-    html += `<div class="vault-token">`
-    html += `<div class="vault-token-icon">${ETH_ICON}</div>`
-    html += `<div class="vault-token-info"><span class="vault-token-name">ETH</span><span class="vault-token-chain">${c.name}</span></div>`
-    html += `<div class="vault-token-amounts"><span class="vault-token-bal">${formatEthAmount(c.balance)}</span><span class="vault-token-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span></div>`
-    html += `</div>`
-  }
-  if (boldBalance > 0n) {
-    const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
-    html += `<div class="vault-token">`
-    html += `<div class="vault-token-icon">${BOLD_ICON}</div>`
-    html += `<div class="vault-token-info"><span class="vault-token-name">BOLD</span><span class="vault-token-chain">Ethereum</span></div>`
-    html += `<div class="vault-token-amounts"><span class="vault-token-bal">${boldFormatted}</span><span class="vault-token-fiat">${formatFiat(boldFiat, currency)}</span></div>`
-    html += `</div>`
-  }
-  html += `</div>`
-  html += `</div>`
+  // --- What it's earning ---
+  // Savings gets its own act. The "save" action lives HERE, attached to
+  // its subject — not repeated in a generic action strip.
+  const bestApyHead = yieldData?.bestApy || 0
+  const spTotalHead = spDeposits?.total || 0n
+  const totalBoldHead = spTotalHead + boldBalance
+  html += `<section class="vault-act vault-act-savings">`
+  html += `<header class="vault-act-head">`
+  html += `<h2 class="vault-act-title">savings</h2>`
+  if (bestApyHead > 0) html += `<span class="vault-act-badge">${bestApyHead.toFixed(1)}% APR available</span>`
+  html += `</header>`
 
   // --- BOLD savings card ---
   const bestApy = yieldData?.bestApy || 0
@@ -831,137 +805,138 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   }
   const projectedMonthlyYield = projectedYearlyYield / 12
 
-  // Breakdown panel — where earnings came from + where spending went.
-  // Same left column so the "where money lives" story stays cohesive.
-  html += `<div class="vault-panel">`
-  html += `<div class="vault-panel-title">income &amp; outflow</div>`
-  html += `<div class="vault-breakdown">`
-  const ownMediaTotalPre = earned.mediaSales.filter(s => s.type !== 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
-  const collabMediaTotalPre = earned.mediaSales.filter(s => s.type === 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-music-note"></i> media sales</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(ownMediaTotalPre, ethPrices)}</span></div>`
-  if (collabMediaTotalPre > 0n) {
-    html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-users"></i> collab splits</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(collabMediaTotalPre, ethPrices)}</span></div>`
-  }
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-handshake"></i> project payouts</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(earned.projectEarnings + unclaimed.praxis, ethPrices)}</span></div>`
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-rocket"></i> projects funded</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.fundingTotal, ethPrices)}</span></div>`
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-shopping-cart"></i> media collected</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.purchaseTotal, ethPrices)}</span></div>`
-  html += `</div>`
-  html += `</div>`
-
-  // Close LEFT column
-  html += `</div>`
-
-  // RIGHT COLUMN — savings + activity
-  html += `<div class="vault-grid-col">`
-
-  html += `<div class="vault-savings">`
-  html += `<div class="vault-savings-header">`
-  html += `<div class="vault-savings-icon">${BOLD_ICON}</div>`
-  html += `<div style="flex:1">`
-  html += `<div class="vault-savings-title">savings</div>`
-  html += `<div class="vault-savings-sub">BOLD stablecoin · Liquity stability pools</div>`
-  html += `</div>`
-  if (bestApy > 0) {
-    html += `<div class="vault-savings-apr"><span class="vault-apr-value">${bestApy.toFixed(1)}%</span><span class="vault-apr-label">APR</span></div>`
-  }
-  html += `</div>`
-
+  // Savings body: current position + projected yield as a single line
+  // of typography — no icons, no color-boxes, hierarchy from size + color.
   if (totalBold > 0n) {
     const totalStr = (Number(totalBold) / 1e18).toFixed(2)
-    html += `<div class="vault-savings-bal">${totalStr} <span style="color:var(--dim)">BOLD</span> <span class="vault-savings-fiat">${formatFiat(Number(totalBold) / 1e18, currency)}</span></div>`
-
-    // Yield estimate — concrete dollars, not just an APR number.
+    html += `<div class="vault-act-figure">`
+    html += `<span class="vault-act-figure-main">${totalStr}</span> `
+    html += `<span class="vault-act-figure-unit">BOLD</span> `
+    html += `<span class="vault-act-figure-secondary">${formatFiat(Number(totalBold) / 1e18, currency)}</span>`
+    html += `</div>`
     if (projectedYearlyYield > 0) {
-      html += `<div class="vault-savings-yield">`
-      html += `<span class="vault-savings-yield-value">${formatFiat(projectedMonthlyYield, currency)}<span class="vault-savings-yield-unit">/mo</span></span>`
-      html += `<span class="vault-savings-yield-sep">·</span>`
-      html += `<span class="vault-savings-yield-year">${formatFiat(projectedYearlyYield, currency)}/yr projected</span>`
+      html += `<div class="vault-act-yield">`
+      html += `earning <span style="color:var(--green)">${formatFiat(projectedMonthlyYield, currency)}/mo</span> · `
+      html += `${formatFiat(projectedYearlyYield, currency)}/yr projected`
       html += `</div>`
     }
-
-    // Break down deposited vs liquid when both exist.
     const parts = []
     if (spTotalBold > 0n) parts.push(`${(Number(spTotalBold) / 1e18).toFixed(2)} earning yield`)
     if (liquidBold > 0n) parts.push(`${(Number(liquidBold) / 1e18).toFixed(2)} liquid`)
     if (parts.length > 0) {
-      html += `<div class="vault-savings-position">${parts.join(' · ')}</div>`
+      html += `<div class="vault-act-sub">${parts.join(' · ')}</div>`
     }
     const activePools = (spDeposits?.pools || []).filter(p => p.balance > 0n)
     if (activePools.length > 1) {
       const lines = activePools.map(p =>
         `${p.name}: ${(Number(p.balance) / 1e18).toFixed(2)}`
       ).join(' · ')
-      html += `<div class="vault-savings-position">${escapeHtml(lines)}</div>`
+      html += `<div class="vault-act-sub">${escapeHtml(lines)}</div>`
     }
   } else {
-    html += `<div class="vault-savings-bal" style="color:var(--dim)">no deposits yet</div>`
+    html += `<div class="vault-act-figure vault-act-figure-empty">no deposits yet</div>`
     if (bestApy > 0) {
-      html += `<div class="vault-savings-yield-empty">save $100 → earn ~${formatFiat(100 * (bestApy / 100), currency)}/yr</div>`
+      html += `<div class="vault-act-yield">save $100 → earn ~${formatFiat(100 * (bestApy / 100), currency)}/yr</div>`
     }
   }
 
+  // Pools rendered inline as a table — no separate box. Highlight the
+  // pool(s) the user is in with a pill.
   if (pools.length > 0) {
-    html += `<div class="vault-pools">`
-    // Compact 3-column header row so each pool is scannable
-    html += `<div class="vault-pools-head"><span>pool</span><span>APR</span><span>size</span></div>`
+    html += `<div class="vault-pool-table">`
+    html += `<div class="vault-pool-table-head"><span>pool</span><span>APR</span><span>size</span></div>`
     for (const pool of pools.slice(0, 4)) {
       const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
-      // Highlight the pool(s) the user is deposited in
       const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.name)?.balance || 0n
       const active = userAmount > 0n
-      html += `<div class="vault-pool-row${active ? ' vault-pool-row-active' : ''}">`
-      html += `<span class="vault-pool-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-badge">${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
-      html += `<span class="vault-pool-apr">${pool.apy.toFixed(1)}%</span>`
-      html += `<span class="vault-pool-tvl">${tvlStr}</span>`
+      html += `<div class="vault-pool-line${active ? ' vault-pool-line-active' : ''}">`
+      html += `<span class="vault-pool-line-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-line-badge">${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
+      html += `<span class="vault-pool-line-apr">${pool.apy.toFixed(1)}%</span>`
+      html += `<span class="vault-pool-line-tvl">${tvlStr}</span>`
       html += `</div>`
     }
     html += `</div>`
   }
+  // The 'save' action lives HERE, attached to its subject — not in a
+  // generic action strip. Design philosophy: one home per action.
+  html += `<button type="button" class="vault-act-cta" id="vault-save-btn">${totalBold > 0n ? 'save more →' : 'save ETH to BOLD →'}</button>`
+  html += `</section>`
 
-  html += `<button class="vault-save-cta" id="vault-save-btn"><i class="ph ph-plus-circle"></i> ${totalBold > 0n ? 'save more' : 'save ETH to BOLD'}</button>`
-  html += `</div>`
-
-  // --- Unclaimed banner --- inlined in the right column as a call-to-action.
+  // --- Unclaimed callout ---
+  // A single line of green attention when there's money to claim.
   if (totalUnclaimed > 0n) {
-    html += `<div class="vault-unclaimed">`
-    html += `<div class="vault-unclaimed-header"><i class="ph ph-coins"></i> unclaimed earnings</div>`
-    if (unclaimed.media > 0n) {
-      html += `<div class="vault-unclaimed-row">
-        <span>${formatPriceFiatPrimary(unclaimed.media, ethPrices)} <span style="color:var(--dim)">media sales</span></span>
-        <button class="vault-claim-btn earnings-claim-btn" data-source="media">claim</button>
-      </div>`
-    }
-    if (unclaimed.praxis > 0n) {
-      html += `<div class="vault-unclaimed-row">
-        <span>${formatPriceFiatPrimary(unclaimed.praxis, ethPrices)} <span style="color:var(--dim)">project payouts</span></span>
-        <button class="vault-claim-btn earnings-claim-btn" data-source="projects">claim</button>
-      </div>`
-    }
-    if (ticketUnclaimed > 0n) {
-      html += `<div class="vault-unclaimed-row">
-        <span>${formatPriceFiatPrimary(ticketUnclaimed, ethPrices)} <span style="color:var(--dim)">ticket sales</span></span>
-        <button class="vault-claim-btn earnings-claim-btn" data-source="tickets">claim</button>
-      </div>`
-    }
-    html += `<p id="earnings-claim-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>`
+    html += `<section class="vault-unclaimed vault-unclaimed-inline">`
+    html += `<span class="vault-unclaimed-line">you have <strong>${formatPriceFiatPrimary(totalUnclaimed, ethPrices)}</strong> unclaimed`
+    const detailParts = []
+    if (unclaimed.media > 0n) detailParts.push(`${formatPriceFiatPrimary(unclaimed.media, ethPrices)} media`)
+    if (unclaimed.praxis > 0n) detailParts.push(`${formatPriceFiatPrimary(unclaimed.praxis, ethPrices)} projects`)
+    if (ticketUnclaimed > 0n) detailParts.push(`${formatPriceFiatPrimary(ticketUnclaimed, ethPrices)} tickets`)
+    if (detailParts.length > 0) html += ` <span style="color:var(--dim)">· ${detailParts.join(' · ')}</span>`
+    html += `</span>`
+    html += `<div class="vault-unclaimed-verbs">`
+    if (unclaimed.media > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="media">claim media</button>`
+    if (unclaimed.praxis > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="projects">claim projects</button>`
+    if (ticketUnclaimed > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="tickets">claim tickets</button>`
     html += `</div>`
+    html += `<p id="earnings-claim-status" class="vault-unclaimed-status"></p>`
+    html += `</section>`
   }
 
-  // --- Activity panel ---
-  html += `<div class="vault-panel vault-panel-activity">`
-  html += `<div class="vault-panel-title">activity</div>`
+  // --- Where it lives — chains ---
+  // Compact table, not a hero panel. Content earns its size (four rows).
+  html += `<section class="vault-act">`
+  html += `<header class="vault-act-head">`
+  html += `<h2 class="vault-act-title">where it lives</h2>`
+  html += `</header>`
+  html += `<div class="vault-chain-table">`
+  const chainRows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+    .filter(c => c.balance > 0n || c.chainId === 10)
+  for (const c of chainRows) {
+    const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
+    html += `<div class="vault-chain-line">`
+    html += `<span class="vault-chain-line-name">${escapeHtml(c.name)}</span>`
+    html += `<span class="vault-chain-line-bal">${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
+    html += `<span class="vault-chain-line-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span>`
+    html += `</div>`
+  }
+  html += `</div>`
+  html += `</section>`
+
+  // --- What's moving — income + outflow + activity ---
+  html += `<section class="vault-act">`
+  html += `<header class="vault-act-head">`
+  html += `<h2 class="vault-act-title">what's moving</h2>`
+  html += `</header>`
+
+  // Two-column income/outflow line — real symmetry because the two sides
+  // are the same idea.
+  html += `<div class="vault-flow">`
+  html += `<div class="vault-flow-col">`
+  html += `<div class="vault-flow-label">income</div>`
+  const ownMediaTotalDoc = earned.mediaSales.filter(s => s.type !== 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
+  const collabMediaTotalDoc = earned.mediaSales.filter(s => s.type === 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
+  html += `<div class="vault-flow-line"><span>media sales</span><span style="color:var(--green)">${formatPriceFiatPrimary(ownMediaTotalDoc, ethPrices)}</span></div>`
+  if (collabMediaTotalDoc > 0n) {
+    html += `<div class="vault-flow-line"><span>collab splits</span><span style="color:var(--green)">${formatPriceFiatPrimary(collabMediaTotalDoc, ethPrices)}</span></div>`
+  }
+  html += `<div class="vault-flow-line"><span>project payouts</span><span style="color:var(--green)">${formatPriceFiatPrimary(earned.projectEarnings + unclaimed.praxis, ethPrices)}</span></div>`
+  html += `</div>`
+  html += `<div class="vault-flow-col">`
+  html += `<div class="vault-flow-label">outflow</div>`
+  html += `<div class="vault-flow-line"><span>projects funded</span><span>${formatPriceFiatPrimary(contributed.fundingTotal, ethPrices)}</span></div>`
+  html += `<div class="vault-flow-line"><span>media collected</span><span>${formatPriceFiatPrimary(contributed.purchaseTotal, ethPrices)}</span></div>`
+  html += `</div>`
+  html += `</div>`
+
+  // Activity — bounded scroll, borderless. It's a timeline, not a panel.
   if (_allHistory.length > 0) {
     const firstPage = _allHistory.slice(0, HISTORY_PAGE_SIZE)
     _historyShown = firstPage.length
-    html += `<div id="vault-history-wrap" class="vault-history"><div id="vault-history">${renderHistoryItems(firstPage, ethPrices)}</div></div>`
-  } else {
-    html += `<p style="color:var(--dim);font-size:0.9em">no activity yet</p>`
+    html += `<div class="vault-activity-label">recent activity</div>`
+    html += `<div id="vault-history-wrap" class="vault-history vault-history-inline"><div id="vault-history">${renderHistoryItems(firstPage, ethPrices)}</div></div>`
   }
-  html += `</div>`
+  html += `</section>`
 
-  // Close RIGHT column
-  html += `</div>`
-  // Close GRID
   html += `</div>`
 
   el.innerHTML = html
