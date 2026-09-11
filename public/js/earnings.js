@@ -279,11 +279,57 @@ async function initVault() {
     _mediaArtMap = await _buildArtMap().catch(() => ({}))
     // Resolve cover art for cross-artist purchases so "collected" rows in
     // the activity feed show real thumbnails, not generic cart icons.
-    _purchaseArtMap = await _fetchPurchaseCovers(contributed.purchaseItems.map(p => p.mediaId)).catch(() => ({}))
-    _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
+    // Guard the sync .map() with `|| []` so a missing purchaseItems shape
+    // doesn't throw before the promise even gets a chance to catch.
+    const purchaseMediaIds = (contributed?.purchaseItems || []).map(p => p.mediaId)
+    _purchaseArtMap = await _fetchPurchaseCovers(purchaseMediaIds).catch(() => ({}))
+    try {
+      _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
+    } catch (e) {
+      console.warn('vault history build failed:', e)
+      _allHistory = []
+    }
     _historyShown = 0
 
-    renderVault(contentEl, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
+    try {
+      renderVault(contentEl, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
+    } catch (e) {
+      // Isolate render failures from the load pipeline so a bad shape in
+      // one section can't hide the whole vault. Log + fall through to a
+      // minimal render below so the action buttons still exist.
+      console.warn('vault render failed:', e)
+      // Fallback breakdown row lists Optimism so the chain-composition
+      // toggle in the design still opens onto real content — otherwise a
+      // partial failure would hide the app's only home chain.
+      const fbChains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: 10, name: 'Optimism', balance: 0n }])
+      const fbBreakdown = fbChains.map(c =>
+        `<div class="vault-lead-row"><span class="vault-lead-row-name">${escapeHtml(c.name)}</span><span class="vault-lead-row-bal">0 <span style="color:var(--dim)">ETH</span></span><span class="vault-lead-row-fiat"></span></div>`
+      ).join('')
+      contentEl.innerHTML = `<div class="vault-doc"><section class="vault-lead">
+<div class="vault-lead-label">total balance</div>
+<button type="button" class="vault-lead-toggle" id="vault-lead-toggle" aria-expanded="false" aria-controls="vault-lead-breakdown"><span class="vault-lead-value">${formatFiat(0, getUserCurrency())}</span><span class="vault-lead-caret" aria-hidden="true">▾</span></button>
+<div class="vault-lead-breakdown" id="vault-lead-breakdown" hidden>${fbBreakdown}</div>
+<div class="vault-lead-verbs">
+<button type="button" class="vault-verb" id="vault-send-btn">send</button>
+<button type="button" class="vault-verb" id="vault-receive-btn">receive</button>
+</div>
+<button type="button" class="vault-act-cta" id="vault-save-btn">save ETH to BOLD →</button>
+</section></div>`
+      const currency = getUserCurrency()
+      document.getElementById('vault-send-btn')?.addEventListener('click', () => showSendModal(addr))
+      document.getElementById('vault-receive-btn')?.addEventListener('click', () => showReceiveModal(addr))
+      document.getElementById('vault-save-btn')?.addEventListener('click', () =>
+        showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBalances))
+      // Wire the same toggle behavior as the full render.
+      document.getElementById('vault-lead-toggle')?.addEventListener('click', (e) => {
+        const panel = document.getElementById('vault-lead-breakdown')
+        const btn = e.currentTarget
+        if (!panel) return
+        const open = !panel.hidden
+        panel.hidden = open
+        btn.setAttribute('aria-expanded', String(!open))
+      })
+    }
   } catch (e) {
     console.warn('vault load error:', e)
     contentEl.innerHTML = `<p style="color:var(--muted)">failed to load vault</p>`
