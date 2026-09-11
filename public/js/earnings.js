@@ -955,8 +955,17 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // Pools rendered inline as a table — no separate box. Highlight the
   // pool(s) the user is in with a "you" pill so they can see at a glance
   // where their money actually lives. Shows current APR + 30-day mean.
+  // For a first-time user this list of "rETH / ETH / wstETH stability
+  // pools" is jargon — hide it behind a toggle by default. Users who
+  // ARE in a pool see it (their money lives there); everyone else can
+  // opt in to the detail.
   if (pools.length > 0) {
-    html += `<div class="vault-pool-table">`
+    const anyActive = pools.some(p => (spDeposits?.pools || []).some(sp => sp.name === p.collateral && sp.balance > 0n))
+    html += `<div class="vault-pool-table${anyActive ? '' : ' vault-pool-table-collapsed'}" id="vault-pool-table">`
+    if (!anyActive) {
+      html += `<button type="button" class="vault-pool-table-toggle" id="vault-pool-table-toggle" aria-expanded="false">see pool details ↓</button>`
+      html += `<div class="vault-pool-table-inner" id="vault-pool-table-inner" hidden>`
+    }
     html += `<div class="vault-pool-table-head vault-pool-table-head-4"><span>pool</span><span>apr</span><span>30d</span><span>size</span></div>`
     for (const pool of pools.slice(0, 4)) {
       const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
@@ -978,6 +987,9 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
       html += `<span class="vault-pool-line-tvl">${tvlStr}</span>`
       html += `</div>`
     }
+    // Close the collapsible inner wrap when we opened it above.
+    if (!anyActive) html += `</div>`
+
     // "Rates updated Xm ago · how this works" — small meta strip.
     const yieldTs = yieldData?.timestamp ? Date.now() - yieldData.timestamp : 0
     const updatedStr = yieldTs > 0
@@ -1121,6 +1133,18 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     panel.hidden = open
     btn.setAttribute('aria-expanded', String(!open))
     btn.classList.toggle('vault-lead-toggle-open', !open)
+  })
+
+  // Collapsed pool-details toggle (only rendered when the user has no
+  // deposits — otherwise the table is visible so they can see their pool).
+  document.getElementById('vault-pool-table-toggle')?.addEventListener('click', (e) => {
+    const inner = document.getElementById('vault-pool-table-inner')
+    const btn = e.currentTarget
+    if (!inner) return
+    const open = !inner.hidden
+    inner.hidden = open
+    btn.setAttribute('aria-expanded', String(!open))
+    btn.textContent = open ? 'see pool details ↓' : 'hide pool details ↑'
   })
 
   // "how BOLD savings work" toggle — progressive disclosure of mechanics.
@@ -1757,12 +1781,25 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
         markStep('deposit', 'done')
       }
 
-      confirmBtn.textContent = t('save.done') || 'Deposited — earning yield'
+      // Unambiguous success — mark every step done, swap the button
+      // for a big green Deposited ✓, celebratory status, then close.
+      stepsEl?.querySelectorAll('.vault-save-step').forEach(s => {
+        s.classList.remove('vault-save-step-active', 'vault-save-step-error')
+        s.classList.add('vault-save-step-done')
+      })
+      confirmBtn.textContent = selectedPool
+        ? (t('save.done') || 'Deposited ✓')
+        : (t('save.doneNoPool') || 'BOLD received ✓')
       confirmBtn.classList.add('vault-save-btn-done')
-      statusEl.style.color = 'var(--green)'
-      statusEl.textContent = selectedPool ? (t('save.done') || 'Deposited — earning yield') : (t('save.doneNoPool') || 'BOLD received — ready to deposit')
+      statusEl.classList.remove('vault-save-status-error')
+      statusEl.classList.add('vault-save-status-done')
+      statusEl.innerHTML = selectedPool
+        ? `<strong>Deposited — your BOLD is now earning yield.</strong>`
+        : `<strong>BOLD received — ready to deposit.</strong>`
       window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
-      setTimeout(() => overlay.remove(), 4000)
+      // Give the user a beat to see the confirmation before the modal
+      // slides away. 2.5s beats 4s — reads as intentional, not sluggish.
+      setTimeout(() => overlay.remove(), 2500)
     } catch (e) {
       console.warn('save flow error:', e)
       const failedStep = stepsEl?.querySelector('.vault-save-step-active')

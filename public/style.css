@@ -7301,6 +7301,47 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   font-size: 0.92em !important;
 }
 .vault-save-status-error strong { color: #ff6666; font-weight: 700; }
+
+/* Success status — green ribbon so the user CAN'T miss it. */
+.vault-save-status-done {
+  color: var(--fg) !important;
+  padding: 0.75em 1em !important;
+  border: 1px solid color-mix(in srgb, var(--green) 45%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, var(--green) 10%, transparent) !important;
+  margin-top: 0.75em !important;
+  line-height: 1.55 !important;
+  font-size: 0.95em !important;
+}
+.vault-save-status-done strong { color: var(--green); font-weight: 700; }
+.vault-save-btn-done {
+  background: var(--green) !important;
+  color: #000 !important;
+  cursor: default !important;
+}
+.vault-save-step-done .vault-save-step-idx {
+  background: var(--green) !important;
+  color: #000 !important;
+  border-color: var(--green) !important;
+}
+.vault-save-step-done .vault-save-step-label { color: var(--fg) !important; }
+
+/* Progressive-disclosure pool table (vault view). Collapsed by default
+ * when the user has no deposits — the list of "rETH / ETH / wstETH
+ * stability pools" is jargon on first read. */
+.vault-pool-table-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0.55em 0;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: color 0.12s;
+  display: block;
+}
+.vault-pool-table-toggle:hover,
+.vault-pool-table-toggle:focus-visible { color: var(--fg); outline: none; }
 .vault-act-yield {
   font-size: 0.9em;
   color: var(--muted);

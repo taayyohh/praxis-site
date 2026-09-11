@@ -34,14 +34,38 @@ export default {
       html += `<div class="music-play-all" style="margin-bottom:1em;display:flex;gap:0.5ch;align-items:center"><button class="album-queue-btn" data-queue="${esc(allQueueData)}" style="background:none;border:none;color:var(--dim);font-size:1em;cursor:pointer;padding:0.2em" title="add all to queue"><i class="ph ph-plus"></i></button><button class="album-play-btn" data-queue="${esc(allQueueData)}" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.85em;padding:0.3em 1.2ch;cursor:pointer"><i class="ph ph-play"></i> play all (${allTracks.length} tracks)</button></div>`
     }
 
-    // Flatten all albums across all aliases, preserving alias info
+    // Flatten all albums across all aliases, preserving alias info.
+    // Same-title albums within a single alias get merged (union of tracks,
+    // keeping the first-seen metadata) — this handles the case where an
+    // artist accidentally split one album into two site.json entries.
     const flatAlbums = []
     for (let ai = 0; ai < aliases.length; ai++) {
       const alias = aliases[ai]
       if (!alias?.name) continue
-      for (let ali = 0; ali < (alias.albums || []).length; ali++) {
-        flatAlbums.push({ album: alias.albums[ali], aliasName: alias.name, ai, ali })
+      const bySlug = new Map()
+      const rawAlbums = alias.albums || []
+      for (let ali = 0; ali < rawAlbums.length; ali++) {
+        const src = rawAlbums[ali]
+        const key = String(src.title || '').trim().toLowerCase()
+        if (!key) { flatAlbums.push({ album: src, aliasName: alias.name, ai, ali }); continue }
+        const existing = bySlug.get(key)
+        if (!existing) {
+          bySlug.set(key, { album: { ...src, tracks: [...(src.tracks || [])] }, aliasName: alias.name, ai, ali })
+        } else {
+          // Union of tracks by (src || title) so we don't dedupe two real
+          // songs with the same title from different sources.
+          const seen = new Set(existing.album.tracks.map(t => (t.src || t.title || '').toLowerCase()))
+          for (const t of (src.tracks || [])) {
+            const tk = (t.src || t.title || '').toLowerCase()
+            if (!seen.has(tk)) { existing.album.tracks.push(t); seen.add(tk) }
+          }
+          // Fill in any metadata the first record was missing.
+          for (const k of ['art', 'year', 'artist', 'genre', 'producer', 'description', 'collab', 'links', 'section']) {
+            if (existing.album[k] == null && src[k] != null) existing.album[k] = src[k]
+          }
+        }
       }
+      for (const entry of bySlug.values()) flatAlbums.push(entry)
     }
 
     // Group by section if any album has a section field.
@@ -60,11 +84,11 @@ export default {
       const hasTracksOrLinks = (album.tracks?.length > 0) || album.links || album.description
       const albumId = `album-${(aliasName + album.title).replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
       const artDetailUrl = `/music/${slugify(aliasName)}/${slugify(album.title)}`
-      out += `<div class="album${hasTracksOrLinks ? ' album-clickable' : ''}" data-album-id="${esc(albumId)}">`
+      out += `<div class="album${hasTracksOrLinks ? ' album-clickable' : ''}" data-album-id="${esc(albumId)}"${hasTracksOrLinks ? ' tabindex="0" role="button"' : ''}>`
       const artThumb = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=800` : ''
       const albumPlayable = (album.tracks || []).filter(t => t.src)
       const albumQueueData = albumPlayable.length > 0 ? encodeURIComponent(JSON.stringify(albumPlayable.map(t => ({ src: t.src, title: t.title, artist: album.artist || aliasName, art: album.art || '' })))) : ''
-      const albumPlayOverlay = albumQueueData ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(albumQueueData)}"><i class="ph ph-play"></i></button>` : ''
+      const albumPlayOverlay = albumQueueData ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(albumQueueData)}" aria-label="Play ${esc(album.title)}"><i class="ph ph-play"></i></button>` : ''
       out += `<div style="position:relative;flex-shrink:0;overflow:hidden;border-radius:4px">`
       out += album.art
         ? `<a href="${artDetailUrl}" style="display:block;cursor:pointer"><img src="${esc(artThumb)}" alt="${esc(album.title)}" loading="lazy" onerror="this.style.display='none'"></a>`
@@ -89,7 +113,7 @@ export default {
           // Buy album button — shows when multiple tracks are listed
           const listedTracks = (album.tracks || []).filter(t => t.mediaId !== undefined && t.mediaId !== null)
           if (listedTracks.length >= 2) {
-            const totalWei = listedTracks.reduce((sum, t) => sum + BigInt(Math.round(Number(t.mediaPrice || '0'))), 0n)
+            const totalWei = listedTracks.reduce((sum, t) => sum + BigInt(t.mediaPrice || '0'), 0n)
             const totalEth = Number(totalWei) / 1e18
             const idsJson = esc(JSON.stringify(listedTracks.map(t => t.mediaId)))
             out += `<button class="batch-buy-btn feed-card-btn green" data-media-ids="${idsJson}" data-total-price="${totalWei.toString()}" data-eth-wei="${totalWei.toString()}">buy album <span data-eth-wei="${totalWei.toString()}" data-fiat-primary="true"></span></button>`
@@ -114,7 +138,7 @@ export default {
             }
             if (track.src) {
               out += `<button class="track-queue-btn" data-src="${esc(track.src)}" data-title="${esc(track.title)}" data-artist="${esc(album.artist || aliasName)}" data-art="${esc(album.art || '')}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.1em 0.4ch" title="add to queue"><i class="ph ph-plus"></i></button>`
-              out += `<button class="track-play-btn feed-card-btn" data-track-src="${esc(track.src)}" data-track-title="${esc(track.title)}" data-track-artist="${esc(album.artist || aliasName)}" data-album="${esc(albumId)}"><i class="ph ph-play"></i></button>`
+              out += `<button class="track-play-btn feed-card-btn" data-track-src="${esc(track.src)}" data-track-title="${esc(track.title)}" data-track-artist="${esc(album.artist || aliasName)}" data-album="${esc(albumId)}" aria-label="Play ${esc(track.title)}"><i class="ph ph-play"></i></button>`
               // Reference button — opens compose modal with this track as reference
               if (track.mediaId != null) {
                 out += `<button class="track-ref-btn" data-ref-media="${track.mediaId}" data-ref-title="${esc(track.title)}" data-ref-artist="${esc(album.artist || aliasName)}" data-ref-art="${esc(album.art || '')}" data-ref-src="${esc(track.src || '')}" title="write about this track" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.75em;cursor:pointer;padding:0.15em 0.5ch;border-radius:3px;display:inline-flex;align-items:center"><i class="ph ph-note-pencil"></i></button>`
@@ -316,7 +340,7 @@ export default {
       const playableTracks = al.tracks.filter(t => t.src)
       const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: al.artist || al.alias, art: al.art || '' }))))
       const playOverlay = playableTracks.length > 0
-        ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(queueData)}"><i class="ph ph-play"></i></button>`
+        ? `<button class="album-play-btn album-art-play-overlay" data-queue="${esc(queueData)}" aria-label="Play ${esc(al.title)}"><i class="ph ph-play"></i></button>`
         : ''
       const thumbUrl = al.art ? `/api/img?url=${encodeURIComponent(al.art)}&w=480` : ''
       const artUrl = `/music/${slugify(al.alias)}/${slugify(al.title)}`
