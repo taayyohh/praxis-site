@@ -1032,11 +1032,17 @@ async function initProjectDetail() {
         if (unlistedTickets.length > 0) {
           resaleHtml += `<div class="pd-section-title" style="margin-top:1em"><i class="ph ph-ticket" style="margin-right:0.3ch"></i> ${t('tickets.yourTickets')}</div>`
           for (const ticket of unlistedTickets) {
-            resaleHtml += `<div style="display:flex;gap:0.5ch;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);font-size:0.9em">
-              <span style="color:var(--fg)">ticket #${ticket.tokenId}</span>
-              <input type="text" class="ticket-price-input project-input" data-token-id="${esc(ticket.tokenId)}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto;padding:0.4em 0.6ch;font-size:0.85em">
+            // The tokenId doubles as the ticket's URL slug — same value the
+            // buyer scans + the artist checks in against. Short label uses
+            // the tokenId's tail (last 8 digits) for legibility since the
+            // full number is >70 characters.
+            const tid = String(ticket.tokenId)
+            const tail = tid.length > 8 ? tid.slice(-8) : tid
+            resaleHtml += `<div style="display:flex;gap:0.5ch;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);font-size:0.9em;flex-wrap:wrap">
+              <a href="/ticket?token=${esc(tid)}" class="ticket-view-link" title="open ticket pass" style="color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;gap:0.4ch"><i class="ph ph-ticket"></i> ticket #${esc(tail)}</a>
+              <input type="text" class="ticket-price-input project-input" data-token-id="${esc(tid)}" placeholder="${t('tickets.enterPrice')}" style="width:10ch;margin-left:auto;padding:0.4em 0.6ch;font-size:0.85em">
               <span style="color:var(--dim);font-size:0.85em">ETH</span>
-              <button class="buy-btn list-ticket-btn" data-token-id="${esc(ticket.tokenId)}" style="font-size:0.8em;padding:0.3em 1ch;margin-top:0">${t('tickets.listForSale')}</button>
+              <button class="buy-btn list-ticket-btn" data-token-id="${esc(tid)}" style="font-size:0.8em;padding:0.3em 1ch;margin-top:0">${t('tickets.listForSale')}</button>
             </div>`
           }
         }
@@ -1167,6 +1173,8 @@ async function initProjectDetail() {
         const checkins = checkinData.checkins?.items || []
         const totalTicketsSold = (data.tiers?.items || []).reduce((sum, t) => sum + Number(t.sold), 0)
 
+        // Detect QR scanner capability once — used to gate the "scan" CTA.
+        const _canScan = typeof window !== 'undefined' && ('BarcodeDetector' in window)
         checkinSection.innerHTML = `<div class="pd-glass">
           <div class="pd-section-title"><i class="ph ph-qr-code" style="margin-right:0.3ch"></i> check-in</div>
           <div style="display:flex;gap:2em;margin-bottom:1em;font-size:0.85em">
@@ -1174,11 +1182,18 @@ async function initProjectDetail() {
             <span><span style="color:var(--accent);font-weight:700">${totalTicketsSold}</span> tickets sold</span>
             ${totalTicketsSold > 0 ? `<span><span style="color:var(--accent);font-weight:700">${Math.round(checkins.length / totalTicketsSold * 100)}%</span> attendance</span>` : ''}
           </div>
-          <div style="display:flex;gap:0.5ch;align-items:center">
-            <input type="text" id="checkin-token-id" class="project-input" placeholder="token ID" style="width:12ch;padding:0.5em 0.8ch;font-size:0.85em">
+          <div style="display:flex;gap:0.5ch;align-items:center;flex-wrap:wrap">
+            <input type="text" id="checkin-token-id" class="project-input" placeholder="token ID" style="flex:1;min-width:12ch;padding:0.5em 0.8ch;font-size:0.85em">
+            ${_canScan ? `<button class="buy-btn" id="action-scan" style="margin-top:0;background:none;border:1px solid var(--border);color:var(--fg)"><i class="ph ph-qr-code" style="margin-right:0.3ch"></i> scan</button>` : ''}
             <button class="buy-btn" id="action-checkin" style="margin-top:0"><i class="ph ph-check-circle" style="margin-right:0.3ch"></i> check in</button>
           </div>
           <p id="checkin-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
+          <div id="checkin-scanner" style="display:none;margin-top:0.75em">
+            <video id="checkin-scanner-video" playsinline style="width:100%;max-width:360px;border-radius:8px;background:#000;display:block"></video>
+            <div style="display:flex;gap:0.5ch;margin-top:0.5em">
+              <button class="buy-btn" id="scanner-close" style="margin-top:0;background:none;border:1px solid var(--border);color:var(--fg);font-size:0.85em">close scanner</button>
+            </div>
+          </div>
         </div>`
 
         document.getElementById('action-checkin')?.addEventListener('click', async () => {
@@ -1187,6 +1202,77 @@ async function initProjectDetail() {
           if (!tokenIdStr) { statusEl.textContent = 'enter a token ID'; return }
           await execAction('checkIn', [BigInt(projectId), BigInt(tokenIdStr)], null, null, { statusId: 'checkin-status' })
         })
+
+        // Camera-based QR scan → decode `praxis:t:<projectId>:<tierId>:<serial>`
+        // → reconstruct tokenId → auto-fill + submit. Uses the native
+        // BarcodeDetector API where available (Chrome + iOS 17+ Safari).
+        // Runs a tick-loop at ~4Hz on the video stream; stops on match or
+        // manual close.
+        let _scanStream = null
+        let _scanRAF = null
+        document.getElementById('action-scan')?.addEventListener('click', async () => {
+          const statusEl = document.getElementById('checkin-status')
+          const scannerEl = document.getElementById('checkin-scanner')
+          const videoEl = document.getElementById('checkin-scanner-video')
+          scannerEl.style.display = 'block'
+          statusEl.textContent = 'point the camera at the ticket QR'
+          try {
+            _scanStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'environment' }, audio: false,
+            })
+          } catch (e) {
+            statusEl.textContent = 'camera access denied — type the token ID instead'
+            scannerEl.style.display = 'none'
+            return
+          }
+          videoEl.srcObject = _scanStream
+          await videoEl.play().catch(() => {})
+          const Detector = window.BarcodeDetector
+          const detector = new Detector({ formats: ['qr_code'] })
+          const tick = async () => {
+            if (!_scanStream) return
+            try {
+              const codes = await detector.detect(videoEl)
+              if (codes && codes.length > 0) {
+                const raw = String(codes[0].rawValue || '')
+                const decoded = _decodeTicketQR(raw)
+                if (decoded && String(decoded.projectId) === String(projectId)) {
+                  // Reconstruct the tokenId with type=1 (TICKET).
+                  const tokenId = (1n << 248n) | (BigInt(decoded.projectId) << 184n) | (BigInt(decoded.tierId) << 152n) | BigInt(decoded.serial)
+                  document.getElementById('checkin-token-id').value = tokenId.toString()
+                  _closeScanner()
+                  statusEl.textContent = `scanned ticket #${decoded.serial} — checking in…`
+                  await execAction('checkIn', [BigInt(projectId), tokenId], null, null, { statusId: 'checkin-status' })
+                  return
+                }
+                if (decoded && String(decoded.projectId) !== String(projectId)) {
+                  statusEl.textContent = 'that ticket belongs to a different event'
+                }
+              }
+            } catch { /* keep looping — a bad frame isn't fatal */ }
+            _scanRAF = setTimeout(tick, 250)
+          }
+          tick()
+        })
+
+        function _closeScanner() {
+          if (_scanRAF) { clearTimeout(_scanRAF); _scanRAF = null }
+          if (_scanStream) {
+            _scanStream.getTracks().forEach(t => t.stop())
+            _scanStream = null
+          }
+          const scannerEl = document.getElementById('checkin-scanner')
+          if (scannerEl) scannerEl.style.display = 'none'
+        }
+        document.getElementById('scanner-close')?.addEventListener('click', _closeScanner)
+
+        // Decode `praxis:t:<projectId>:<tierId>:<serial>` into an object.
+        // Returns null on any parse failure — caller keeps scanning.
+        function _decodeTicketQR(text) {
+          const m = /^praxis:t:(\d+):(\d+):(\d+)$/.exec(String(text).trim())
+          if (!m) return null
+          return { projectId: m[1], tierId: m[2], serial: m[3] }
+        }
       } catch (e) { console.warn('checkin section error:', e) }
     }
 

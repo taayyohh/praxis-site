@@ -1320,22 +1320,17 @@ async function showReceiveModal(addr) {
 
   overlay.innerHTML = `
     <button class="wizard-close vault-save-close" aria-label="close">×</button>
-    <div class="vault-save-doc">
+    <div class="vault-save-doc vault-recv-doc">
       <header class="vault-save-lead">
         <div class="vault-save-lead-title"><h1>receive</h1></div>
         <div class="vault-save-lead-apr"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
       </header>
-      <p class="vault-save-lead-sub">Anyone can send ETH or tokens to this address on Optimism. Scan the QR from another wallet or copy the address.</p>
+      <p class="vault-save-lead-sub">Anyone can send ETH or tokens to this address on Optimism.</p>
 
-      <section class="vault-save-doc-body">
+      <section class="vault-save-doc-body vault-recv-body">
         ${qrHtml}
-        <div>
-          <div class="vault-save-field-label">your address</div>
-          <div class="vault-recv-addr">${escapeHtml(addr)}</div>
-        </div>
-        <div class="vault-save-actions">
-          <button id="vault-copy-addr" type="button" class="vault-save-btn"><i class="ph ph-copy"></i> copy address</button>
-        </div>
+        <div class="vault-recv-addr">${escapeHtml(addr)}</div>
+        <button id="vault-copy-addr" type="button" class="vault-recv-copy"><i class="ph ph-copy"></i> copy address</button>
       </section>
     </div>
   `

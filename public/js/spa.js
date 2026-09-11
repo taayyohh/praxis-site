@@ -41,6 +41,7 @@ const ROUTE_MODULES = {
   '/org': ['/js/org.js'],
   '/write': ['/js/write.js'],
   '/cashout': ['/js/cashout.js'],
+  '/ticket': ['/js/ticket.js'],
 }
 
 const _loadedModules = new Set()

@@ -7745,24 +7745,72 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 
 /* Receive modal — QR + monospace address block. */
+/* QR sits at a size that reads instantly — big enough to scan from a
+   phone across the room, small enough that it doesn't hijack the page.
+   The white background is a functional necessity (contrast); the tiny
+   inset padding keeps the quiet zone honest without turning the QR
+   into a hero. */
 .vault-recv-qr {
   display: flex;
   justify-content: center;
-  padding: 1em;
-  background: color-mix(in srgb, var(--fg) 3%, transparent);
-  border-radius: 12px;
+  align-self: center;
+  padding: 0.6em;
+  background: #fff;
+  border-radius: 10px;
+  width: fit-content;
+  margin: 0.5em auto 0;
 }
 .vault-recv-qr svg { width: 200px; height: 200px; display: block; }
+/* Address is a number — no box, no chrome. Monospace + tabular-nums so
+   the character grid reads cleanly; centered so eye lands on it after
+   the QR. `.vault-save-field-label` above provides the "your address"
+   caption in .vault-save-field-label's default muted style. */
 .vault-recv-addr {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
   color: var(--fg);
-  padding: 0.65em 0.85em;
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  border-radius: 8px;
   word-break: break-all;
-  line-height: 1.45;
-  margin-top: 0.5em;
+  line-height: 1.5;
+  text-align: center;
+  margin-top: 0.3em;
+  max-width: 34ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Ghost copy button — utility, not a money-movement CTA. Sits below
+   the address as a plain link-styled action so the QR + address stay
+   the story of the page. */
+.vault-recv-copy {
+  align-self: center;
+  background: none;
+  border: 0;
+  padding: 0.4em 0.8ch;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  transition: color 0.12s;
+  margin-top: 0.4em;
+}
+.vault-recv-copy:hover, .vault-recv-copy:focus-visible {
+  color: var(--fg);
+  outline: none;
+}
+.vault-recv-copy i { font-size: 1em; }
+/* Tighter doc for the receive dialog so the three elements
+   (QR + address + copy) sit as one legible block, not spread across
+   the viewport. */
+.vault-recv-doc { max-width: 420px; }
+.vault-recv-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  padding-top: 0.4em;
 }
 .vault-save-lead {
   display: flex;
@@ -8069,4 +8117,168 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .vault-save-output { font-size: 1.3em; }
   .vault-qr { width: 140px; height: 140px; }
   .vault-preset { padding: 0.35em 0.7em; font-size: 0.75em; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Ticket pass — buyer-facing full-screen ticket at /ticket.
+ * Design philosophy: content earns its size (event title is the
+ * hero); hierarchy through typography, not boxes; borders only for
+ * real containers (the pass IS a real container, so it gets one).
+ * ───────────────────────────────────────────────────────────── */
+#ticket-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2em 1em;
+  background: var(--bg);
+}
+.ticket-pass {
+  width: 100%;
+  max-width: 420px;
+  background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 20px;
+  padding: 2em 1.75em 1.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4em;
+  box-shadow: 0 20px 60px -30px color-mix(in srgb, black 60%, transparent);
+}
+.ticket-pass-head { display: flex; flex-direction: column; gap: 0.35em; }
+.ticket-pass-eyebrow {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7em;
+  font-weight: 500;
+}
+.ticket-pass-title {
+  margin: 0;
+  font-size: 1.6em;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.ticket-pass-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em 1.5em;
+}
+.ticket-pass-field { display: flex; flex-direction: column; gap: 0.2em; min-width: 0; }
+.ticket-pass-field-wide { grid-column: 1 / -1; }
+.ticket-pass-field-label {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.65em;
+  font-weight: 500;
+}
+.ticket-pass-field-value {
+  color: var(--fg);
+  font-size: 1em;
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+/* Perforation dots — visual metaphor of a torn ticket edge. Purely
+   decorative, aria-hidden. Kept subtle so it reads as texture, not
+   ornament. */
+.ticket-pass-perforation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0;
+  margin: 0.3em -1.75em;
+  padding: 0 0.5em;
+  position: relative;
+}
+.ticket-pass-perforation::before,
+.ticket-pass-perforation::after {
+  content: '';
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  flex-shrink: 0;
+  margin-top: 0;
+}
+.ticket-pass-perforation::before { margin-left: -12px; }
+.ticket-pass-perforation::after { margin-right: -12px; }
+.ticket-pass-perforation span {
+  width: 6px;
+  height: 1px;
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+}
+.ticket-pass-code {
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+}
+.ticket-pass-qr {
+  background: #fff;
+  padding: 0.5em;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.ticket-pass-qr svg { width: 130px; height: 130px; display: block; }
+.ticket-pass-serial {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  min-width: 0;
+}
+.ticket-pass-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75em;
+  margin: 0.3em 0 0;
+}
+.ticket-wallet-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5ch;
+  padding: 0.85em 1em;
+  background: var(--fg);
+  color: var(--bg);
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.95em;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.ticket-wallet-btn:hover { opacity: 0.88; }
+.ticket-wallet-btn i { font-size: 1.15em; }
+.ticket-pass-footnote {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.8em;
+  text-align: center;
+  line-height: 1.4;
+}
+@media (max-width: 480px) {
+  .ticket-pass { padding: 1.5em 1.25em 1.25em; border-radius: 16px; }
+  .ticket-pass-title { font-size: 1.4em; }
+  .ticket-pass-qr svg { width: 120px; height: 120px; }
+  #ticket-page { padding: 1em 0.5em; }
+}
+/* Print style — a real ticket can be printed if the buyer prefers
+   paper. Hide everything else on the page, drop the dark chrome. */
+@media print {
+  body { background: white; }
+  .ticket-pass {
+    background: white;
+    color: black;
+    border-color: #ccc;
+    box-shadow: none;
+    max-width: 4in;
+    margin: 0 auto;
+  }
+  .ticket-pass-title, .ticket-pass-field-value, .ticket-pass-eyebrow, .ticket-pass-field-label { color: black; }
+  .ticket-wallet-btn, .ticket-pass-footnote { display: none; }
 }

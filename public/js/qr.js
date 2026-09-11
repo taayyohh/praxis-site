@@ -199,5 +199,8 @@ function renderSVG(m) {
       } else c++
     }
   }
-  return `<svg viewBox="0 0 ${total} ${total}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><rect width="${total}" height="${total}" fill="#fff" rx="2"/><path d="${path}" fill="#000"/></svg>`
+  // No inline width/height — let the surrounding CSS decide the size.
+  // Callers set an intent-appropriate scale (200-ish for a receive dialog;
+  // 260 for a ticket at-door presentation) via `.container svg { … }`.
+  return `<svg viewBox="0 0 ${total} ${total}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><rect width="${total}" height="${total}" fill="#fff" rx="2"/><path d="${path}" fill="#000"/></svg>`
 }

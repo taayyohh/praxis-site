@@ -605,6 +605,15 @@ const cashoutHtml = `<div id="cashout-page" style="max-width:680px;margin:0 auto
 </div>`
 out('cashout', wrap(cashoutHtml, 'cash out', '/cashout', '/og/index.png', { noindex: true }))
 
+// ticket page — Apple-Wallet-style full-screen ticket for buyers to
+// present at the door. Mounts on /ticket?token=<tokenId>. Ticket.js
+// decodes the tokenId → projectId + tierId + serial, fetches project
+// data, and renders a QR the artist can scan for check-in.
+const ticketHtml = `<div id="ticket-page">
+<div id="ticket-content"><span class="praxis-loader"></span></div>
+</div>`
+out('ticket', wrap(ticketHtml, 'ticket', '/ticket', '/og/index.png', { noindex: true }))
+
 // write page (full-page compose editor)
 const writeHtml = `<div id="write-page">
 <div class="write-inner">
