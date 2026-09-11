@@ -6697,6 +6697,164 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .funding-progress.error { border-color: var(--red, #a44); background: rgba(170, 68, 68, 0.06); color: var(--red, #a44); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+/* === Funding doc modal (vault-save-doc layout) ===
+ * Full-page scrollable doc. Provider rows are the CTA — one row per method,
+ * whole row is a tap target ≥ 44px. Chain-bridge section is tucked inside a
+ * <details> because most artists won't need it. Reuses .vault-save-* type
+ * scale from the send/receive modals so hierarchy stays consistent. */
+.funding-doc-overlay { padding: 0; }
+.funding-doc { max-width: 520px; }
+.funding-doc .funding-progress { margin: 0; }
+.funding-doc .funding-provider-list {
+  margin-top: 0.55em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+.funding-doc .funding-fiat-btn.funding-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.9em;
+  width: 100%;
+  min-height: 60px;
+  padding: 0.85em 1em;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  color: var(--fg);
+  font-size: 0.95em;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+}
+.funding-doc .funding-provider-row:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.funding-doc .funding-provider-row:active { transform: translateY(1px); }
+.funding-doc .funding-provider-icon {
+  flex: 0 0 auto;
+  width: 2.4em;
+  height: 2.4em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+.funding-doc .funding-provider-icon i { font-size: 1.3em; line-height: 1; }
+.funding-doc .funding-provider-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  line-height: 1.3;
+}
+.funding-doc .funding-provider-name {
+  font-size: 0.98em;
+  font-weight: 500;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+}
+.funding-doc .funding-provider-blurb {
+  font-size: 0.78em;
+  color: var(--dim);
+  font-weight: 400;
+  line-height: 1.4;
+}
+.funding-doc .funding-provider-arrow {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 1em;
+  transition: transform 0.15s, color 0.15s;
+}
+.funding-doc .funding-provider-row:hover .funding-provider-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+/* Chain rows inside the doc — align to the doc's typography, no card look */
+.funding-doc .funding-advanced { margin-top: 0.4em; border-top-color: color-mix(in srgb, var(--fg) 8%, transparent); }
+.funding-doc .funding-advanced summary { font-size: 0.82em; color: var(--muted); }
+.funding-doc .funding-chains { margin-top: 0.4em; }
+.funding-doc .funding-chain-row {
+  padding: 0.6em 0.75em;
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  gap: 0.6em;
+  flex-wrap: wrap;
+}
+.funding-doc .funding-chain-info { min-width: 0; flex: 1 1 auto; }
+.funding-doc .funding-chain-name { font-size: 0.9em; min-width: 0; }
+.funding-doc .funding-chain-icon-slot {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  color: var(--dim);
+  margin-right: 0.4ch;
+  font-variant-numeric: tabular-nums;
+}
+.funding-doc .funding-chain-sub {
+  display: inline-block;
+  font-size: 0.72em;
+  color: var(--dim);
+  margin-left: 0.5ch;
+}
+.funding-doc .funding-chain-balance {
+  font-size: 0.85em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.funding-doc .funding-chain-balance.sufficient { color: var(--green, var(--accent)); }
+.funding-doc .funding-bridge-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  flex-wrap: nowrap;
+}
+.funding-doc .funding-bridge-amt {
+  width: 7ch;
+  min-height: 34px;
+  border-radius: 6px;
+}
+.funding-doc .funding-bridge-btn {
+  min-height: 34px;
+  padding: 0.35em 0.75em;
+  border-radius: 6px;
+}
+.funding-doc .funding-help-centered { text-align: center; padding: 0.5em; }
+
+/* Bottom-of-doc secondary action — sits inside .vault-save-actions, so it
+ * gets the same block spacing as the primary CTA in the send/receive docs.
+ * Rendered as a quiet text button, not a filled one — this isn't the story. */
+.funding-doc .vault-save-actions { margin-top: 0.6em; }
+.funding-doc .funding-cancel-btn {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 0.7em;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.funding-doc .funding-cancel-btn:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 25%, transparent); }
+
+@media (max-width: 560px) {
+  .funding-doc .funding-provider-row { padding: 0.9em; }
+  .funding-doc .funding-provider-blurb { font-size: 0.75em; }
+  .funding-doc .funding-chain-row { padding: 0.65em 0.7em; }
+  .funding-doc .funding-bridge-amt { width: 6ch; }
+}
+
 /* === Ramp modal (Peer-style) === */
 .ramp-dialog { max-width: 460px; width: 100%; padding: 0; border: 1px solid var(--border, #333); background: var(--bg, #0a0a0a); }
 .ramp-header { display: flex; align-items: center; justify-content: space-between; padding: 0.9em 1.1em; border-bottom: 1px solid var(--border, #222); }
@@ -7028,6 +7186,65 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   font-weight: 500;
 }
 
+/* 4-column pool table variant (name / APR / 30d / size). Keeps the 3-col
+ * default so existing renderers don't break. */
+.vault-pool-line-4col,
+.vault-pool-table-head:has(> :nth-child(4)) {
+  grid-template-columns: 1fr 4em 4em 5em !important;
+}
+.vault-pool-table-head { grid-template-columns: 1fr 4em 5em; }
+
+/* Rates-updated meta row + "how this works" toggle. */
+.vault-pool-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  padding-top: 0.6em;
+  margin-top: 0.3em;
+  font-size: 0.75em;
+  color: var(--dim);
+}
+.vault-pool-meta-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.vault-pool-meta-toggle:hover,
+.vault-pool-meta-toggle:focus-visible { color: var(--fg); outline: none; }
+
+/* "How BOLD savings work" — progressive disclosure. Plain-English mechanics,
+ * links to Liquity docs, growth projection. Reads as a short essay, not a
+ * spec sheet. */
+.vault-savings-how {
+  margin-top: 1em;
+  padding: 1em 0 0.4em;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.vault-savings-how-title {
+  font-size: 0.7em;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  margin: 0 0 0.75em;
+}
+.vault-savings-how-body p {
+  font-size: 0.88em;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 0.85em;
+}
+.vault-savings-how-body p strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
 /* Section-scoped CTA — subordinate to the section it acts on. */
 .vault-act-cta {
   margin-top: 0.75em;
@@ -7268,6 +7485,35 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   margin: 0 auto;
   padding: 3.2em 1.4em 3em;
   box-sizing: border-box;
+}
+/* Mobile: shrink outer padding, keep breathing room around the hero.
+ * Touch targets stay ≥ 44px because the buttons already use 1em+ padding. */
+@media (max-width: 560px) {
+  .vault-save-doc { padding: 3.6em 1.1em 5em; }
+  .vault-save-lead h1 { font-size: 1.2em; }
+  .vault-save-amount-input { font-size: 2em; }
+  .vault-save-doc-body { gap: 1.5em; }
+}
+
+/* Receive modal — QR + monospace address block. */
+.vault-recv-qr {
+  display: flex;
+  justify-content: center;
+  padding: 1em;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border-radius: 12px;
+}
+.vault-recv-qr svg { width: 200px; height: 200px; display: block; }
+.vault-recv-addr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--fg);
+  padding: 0.65em 0.85em;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-radius: 8px;
+  word-break: break-all;
+  line-height: 1.45;
+  margin-top: 0.5em;
 }
 .vault-save-lead {
   display: flex;

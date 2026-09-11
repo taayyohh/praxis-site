@@ -901,20 +901,47 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   }
 
   // Pools rendered inline as a table — no separate box. Highlight the
-  // pool(s) the user is in with a pill.
+  // pool(s) the user is in with a pill. Shows current APR and 30-day mean
+  // side-by-side so the user can tell whether they're at a peak or a trough.
   if (pools.length > 0) {
     html += `<div class="vault-pool-table">`
-    html += `<div class="vault-pool-table-head"><span>pool</span><span>APR</span><span>size</span></div>`
+    html += `<div class="vault-pool-table-head"><span>pool</span><span>APR now</span><span>30d avg</span><span>size</span></div>`
     for (const pool of pools.slice(0, 4)) {
       const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
       const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.name)?.balance || 0n
       const active = userAmount > 0n
-      html += `<div class="vault-pool-line${active ? ' vault-pool-line-active' : ''}">`
+      const avgStr = pool.apy7d ? `${pool.apy7d.toFixed(1)}%` : '—'
+      html += `<div class="vault-pool-line vault-pool-line-4col${active ? ' vault-pool-line-active' : ''}">`
       html += `<span class="vault-pool-line-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-line-badge">${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
       html += `<span class="vault-pool-line-apr">${pool.apy.toFixed(1)}%</span>`
+      html += `<span class="vault-pool-line-apr" style="color:var(--dim)">${avgStr}</span>`
       html += `<span class="vault-pool-line-tvl">${tvlStr}</span>`
       html += `</div>`
     }
+    // "Rates updated Xm ago · how this works" — small meta strip.
+    const yieldTs = yieldData?.timestamp ? Date.now() - yieldData.timestamp : 0
+    const updatedStr = yieldTs > 0
+      ? (yieldTs < 60000 ? 'just now' : yieldTs < 3600000 ? `${Math.floor(yieldTs / 60000)}m ago` : `${Math.floor(yieldTs / 3600000)}h ago`)
+      : ''
+    html += `<div class="vault-pool-meta">`
+    if (updatedStr) html += `<span>rates updated ${updatedStr}</span>`
+    html += `<button type="button" class="vault-pool-meta-toggle" id="savings-how-toggle" aria-expanded="false">how this works ↓</button>`
+    html += `</div>`
+
+    // Progressive disclosure: full mechanics revealed on click.
+    html += `<div class="vault-savings-how" id="savings-how" hidden>`
+    html += `<h3 class="vault-savings-how-title">how BOLD savings work</h3>`
+    html += `<div class="vault-savings-how-body">`
+    html += `<p><strong>Where the yield comes from.</strong> BOLD is a US-dollar stablecoin issued by Liquity. People borrow BOLD by locking up ETH as collateral, and they pay interest for the privilege. That interest flows to the stability pool depositors — that's you. Higher borrowing demand = higher yield for you.</p>`
+    html += `<p><strong>How you actually earn.</strong> Yield accrues to your deposit block-by-block on Ethereum (roughly every 12 seconds). It auto-compounds — you don't need to claim or restake anything. When you withdraw, you receive your original deposit plus everything it earned.</p>`
+    html += `<p><strong>Withdrawing.</strong> No lockup. No penalty. You can withdraw any time; the transaction settles in one Ethereum block. Withdrawing to BOLD is normal; occasionally the pool may pay you in ETH from a liquidation instead — you keep the value either way.</p>`
+    if (totalBold > 0n && projectedYearlyYield > 0) {
+      const y1 = Number(totalBold) / 1e18 * (1 + bestApy / 100)
+      const y5 = Number(totalBold) / 1e18 * Math.pow(1 + bestApy / 100, 5)
+      html += `<p><strong>At today's ${bestApy.toFixed(1)}% rate</strong>, your ${(Number(totalBold) / 1e18).toFixed(2)} BOLD would grow to about ${y1.toFixed(2)} in one year, ${y5.toFixed(2)} in five years (compounded, assumes rate holds).</p>`
+    }
+    html += `<p><a href="https://docs.liquity.org/v2-faq/bold-and-stability-pools" target="_blank" rel="noopener" style="color:var(--accent)">Liquity's official docs on stability pools →</a></p>`
+    html += `</div>`
     html += `</div>`
   }
   // The 'save' action lives HERE, attached to its subject — not in a
@@ -1041,6 +1068,17 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   document.getElementById('vault-swap-btn')?.addEventListener('click', swapHandler)
   document.getElementById('vault-save-btn')?.addEventListener('click', swapHandler)
 
+  // "how BOLD savings work" toggle — progressive disclosure of mechanics.
+  document.getElementById('savings-how-toggle')?.addEventListener('click', (e) => {
+    const panel = document.getElementById('savings-how')
+    const btn = e.currentTarget
+    if (!panel) return
+    const open = !panel.hidden
+    panel.hidden = open
+    btn.setAttribute('aria-expanded', String(!open))
+    btn.textContent = open ? 'how this works ↓' : 'how this works ↑'
+  })
+
   // Claim buttons
   el.querySelectorAll('.earnings-claim-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1085,35 +1123,42 @@ async function showReceiveModal(addr) {
   if (existing) { existing.remove(); return }
   const overlay = document.createElement('div')
   overlay.id = 'vault-receive-modal'
-  overlay.className = 'praxis-modal-overlay'
+  overlay.className = 'praxis-modal-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
-  const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog vault-save-dialog'
 
   let qrHtml = ''
   try {
     const { generateQR } = await import('./qr.js')
-    qrHtml = `<div class="vault-qr">${generateQR(addr)}</div>`
+    qrHtml = `<div class="vault-recv-qr">${generateQR(addr)}</div>`
   } catch (e) { console.warn('QR generation failed:', e) }
 
-  dialog.innerHTML = `
-    <div class="vault-save-head">
-      <div class="vault-save-icon">${ETH_ICON}</div>
-      <div>
-        <div class="vault-save-title">receive</div>
-        <div class="vault-save-sub">send ETH or tokens on Optimism to this address</div>
-      </div>
+  overlay.innerHTML = `
+    <button class="wizard-close vault-save-close" aria-label="close">×</button>
+    <div class="vault-save-doc">
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title"><h1>receive</h1></div>
+        <div class="vault-save-lead-apr"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+      </header>
+      <p class="vault-save-lead-sub">Anyone can send ETH or tokens to this address on Optimism. Scan the QR from another wallet or copy the address.</p>
+
+      <section class="vault-save-doc-body">
+        ${qrHtml}
+        <div>
+          <div class="vault-save-field-label">your address</div>
+          <div class="vault-recv-addr">${escapeHtml(addr)}</div>
+        </div>
+        <div class="vault-save-actions">
+          <button id="vault-copy-addr" type="button" class="vault-save-btn"><i class="ph ph-copy"></i> copy address</button>
+        </div>
+      </section>
     </div>
-    ${qrHtml}
-    <div class="vault-addr-box">${escapeHtml(addr)}</div>
-    <button id="vault-copy-addr" class="vault-save-btn" style="border-color:var(--accent);color:var(--accent)"><i class="ph ph-copy"></i> copy address</button>
   `
-  overlay.appendChild(dialog)
   document.body.appendChild(overlay)
+  overlay.querySelector('.vault-save-close')?.addEventListener('click', () => overlay.remove())
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  dialog.querySelector('#vault-copy-addr').addEventListener('click', async () => {
+  overlay.querySelector('#vault-copy-addr').addEventListener('click', async () => {
     await navigator.clipboard.writeText(addr)
-    const btn = dialog.querySelector('#vault-copy-addr')
+    const btn = overlay.querySelector('#vault-copy-addr')
     btn.innerHTML = '<i class="ph ph-check"></i> copied'
     btn.style.borderColor = 'var(--green)'
     btn.style.color = 'var(--green)'

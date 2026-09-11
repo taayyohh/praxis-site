@@ -40,11 +40,16 @@ const FUNDING_CHAINS = [
 ]
 
 const FIAT_METHODS = [
-  { id: 'stripe', label: 'Card / Apple Pay', icon: 'ph-credit-card' },
+  {
+    id: 'stripe',
+    label: 'Card or Apple Pay',
+    icon: 'ph-credit-card',
+    blurb: 'Debit or credit card, Apple Pay, Google Pay. Arrives in seconds.',
+  },
   // Peer methods disabled until finalized
-  // { id: 'wise', label: 'Wise', icon: 'ph-arrows-left-right' },
-  // { id: 'revolut', label: 'Revolut', icon: 'ph-currency-circle-dollar' },
-  // { id: 'cashapp', label: 'Cash App', icon: 'ph-currency-dollar' },
+  // { id: 'wise', label: 'Wise', icon: 'ph-arrows-left-right', blurb: 'Bank transfer via Wise — best for large amounts.' },
+  // { id: 'revolut', label: 'Revolut', icon: 'ph-currency-circle-dollar', blurb: 'Pay from your Revolut balance.' },
+  // { id: 'cashapp', label: 'Cash App', icon: 'ph-currency-dollar', blurb: 'Pay from your Cash App balance.' },
 ]
 
 const OPTIMISM_CHAIN_ID = 10
@@ -287,8 +292,11 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
   }
 }
 
-// --- Unified funding bottom sheet ---
-// Shows all chain balances + fiat options in a single view.
+// --- Unified funding doc modal ---
+// Full-screen `.vault-save-doc` — same pattern as send / receive / save-to-BOLD.
+// Body reads top-to-bottom: title, plain-language explainer, provider rows
+// (one big button per method), then a progressive-disclosure section for
+// people who already hold crypto elsewhere.
 // Returns a promise that resolves to true (funded) or false (cancelled).
 
 export async function showFundingSheet(address, amountWei, options = {}) {
@@ -297,14 +305,23 @@ export async function showFundingSheet(address, amountWei, options = {}) {
   const neededEth = Number(neededWei) / 1e18
   const neededDisplay = neededEth.toFixed(4).replace(/\.?0+$/, '')
 
-  // create overlay + dialog using existing modal pattern
+  // Full-screen doc modal — same skeleton as showSwapModal.
+  // wizard-overlay handles scroll + slide-up; vault-save-overlay drops
+  // padding so the .vault-save-doc inside fills the frame like a page.
   const overlay = document.createElement('div')
-  overlay.className = 'praxis-modal-overlay funding-sheet-overlay'
+  overlay.className = 'wizard-overlay vault-save-overlay funding-doc-overlay'
   overlay.setAttribute('data-testid', 'funding-sheet-overlay')
 
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'wizard-close vault-save-close'
+  closeBtn.setAttribute('aria-label', 'close')
+  closeBtn.innerHTML = '&times;'
+
   const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog funding-sheet'
+  dialog.className = 'vault-save-doc funding-doc'
   dialog.setAttribute('data-testid', 'funding-sheet')
+
+  overlay.appendChild(closeBtn)
   overlay.appendChild(dialog)
 
   let _destroyed = false
@@ -326,10 +343,10 @@ export async function showFundingSheet(address, amountWei, options = {}) {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) cleanup(false)
   })
-
+  closeBtn.addEventListener('click', () => cleanup(false))
   document.addEventListener('keydown', escHandler)
 
-  // Show sheet immediately — load balances async inside
+  // Show doc immediately — load balances async inside
   let chainBalances = []
   let optimismBalance = 0n
 
@@ -341,7 +358,7 @@ export async function showFundingSheet(address, amountWei, options = {}) {
   // _showAllChains: when false (default), hide chains with zero balance
   let _showAllChains = false
 
-  // Render sheet right away with "..." balances, then update
+  // Render doc right away with "..." balances, then update
   function renderSheet(statusMsg, statusClass) {
     // Build chain entries with normalized balances
     const allChains = FUNDING_CHAINS.map(chain => {
@@ -355,6 +372,7 @@ export async function showFundingSheet(address, amountWei, options = {}) {
     const loading = chainBalances.length === 0
     const visibleChains = _showAllChains ? allChains : allChains.filter(c => c.balance > 0n || c.isOptimism)
     const hiddenCount = allChains.length - visibleChains.length
+    const hasCrypto = visibleChains.some(c => c.balance > 0n && !c.isOptimism)
 
     const chainRows = visibleChains.map(chain => {
       const balEth = Number(chain.balance) / 1e18
@@ -363,28 +381,35 @@ export async function showFundingSheet(address, amountWei, options = {}) {
       const optimismReady = chain.isOptimism && neededWei > 0n && chain.balance >= neededWei
       const isBridging = _bridgeState?.chainId === chain.chainId && _bridgeState.phase !== 'success' && _bridgeState.phase !== 'error'
       // Show gas-adjusted max as default (conservative estimate — exact calc happens on bridge click)
-      const gasReserveEth = chain.chainId === 1 ? 0.005 : (chain.chainId === 137 ? GAS_RESERVE_ETH : GAS_RESERVE_ETH)
+      const gasReserveEth = chain.chainId === 1 ? 0.005 : GAS_RESERVE_ETH
       const safeMax = Math.max(0, balEth - gasReserveEth)
       const valueAttr = safeMax >= 0.0001 ? safeMax.toFixed(4).replace(/\.?0+$/, '') : '0'
-      const sublabel = chain.isOptimism ? 'your account' : (hasFunds ? 'available to move' : '')
+      const sublabel = chain.isOptimism ? 'your Praxis account' : (hasFunds ? 'available to move' : '')
       return `<div class="funding-chain-row${hasFunds || chain.isOptimism ? '' : ' no-balance'}">
         <div class="funding-chain-info">
-          <span class="funding-chain-name"><span style="display:inline-block;width:1.4em;text-align:center;color:var(--dim);margin-right:0.4ch">${chain.icon}</span>${chain.name}</span>
-          ${sublabel ? `<span style="font-size:0.7em;color:var(--dim);margin-left:0.4ch">${sublabel}</span>` : ''}
+          <span class="funding-chain-name"><span class="funding-chain-icon-slot">${chain.icon}</span>${chain.name}</span>
+          ${sublabel ? `<span class="funding-chain-sub">${sublabel}</span>` : ''}
         </div>
         <span class="funding-chain-balance${optimismReady ? ' sufficient' : ''}" data-eth-wei="${chain.balance}">${optimismReady ? '✓ ready' : balDisplay}</span>
-        ${hasFunds ? `<span style="display:inline-flex;align-items:center;gap:0.3ch">
-          <input type="text" class="funding-bridge-amt" data-chain-id="${chain.chainId}" data-max="${chain.balance}" value="${valueAttr}" ${isBridging ? 'disabled' : ''}>
+        ${hasFunds ? `<span class="funding-bridge-controls">
+          <input type="text" inputmode="decimal" class="funding-bridge-amt" data-chain-id="${chain.chainId}" data-max="${chain.balance}" value="${valueAttr}" ${isBridging ? 'disabled' : ''}>
           <button class="funding-bridge-btn" data-chain-id="${chain.chainId}" ${isBridging ? 'disabled' : ''}>${isBridging ? '…' : 'move →'}</button>
         </span>` : ''}
       </div>`
     }).join('')
 
-    // Big primary fiat buttons (fewer cognitive choices for non-crypto users)
-    const fiatBtns = FIAT_METHODS.map((m, i) => {
-      const primary = i === 0 // first one (Wise) styled as primary
-      return `<button class="funding-fiat-btn ${primary ? 'primary' : ''}" data-method="${m.id}"><i class="ph ${m.icon}"></i>${m.label}</button>`
-    }).join('')
+    // Payment providers as full-width rows — icon + name + blurb, whole
+    // row is a single tap target (≥ 44px). No boxes-in-a-grid.
+    const providerRows = FIAT_METHODS.map(m => `
+      <button type="button" class="funding-fiat-btn funding-provider-row" data-method="${escapeHtml(m.id)}">
+        <span class="funding-provider-icon"><i class="ph ${escapeHtml(m.icon)}"></i></span>
+        <span class="funding-provider-body">
+          <span class="funding-provider-name">${escapeHtml(m.label)}</span>
+          ${m.blurb ? `<span class="funding-provider-blurb">${escapeHtml(m.blurb)}</span>` : ''}
+        </span>
+        <span class="funding-provider-arrow" aria-hidden="true">→</span>
+      </button>
+    `).join('')
 
     // Active bridge progress banner
     let progressHtml = ''
@@ -400,26 +425,32 @@ export async function showFundingSheet(address, amountWei, options = {}) {
       progressHtml = `<div class="funding-progress ${statusClass || ''}">${statusMsg}</div>`
     }
 
-    // Lead with fiat for non-crypto users; bury chain rows under "Already have crypto?"
     dialog.innerHTML = `
-      <div class="funding-sheet-header">
-        <h3>add funds</h3>
-        ${neededWei > 0n ? `<span class="funding-sheet-needed">need ${neededDisplay} ETH</span>` : ''}
-      </div>
-      ${progressHtml}
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title"><h1>add funds</h1></div>
+        ${neededWei > 0n ? `<div class="vault-save-lead-apr" title="ETH needed for this purchase"><span>${neededDisplay}</span>ETH needed</div>` : ''}
+      </header>
+      <p class="vault-save-lead-sub">Add ETH to your Praxis wallet — with a debit card, bank transfer, or from another wallet. This is what pays for what you collect.</p>
 
-      <div class="funding-section-label">buy with cash</div>
-      <p class="funding-help">Pay with your existing app — funds arrive in seconds.</p>
-      <div class="funding-fiat-grid">${fiatBtns}</div>
+      <section class="vault-save-doc-body">
+        ${progressHtml}
 
-      <details class="funding-advanced" ${visibleChains.some(c => c.balance > 0n && !c.isOptimism) ? 'open' : ''}>
-        <summary>Already have crypto on another chain?</summary>
-        <p class="funding-help" style="margin-top:0.6em">${loading ? 'Checking your wallets…' : (visibleChains.some(c => c.balance > 0n && !c.isOptimism) ? 'We found ETH on these chains. Move it to Optimism to use it here.' : 'No funds detected on other chains.')}</p>
-        <div class="funding-chains">${chainRows || '<div class="funding-help" style="text-align:center;padding:0.5em">No balances to show.</div>'}</div>
-        ${hiddenCount > 0 ? `<button class="funding-show-all">+ show ${hiddenCount} other chain${hiddenCount === 1 ? '' : 's'}</button>` : ''}
-      </details>
+        <div class="funding-providers">
+          <div class="vault-save-field-label">buy with card or cash</div>
+          <div class="funding-provider-list">${providerRows}</div>
+        </div>
 
-      <button class="funding-cancel-btn">${_bridgeState?.phase === 'success' ? 'done' : 'close'}</button>
+        <details class="funding-advanced" ${hasCrypto ? 'open' : ''}>
+          <summary>Already have crypto on another chain?</summary>
+          <p class="funding-help">${loading ? 'Checking your wallets…' : (hasCrypto ? 'We found ETH on these chains. Move it to Optimism to spend here.' : 'No funds detected on your other chains.')}</p>
+          <div class="funding-chains">${chainRows || '<div class="funding-help funding-help-centered">No balances to show.</div>'}</div>
+          ${hiddenCount > 0 ? `<button class="funding-show-all">+ show ${hiddenCount} other chain${hiddenCount === 1 ? '' : 's'}</button>` : ''}
+        </details>
+
+        <div class="vault-save-actions">
+          <button class="funding-cancel-btn">${_bridgeState?.phase === 'success' ? 'done' : 'close'}</button>
+        </div>
+      </section>
     `
 
     // wire up events
