@@ -794,6 +794,8 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   const netFiat = totalEarnedFiat - totalSpentFiat
 
   let html = ''
+  // BOLD total for the breakdown reveal below the hero number.
+  const totalBoldForBreakdown = (spDeposits?.total || 0n) + boldBalance
 
   // Per docs/design-philosophy.md: the vault is a document, not a
   // dashboard. Reads top to bottom. One story: "here is your money —
@@ -803,10 +805,37 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   html += `<div class="vault-doc">`
 
   // --- The number ---
-  // The largest number on the page: total balance. First glance = done.
+  // The largest number on the page: total balance. Clicking it expands a
+  // chain-by-chain breakdown of what it's actually made of, so the user
+  // can inspect composition without a separate "where it lives" section
+  // competing for weight.
   html += `<section class="vault-lead">`
   html += `<div class="vault-lead-label">total balance</div>`
-  html += `<div class="vault-lead-value">${formatFiat(totalFiat, currency)}</div>`
+  html += `<button type="button" class="vault-lead-toggle" id="vault-lead-toggle" aria-expanded="false" aria-controls="vault-lead-breakdown">`
+  html += `<span class="vault-lead-value">${formatFiat(totalFiat, currency)}</span>`
+  html += `<span class="vault-lead-caret" aria-hidden="true">▾</span>`
+  html += `</button>`
+  // Inline breakdown of chains — hidden until user clicks the total.
+  html += `<div class="vault-lead-breakdown" id="vault-lead-breakdown" hidden>`
+  const breakdownRows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+    .filter(c => c.balance > 0n || c.chainId === 10)
+  for (const c of breakdownRows) {
+    const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
+    html += `<div class="vault-lead-row">`
+    html += `<span class="vault-lead-row-name">${escapeHtml(c.name)}</span>`
+    html += `<span class="vault-lead-row-bal">${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
+    html += `<span class="vault-lead-row-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span>`
+    html += `</div>`
+  }
+  if (totalBoldForBreakdown > 0n) {
+    html += `<div class="vault-lead-row">`
+    html += `<span class="vault-lead-row-name">Ethereum <span style="color:var(--dim);font-size:0.9em">· BOLD savings</span></span>`
+    html += `<span class="vault-lead-row-bal">${(Number(totalBoldForBreakdown) / 1e18).toFixed(2)} <span style="color:var(--dim)">BOLD</span></span>`
+    html += `<span class="vault-lead-row-fiat">${formatFiat(Number(totalBoldForBreakdown) / 1e18, currency)}</span>`
+    html += `</div>`
+  }
+  html += `</div>`
+
   if (totalEarned > 0n || totalContributed > 0n) {
     html += `<div class="vault-lead-meta">`
     html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">earned</span> <span style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></span>`
@@ -852,9 +881,11 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // into a concrete dollar figure.
   let projectedYearlyYield = 0
   if (spDeposits?.pools?.length) {
-    const poolApyByName = Object.fromEntries((pools || []).map(p => [p.name, p.apy || 0]))
+    // spDeposits.pools[].name is the collateral key (ETH/rETH/wstETH);
+    // yield endpoint exposes matching `collateral` on each pool.
+    const poolApyByCollateral = Object.fromEntries((pools || []).map(p => [p.collateral, p.apy || 0]))
     for (const p of spDeposits.pools) {
-      const apy = poolApyByName[p.name] ?? bestApy
+      const apy = poolApyByCollateral[p.name] ?? bestApy
       const boldAmount = Number(p.balance) / 1e18
       projectedYearlyYield += boldAmount * (apy / 100)
     }
@@ -901,18 +932,20 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   }
 
   // Pools rendered inline as a table — no separate box. Highlight the
-  // pool(s) the user is in with a pill. Shows current APR and 30-day mean
-  // side-by-side so the user can tell whether they're at a peak or a trough.
+  // pool(s) the user is in with a "you" pill so they can see at a glance
+  // where their money actually lives. Shows current APR + 30-day mean.
   if (pools.length > 0) {
     html += `<div class="vault-pool-table">`
-    html += `<div class="vault-pool-table-head"><span>pool</span><span>APR now</span><span>30d avg</span><span>size</span></div>`
+    html += `<div class="vault-pool-table-head vault-pool-table-head-4"><span>pool</span><span>apr</span><span>30d</span><span>size</span></div>`
     for (const pool of pools.slice(0, 4)) {
       const tvlStr = pool.tvl >= 1e6 ? `$${(pool.tvl / 1e6).toFixed(1)}M` : `$${(pool.tvl / 1e3).toFixed(0)}K`
-      const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.name)?.balance || 0n
+      // spDeposits.pools uses the short collateral key (ETH/wstETH/rETH);
+      // yield endpoint gives us `collateral` on each pool to match against.
+      const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.collateral)?.balance || 0n
       const active = userAmount > 0n
       const avgStr = pool.apy7d ? `${pool.apy7d.toFixed(1)}%` : '—'
       html += `<div class="vault-pool-line vault-pool-line-4col${active ? ' vault-pool-line-active' : ''}">`
-      html += `<span class="vault-pool-line-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-line-badge">${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
+      html += `<span class="vault-pool-line-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-line-badge">you · ${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
       html += `<span class="vault-pool-line-apr">${pool.apy.toFixed(1)}%</span>`
       html += `<span class="vault-pool-line-apr" style="color:var(--dim)">${avgStr}</span>`
       html += `<span class="vault-pool-line-tvl">${tvlStr}</span>`
@@ -969,28 +1002,10 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `</section>`
   }
 
-  // --- Where it lives — chains ---
-  // Compact table, not a hero panel. Content earns its size (four rows).
-  html += `<section class="vault-act">`
-  html += `<header class="vault-act-head">`
-  html += `<h2 class="vault-act-title">where it lives</h2>`
-  html += `</header>`
-  html += `<div class="vault-chain-table">`
-  const chainRows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
-    .filter(c => c.balance > 0n || c.chainId === 10)
-  for (const c of chainRows) {
-    const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
-    // No external brand icons — they made the surface feel cheap (other
-    // companies' marks living inside our design). Chains distinguished
-    // by typography + column rhythm alone.
-    html += `<div class="vault-chain-line">`
-    html += `<span class="vault-chain-line-name">${escapeHtml(c.name)}</span>`
-    html += `<span class="vault-chain-line-bal">${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
-    html += `<span class="vault-chain-line-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span>`
-    html += `</div>`
-  }
-  html += `</div>`
-  html += `</section>`
+  // Chains previously lived here as their own "where it lives" section.
+  // They've been folded into a click-to-reveal breakdown under the total
+  // balance number so composition reads as part of the hero, not as a
+  // separate widget the user has to hunt for.
 
   // --- What's moving — income + outflow + activity ---
   html += `<section class="vault-act">`
@@ -1067,6 +1082,18 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   const swapHandler = () => showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBalances)
   document.getElementById('vault-swap-btn')?.addEventListener('click', swapHandler)
   document.getElementById('vault-save-btn')?.addEventListener('click', swapHandler)
+
+  // Total-balance ↔ chain breakdown toggle. Click the big number to
+  // expand a small chain-by-chain composition inline.
+  document.getElementById('vault-lead-toggle')?.addEventListener('click', (e) => {
+    const panel = document.getElementById('vault-lead-breakdown')
+    const btn = e.currentTarget
+    if (!panel) return
+    const open = !panel.hidden
+    panel.hidden = open
+    btn.setAttribute('aria-expanded', String(!open))
+    btn.classList.toggle('vault-lead-toggle-open', !open)
+  })
 
   // "how BOLD savings work" toggle — progressive disclosure of mechanics.
   document.getElementById('savings-how-toggle')?.addEventListener('click', (e) => {
