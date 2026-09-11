@@ -257,8 +257,23 @@ button.dd-nav-btn .dd-nav-icon {
   transition: color 0.12s;
 }
 .dd-nav-btn .dd-nav-icon svg { width: 1em; height: 1em; display: block; }
-.dd-nav-btn:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
-.dd-nav-btn:hover .dd-nav-icon { color: var(--accent); }
+/* Focus/hover reach the full row edge-to-edge — no margin, no
+ * border-radius carveout — so the whole button reads as one target. */
+a.dd-nav-btn:hover,
+button.dd-nav-btn:hover,
+a.dd-nav-btn:focus-visible,
+button.dd-nav-btn:focus-visible {
+  background: color-mix(in srgb, var(--fg) 9%, transparent) !important;
+  outline: none;
+}
+a.dd-nav-btn:hover .dd-nav-icon,
+button.dd-nav-btn:hover .dd-nav-icon,
+a.dd-nav-btn:focus-visible .dd-nav-icon,
+button.dd-nav-btn:focus-visible .dd-nav-icon { color: var(--accent); }
+a.dd-nav-btn:hover .dd-nav-label,
+button.dd-nav-btn:hover .dd-nav-label,
+a.dd-nav-btn:focus-visible .dd-nav-label,
+button.dd-nav-btn:focus-visible .dd-nav-label { color: var(--fg); }
 
 .dd-footer {
   display: flex; justify-content: space-between; align-items: center;

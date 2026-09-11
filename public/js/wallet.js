@@ -258,16 +258,20 @@ function showAddress(address) {
     // it inherits the button's text color and matches on hover.
     const praxisIconHost = topBarWallet.querySelector('.dd-nav-icon[data-icon="praxis"]')
     if (praxisIconHost) {
+      // Larger circle (r=14) than the 32x32 favicon (r=10) so the glyph
+      // fills the icon box the same way phosphor's ph-bank / ph-gear-six
+      // fill theirs — otherwise the praxis mark reads as ~30% smaller
+      // than its neighbors.
       praxisIconHost.innerHTML = `
         <svg viewBox="0 0 32 32" width="1em" height="1em" aria-hidden="true">
           <defs>
             <mask id="dd-praxis-mask">
               <rect width="32" height="32" fill="white"/>
-              <rect x="15.2" y="6" width="1.6" height="7.8" fill="black"/>
-              <rect x="15.2" y="18.2" width="1.6" height="7.8" fill="black"/>
+              <rect x="15.1" y="1.5" width="1.8" height="11.5" fill="black"/>
+              <rect x="15.1" y="19" width="1.8" height="11.5" fill="black"/>
             </mask>
           </defs>
-          <circle cx="16" cy="16" r="10" fill="currentColor" mask="url(#dd-praxis-mask)"/>
+          <circle cx="16" cy="16" r="14" fill="currentColor" mask="url(#dd-praxis-mask)"/>
         </svg>`
     }
 
