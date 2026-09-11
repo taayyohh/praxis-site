@@ -1308,7 +1308,14 @@ async function showReceiveModal(addr) {
   let qrHtml = ''
   try {
     const { generateQR } = await import('./qr.js')
-    qrHtml = `<div class="vault-recv-qr">${generateQR(addr)}</div>`
+    // EIP-681: encode the recipient AND the target chain so wallets that
+    // support the URI scheme (MetaMask mobile, Coinbase Wallet, Rainbow,
+    // Trust) auto-select Optimism when scanning — no more "sent on
+    // mainnet by accident". Wallets that only understand raw hex still
+    // fall back to the address portion of the scheme, so nothing gets
+    // worse for legacy scanners.
+    const payload = `ethereum:${addr}@10`
+    qrHtml = `<div class="vault-recv-qr">${generateQR(payload)}</div>`
   } catch (e) { console.warn('QR generation failed:', e) }
 
   overlay.innerHTML = `
