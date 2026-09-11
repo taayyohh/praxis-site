@@ -1,4 +1,4 @@
-import { t, getLang } from './i18n.js'
+import { t, getLang, applyTranslations, whenReady as i18nReady } from './i18n.js'
 import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic } from './utils.js'
 
 // Sync fallback map — the wallet dropdown renders before the i18n JSON
@@ -248,7 +248,7 @@ function showAddress(address) {
       walletTop.innerHTML = `
         <div class="wallet-greeting">
           ${avatarHtml}
-          <span class="wallet-greeting-name">${escapeHtml(_greetingWord())}, ${escapeHtml(greetingName)}</span>
+          <span class="wallet-greeting-name"><span data-i18n="wallet.greeting">${escapeHtml(_greetingWord())}</span>, ${escapeHtml(greetingName)}</span>
         </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
@@ -268,8 +268,8 @@ function showAddress(address) {
     topBarWallet.innerHTML = `
       <div class="dd-nav">
         <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label">praxis</span></a>
-        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>
-        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
+        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>
+        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navManage">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
       </div>
     `
     // Praxis logo — same mark as the landing favicon (a circle with a
@@ -316,6 +316,7 @@ function showAddress(address) {
       signout.id = 'dd-disconnect'
       signout.className = 'dd-signout'
       signout.textContent = _walletWord('signout', 'wallet.signout')
+      signout.setAttribute('data-i18n', 'wallet.signout')
       bottom.appendChild(signout)
       dropdown.appendChild(bottom)
 
@@ -324,6 +325,12 @@ function showAddress(address) {
       // remove the old top-bar switcher wrap if a previous render left one
       document.getElementById('top-bar-switchers')?.remove()
     }
+
+    // Apply translations now (updates any data-i18n we just injected) and
+    // again once i18n JSON has finished loading, in case we rendered
+    // before it landed.
+    try { applyTranslations() } catch {}
+    i18nReady().then(() => { try { applyTranslations() } catch {} }).catch(() => {})
 
     // Click handlers for the three buttons (navigation for praxis/vault, modal for manage)
     topBarWallet.querySelector('#dd-praxis')?.addEventListener('click', () => closeFn())
