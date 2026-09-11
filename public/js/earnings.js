@@ -782,11 +782,17 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   const totalContributed = contributed.fundingTotal + contributed.purchaseTotal
   const currency = getUserCurrency()
   const ethRate = ethPrices?.[currency] || 0
+  const usdRate = ethPrices?.usd || 0
+  // BOLD is USD-pegged (1 BOLD ≈ $1). Convert USD → user currency via
+  // ETH price parity: (ETH-in-local / ETH-in-USD) = USD-to-local rate.
+  // Falls back to 1 when we can't compute it, which keeps the display
+  // sensible for USD users and never displays raw USD as another symbol.
+  const usdToLocal = (ethRate > 0 && usdRate > 0) ? ethRate / usdRate : 1
 
   const ethFiat = ethRate ? Number(ethBalance) / 1e18 * ethRate : 0
   const spTotal = spDeposits?.total || 0n
-  // BOLD is a USD-pegged stablecoin. Combine liquid + deposited for total.
-  const boldFiat = (Number(boldBalance) + Number(spTotal)) / 1e18
+  const boldUsd = (Number(boldBalance) + Number(spTotal)) / 1e18
+  const boldFiat = boldUsd * usdToLocal
   const totalFiat = ethFiat + boldFiat
 
   const totalEarnedFiat = ethRate ? Number(totalEarned) / 1e18 * ethRate : 0
@@ -828,10 +834,11 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `</div>`
   }
   if (totalBoldForBreakdown > 0n) {
+    const boldNum = Number(totalBoldForBreakdown) / 1e18
     html += `<div class="vault-lead-row">`
     html += `<span class="vault-lead-row-name">Ethereum <span style="color:var(--dim);font-size:0.9em">· BOLD savings</span></span>`
-    html += `<span class="vault-lead-row-bal">${(Number(totalBoldForBreakdown) / 1e18).toFixed(2)} <span style="color:var(--dim)">BOLD</span></span>`
-    html += `<span class="vault-lead-row-fiat">${formatFiat(Number(totalBoldForBreakdown) / 1e18, currency)}</span>`
+    html += `<span class="vault-lead-row-bal">${boldNum.toFixed(2)} <span style="color:var(--dim)">BOLD</span></span>`
+    html += `<span class="vault-lead-row-fiat">${formatFiat(boldNum * usdToLocal, currency)}</span>`
     html += `</div>`
   }
   html += `</div>`
@@ -898,17 +905,20 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // glyph inline with the number, so 11.24 BOLD reads as *money* not just
   // "a number labelled BOLD".
   if (totalBold > 0n) {
-    const totalStr = (Number(totalBold) / 1e18).toFixed(2)
+    const totalBoldNum = Number(totalBold) / 1e18
+    const totalStr = totalBoldNum.toFixed(2)
     html += `<div class="vault-act-figure vault-coin-figure">`
     html += `<span class="vault-coin-mark">${BOLD_ICON}</span>`
     html += `<span class="vault-act-figure-main">${totalStr}</span>`
     html += `<span class="vault-act-figure-unit">BOLD</span>`
-    html += `<span class="vault-act-figure-secondary">${formatFiat(Number(totalBold) / 1e18, currency)}</span>`
+    // BOLD is a USD-pegged stablecoin — convert to the user's currency
+    // via the USD-to-local factor derived from the ETH price parity.
+    html += `<span class="vault-act-figure-secondary">${formatFiat(totalBoldNum * usdToLocal, currency)}</span>`
     html += `</div>`
     if (projectedYearlyYield > 0) {
       html += `<div class="vault-act-yield">`
-      html += `earning <span style="color:var(--green)">${formatFiat(projectedMonthlyYield, currency)}/mo</span> · `
-      html += `${formatFiat(projectedYearlyYield, currency)}/yr projected`
+      html += `earning <span style="color:var(--green)">${formatFiat(projectedMonthlyYield * usdToLocal, currency)}/mo</span> · `
+      html += `${formatFiat(projectedYearlyYield * usdToLocal, currency)}/yr projected`
       html += `</div>`
     }
     const parts = []
@@ -927,7 +937,8 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   } else {
     html += `<div class="vault-act-figure vault-act-figure-empty">no deposits yet</div>`
     if (bestApy > 0) {
-      html += `<div class="vault-act-yield">save $100 → earn ~${formatFiat(100 * (bestApy / 100), currency)}/yr</div>`
+      // $100 → APR%/yr, in the user's currency
+      html += `<div class="vault-act-yield">save ${formatFiat(100 * usdToLocal, currency)} → earn ~${formatFiat(100 * (bestApy / 100) * usdToLocal, currency)}/yr</div>`
     }
   }
 
@@ -944,8 +955,14 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
       const userAmount = (spDeposits?.pools || []).find(p => p.name === pool.collateral)?.balance || 0n
       const active = userAmount > 0n
       const avgStr = pool.apy7d ? `${pool.apy7d.toFixed(1)}%` : '—'
+      // For pools the user is in, a small green dot before the name
+      // + user amount shown under it. Scales cleanly whether the user
+      // is in one pool or all of them — no stacked pills, no crowding.
+      const nameCell = active
+        ? `<span class="vault-pool-line-name-you"><span class="vault-pool-line-dot"></span><span><span class="vault-pool-line-name-main">${escapeHtml(pool.name)}</span><span class="vault-pool-line-you-sub">you · ${(Number(userAmount) / 1e18).toFixed(2)} BOLD</span></span></span>`
+        : `<span class="vault-pool-line-name">${escapeHtml(pool.name)}</span>`
       html += `<div class="vault-pool-line vault-pool-line-4col${active ? ' vault-pool-line-active' : ''}">`
-      html += `<span class="vault-pool-line-name">${escapeHtml(pool.name)}${active ? ` <span class="vault-pool-line-badge">you · ${(Number(userAmount) / 1e18).toFixed(2)}</span>` : ''}</span>`
+      html += nameCell
       html += `<span class="vault-pool-line-apr">${pool.apy.toFixed(1)}%</span>`
       html += `<span class="vault-pool-line-apr" style="color:var(--dim)">${avgStr}</span>`
       html += `<span class="vault-pool-line-tvl">${tvlStr}</span>`
@@ -969,9 +986,10 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `<p><strong>How you actually earn.</strong> Yield accrues to your deposit block-by-block on Ethereum (roughly every 12 seconds). It auto-compounds — you don't need to claim or restake anything. When you withdraw, you receive your original deposit plus everything it earned.</p>`
     html += `<p><strong>Withdrawing.</strong> No lockup. No penalty. You can withdraw any time; the transaction settles in one Ethereum block. Withdrawing to BOLD is normal; occasionally the pool may pay you in ETH from a liquidation instead — you keep the value either way.</p>`
     if (totalBold > 0n && projectedYearlyYield > 0) {
-      const y1 = Number(totalBold) / 1e18 * (1 + bestApy / 100)
-      const y5 = Number(totalBold) / 1e18 * Math.pow(1 + bestApy / 100, 5)
-      html += `<p><strong>At today's ${bestApy.toFixed(1)}% rate</strong>, your ${(Number(totalBold) / 1e18).toFixed(2)} BOLD would grow to about ${y1.toFixed(2)} in one year, ${y5.toFixed(2)} in five years (compounded, assumes rate holds).</p>`
+      const nowBold = Number(totalBold) / 1e18
+      const y1 = nowBold * (1 + bestApy / 100)
+      const y5 = nowBold * Math.pow(1 + bestApy / 100, 5)
+      html += `<p><strong>At today's ${bestApy.toFixed(1)}% rate</strong>, your ${nowBold.toFixed(2)} BOLD (~${formatFiat(nowBold * usdToLocal, currency)}) would grow to about ${y1.toFixed(2)} BOLD (~${formatFiat(y1 * usdToLocal, currency)}) in one year, ${y5.toFixed(2)} BOLD (~${formatFiat(y5 * usdToLocal, currency)}) in five years (compounded, assumes rate holds).</p>`
     }
     html += `<p><a href="https://docs.liquity.org/v2-faq/bold-and-stability-pools" target="_blank" rel="noopener" style="color:var(--accent)">Liquity's official docs on stability pools →</a></p>`
     html += `</div>`
@@ -1274,7 +1292,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
           <span class="vault-save-lead-mark">${BOLD_ICON}</span>
           <h1>${t('save.title') || 'save to BOLD'}</h1>
         </div>
-        ${earningLine ? `<div class="vault-save-lead-apr" title="${earningLine}"><span>${bestApy.toFixed(1)}%</span> APR</div>` : ''}
+        ${earningLine ? `<div class="vault-save-lead-apr" id="save-lead-apr" title="${earningLine}"><span id="save-lead-apr-value">${bestApy.toFixed(1)}%</span> APR</div>` : ''}
       </header>
       <p class="vault-save-lead-sub">
         ${t('save.explainer') || 'A dollar-stable savings account, backed by ETH. Earns yield when other people borrow against their ETH — Liquity pays the interest to you.'}
@@ -1357,6 +1375,12 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
       dialog.querySelectorAll('.vault-pool-card').forEach(c => c.classList.remove('vault-pool-card-selected'))
       card.classList.add('vault-pool-card-selected')
       card.querySelector('input').checked = true
+      // Sync the header APR to the pool the user just picked — the
+      // number they read at the top matches the rate they'll actually
+      // earn on the deposit they're about to make.
+      const apyText = card.querySelector('.vault-pool-card-apy')?.textContent?.trim()
+      const headerApr = dialog.querySelector('#save-lead-apr-value')
+      if (apyText && headerApr) headerApr.textContent = apyText
       renderCta()
     })
   })
@@ -1418,6 +1442,12 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   chainCurrent.addEventListener('click', () => {
     if (chainList.hidden) expandChainList()
     else collapseChainList()
+  })
+  // Click outside the picker also collapses it — so a chain pick that
+  // somehow doesn't fire the row click at least closes cleanly.
+  dialog.addEventListener('click', (e) => {
+    if (chainList.hidden) return
+    if (!chainPicker.contains(e.target)) collapseChainList()
   })
 
   // Cache gas reserve + breakdown per chain — fetched lazily on first

@@ -7321,6 +7321,35 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   white-space: nowrap;
 }
 
+/* Active-pool row (user has money in this pool). Small green dot in
+ * front of the name, user's amount reads as a caption underneath.
+ * Scales the same whether they're in one pool or all four. */
+.vault-pool-line-name-you {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.65ch;
+  min-width: 0;
+}
+.vault-pool-line-dot {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--green);
+  flex: 0 0 auto;
+  margin-top: 0.4em;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 20%, transparent);
+}
+.vault-pool-line-name-main { display: block; color: var(--fg); }
+.vault-pool-line-you-sub {
+  display: block;
+  color: var(--green);
+  font-size: 0.72em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.05em;
+  letter-spacing: 0.01em;
+}
+
 /* Rates-updated meta row + "how this works" toggle. */
 .vault-pool-meta {
   display: flex;
