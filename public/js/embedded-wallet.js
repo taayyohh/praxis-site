@@ -950,7 +950,17 @@ function createEmbeddedProvider(account) {
         case 'eth_getCode':
         case 'eth_getStorageAt':
         case 'eth_getBlockByHash':
-        case 'eth_getBlockTransactionCountByNumber': {
+        case 'eth_getBlockTransactionCountByNumber':
+        // Transaction-submit surface: viem's LocalAccount signs the tx
+        // locally and then hands the raw hex to eth_sendRawTransaction.
+        // Also cover eth_fillTransaction (Geth's helper viem hits when
+        // filling in nonce+gas defaults). Both are pure JSON-RPC and
+        // forward cleanly to the same Optimism endpoint. Missing these
+        // was the reason follow/unfollow (and every writeContract site)
+        // still crashed after the earlier authorizedSigner recursion
+        // fix — the code path just moved one method further along.
+        case 'eth_sendRawTransaction':
+        case 'eth_fillTransaction': {
           // proxy read calls to Optimism RPC
           const resp = await fetch(OPTIMISM_RPC, {
             method: 'POST',
