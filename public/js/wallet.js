@@ -1652,8 +1652,8 @@ window.ensureAuthorized = ensureAuthorized
 // address string when the user is on an external wallet, so viem still
 // dispatches through window.ethereum. Pass a fallback address if you have one.
 async function authorizedSigner(fallback) {
-  const addr = await authorizedSigner(fallback)
-          return window.getEmbeddedAccount?.() || addr
+  const addr = await ensureAuthorized(fallback)
+  return window.getEmbeddedAccount?.() || addr
 }
 window.authorizedSigner = authorizedSigner
 
