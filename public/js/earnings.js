@@ -718,6 +718,17 @@ function renderHistoryItems(items, ethPrices) {
 const ETH_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 12.5L12 16.5L20 12.5L12 2Z" fill="var(--accent)" opacity="0.7"/><path d="M12 2L4 12.5L12 10.5V2Z" fill="var(--accent)"/><path d="M12 18L4 14L12 22L20 14L12 18Z" fill="var(--accent)" opacity="0.7"/><path d="M12 18L4 14L12 22V18Z" fill="var(--accent)"/></svg>`
 const BOLD_ICON = `<svg width="24" height="24" viewBox="0 0 20 21" fill="none"><rect y="0.5" width="20" height="20" rx="10" fill="#63D77D"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.28 3.83H5.05V17.17H9.5V16.63C10.17 16.97 10.92 17.17 11.72 17.17C14.42 17.17 16.61 14.98 16.61 12.28C16.61 9.58 14.43 7.39 11.72 7.39C10.93 7.39 10.17 7.58 9.5 7.92V4.41V3.83H7.28ZM9.5 7.92C7.92 8.73 6.83 10.38 6.83 12.28C6.83 14.18 7.93 15.82 9.5 16.63V7.92Z" fill="#1C1D4F"/></svg>`
 
+// Chain brand marks. Small colored SVGs so each chain reads as a distinct
+// place, not just a name. Kept inline (data URI-ish) to avoid an extra
+// asset request. Colors match each chain's brand.
+const CHAIN_MARKS = {
+  Optimism: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="7" fill="#FF0420"/><text x="7" y="9.7" text-anchor="middle" font-size="7.5" font-weight="700" fill="white" font-family="system-ui, sans-serif">O</text></svg>`,
+  Ethereum: `<svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 1L4 12.5L12 16L20 12.5L12 1Z" fill="#627EEA" opacity="0.7"/><path d="M12 1L4 12.5L12 12V1Z" fill="#627EEA"/><path d="M12 17L4 14L12 23L20 14L12 17Z" fill="#627EEA" opacity="0.7"/><path d="M12 17L4 14L12 23V17Z" fill="#627EEA"/></svg>`,
+  Base: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="7" fill="#0052FF"/><path d="M7 12.25C9.9 12.25 12.25 9.9 12.25 7C12.25 4.1 9.9 1.75 7 1.75C4.25 1.75 2 3.85 1.77 6.54H8.6V7.46H1.77C2 10.15 4.25 12.25 7 12.25Z" fill="white"/></svg>`,
+  Arbitrum: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="7" fill="#28A0F0"/><path d="M7.7 2.6L10.5 10.5H9L8.35 8.7H5.65L5 10.5H3.5L6.3 2.6H7.7ZM7 4.4L6.05 7.5H7.95L7 4.4Z" fill="white"/></svg>`,
+}
+function chainMark(name) { return CHAIN_MARKS[name] || `<span class="vault-chain-dot" style="background:var(--dim)"></span>` }
+
 function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData }) {
   const totalUnclaimed = unclaimed.praxis + unclaimed.media + ticketUnclaimed
   const totalEarned = earned.mediaTotal + earned.projectEarnings
@@ -805,13 +816,15 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   }
   const projectedMonthlyYield = projectedYearlyYield / 12
 
-  // Savings body: current position + projected yield as a single line
-  // of typography — no icons, no color-boxes, hierarchy from size + color.
+  // Savings body: give the BOLD balance a real coin identity — the coin
+  // glyph inline with the number, so 11.24 BOLD reads as *money* not just
+  // "a number labelled BOLD".
   if (totalBold > 0n) {
     const totalStr = (Number(totalBold) / 1e18).toFixed(2)
-    html += `<div class="vault-act-figure">`
-    html += `<span class="vault-act-figure-main">${totalStr}</span> `
-    html += `<span class="vault-act-figure-unit">BOLD</span> `
+    html += `<div class="vault-act-figure vault-coin-figure">`
+    html += `<span class="vault-coin-mark">${BOLD_ICON}</span>`
+    html += `<span class="vault-act-figure-main">${totalStr}</span>`
+    html += `<span class="vault-act-figure-unit">BOLD</span>`
     html += `<span class="vault-act-figure-secondary">${formatFiat(Number(totalBold) / 1e18, currency)}</span>`
     html += `</div>`
     if (projectedYearlyYield > 0) {
@@ -893,9 +906,12 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     .filter(c => c.balance > 0n || c.chainId === 10)
   for (const c of chainRows) {
     const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
+    // Each chain gets its brand mark — Optimism red O, Ethereum diamond,
+    // Base's blue mark, Arbitrum's blue A — so the eye recognizes place,
+    // not just words. ETH glyph next to the balance says "this is a coin".
     html += `<div class="vault-chain-line">`
-    html += `<span class="vault-chain-line-name">${escapeHtml(c.name)}</span>`
-    html += `<span class="vault-chain-line-bal">${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
+    html += `<span class="vault-chain-line-name"><span class="vault-chain-line-mark">${chainMark(c.name)}</span>${escapeHtml(c.name)}</span>`
+    html += `<span class="vault-chain-line-bal"><span class="vault-chain-line-eth">${ETH_ICON}</span>${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
     html += `<span class="vault-chain-line-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span>`
     html += `</div>`
   }

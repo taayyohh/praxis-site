@@ -6936,6 +6936,26 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   font-variant-numeric: tabular-nums;
   margin-bottom: 0.35em;
 }
+
+/* Coin figure: number + coin glyph read as a *token* — a thing, not text.
+ * The mark sits inline just barely above baseline so the balance still
+ * scans as a single unit. */
+.vault-coin-figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35ch;
+  padding: 0.15em 0.8ch 0.15em 0.4ch;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 18%, transparent);
+}
+.vault-coin-mark {
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(0.15em);
+  margin-right: 0.15ch;
+}
+.vault-coin-mark svg { width: 1.1em; height: 1.1em; }
 .vault-act-figure-main {
   font-weight: 700;
   letter-spacing: -0.015em;
@@ -7044,8 +7064,40 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   border-bottom: 1px solid color-mix(in srgb, var(--fg) 3%, transparent);
 }
 .vault-chain-line:last-child { border-bottom: 0; }
-.vault-chain-line-name { color: var(--fg); }
-.vault-chain-line-bal { color: var(--fg); }
+.vault-chain-line-name {
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6ch;
+}
+/* Brand mark identifies the chain as a *place* — not just its name in text.
+ * Small enough to sit beside a body-size label without dominating. */
+.vault-chain-line-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
+.vault-chain-line-mark svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.vault-chain-line-bal {
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+}
+/* Small ETH glyph beside the balance so the number reads as a coin, not
+ * as an abstract quantity. */
+.vault-chain-line-eth {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.85em;
+  height: 0.85em;
+  opacity: 0.7;
+}
+.vault-chain-line-eth svg { width: 100%; height: 100%; display: block; }
 .vault-chain-line-fiat { color: var(--dim); text-align: right; }
 
 /* Income + outflow — two columns because the two sides are the same idea. */
