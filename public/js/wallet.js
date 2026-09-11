@@ -1,5 +1,19 @@
-import { t } from './i18n.js'
+import { t, getLang } from './i18n.js'
 import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic } from './utils.js'
+
+// Sync greeting map — used as a fallback when the i18n JSON hasn't
+// loaded yet at first render (t() returns the raw key in that case).
+const _GREETINGS = {
+  en: 'Hi', es: 'hola', fr: 'salut', de: 'hi', pt: 'olá', ru: 'привет',
+  ja: 'こんにちは', ko: '안녕', zh: '你好', ar: 'مرحبًا', hi: 'नमस्ते',
+  bn: 'হাই', ur: 'ہیلو', fa: 'سلام', tr: 'merhaba', vi: 'chào',
+  id: 'hai', sw: 'hujambo', sv: 'hej', da: 'hej',
+}
+function _greetingWord() {
+  const s = t('wallet.greeting')
+  if (s && s !== 'wallet.greeting') return s
+  return _GREETINGS[getLang?.()] || _GREETINGS.en
+}
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const status = document.getElementById('wallet-status')
@@ -215,7 +229,7 @@ function showAddress(address) {
       walletTop.innerHTML = `
         <div class="wallet-greeting">
           ${avatarHtml}
-          <span class="wallet-greeting-name">${escapeHtml(t('wallet.greeting'))}, ${escapeHtml(greetingName)}</span>
+          <span class="wallet-greeting-name">${escapeHtml(_greetingWord())}, ${escapeHtml(greetingName)}</span>
         </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
