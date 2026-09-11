@@ -241,6 +241,16 @@ async function changePassword(oldPassword, newPassword) {
   const newEncrypted = await encryptKey(privateKey, newPassword)
   localStorage.setItem(STORAGE_KEY, newEncrypted)
 
+  // re-encrypt mnemonic with new password (if stored)
+  const mnemonicEnc = localStorage.getItem('praxis-wallet-mnemonic-enc')
+  if (mnemonicEnc) {
+    try {
+      const mnemonic = await decryptKey(mnemonicEnc, oldPassword)
+      const newMnemonicEnc = await encryptKey(mnemonic, newPassword)
+      localStorage.setItem('praxis-wallet-mnemonic-enc', newMnemonicEnc)
+    } catch {}
+  }
+
   // update server backup
   try {
     await fetch('/api/wallet/store', {
@@ -375,26 +385,24 @@ function confirmTransaction(to, value) {
   return new Promise(async (resolve) => { try {
     const ethNum = Number(value) / 1e18
     const ethDisplay = ethNum < 0.001 ? ethNum.toExponential(2) : ethNum.toFixed(ethNum < 0.01 ? 4 : ethNum < 1 ? 3 : 2)
-    const shortTo = to ? `${to.slice(0, 8)}...${to.slice(-6)}` : 'contract'
+    const ethInline = `${ethDisplay} ETH`
+    const shortTo = to ? `${to.slice(0, 8)}…${to.slice(-6)}` : 'contract'
     const purchase = window._pendingPurchase
     const overlay = document.createElement('div')
-    overlay.className = 'praxis-modal-overlay z-10001'
+    overlay.className = 'praxis-modal-overlay vault-save-overlay'
+    overlay.style.zIndex = '10002'
 
-    // Resolve fiat price
-    let fiatHtml = ''
+    // Resolve fiat display
+    let fiatStr = ''
     try {
       const { getEthPrices, getUserCurrency, formatFiat } = await import('./fiat.js')
       const prices = await getEthPrices()
       if (prices) {
         const currency = getUserCurrency()
         const rate = prices[currency]
-        if (rate) {
-          const fiat = ethNum * rate
-          fiatHtml = `<div style="color:var(--fg,#c0c0c0);font-size:1.8em;font-weight:600;letter-spacing:-0.02em">${formatFiat(fiat, currency)}</div>`
-        }
+        if (rate) fiatStr = formatFiat(ethNum * rate, currency)
       }
     } catch {}
-    if (!fiatHtml) fiatHtml = `<div style="color:var(--fg,#c0c0c0);font-size:1.8em;font-weight:600">${ethDisplay} ETH</div>`
 
     // Resolve recipient name
     let recipientName = shortTo
@@ -410,50 +418,79 @@ function confirmTransaction(to, value) {
     const _registry = (document.body.dataset.registry || '').toLowerCase()
     const _media = (document.body.dataset.media || '').toLowerCase()
     const KNOWN_CONTRACTS = {
-      [_registry]: { name: 'register as an artist', desc: 'one-time network registration fee' },
-      [PRAXIS_ADDR.toLowerCase()]: { name: 'project action', desc: 'funding, credentials, or revenue claim' },
-      [_media]: { name: 'collect media', desc: 'you receive a permanent proof of purchase' },
-      [INVITES_ADDR.toLowerCase()]: { name: 'use invite', desc: 'activating your invite code' },
+      [_registry]: { name: 'register as an artist', desc: 'one-time network registration on Praxis' },
+      [PRAXIS_ADDR.toLowerCase()]: { name: 'Praxis project action', desc: 'a funding, credentials, or revenue-claim call on the Praxis contract' },
+      [_media]: { name: 'collect media', desc: 'you receive a permanent proof of purchase for this work' },
+      [INVITES_ADDR.toLowerCase()]: { name: 'redeem invite', desc: 'activating your invite code' },
       [ARTIST_SPONSOR_ADDR.toLowerCase()]: { name: 'sponsor an invite', desc: 'covering registration for someone you invite' },
-      [TICKET_MARKET_ADDR.toLowerCase()]: { name: 'ticket purchase', desc: 'buying or listing a ticket' },
+      [TICKET_MARKET_ADDR.toLowerCase()]: { name: 'ticket action', desc: 'buying, listing, or claiming a ticket' },
       [LIBRARY_ADDR.toLowerCase()]: { name: 'add to library', desc: 'adding to the shared knowledge base' },
-      [TREASURY_ADDR.toLowerCase()]: { name: 'treasury', desc: 'interacting with the network treasury' },
+      [TREASURY_ADDR.toLowerCase()]: { name: 'treasury action', desc: 'interacting with the Praxis network treasury' },
     }
     const contract = KNOWN_CONTRACTS[to?.toLowerCase()]
     const isDirectSend = !contract && !purchase
     const isPurchase = !!(purchase && purchase.title)
 
-    let title, subtitle, contextHtml
+    const amountPhrase = `${ethInline}${fiatStr ? ` (${fiatStr})` : ''}`
+    let title, explainer, subjectLabel, subjectValue
     if (isPurchase) {
       title = 'confirm purchase'
-      subtitle = escapeHtml(purchase.title || '')
-      contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">you'll receive a permanent, non-transferable proof of purchase</div>`
+      subjectLabel = 'for'
+      subjectValue = escapeHtml(purchase.title || '')
+      explainer = `You're paying ${amountPhrase} for "${escapeHtml(purchase.title || '')}" on Optimism. You'll receive a permanent, non-transferable proof of purchase. Network fees on Optimism are typically a few cents.`
     } else if (isDirectSend) {
-      title = 'send payment'
-      subtitle = `to ${recipientName}`
-      contextHtml = `<div style="color:var(--dim,#555);font-size:0.8em;line-height:1.5;margin-top:0.75em">sending ETH directly to this person on Optimism</div>`
+      title = 'confirm send'
+      subjectLabel = 'to'
+      subjectValue = recipientName
+      explainer = `You're sending ${amountPhrase} to ${recipientName} on Optimism. Network fees on Optimism are typically a few cents.`
     } else {
       title = contract.name
-      subtitle = contract.desc
-      contextHtml = ''
+      subjectLabel = 'contract'
+      subjectValue = recipientName
+      explainer = `You're authorizing ${contract.name}${ethNum > 0 ? ` for ${amountPhrase}` : ''} on Optimism — ${contract.desc}. Network fees on Optimism are typically a few cents.`
     }
 
+    const rawTo = to ? escapeHtml(to) : '(contract creation)'
+    const rawValueWei = value ? String(value) : '0'
+    const amountRightHtml = fiatStr
+      ? `${escapeHtml(fiatStr)} <span style="color:var(--dim);font-size:0.85em">· ${escapeHtml(ethInline)}</span>`
+      : escapeHtml(ethInline)
+
     overlay.innerHTML = `
-      <div class="praxis-modal-dialog" style="max-width:380px;font-family:inherit;text-align:center">
-        <div style="margin-bottom:1.5em">
-          <div style="color:var(--muted,#999);font-size:0.8em;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5em">${title}</div>
-          ${fiatHtml}
-          <div style="color:var(--dim,#555);font-size:0.8em;margin-top:0.25em">${ethDisplay} ETH on Optimism</div>
-        </div>
-        <div style="margin-bottom:1.5em;padding:0.75em 1em;border:1px solid var(--border,#333);border-radius:8px;background:rgba(255,255,255,0.02);text-align:left">
-          <div style="color:var(--fg,#c0c0c0);font-size:0.95em">${subtitle}</div>
-          ${isDirectSend ? `<div style="color:var(--dim,#555);font-size:0.7em;font-family:monospace;margin-top:0.25em">${shortTo}</div>` : ''}
-          ${contextHtml}
-        </div>
-        <div style="display:flex;gap:0.75em">
-          <button id="tx-confirm" style="flex:1;background:var(--green,#4ade80);border:none;color:#000;font-family:inherit;font-weight:600;padding:0.7em;cursor:pointer;border-radius:6px;font-size:0.95em">confirm</button>
-          <button id="tx-cancel" style="flex:1;background:none;border:1px solid var(--border,#333);color:var(--muted,#666);font-family:inherit;padding:0.7em;cursor:pointer;border-radius:6px;font-size:0.95em">cancel</button>
-        </div>
+      <button class="wizard-close vault-save-close" aria-label="close">×</button>
+      <div class="vault-save-doc">
+        <header class="vault-save-lead">
+          <div class="vault-save-lead-title"><h1>${escapeHtml(title)}</h1></div>
+          <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+        </header>
+        <p class="vault-save-lead-sub">${explainer}</p>
+
+        <section class="vault-save-doc-body">
+          <div class="tx-confirm-facts" style="display:grid;grid-template-columns:auto 1fr;column-gap:1.2em;row-gap:0.55em;font-size:0.9em;line-height:1.5;align-items:baseline">
+            <div style="color:var(--dim);font-size:0.85em">amount</div>
+            <div style="color:var(--fg);font-variant-numeric:tabular-nums;text-align:right">${amountRightHtml}</div>
+            <div style="color:var(--dim);font-size:0.85em">${escapeHtml(subjectLabel)}</div>
+            <div style="color:var(--fg);text-align:right;word-break:break-word">${subjectValue}</div>
+            <div style="color:var(--dim);font-size:0.85em">network</div>
+            <div style="color:var(--fg);text-align:right">Optimism · ~cents in fees</div>
+          </div>
+
+          <details class="tx-confirm-details" style="border-top:1px solid color-mix(in srgb, var(--fg) 8%, transparent); padding-top:0.75em">
+            <summary style="cursor:pointer;font-size:0.78em;color:var(--dim);letter-spacing:0.02em;list-style:none;user-select:none">technical details ▾</summary>
+            <div style="margin-top:0.6em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.72em;color:var(--dim);word-break:break-all;line-height:1.7">
+              <div><span style="color:var(--muted)">to:</span> ${rawTo}</div>
+              <div><span style="color:var(--muted)">value:</span> ${rawValueWei} wei</div>
+              <div><span style="color:var(--muted)">chain:</span> Optimism (10)</div>
+            </div>
+          </details>
+
+          <p style="font-size:0.75em;color:var(--muted);text-align:center;margin:0;line-height:1.55">You can safely reject if this looks unexpected. No fees are charged for rejection.</p>
+
+          <div class="vault-save-actions">
+            <button id="tx-confirm" class="vault-save-btn" style="background:var(--green);border-color:var(--green);color:#000">approve</button>
+            <button id="tx-cancel" class="vault-save-btn" style="background:none;border:1px solid color-mix(in srgb, var(--fg) 12%, transparent);color:var(--dim)">reject</button>
+          </div>
+        </section>
       </div>
     `
     document.body.appendChild(overlay)
@@ -470,29 +507,142 @@ function confirmTransaction(to, value) {
 
     overlay.querySelector('#tx-confirm').addEventListener('click', confirm)
     overlay.querySelector('#tx-cancel').addEventListener('click', () => { resolve(false); overlay.remove() })
+    overlay.querySelector('.vault-save-close')?.addEventListener('click', () => { resolve(false); overlay.remove() })
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { resolve(false); overlay.remove() } })
   } catch { resolve(false) } })
 }
 
+// Detect known Praxis-flow signature payloads so we can describe them in
+// plain English. Unknown messages fall back to a generic "signatures can
+// authorize transfers" warning, and any keyword that hints at token movement
+// forces the high-risk label.
+function _describeSignatureIntent(kind, preview) {
+  const raw = String(preview || '')
+  if (kind === 'typed') {
+    try {
+      const parsed = JSON.parse(raw)
+      const pt = parsed?.primaryType || ''
+      const domain = parsed?.domain?.name || ''
+      if (pt === 'Permit' || pt === 'PermitSingle') {
+        return {
+          title: 'authorize token spending',
+          explainer: `${domain || 'A contract'} is asking permission to spend one of your tokens without a further approval. This doesn't move funds now, but grants the ability to move them later. Only approve if you started this action.`,
+          risk: 'high',
+        }
+      }
+      if (pt === 'PermitBatch' || pt === 'PermitTransferFrom' || pt === 'PermitBatchTransferFrom') {
+        return {
+          title: 'authorize batch spending',
+          explainer: `A contract is asking permission to move several of your tokens. Only approve if you started this action.`,
+          risk: 'high',
+        }
+      }
+      return {
+        title: `sign ${pt || 'structured message'}`,
+        explainer: `${domain || 'A site'} is asking you to sign a structured off-chain message. Signatures can authorize future transfers or approvals — only approve if you recognize this action.`,
+        risk: 'medium',
+      }
+    } catch {}
+    return {
+      title: 'sign typed data',
+      explainer: 'A site is asking you to sign a structured off-chain message. Signatures can authorize future transfers or approvals — only approve if you recognize this action.',
+      risk: 'medium',
+    }
+  }
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('admin:')) return {
+    title: 'sign in to Praxis',
+    explainer: `You're signing a short-lived session token so this site can recognize you. This doesn't move any money and can't be reused elsewhere.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('sponsored-admin:')) return {
+    title: 'sign in via sponsor',
+    explainer: `You're activating a sponsored session. This proves ownership of this wallet and doesn't move any money.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('link:')) return {
+    title: 'link this wallet',
+    explainer: `You're linking this wallet to another so both can control the same Praxis identity. This is a signature only — it doesn't move any money.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('praxis:journal-key:')) return {
+    title: 'unlock your journal',
+    explainer: `You're deriving the encryption key that unlocks your private journal. The key stays in your browser and no funds move.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('domain-update:')) return {
+    title: 'update your domain routing',
+    explainer: `You're authorizing a change to how your Praxis domain resolves. This is a signature only — it doesn't move any money.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('praxis-retrieve:')) return {
+    title: 'restore your wallet backup',
+    explainer: `You're proving ownership so Praxis can hand back your encrypted wallet backup. This is a signature only — the key never leaves your browser and no funds move.`,
+    risk: 'safe',
+  }
+  if (trimmed.startsWith('deploy ')) return {
+    title: 'authorize a deploy',
+    explainer: `You're authorizing a Praxis site deploy. This is a signature only — it doesn't move any money.`,
+    risk: 'safe',
+  }
+  const lower = trimmed.toLowerCase()
+  if (['permit', 'setapproval', 'transfer', 'authorize', 'redeem'].some(k => lower.includes(k))) {
+    return {
+      title: 'high-risk signature',
+      explainer: `This message contains keywords that can authorize token movements or approvals (e.g. permit, transfer, redeem). Only approve if you truly started this action — otherwise reject.`,
+      risk: 'high',
+    }
+  }
+  return {
+    title: 'sign message',
+    explainer: `A site is asking you to sign a message with your wallet. Signatures can authorize transfers or approvals — only approve if you recognize this action.`,
+    risk: 'medium',
+  }
+}
+
 // H7: confirmation modal for personal_sign / typed-data signatures. Shows
-// the message preview and requires explicit user approval. Used to prevent
-// silent signing of permits, approvals, or typed-data requests by any page.
+// a plain-English description of what the signature authorizes, with the
+// raw payload tucked behind a "technical details" toggle. Prevents silent
+// signing of permits, approvals, or typed-data requests by any page.
 function confirmSignature(kind, preview) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
-    overlay.className = 'praxis-modal-overlay z-10001'
+    overlay.className = 'praxis-modal-overlay vault-save-overlay'
+    overlay.style.zIndex = '10002'
     const safePreview = String(preview || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const title = kind === 'typed' ? 'confirm typed data signature' : 'confirm message signature'
+    const intent = _describeSignatureIntent(kind, preview)
+    const riskLabel = intent.risk === 'safe' ? 'safe' : intent.risk === 'high' ? 'review carefully' : 'review'
+    const riskColor = intent.risk === 'safe' ? 'var(--green)' : intent.risk === 'high' ? 'var(--red, #d97a7a)' : 'var(--fg)'
     overlay.innerHTML = `
-      <div class="praxis-modal-dialog" style="max-width:440px;font-family:inherit">
-        <h3 style="color:var(--accent,#fff);margin-bottom:0.75em">${title}</h3>
-        <p style="color:var(--muted,#999);font-size:0.85em;line-height:1.5;margin-bottom:0.75em">a site is asking you to sign a message with your wallet. signatures can authorize token transfers or approvals — only confirm if you recognize this action.</p>
-        <pre style="max-height:220px;overflow:auto;background:rgba(255,255,255,0.03);border:1px solid var(--border,#333);padding:0.75em;font-size:0.75em;color:var(--dim,#888);margin-bottom:1.25em;white-space:pre-wrap;word-break:break-word">${safePreview}</pre>
-        <div style="display:flex;gap:1ch">
-          <button id="sig-confirm" style="flex:1;background:none;border:1px solid var(--green, #4ade80);color:var(--green, #4ade80);font-family:inherit;padding:0.6em;cursor:pointer">sign</button>
-          <button id="sig-cancel" style="flex:1;background:none;border:1px solid #333;color:#666;font-family:inherit;padding:0.6em;cursor:pointer">cancel</button>
-        </div>
+      <button class="wizard-close vault-save-close" aria-label="close">×</button>
+      <div class="vault-save-doc">
+        <header class="vault-save-lead">
+          <div class="vault-save-lead-title"><h1>${escapeHtml(intent.title)}</h1></div>
+          <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:${riskColor};font-size:0.95em;font-weight:500;letter-spacing:0;text-transform:none">${riskLabel}</span></div>
+        </header>
+        <p class="vault-save-lead-sub">${escapeHtml(intent.explainer)}</p>
+
+        <section class="vault-save-doc-body">
+          <div class="sig-confirm-facts" style="display:grid;grid-template-columns:auto 1fr;column-gap:1.2em;row-gap:0.55em;font-size:0.9em;line-height:1.5;align-items:baseline">
+            <div style="color:var(--dim);font-size:0.85em">kind</div>
+            <div style="color:var(--fg);text-align:right">${kind === 'typed' ? 'typed data (EIP-712)' : 'text message (personal_sign)'}</div>
+            <div style="color:var(--dim);font-size:0.85em">moves funds</div>
+            <div style="color:${intent.risk === 'safe' ? 'var(--green)' : 'var(--fg)'};text-align:right">${intent.risk === 'safe' ? 'no — signature only' : 'not directly, but could authorize future transfers'}</div>
+          </div>
+
+          <details class="sig-confirm-details" style="border-top:1px solid color-mix(in srgb, var(--fg) 8%, transparent); padding-top:0.75em">
+            <summary style="cursor:pointer;font-size:0.78em;color:var(--dim);letter-spacing:0.02em;list-style:none;user-select:none">technical details ▾</summary>
+            <pre style="margin-top:0.6em;max-height:240px;overflow:auto;background:color-mix(in srgb, var(--fg) 4%, transparent);border-radius:8px;padding:0.75em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.72em;color:var(--dim);white-space:pre-wrap;word-break:break-word;line-height:1.6">${safePreview}</pre>
+          </details>
+
+          <p style="font-size:0.75em;color:var(--muted);text-align:center;margin:0;line-height:1.55">You can safely reject if this looks unexpected. No fees are charged for rejection.</p>
+
+          <div class="vault-save-actions">
+            <button id="sig-confirm" class="vault-save-btn" style="background:var(--green);border-color:var(--green);color:#000">approve</button>
+            <button id="sig-cancel" class="vault-save-btn" style="background:none;border:1px solid color-mix(in srgb, var(--fg) 12%, transparent);color:var(--dim)">reject</button>
+          </div>
+        </section>
       </div>
     `
     document.body.appendChild(overlay)
@@ -504,6 +654,7 @@ function confirmSignature(kind, preview) {
       resolve(true); overlay.remove()
     })
     overlay.querySelector('#sig-cancel').addEventListener('click', () => { resolve(false); overlay.remove() })
+    overlay.querySelector('.vault-save-close')?.addEventListener('click', () => { resolve(false); overlay.remove() })
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { resolve(false); overlay.remove() } })
   })
 }
