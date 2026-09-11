@@ -5,26 +5,26 @@ import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfi
 // has always finished loading; t() returns the raw key on miss. Keeps
 // the dropdown legible in every language on first paint.
 const _WALLET_STRINGS = {
-  ar: { greeting: 'مرحبًا', vault: 'الخزينة', manage: 'إدارة', signout: 'تسجيل الخروج' },
-  bn: { greeting: 'হাই', vault: 'ভল্ট', manage: 'পরিচালনা', signout: 'সাইন আউট' },
-  da: { greeting: 'hej', vault: 'hvælv', manage: 'administrer', signout: 'log ud' },
-  de: { greeting: 'hi', vault: 'tresor', manage: 'verwalten', signout: 'abmelden' },
-  en: { greeting: 'Hi', vault: 'vault', manage: 'manage', signout: 'sign out' },
-  es: { greeting: 'hola', vault: 'bóveda', manage: 'gestionar', signout: 'cerrar sesión' },
-  fa: { greeting: 'سلام', vault: 'خزانه', manage: 'مدیریت', signout: 'خروج' },
-  fr: { greeting: 'salut', vault: 'coffre', manage: 'gérer', signout: 'se déconnecter' },
-  hi: { greeting: 'नमस्ते', vault: 'तिजोरी', manage: 'प्रबंधन', signout: 'साइन आउट' },
-  id: { greeting: 'hai', vault: 'brankas', manage: 'kelola', signout: 'keluar' },
-  ja: { greeting: 'こんにちは', vault: '金庫', manage: '管理', signout: 'サインアウト' },
-  ko: { greeting: '안녕', vault: '금고', manage: '관리', signout: '로그아웃' },
-  pt: { greeting: 'olá', vault: 'cofre', manage: 'gerenciar', signout: 'sair' },
-  ru: { greeting: 'привет', vault: 'хранилище', manage: 'управление', signout: 'выйти' },
-  sv: { greeting: 'hej', vault: 'valv', manage: 'hantera', signout: 'logga ut' },
-  sw: { greeting: 'hujambo', vault: 'hazina', manage: 'dhibiti', signout: 'ondoka' },
-  tr: { greeting: 'merhaba', vault: 'kasa', manage: 'yönet', signout: 'çıkış' },
-  ur: { greeting: 'ہیلو', vault: 'تجوری', manage: 'انتظام', signout: 'سائن آؤٹ' },
-  vi: { greeting: 'chào', vault: 'kho', manage: 'quản lý', signout: 'đăng xuất' },
-  zh: { greeting: '你好', vault: '保险库', manage: '管理', signout: '退出' },
+  ar: { greeting: 'مرحبًا', praxis: 'ممارسة', vault: 'الخزينة', manage: 'إدارة', signout: 'تسجيل الخروج' },
+  bn: { greeting: 'হাই', praxis: 'অনুশীলন', vault: 'ভল্ট', manage: 'পরিচালনা', signout: 'সাইন আউট' },
+  da: { greeting: 'hej', praxis: 'praksis', vault: 'hvælv', manage: 'administrer', signout: 'log ud' },
+  de: { greeting: 'hi', praxis: 'praxis', vault: 'tresor', manage: 'verwalten', signout: 'abmelden' },
+  en: { greeting: 'Hi', praxis: 'praxis', vault: 'vault', manage: 'manage', signout: 'sign out' },
+  es: { greeting: 'hola', praxis: 'práctica', vault: 'bóveda', manage: 'gestionar', signout: 'cerrar sesión' },
+  fa: { greeting: 'سلام', praxis: 'تمرین', vault: 'خزانه', manage: 'مدیریت', signout: 'خروج' },
+  fr: { greeting: 'salut', praxis: 'pratique', vault: 'coffre', manage: 'gérer', signout: 'se déconnecter' },
+  hi: { greeting: 'नमस्ते', praxis: 'अभ्यास', vault: 'तिजोरी', manage: 'प्रबंधन', signout: 'साइन आउट' },
+  id: { greeting: 'hai', praxis: 'praktik', vault: 'brankas', manage: 'kelola', signout: 'keluar' },
+  ja: { greeting: 'こんにちは', praxis: '実践', vault: '金庫', manage: '管理', signout: 'サインアウト' },
+  ko: { greeting: '안녕', praxis: '실천', vault: '금고', manage: '관리', signout: '로그아웃' },
+  pt: { greeting: 'olá', praxis: 'prática', vault: 'cofre', manage: 'gerenciar', signout: 'sair' },
+  ru: { greeting: 'привет', praxis: 'практика', vault: 'хранилище', manage: 'управление', signout: 'выйти' },
+  sv: { greeting: 'hej', praxis: 'praktik', vault: 'valv', manage: 'hantera', signout: 'logga ut' },
+  sw: { greeting: 'hujambo', praxis: 'mazoezi', vault: 'hazina', manage: 'dhibiti', signout: 'ondoka' },
+  tr: { greeting: 'merhaba', praxis: 'pratik', vault: 'kasa', manage: 'yönet', signout: 'çıkış' },
+  ur: { greeting: 'ہیلو', praxis: 'مشق', vault: 'تجوری', manage: 'انتظام', signout: 'سائن آؤٹ' },
+  vi: { greeting: 'chào', praxis: 'thực hành', vault: 'kho', manage: 'quản lý', signout: 'đăng xuất' },
+  zh: { greeting: '你好', praxis: '实践', vault: '保险库', manage: '管理', signout: '退出' },
 }
 function _walletWord(field, key) {
   const s = t(key)
@@ -267,7 +267,7 @@ function showAddress(address) {
     // Three flat buttons — same visual weight. `manage` only for site owner.
     topBarWallet.innerHTML = `
       <div class="dd-nav">
-        <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label">praxis</span></a>
+        <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label" data-i18n="wallet.navPraxis">${escapeHtml(_walletWord('praxis', 'wallet.navPraxis'))}</span></a>
         <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>
         ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navManage">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
       </div>
