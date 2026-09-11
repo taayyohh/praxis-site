@@ -742,12 +742,29 @@ function _renderCatalogAlbumCard(albumId, items) {
 
 function _renderCatalogGrid(items) {
   if (_homeCatalogViewMode === 'grouped') {
+    // Group by album. The server's albumId is the primary key, but we
+    // also fall back to (artist + album title) so a stale albumId cache
+    // or a title-with-trailing-whitespace edge case doesn't cause the
+    // same album to render as two cards. Same artist + same title
+    // (case-insensitive, whitespace-collapsed) = same album, period.
     const albumGroups = new Map()
+    const titleIndex = new Map() // titleKey → primary albumId for merging
     const singles = []
+    const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
     for (const item of items) {
-      if (item.albumId) {
-        if (!albumGroups.has(item.albumId)) albumGroups.set(item.albumId, [])
-        albumGroups.get(item.albumId).push(item)
+      const albumTitle = item.albumTitle || ''
+      const titleKey = albumTitle
+        ? `${(item.artist || '').toLowerCase()}::${norm(albumTitle)}`
+        : ''
+      const primaryId = item.albumId || (titleKey ? `title:${titleKey}` : null)
+      if (primaryId) {
+        // If we've seen another albumId with the same title before,
+        // route this item to the primary group instead of splitting.
+        const existingKey = titleKey ? titleIndex.get(titleKey) : null
+        const groupKey = existingKey || primaryId
+        if (!existingKey && titleKey) titleIndex.set(titleKey, groupKey)
+        if (!albumGroups.has(groupKey)) albumGroups.set(groupKey, [])
+        albumGroups.get(groupKey).push(item)
       } else {
         singles.push(item)
       }

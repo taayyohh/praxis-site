@@ -2579,6 +2579,28 @@ function renderModuleEditor(el, mod) {
         } else {
           aliases[a].albums[b][f] = input.type === 'number' ? parseInt(input.value) : input.value
         }
+        // Duplicate-title guard: if this is the title field and it now
+        // matches another album's title within the same alias, warn.
+        // Never blocks the save — just flags it so accidental duplicates
+        // don't slip through unnoticed.
+        if (f === 'title') {
+          const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+          const mine = norm(input.value)
+          const parent = input.closest('.album-editor') || input.closest('[data-album]')?.parentElement
+          const existingWarn = parent?.querySelector('.album-dup-warning')
+          if (existingWarn) existingWarn.remove()
+          if (!mine) return
+          const dupeIdx = (aliases[a].albums || []).findIndex((al, i) =>
+            i !== b && norm(al.title) === mine
+          )
+          if (dupeIdx >= 0 && parent) {
+            const warn = document.createElement('div')
+            warn.className = 'album-dup-warning'
+            warn.style.cssText = 'color:var(--yellow,#da3);font-size:0.75em;margin-top:0.35em;padding:0.4em 0.6ch;border-left:2px solid var(--yellow,#da3);background:color-mix(in srgb,#da3 5%,transparent)'
+            warn.innerHTML = `You already have an album called <strong>${escapeHtml(input.value)}</strong> in this alias (album ${dupeIdx + 1}). If this is the same record, edit the existing one instead — duplicates render as separate cards on your site.`
+            input.parentElement?.after(warn)
+          }
+        }
       })
     })
     el.querySelectorAll('.track-field').forEach(input => {
