@@ -614,6 +614,13 @@ const ticketHtml = `<div id="ticket-page">
 </div>`
 out('ticket', wrap(ticketHtml, 'ticket', '/ticket', '/og/index.png', { noindex: true }))
 
+// design — living UI catalog. Renders every visual primitive + wraps
+// buttons around every modal opener in the app so a designer can pull
+// them up side-by-side. Not linked from any nav; noindex; internal
+// review tool.
+const designHtml = `<div id="design-page"><div id="design-content"><span class="praxis-loader"></span></div></div>`
+out('design', wrap(designHtml, 'design system', '/design', '/og/index.png', { noindex: true }))
+
 // write page (full-page compose editor)
 const writeHtml = `<div id="write-page">
 <div class="write-inner">

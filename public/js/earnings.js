@@ -1297,7 +1297,7 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
 
 // --- Modals ---
 
-async function showReceiveModal(addr) {
+export async function showReceiveModal(addr) {
   const existing = document.getElementById('vault-receive-modal')
   if (existing) { existing.remove(); return }
   const overlay = document.createElement('div')

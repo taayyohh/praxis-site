@@ -8282,3 +8282,95 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .ticket-pass-title, .ticket-pass-field-value, .ticket-pass-eyebrow, .ticket-pass-field-label { color: black; }
   .ticket-wallet-btn, .ticket-pass-footnote { display: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * Design catalog — /design. Internal review tool. Kept close to
+ * the vault-doc pattern so the catalog itself doesn't drift from
+ * its own principles.
+ * ───────────────────────────────────────────────────────────── */
+.design-catalog {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2em 1.25em 5em;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5em;
+}
+.design-lead { display: flex; flex-direction: column; gap: 0.4em; margin-bottom: 0.5em; }
+.design-eyebrow {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7em;
+}
+.design-lead h1 { margin: 0; font-size: 1.8em; font-weight: 600; letter-spacing: -0.01em; }
+.design-lead-sub { margin: 0.3em 0 0; color: var(--dim); font-size: 0.95em; line-height: 1.5; max-width: 60ch; }
+.design-section { display: flex; flex-direction: column; gap: 1em; }
+.design-section-title {
+  margin: 0 0 0.15em;
+  font-size: 0.85em;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 500;
+  padding-bottom: 0.5em;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.design-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65em;
+  padding: 0.5em 0;
+}
+.design-block h3 {
+  margin: 0;
+  font-size: 0.8em;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+}
+.design-swatch-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.5em;
+}
+.design-swatch {
+  height: 64px;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0.5em 0.7em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75em;
+}
+.design-type-row { display: flex; flex-direction: column; gap: 0.4em; }
+.design-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em 0.8em;
+  align-items: center;
+}
+.design-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em 0.8em;
+  align-items: center;
+}
+.design-foot {
+  margin-top: 1em;
+  padding-top: 1em;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--dim);
+  font-size: 0.9em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+.design-foot code {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  padding: 0.15em 0.4ch;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
