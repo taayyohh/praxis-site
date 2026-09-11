@@ -36,8 +36,10 @@ playBtn.innerHTML = '<i class="ph ph-play"></i>'
 playBtn.setAttribute('aria-label', 'play')
 playBtn.style.cssText = `
   background: rgba(255,255,255,0.1); border: none; border-radius: 50%; color: var(--fg);
-  font-size: 1.2em; padding: 0; cursor: pointer;
-  width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+  font-size: 1em; padding: 0; cursor: pointer;
+  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
 `
 
 const nextBtn = document.createElement('button')
