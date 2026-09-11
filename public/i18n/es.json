@@ -636,5 +636,9 @@
   "save.summaryGas": "Network fee",
   "save.summaryTotal": "From wallet",
   "save.summaryPlaceholder": "Enter an amount above",
-  "wallet.greeting": "hola"
+  "wallet.greeting": "hola",
+  "wallet.navPraxis": "praxis",
+  "wallet.navVault": "bóveda",
+  "wallet.navManage": "gestionar",
+  "wallet.signout": "cerrar sesión"
 }

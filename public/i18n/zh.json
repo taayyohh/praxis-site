@@ -636,5 +636,9 @@
   "save.summaryGas": "Network fee",
   "save.summaryTotal": "From wallet",
   "save.summaryPlaceholder": "Enter an amount above",
-  "wallet.greeting": "你好"
+  "wallet.greeting": "你好",
+  "wallet.navPraxis": "praxis",
+  "wallet.navVault": "保险库",
+  "wallet.navManage": "管理",
+  "wallet.signout": "退出"
 }

@@ -636,5 +636,9 @@
   "save.summaryGas": "Network fee",
   "save.summaryTotal": "From wallet",
   "save.summaryPlaceholder": "Enter an amount above",
-  "wallet.greeting": "안녕"
+  "wallet.greeting": "안녕",
+  "wallet.navPraxis": "praxis",
+  "wallet.navVault": "금고",
+  "wallet.navManage": "관리",
+  "wallet.signout": "로그아웃"
 }

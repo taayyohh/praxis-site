@@ -1,19 +1,38 @@
 import { t, getLang } from './i18n.js'
 import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic } from './utils.js'
 
-// Sync greeting map — used as a fallback when the i18n JSON hasn't
-// loaded yet at first render (t() returns the raw key in that case).
-const _GREETINGS = {
-  en: 'Hi', es: 'hola', fr: 'salut', de: 'hi', pt: 'olá', ru: 'привет',
-  ja: 'こんにちは', ko: '안녕', zh: '你好', ar: 'مرحبًا', hi: 'नमस्ते',
-  bn: 'হাই', ur: 'ہیلو', fa: 'سلام', tr: 'merhaba', vi: 'chào',
-  id: 'hai', sw: 'hujambo', sv: 'hej', da: 'hej',
+// Sync fallback map — the wallet dropdown renders before the i18n JSON
+// has always finished loading; t() returns the raw key on miss. Keeps
+// the dropdown legible in every language on first paint.
+const _WALLET_STRINGS = {
+  ar: { greeting: 'مرحبًا', vault: 'الخزينة', manage: 'إدارة', signout: 'تسجيل الخروج' },
+  bn: { greeting: 'হাই', vault: 'ভল্ট', manage: 'পরিচালনা', signout: 'সাইন আউট' },
+  da: { greeting: 'hej', vault: 'hvælv', manage: 'administrer', signout: 'log ud' },
+  de: { greeting: 'hi', vault: 'tresor', manage: 'verwalten', signout: 'abmelden' },
+  en: { greeting: 'Hi', vault: 'vault', manage: 'manage', signout: 'sign out' },
+  es: { greeting: 'hola', vault: 'bóveda', manage: 'gestionar', signout: 'cerrar sesión' },
+  fa: { greeting: 'سلام', vault: 'خزانه', manage: 'مدیریت', signout: 'خروج' },
+  fr: { greeting: 'salut', vault: 'coffre', manage: 'gérer', signout: 'se déconnecter' },
+  hi: { greeting: 'नमस्ते', vault: 'तिजोरी', manage: 'प्रबंधन', signout: 'साइन आउट' },
+  id: { greeting: 'hai', vault: 'brankas', manage: 'kelola', signout: 'keluar' },
+  ja: { greeting: 'こんにちは', vault: '金庫', manage: '管理', signout: 'サインアウト' },
+  ko: { greeting: '안녕', vault: '금고', manage: '관리', signout: '로그아웃' },
+  pt: { greeting: 'olá', vault: 'cofre', manage: 'gerenciar', signout: 'sair' },
+  ru: { greeting: 'привет', vault: 'хранилище', manage: 'управление', signout: 'выйти' },
+  sv: { greeting: 'hej', vault: 'valv', manage: 'hantera', signout: 'logga ut' },
+  sw: { greeting: 'hujambo', vault: 'hazina', manage: 'dhibiti', signout: 'ondoka' },
+  tr: { greeting: 'merhaba', vault: 'kasa', manage: 'yönet', signout: 'çıkış' },
+  ur: { greeting: 'ہیلو', vault: 'تجوری', manage: 'انتظام', signout: 'سائن آؤٹ' },
+  vi: { greeting: 'chào', vault: 'kho', manage: 'quản lý', signout: 'đăng xuất' },
+  zh: { greeting: '你好', vault: '保险库', manage: '管理', signout: '退出' },
 }
-function _greetingWord() {
-  const s = t('wallet.greeting')
-  if (s && s !== 'wallet.greeting') return s
-  return _GREETINGS[getLang?.()] || _GREETINGS.en
+function _walletWord(field, key) {
+  const s = t(key)
+  if (s && s !== key) return s
+  const lang = getLang?.() || 'en'
+  return (_WALLET_STRINGS[lang] || _WALLET_STRINGS.en)[field]
 }
+function _greetingWord() { return _walletWord('greeting', 'wallet.greeting') }
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const status = document.getElementById('wallet-status')
@@ -249,8 +268,8 @@ function showAddress(address) {
     topBarWallet.innerHTML = `
       <div class="dd-nav">
         <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label">praxis</span></a>
-        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label">vault</span></a>
-        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="settings.title">manage</span></button>` : ''}
+        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>
+        ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
       </div>
     `
     // Praxis logo — same mark as the landing favicon (a circle with a
@@ -296,7 +315,7 @@ function showAddress(address) {
       signout.type = 'button'
       signout.id = 'dd-disconnect'
       signout.className = 'dd-signout'
-      signout.textContent = 'sign out'
+      signout.textContent = _walletWord('signout', 'wallet.signout')
       bottom.appendChild(signout)
       dropdown.appendChild(bottom)
 
