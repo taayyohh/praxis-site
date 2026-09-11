@@ -283,11 +283,18 @@ button.dd-nav-btn:focus-visible .dd-nav-label { color: var(--fg); }
 }
 .dd-footer-switchers { display: flex; gap: 4px; }
 .dd-signout {
-  background: none; border: none; padding: 0.15em 0;
+  background: none; border: none;
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
   color: var(--dim); font-family: inherit; font-size: 0.78em;
-  cursor: pointer; transition: color 0.12s;
+  cursor: pointer; transition: color 0.12s, background 0.12s;
 }
-.dd-signout:hover { color: var(--fg); }
+.dd-signout:hover,
+.dd-signout:focus-visible {
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  color: var(--fg);
+  outline: none;
+}
 
 /* Praxis hub tab strip — prepended to /network, /projects, /library.
    Three text links; active gets accent + a thin underline. Sits above the
@@ -6824,6 +6831,74 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 @media (max-width: 600px) { .masonry-grid { column-count: 2; } .top-artists-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* --- Vault --- */
+/* --- Vault dashboard layout --- */
+/* Hero: total balance on the left, earned/spent/net chips on the right. */
+.vault-hero-compact {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5em;
+  flex-wrap: wrap;
+  margin-bottom: 1em;
+}
+.vault-hero-compact .vault-hero-left { flex: 0 0 auto; }
+.vault-hero-compact .vault-total-label {
+  font-size: 0.7em; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  margin-bottom: 0.2em;
+}
+.vault-hero-compact .vault-total-value {
+  font-size: 2.6em; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.vault-hero-compact .vault-hero-summary {
+  margin: 0;
+  padding: 0.6em 1em;
+  gap: 1.5em;
+  align-self: flex-end;
+}
+
+/* 2-column dashboard grid. Stacks on narrow viewports. */
+.vault-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  align-items: start;
+}
+@media (max-width: 900px) { .vault-grid { grid-template-columns: 1fr; } }
+.vault-grid-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  min-width: 0;
+}
+
+/* Uniform panels — one visual language across chains/breakdown/activity. */
+.vault-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9em 1em;
+  background: color-mix(in srgb, var(--fg) 2%, transparent);
+}
+.vault-panel-title {
+  font-size: 0.7em;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.65em;
+}
+/* Activity fits into a bounded height on desktop; scrolls internally so
+ * the surrounding grid doesn't jump. */
+.vault-panel-activity .vault-history { max-height: 320px; border: 0; border-radius: 0; }
+.vault-panel-activity .vault-history .vault-tx { padding: 0.55em 0; border-color: color-mix(in srgb, var(--fg) 5%, transparent); }
+.vault-panel-activity .vault-history .vault-tx:last-child { border-bottom: 0; }
+
+/* Chains rendered inside a panel — drop the container's own border. */
+.vault-tokens-plain { border: 0 !important; padding: 0 !important; }
+
+/* Hero action row */
+.vault-actions { margin-bottom: 1em; }
 .vault-hero { margin-bottom: 1.5em; }
 .vault-total-label { font-size: 0.7em; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.15em; }
 .vault-total-value { font-size: 2.2em; font-weight: 700; color: var(--fg); line-height: 1.15; font-variant-numeric: tabular-nums; margin-bottom: 0.6em; }

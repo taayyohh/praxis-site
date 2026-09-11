@@ -738,15 +738,17 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   let html = ''
 
   // --- Balance hero ---
-  // Hero surfaces the essentials — total balance, lifetime earned/spent,
-  // net position — right at the top, no scroll required. Details live
-  // in the OVERVIEW section further down.
-  html += `<div class="vault-hero">`
+  // Hero surfaces the essentials — total balance, lifetime earned/spent/net —
+  // and the action row. Chain balances moved into the left column of the
+  // dashboard grid below so the hero stays compact.
+  html += `<div class="vault-hero vault-hero-compact">`
+  html += `<div class="vault-hero-left">`
   html += `<div class="vault-total-label">total balance</div>`
   html += `<div class="vault-total-value">${formatFiat(totalFiat, currency)}</div>`
+  html += `</div>`
 
-  // Earned + spent chips right under the balance. Even a first-time user
-  // sees their position without scrolling.
+  // Earned + spent chips: right side of the hero, aligned to the right so
+  // they read as a summary, not a competing focal point.
   if (totalEarned > 0n || totalContributed > 0n) {
     html += `<div class="vault-hero-summary">`
     html += `<div class="vault-hero-chip"><span class="vault-hero-chip-label">earned</span><span class="vault-hero-chip-value" style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></div>`
@@ -758,11 +760,33 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     }
     html += `</div>`
   }
+  html += `</div>`
 
-  // Token rows — one per chain with a non-zero ETH balance. Always show
-  // Optimism (the app's home chain) even when empty; hide other chains until
-  // they hold funds so the panel doesn't get noisy.
-  html += `<div class="vault-tokens">`
+  // Action row directly under the hero — full width, one line.
+  html += `<div class="vault-actions">`
+  html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i><span>send</span></button>`
+  html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i><span>receive</span></button>`
+  html += `<button class="vault-action-btn vault-action-btn-primary" id="vault-swap-btn"><i class="ph ph-piggy-bank"></i><span>save</span></button>`
+  html += `<button class="vault-action-btn" id="vault-fund-btn"><i class="ph ph-plus"></i><span>add funds</span></button>`
+  html += `<button class="vault-action-btn" id="vault-cashout-btn"><i class="ph ph-arrow-square-out"></i><span>cash out</span></button>`
+  html += `</div>`
+
+  // --- Dashboard grid ---
+  // Two columns that fit the viewport on desktop. Left carries the
+  // "where your money lives" story (chain balances + income/outflow
+  // breakdown). Right carries the "what it's doing" story (savings
+  // yield + recent activity).
+  html += `<div class="vault-grid">`
+
+  // LEFT COLUMN — chain balances + income/outflow breakdown
+  html += `<div class="vault-grid-col">`
+
+  // Chain balance panel — one row per chain with a non-zero balance;
+  // always show Optimism (the app's home chain) so a fresh account
+  // still has structure.
+  html += `<div class="vault-panel">`
+  html += `<div class="vault-panel-title">chains</div>`
+  html += `<div class="vault-tokens vault-tokens-plain">`
   const rows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
     .filter(c => c.balance > 0n || c.chainId === 10)
   for (const c of rows) {
@@ -773,7 +797,6 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `<div class="vault-token-amounts"><span class="vault-token-bal">${formatEthAmount(c.balance)}</span><span class="vault-token-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span></div>`
     html += `</div>`
   }
-
   if (boldBalance > 0n) {
     const boldFormatted = (Number(boldBalance) / 1e18).toFixed(2)
     html += `<div class="vault-token">`
@@ -782,17 +805,6 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `<div class="vault-token-amounts"><span class="vault-token-bal">${boldFormatted}</span><span class="vault-token-fiat">${formatFiat(boldFiat, currency)}</span></div>`
     html += `</div>`
   }
-  html += `</div>`
-
-  // Action buttons
-  // Vault actions: send / receive / save (day-to-day) then add funds / cash out
-  // (moving money in and out of the ecosystem). Two visual groups, one row.
-  html += `<div class="vault-actions">`
-  html += `<button class="vault-action-btn" id="vault-send-btn"><i class="ph ph-arrow-up-right"></i><span>send</span></button>`
-  html += `<button class="vault-action-btn" id="vault-receive-btn"><i class="ph ph-arrow-down-left"></i><span>receive</span></button>`
-  html += `<button class="vault-action-btn" id="vault-swap-btn"><i class="ph ph-swap"></i><span>save</span></button>`
-  html += `<button class="vault-action-btn" id="vault-fund-btn"><i class="ph ph-plus"></i><span>add funds</span></button>`
-  html += `<button class="vault-action-btn" id="vault-cashout-btn"><i class="ph ph-arrow-square-out"></i><span>cash out</span></button>`
   html += `</div>`
   html += `</div>`
 
@@ -818,6 +830,29 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     projectedYearlyYield = (Number(spTotalBold) / 1e18) * (bestApy / 100)
   }
   const projectedMonthlyYield = projectedYearlyYield / 12
+
+  // Breakdown panel — where earnings came from + where spending went.
+  // Same left column so the "where money lives" story stays cohesive.
+  html += `<div class="vault-panel">`
+  html += `<div class="vault-panel-title">income &amp; outflow</div>`
+  html += `<div class="vault-breakdown">`
+  const ownMediaTotalPre = earned.mediaSales.filter(s => s.type !== 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
+  const collabMediaTotalPre = earned.mediaSales.filter(s => s.type === 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
+  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-music-note"></i> media sales</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(ownMediaTotalPre, ethPrices)}</span></div>`
+  if (collabMediaTotalPre > 0n) {
+    html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-users"></i> collab splits</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(collabMediaTotalPre, ethPrices)}</span></div>`
+  }
+  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-handshake"></i> project payouts</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(earned.projectEarnings + unclaimed.praxis, ethPrices)}</span></div>`
+  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-rocket"></i> projects funded</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.fundingTotal, ethPrices)}</span></div>`
+  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-shopping-cart"></i> media collected</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.purchaseTotal, ethPrices)}</span></div>`
+  html += `</div>`
+  html += `</div>`
+
+  // Close LEFT column
+  html += `</div>`
+
+  // RIGHT COLUMN — savings + activity
+  html += `<div class="vault-grid-col">`
 
   html += `<div class="vault-savings">`
   html += `<div class="vault-savings-header">`
@@ -886,7 +921,7 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   html += `<button class="vault-save-cta" id="vault-save-btn"><i class="ph ph-plus-circle"></i> ${totalBold > 0n ? 'save more' : 'save ETH to BOLD'}</button>`
   html += `</div>`
 
-  // --- Unclaimed banner ---
+  // --- Unclaimed banner --- inlined in the right column as a call-to-action.
   if (totalUnclaimed > 0n) {
     html += `<div class="vault-unclaimed">`
     html += `<div class="vault-unclaimed-header"><i class="ph ph-coins"></i> unclaimed earnings</div>`
@@ -912,30 +947,9 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `</div>`
   }
 
-  // --- Overview ---
-  html += `<div class="vault-section">`
-  html += `<div class="vault-section-title">overview</div>`
-  html += `<div class="vault-stats">`
-  html += `<div class="vault-stat"><div class="vault-stat-value" style="color:var(--green)">${formatPriceFiatPrimary(totalEarned, ethPrices)}</div><div class="vault-stat-label">earned</div></div>`
-  html += `<div class="vault-stat"><div class="vault-stat-value">${formatPriceFiatPrimary(totalContributed, ethPrices)}</div><div class="vault-stat-label">spent</div></div>`
-  html += `</div>`
-
-  html += `<div class="vault-breakdown">`
-  const ownMediaTotal = earned.mediaSales.filter(s => s.type !== 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
-  const collabMediaTotal = earned.mediaSales.filter(s => s.type === 'media-collab-sale').reduce((a, s) => a + s.amount, 0n)
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-music-note"></i> media sales</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(ownMediaTotal, ethPrices)}</span></div>`
-  if (collabMediaTotal > 0n) {
-    html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-users"></i> collab splits</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(collabMediaTotal, ethPrices)}</span></div>`
-  }
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-handshake"></i> project payouts</span><span class="vault-breakdown-val" style="color:var(--green)">${formatPriceFiatPrimary(earned.projectEarnings + unclaimed.praxis, ethPrices)}</span></div>`
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-rocket"></i> projects funded</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.fundingTotal, ethPrices)}</span></div>`
-  html += `<div class="vault-breakdown-row"><span class="vault-breakdown-label"><i class="ph ph-shopping-cart"></i> media collected</span><span class="vault-breakdown-val">${formatPriceFiatPrimary(contributed.purchaseTotal, ethPrices)}</span></div>`
-  html += `</div>`
-  html += `</div>`
-
-  // --- Activity ---
-  html += `<div class="vault-section">`
-  html += `<div class="vault-section-title">activity</div>`
+  // --- Activity panel ---
+  html += `<div class="vault-panel vault-panel-activity">`
+  html += `<div class="vault-panel-title">activity</div>`
   if (_allHistory.length > 0) {
     const firstPage = _allHistory.slice(0, HISTORY_PAGE_SIZE)
     _historyShown = firstPage.length
@@ -943,6 +957,11 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   } else {
     html += `<p style="color:var(--dim);font-size:0.9em">no activity yet</p>`
   }
+  html += `</div>`
+
+  // Close RIGHT column
+  html += `</div>`
+  // Close GRID
   html += `</div>`
 
   el.innerHTML = html
