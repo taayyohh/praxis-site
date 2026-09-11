@@ -1168,7 +1168,7 @@ async function showReceiveModal(addr) {
   if (existing) { existing.remove(); return }
   const overlay = document.createElement('div')
   overlay.id = 'vault-receive-modal'
-  overlay.className = 'praxis-modal-overlay vault-save-overlay'
+  overlay.className = 'wizard-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
 
   let qrHtml = ''
@@ -1778,7 +1778,7 @@ export async function showSendModal(fromAddress) {
   // so mobile keyboards + focus don't fight it.
   const overlay = document.createElement('div')
   overlay.id = 'send-modal-overlay'
-  overlay.className = 'praxis-modal-overlay vault-save-overlay'
+  overlay.className = 'wizard-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
 
   const balance = await getCachedBalance(fromAddress).catch(() => 0n)

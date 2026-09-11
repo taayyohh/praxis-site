@@ -33,6 +33,36 @@ function _walletWord(field, key) {
   return (_WALLET_STRINGS[lang] || _WALLET_STRINGS.en)[field]
 }
 function _greetingWord() { return _walletWord('greeting', 'wallet.greeting') }
+
+// Resolve MY name + profile pic on cross-tenant browsing. Uses the shared
+// /api/artists/resolve endpoint which the resolver batcher already hits.
+// Cached by address for the session so repeated dropdown opens don't
+// re-hit the network.
+const _myIdentityCache = new Map()
+async function _resolveMyIdentity(address) {
+  const key = String(address).toLowerCase()
+  if (_myIdentityCache.has(key)) return _myIdentityCache.get(key)
+  try {
+    const res = await fetch(`/api/artists/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addresses: [key] }),
+    })
+    if (!res.ok) throw new Error('resolve failed')
+    const data = await res.json()
+    const domain = data?.domains?.[key] || null
+    // Prefer the artist's stored display name if present, fall back to
+    // the domain (e.g. milesxb.bio) — that's still more personal than
+    // the raw 0x address.
+    const displayName = data?.names?.[key] || domain || null
+    const pic = data?.profilePics?.[key] || getProfilePic(address) || null
+    const out = { name: displayName, pic }
+    _myIdentityCache.set(key, out)
+    return out
+  } catch {
+    return { name: null, pic: getProfilePic(address) || null }
+  }
+}
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 const status = document.getElementById('wallet-status')
@@ -236,19 +266,20 @@ function showAddress(address) {
     if (walletTop) {
       const siteName = document.body.dataset.name || ''
       const shortAddr = `${address.slice(0,6)}...${address.slice(-4)}`
-      const greetingName = isOwnerView && siteName ? siteName : shortAddr
-      // Try to render a real avatar next to the greeting. Fall back to
-      // the wallet address's initial letter in a colored circle if there
-      // isn't a profile pic on file for this wallet.
-      const pfp = getProfilePic(address)
-      const initial = escapeHtml((greetingName || address).slice(0, 1).toUpperCase())
-      const avatarHtml = pfp
-        ? `<img class="wallet-greeting-avatar" src="${escapeHtml(pfp)}" alt="">`
+      // On my own site, use the baked-in site name (data-name). On someone
+      // else's site, we still want to greet ME by my registered name — not
+      // by the address — so we kick off an async resolve and swap it in
+      // once it lands.
+      const initialGreetingName = isOwnerView && siteName ? siteName : shortAddr
+      const initialPfp = getProfilePic(address)
+      const initial = escapeHtml((initialGreetingName || address).slice(0, 1).toUpperCase())
+      const initialAvatarHtml = initialPfp
+        ? `<img class="wallet-greeting-avatar" src="${escapeHtml(initialPfp)}" alt="">`
         : `<span class="wallet-greeting-avatar wallet-greeting-avatar--fallback">${initial}</span>`
       walletTop.innerHTML = `
         <div class="wallet-greeting">
-          ${avatarHtml}
-          <span class="wallet-greeting-name"><span data-i18n="wallet.greeting">${escapeHtml(_greetingWord())}</span>, ${escapeHtml(greetingName)}</span>
+          <span id="wallet-greeting-avatar-slot">${initialAvatarHtml}</span>
+          <span class="wallet-greeting-name"><span data-i18n="wallet.greeting">${escapeHtml(_greetingWord())}</span>, <span id="wallet-greeting-name-slot">${escapeHtml(initialGreetingName)}</span></span>
         </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
@@ -262,13 +293,30 @@ function showAddress(address) {
           if (icon) { icon.style.color = 'var(--green)'; setTimeout(() => { icon.style.color = '' }, 1500) }
         } catch {}
       })
+
+      // Resolve MY name + profile pic even when I'm on someone else's site.
+      // On the owner's own tenant we already have the answer baked in; on
+      // any other site we hit the resolver and swap in the answer as soon
+      // as it lands.
+      if (!isOwnerView) {
+        _resolveMyIdentity(address).then(({ name, pic }) => {
+          const nameSlot = walletTop.querySelector('#wallet-greeting-name-slot')
+          const avatarSlot = walletTop.querySelector('#wallet-greeting-avatar-slot')
+          if (name && nameSlot) nameSlot.textContent = name
+          if (pic && avatarSlot) {
+            avatarSlot.innerHTML = `<img class="wallet-greeting-avatar" src="${escapeHtml(pic)}" alt="">`
+          }
+        }).catch(() => {})
+      }
     }
 
-    // Three flat buttons — same visual weight. `manage` only for site owner.
+    // Three flat buttons — same visual weight. vault + manage are
+    // owner-only surfaces (personal money page, personal settings) — hidden
+    // when the user is visiting someone else's site. praxis is universal.
     topBarWallet.innerHTML = `
       <div class="dd-nav">
         <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label" data-i18n="wallet.navPraxis">${escapeHtml(_walletWord('praxis', 'wallet.navPraxis'))}</span></a>
-        <a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>
+        ${isOwnerView ? `<a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>` : ''}
         ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navManage">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
       </div>
     `
