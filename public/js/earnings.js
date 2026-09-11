@@ -145,6 +145,41 @@ let _allHistory = []
 let _historyShown = 0
 let _ethPrices = null
 let _yieldData = null
+let _mediaArtMap = {}
+
+// Walk site.json music/audio/video modules and build a lowercase-title →
+// cover-art URL lookup. Used by the activity feed so a track sale row
+// shows the actual record cover, not a generic music-note icon.
+async function _buildArtMap() {
+  try {
+    const res = await fetch('/site.json')
+    if (!res.ok) return {}
+    const site = await res.json()
+    const map = {}
+    const add = (title, art) => {
+      if (!title || !art) return
+      const key = String(title).trim().toLowerCase()
+      if (!map[key]) map[key] = art
+    }
+    for (const mod of (site.modules || [])) {
+      const d = mod.data || {}
+      // music: aliases[].albums[] + tracks[]
+      if (mod.type === 'music' || mod.type === 'audio') {
+        for (const alias of (d.aliases || [d])) {
+          for (const album of (alias.albums || [])) {
+            add(album.title, album.art)
+            for (const track of (album.tracks || [])) add(track.title, track.art || album.art)
+          }
+          for (const track of (alias.tracks || [])) add(track.title, track.art)
+        }
+      }
+      // video / film / gallery / demos / writing — items[] { title, poster/art/cover }
+      const items = d.items || d.works || d.publications || d.images || []
+      for (const it of items) add(it.title, it.poster || it.art || it.cover || it.src)
+    }
+    return map
+  } catch { return {} }
+}
 
 registerPage('vault-page', initVault)
 registerPage('earnings-page', initVault)
@@ -197,6 +232,10 @@ async function initVault() {
     const resolve = a => resolveDomain(domainMap, a)
     _ethPrices = ethPrices
     _yieldData = yieldData
+    // Build a title→cover-art map from the site's music module so the
+    // activity feed can show real thumbnails (a track sale reads as
+    // "someone bought THAT record", not "an abstract media sale").
+    _mediaArtMap = await _buildArtMap().catch(() => ({}))
     _allHistory = buildHistory(earned, contributed, resolve, ethPrices)
     _historyShown = 0
 
@@ -701,8 +740,16 @@ function timeAgo(ts) {
 function renderHistoryItems(items, ethPrices) {
   return items.map(h => {
     const color = h.sign === '+' ? 'var(--green)' : 'var(--muted)'
+    // Prefer a real cover thumbnail when we have one for this title.
+    // Fallback to the type icon so the row still reads as a media event.
+    const title = String(h.title || h.detail || '').trim().toLowerCase()
+    const art = _mediaArtMap[title] || h.art || null
+    const artUrl = art ? (art.startsWith('http') || art.startsWith('/') ? art : `/api/ipfs-proxy/${art}`) : null
+    const thumb = artUrl
+      ? `<div class="vault-tx-thumb"><img loading="lazy" src="/api/img?url=${encodeURIComponent(artUrl)}&w=80" alt=""></div>`
+      : `<div class="vault-tx-icon" style="color:${color}"><i class="ph ${h.icon}"></i></div>`
     return `<div class="vault-tx">
-      <div class="vault-tx-icon" style="color:${color}"><i class="ph ${h.icon}"></i></div>
+      ${thumb}
       <div class="vault-tx-body">
         <span class="vault-tx-label">${h.label}</span>
         <span class="vault-tx-detail">${h.detail}</span>
@@ -906,12 +953,12 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     .filter(c => c.balance > 0n || c.chainId === 10)
   for (const c of chainRows) {
     const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
-    // Each chain gets its brand mark — Optimism red O, Ethereum diamond,
-    // Base's blue mark, Arbitrum's blue A — so the eye recognizes place,
-    // not just words. ETH glyph next to the balance says "this is a coin".
+    // No external brand icons — they made the surface feel cheap (other
+    // companies' marks living inside our design). Chains distinguished
+    // by typography + column rhythm alone.
     html += `<div class="vault-chain-line">`
-    html += `<span class="vault-chain-line-name"><span class="vault-chain-line-mark">${chainMark(c.name)}</span>${escapeHtml(c.name)}</span>`
-    html += `<span class="vault-chain-line-bal"><span class="vault-chain-line-eth">${ETH_ICON}</span>${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
+    html += `<span class="vault-chain-line-name">${escapeHtml(c.name)}</span>`
+    html += `<span class="vault-chain-line-bal">${formatEthAmount(c.balance)} <span style="color:var(--dim)">ETH</span></span>`
     html += `<span class="vault-chain-line-fiat">${ethRate ? formatFiat(fiat, currency) : ''}</span>`
     html += `</div>`
   }
@@ -1624,14 +1671,13 @@ export async function showSendModal(fromAddress) {
   const existing = document.getElementById('send-modal-overlay')
   if (existing) { existing.remove(); return }
 
+  // Full-screen doc modal — matches save-to-BOLD. Same pattern across the
+  // app for every money action: the modal IS a page, not a floating card,
+  // so mobile keyboards + focus don't fight it.
   const overlay = document.createElement('div')
   overlay.id = 'send-modal-overlay'
-  overlay.className = 'praxis-modal-overlay'
+  overlay.className = 'praxis-modal-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
-
-  const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '420px'
 
   const balance = await getCachedBalance(fromAddress).catch(() => 0n)
   const balEth = formatEthAmount(balance)
@@ -1643,46 +1689,53 @@ export async function showSendModal(fromAddress) {
 
   const presets = [25, 50, 75, 100].map(pct => {
     const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.0005 : 0))
-    return `<button class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+    return `<button type="button" class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
   }).join('')
 
-  dialog.innerHTML = `
-    <div class="vault-save-head">
-      <div class="vault-save-icon">${ETH_ICON}</div>
-      <div>
-        <div class="vault-save-title">send</div>
-        <div class="vault-save-sub">on Optimism</div>
-      </div>
-    </div>
-    <div class="vault-save-body vault-send-body">
-      <div class="vault-save-field">
-        <span class="vault-save-field-label">to</span>
-        <div class="vault-save-input-row">
-          <input id="send-to" type="text" placeholder="handle, address, or domain" class="vault-save-input" style="font-size:0.95em;font-weight:400" autocomplete="off">
+  overlay.innerHTML = `
+    <button class="wizard-close vault-save-close" aria-label="close">×</button>
+    <div class="vault-save-doc">
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title">
+          <h1>send</h1>
         </div>
-        <div id="send-resolved" class="vault-save-fiat" style="min-height:1em"></div>
-      </div>
-      <div class="vault-save-field">
-        <div class="vault-save-field-head">
-          <span class="vault-save-field-label">amount</span>
-          <span class="vault-save-bal">${balEth} ETH${balFiat ? ' · ' + balFiat : ''}</span>
+        <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+      </header>
+      <p class="vault-save-lead-sub">Send ETH to another wallet — by handle, ENS-style domain, or 0x address. Sends over Optimism (fast + cheap).</p>
+
+      <section class="vault-save-doc-body">
+        <div>
+          <div class="vault-save-field-label">to</div>
+          <input id="send-to" type="text" placeholder="handle, ourpraxis.network domain, or 0x…" class="vault-save-to-input" autocomplete="off">
+          <div id="send-resolved" class="vault-save-rate">&nbsp;</div>
         </div>
-        <div class="vault-save-input-row">
-          <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
-          <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
+
+        <div class="vault-save-amount">
+          <div class="vault-save-amount-head">
+            <span class="vault-save-field-label">amount</span>
+            <span class="vault-save-bal">${balEth} ETH${balFiat ? ' · ' + balFiat : ''}</span>
+          </div>
+          <div class="vault-save-amount-row">
+            <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-amount-input" autocomplete="off">
+            <div class="vault-save-amount-token">${ETH_ICON}<span>ETH</span></div>
+          </div>
+          <div class="vault-save-amount-foot">
+            <span id="send-fiat" class="vault-save-fiat">≈ ${ethRate ? formatFiat(0, currency) : '$0.00'}</span>
+            <span style="flex:1"></span>
+            <div class="vault-presets">${presets}</div>
+          </div>
         </div>
-        <div class="vault-save-field-foot">
-          <span id="send-fiat" class="vault-save-fiat"></span>
-          <div class="vault-presets">${presets}</div>
+
+        <div class="vault-save-actions">
+          <button id="send-confirm" class="vault-save-btn">send</button>
+          <div id="send-status" class="vault-save-status"></div>
         </div>
-      </div>
-      <button id="send-confirm" class="vault-save-btn">send</button>
-      <div id="send-status" class="vault-save-status"></div>
+      </section>
     </div>
   `
-  overlay.appendChild(dialog)
   document.body.appendChild(overlay)
-
+  const dialog = overlay
+  overlay.querySelector('.vault-save-close')?.addEventListener('click', () => overlay.remove())
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
 
   const amountInput = dialog.querySelector('#send-amount')

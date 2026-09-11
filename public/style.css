@@ -6937,25 +6937,26 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   margin-bottom: 0.35em;
 }
 
-/* Coin figure: number + coin glyph read as a *token* — a thing, not text.
- * The mark sits inline just barely above baseline so the balance still
- * scans as a single unit. */
+/* Coin figure: the BOLD glyph inline with the number, no pill/border —
+ * the mark is the identity, kept quiet enough that typography still leads. */
 .vault-coin-figure {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.35ch;
-  padding: 0.15em 0.8ch 0.15em 0.4ch;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--green) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--green) 18%, transparent);
+  align-items: center;
+  gap: 0.55ch;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 .vault-coin-mark {
   display: inline-flex;
   align-items: center;
-  transform: translateY(0.15em);
-  margin-right: 0.15ch;
+  margin-right: 0;
+  transform: none;
 }
-.vault-coin-mark svg { width: 1.1em; height: 1.1em; }
+.vault-coin-mark svg { width: 1.2em; height: 1.2em; display: block; }
+.vault-coin-figure .vault-act-figure-unit { margin-left: 0.15ch; }
+.vault-coin-figure .vault-act-figure-secondary { margin-left: 0.6ch; }
 .vault-act-figure-main {
   font-weight: 700;
   letter-spacing: -0.015em;
@@ -7064,40 +7065,8 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   border-bottom: 1px solid color-mix(in srgb, var(--fg) 3%, transparent);
 }
 .vault-chain-line:last-child { border-bottom: 0; }
-.vault-chain-line-name {
-  color: var(--fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6ch;
-}
-/* Brand mark identifies the chain as a *place* — not just its name in text.
- * Small enough to sit beside a body-size label without dominating. */
-.vault-chain-line-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1em;
-  height: 1.1em;
-  flex: 0 0 auto;
-}
-.vault-chain-line-mark svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
-.vault-chain-line-bal {
-  color: var(--fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4ch;
-}
-/* Small ETH glyph beside the balance so the number reads as a coin, not
- * as an abstract quantity. */
-.vault-chain-line-eth {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 0.85em;
-  height: 0.85em;
-  opacity: 0.7;
-}
-.vault-chain-line-eth svg { width: 100%; height: 100%; display: block; }
+.vault-chain-line-name { color: var(--fg); }
+.vault-chain-line-bal { color: var(--fg); }
 .vault-chain-line-fiat { color: var(--dim); text-align: right; }
 
 /* Income + outflow — two columns because the two sides are the same idea. */
@@ -7146,6 +7115,23 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   border-color: color-mix(in srgb, var(--fg) 3%, transparent);
 }
 .vault-history-inline .vault-tx:last-child { border-bottom: 0; }
+
+/* Real album/media thumbnail in the activity row — square, small, so the
+ * sale reads as "this record" not "media sale". */
+.vault-tx-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.vault-tx-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 /* Unclaimed callout — one line of attention. */
 .vault-unclaimed-inline {
@@ -7328,6 +7314,24 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-save-from { }
 .vault-save-from .vault-save-field-label { display: block; margin-bottom: 0.35em; }
 .vault-save-from .vault-chain-row-current { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+
+/* Send modal "to" field — full-width, borderless, matches the amount input. */
+.vault-save-to-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  padding: 0.4em 0;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 1.05em;
+  font-weight: 500;
+  outline: none;
+  box-sizing: border-box;
+  margin-top: 0.35em;
+}
+.vault-save-to-input::placeholder { color: color-mix(in srgb, var(--fg) 25%, transparent); font-weight: 400; }
+.vault-save-to-input:focus { border-bottom-color: var(--accent); }
 
 /* Amount — the hero of the modal. Typography does the heavy lifting. */
 .vault-save-amount { }
