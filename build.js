@@ -589,17 +589,18 @@ const artHtml = `<div id="art-page">
 </div>`
 out('art', wrap(artHtml, 'art', '/art', '/og/index.png'))
 
-// vault page (also serves legacy /earnings route)
+// vault page (also serves legacy /earnings route). No page title — the
+// URL + dock highlight identify the page, and per docs/design-philosophy.md
+// the largest number on the page (total balance) is what the eye should
+// land on first, not a chrome heading.
 const vaultHtml = `<div id="vault-page" style="max-width:680px;margin:0 auto">
-<h2 style="color:var(--fg)">vault</h2>
 <div id="vault-content"><span class="praxis-loader"></span></div>
 </div>`
 out('vault', wrap(vaultHtml, 'vault', '/vault', '/og/index.png', { noindex: true }))
 out('earnings', wrap(vaultHtml, 'vault', '/vault', '/og/index.png', { noindex: true }))
 
-// cashout guide page
+// cashout guide page — utility surface, no page title.
 const cashoutHtml = `<div id="cashout-page" style="max-width:680px;margin:0 auto">
-<h2>cash out</h2>
 <div id="cashout-content"><span class="praxis-loader"></span></div>
 </div>`
 out('cashout', wrap(cashoutHtml, 'cash out', '/cashout', '/og/index.png', { noindex: true }))
@@ -641,7 +642,6 @@ out('write', wrap(writeHtml, 'write', '/write', '/og/index.png', { noindex: true
 
 // notifications page
 const notificationsHtml = `<div id="notifications-page" style="max-width:680px;margin:0 auto">
-<h2 data-i18n="notifications.title">notifications</h2>
 <div id="notifications-content"><span class="praxis-loader"></span></div>
 </div>`
 out('notifications', wrap(notificationsHtml, 'notifications', '/notifications', '/og/index.png', { noindex: true }))

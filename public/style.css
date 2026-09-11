@@ -7217,6 +7217,144 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-save-overlay { padding: 0; }
 .vault-save-close { color: var(--dim); }
 .vault-save-close:hover { color: var(--fg); }
+/* --- Save modal (redesigned per docs/design-philosophy.md) ---
+ * Single-column narrative. Amount is the hero. Steps + summary reveal
+ * progressively when the user has entered an amount. Send modal reuses
+ * the amount field styles, so keep those generic.
+ *
+ * Grid layout kept for compatibility with the old vault-save-page users;
+ * new doc uses .vault-save-doc which never grids. */
+.vault-save-doc {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 3.2em 1.4em 3em;
+  box-sizing: border-box;
+}
+.vault-save-lead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 0.4em;
+}
+.vault-save-lead-title { display: flex; align-items: center; gap: 0.6ch; }
+.vault-save-lead-mark { display: inline-flex; }
+.vault-save-lead-mark svg { width: 22px; height: 22px; }
+.vault-save-lead h1 {
+  font-size: 1.35em; font-weight: 700; color: var(--fg);
+  letter-spacing: -0.02em; margin: 0; line-height: 1;
+}
+.vault-save-lead-apr {
+  font-size: 0.9em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.vault-save-lead-apr span {
+  color: var(--green);
+  font-size: 1.2em;
+  font-weight: 700;
+  margin-right: 0.35ch;
+}
+.vault-save-lead-sub {
+  font-size: 0.9em;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 1.75em;
+  max-width: 46ch;
+}
+.vault-save-lead-sub .vault-save-learnmore { color: var(--accent); text-decoration: none; margin-left: 0.35em; font-weight: 500; }
+.vault-save-lead-sub .vault-save-learnmore:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.vault-save-doc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75em;
+}
+
+.vault-save-from { }
+.vault-save-from .vault-save-field-label { display: block; margin-bottom: 0.35em; }
+.vault-save-from .vault-chain-row-current { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+
+/* Amount — the hero of the modal. Typography does the heavy lifting. */
+.vault-save-amount { }
+.vault-save-amount-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5em;
+}
+.vault-save-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.35em 0 0.5em;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.vault-save-amount-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 2.4em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.vault-save-amount-input::placeholder { color: color-mix(in srgb, var(--fg) 22%, transparent); }
+.vault-save-amount-token {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  font-size: 0.9em;
+  color: var(--dim);
+  font-weight: 500;
+}
+.vault-save-amount-token svg { width: 20px; height: 20px; }
+.vault-save-amount-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.75ch;
+  margin-top: 0.55em;
+  font-size: 0.9em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.vault-save-amount-arrow { color: color-mix(in srgb, var(--fg) 30%, transparent); }
+.vault-save-amount-foot .vault-save-output { color: var(--fg); font-weight: 500; }
+.vault-save-amount-foot .vault-save-output-empty { color: var(--dim); font-weight: 400; }
+.vault-save-amount-bold-mark { display: inline-flex; }
+.vault-save-amount-bold-mark svg { width: 16px; height: 16px; }
+.vault-save-rate { font-size: 0.78em; color: var(--dim); margin-top: 0.2em; min-height: 1em; }
+
+.vault-save-pools .vault-save-field-label { display: block; margin-bottom: 0.55em; }
+.vault-pool-cards-doc { border-radius: 0; padding: 0; gap: 0.15em; }
+
+.vault-save-progress .vault-save-field-label { display: block; margin-bottom: 0.4em; }
+.vault-save-summary { padding-top: 0.5em; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.vault-save-summary .vault-summary-list { margin: 0; }
+
+.vault-save-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  margin-top: 0.5em;
+}
+.vault-save-withdraw {
+  text-align: center;
+  font-size: 0.78em;
+  color: var(--dim);
+  margin: 0;
+}
+/* Old page/hero/body kept for backward compat with any remaining callers.
+ * The doc layout above is the canonical one. */
 .vault-save-page { max-width: 480px; width: 100%; margin: 0 auto; padding: 3.2em 1.4em 3em; box-sizing: border-box; }
 
 .vault-save-hero { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 0.75em; margin-bottom: 0.75em; }

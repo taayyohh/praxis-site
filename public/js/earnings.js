@@ -1133,104 +1133,81 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 
   overlay.innerHTML = `
     <button class="wizard-close vault-save-close" aria-label="close">×</button>
-    <div class="vault-save-page">
-      <header class="vault-save-hero">
-        <div class="vault-save-icon">${BOLD_ICON}</div>
-        <div class="vault-save-headtext">
-          <h1 class="vault-save-title">${t('save.title') || 'save to BOLD'}</h1>
-          <p class="vault-save-sub">${t('save.subtitle') || 'USD savings, backed by ETH'}</p>
+    <div class="vault-save-doc">
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title">
+          <span class="vault-save-lead-mark">${BOLD_ICON}</span>
+          <h1>${t('save.title') || 'save to BOLD'}</h1>
         </div>
-        ${earningLine ? `<div class="vault-save-apr" title="${earningLine}">
-          <span class="vault-save-apr-caption">Earning</span>
-          <span class="vault-save-apr-value">${bestApy.toFixed(1)}%</span>
-          <span class="vault-save-apr-unit">APR</span>
-        </div>` : ''}
+        ${earningLine ? `<div class="vault-save-lead-apr" title="${earningLine}"><span>${bestApy.toFixed(1)}%</span> APR</div>` : ''}
       </header>
-
-      <p class="vault-save-explainer">
-        ${t('save.explainer') || 'BOLD is a US-dollar stablecoin fully backed by ETH collateral. Earns interest from Liquity borrowers.'}
-        <a class="vault-save-learnmore" href="https://liquity.org" target="_blank" rel="noopener">${t('save.learnMore') || 'learn more'}</a>
+      <p class="vault-save-lead-sub">
+        ${t('save.explainer') || 'A dollar-stable savings account, backed by ETH. Earns yield when other people borrow against their ETH — Liquity pays the interest to you.'}
+        <a class="vault-save-learnmore" href="https://liquity.org" target="_blank" rel="noopener">${t('save.learnMore') || 'learn more'} →</a>
       </p>
 
-      <section class="vault-save-body">
-        <div class="vault-chain-picker vault-save-col-full${canPickChain ? '' : ' vault-chain-picker-static'}" id="chain-picker" aria-expanded="false">
-          <div class="vault-save-field-head">
-            <span class="vault-save-field-label">${t('save.from') || 'From'}</span>
-          </div>
+      <section class="vault-save-doc-body">
+        <!-- FROM: which chain the funds come from -->
+        <div class="vault-save-from vault-chain-picker${canPickChain ? '' : ' vault-chain-picker-static'}" id="chain-picker" aria-expanded="false">
+          <div class="vault-save-field-label">${t('save.from') || 'from'}</div>
           <button type="button" class="vault-chain-row vault-chain-row-current" id="chain-current" ${canPickChain ? '' : 'disabled aria-disabled="true"'}></button>
           <div class="vault-chain-list" id="chain-list" hidden></div>
         </div>
 
-        <div class="vault-swap-card vault-save-col-left">
-          <div class="vault-swap-half vault-swap-send">
-            <div class="vault-save-field-head">
-              <span class="vault-save-field-label">${t('save.amount') || 'Amount'}</span>
-              <div class="vault-presets" id="swap-presets"></div>
-            </div>
-            <div class="vault-save-input-row">
-              <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-input" autocomplete="off">
-              <div class="vault-save-token">${ETH_ICON}<span>ETH</span></div>
-            </div>
-            <div class="vault-save-field-foot">
-              <span id="swap-fiat" class="vault-save-fiat">≈ $0.00</span>
-            </div>
+        <!-- AMOUNT: the primary input, hero-sized -->
+        <div class="vault-save-amount">
+          <div class="vault-save-amount-head">
+            <span class="vault-save-field-label">${t('save.amount') || 'amount'}</span>
+            <div class="vault-presets" id="swap-presets"></div>
           </div>
-          <div class="vault-swap-divider" aria-hidden="true">
-            <span class="vault-swap-divider-pill">${caretSvg}</span>
+          <div class="vault-save-amount-row">
+            <input id="swap-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-amount-input" autocomplete="off">
+            <div class="vault-save-amount-token">${ETH_ICON}<span>ETH</span></div>
           </div>
-          <div class="vault-swap-half vault-swap-receive">
-            <div class="vault-save-field-head">
-              <span class="vault-save-field-label">${t('save.receive') || "You'll receive"}</span>
-            </div>
-            <div class="vault-save-input-row">
-              <span id="swap-output" class="vault-save-output vault-save-output-empty">0.00</span>
-              <div class="vault-save-token">${BOLD_ICON}<span>BOLD</span></div>
-            </div>
-            <div id="swap-rate" class="vault-save-fiat">&nbsp;</div>
+          <div class="vault-save-amount-foot">
+            <span id="swap-fiat" class="vault-save-fiat">≈ $0.00</span>
+            <span class="vault-save-amount-arrow" aria-hidden="true">→</span>
+            <span id="swap-output" class="vault-save-output vault-save-output-empty">0.00</span>
+            <span class="vault-save-amount-bold-mark">${BOLD_ICON}</span>
+            <span>BOLD</span>
           </div>
+          <div id="swap-rate" class="vault-save-rate">&nbsp;</div>
         </div>
 
+        <!-- POOL: which stability pool the deposit goes into -->
         ${poolCards ? `
-        <div class="vault-pools-field vault-save-col-right">
-          <div class="vault-save-field-head">
-            <span class="vault-save-field-label">${t('save.pool') || 'Deposit into'}</span>
-          </div>
-          <div class="vault-pool-cards">${poolCards}</div>
+        <div class="vault-save-pools">
+          <div class="vault-save-field-label">${t('save.pool') || 'earning yield in'}</div>
+          <div class="vault-pool-cards vault-pool-cards-doc">${poolCards}</div>
         </div>` : ''}
 
-        <div class="vault-steps-field vault-save-col-left">
-          <div class="vault-save-field-head">
-            <span class="vault-save-field-label">${t('save.happens') || 'What happens'}</span>
-          </div>
+        <!-- WHAT HAPPENS: progressive — only visible when amount > 0 -->
+        <div class="vault-save-progress" id="swap-progress" hidden>
+          <div class="vault-save-field-label">${t('save.happens') || 'what happens next'}</div>
           <ol class="vault-save-steps" id="swap-steps"></ol>
         </div>
 
-        <div class="vault-summary-field vault-save-col-right" id="swap-summary">
-          <div class="vault-save-field-head">
-            <span class="vault-save-field-label">${t('save.summary') || 'Summary'}</span>
-          </div>
+        <!-- SUMMARY: progressive — only visible when amount > 0 -->
+        <div class="vault-save-summary" id="swap-summary" hidden>
           <dl class="vault-summary-list">
             <div class="vault-summary-row">
-              <dt>${t('save.summaryDeposit') || 'Deposit'}</dt>
+              <dt>${t('save.summaryDeposit') || 'depositing'}</dt>
               <dd id="summary-deposit" class="vault-summary-val">—</dd>
             </div>
             <div class="vault-summary-row">
-              <dt>
-                ${t('save.summaryGas') || 'Network fee'}
-                <span id="summary-gas-detail" class="vault-summary-sub"></span>
-              </dt>
+              <dt>${t('save.summaryGas') || 'network fee'} <span id="summary-gas-detail" class="vault-summary-sub"></span></dt>
               <dd id="summary-gas" class="vault-summary-val">—</dd>
             </div>
             <div class="vault-summary-row vault-summary-total">
-              <dt>${t('save.summaryTotal') || 'From wallet'}</dt>
+              <dt>${t('save.summaryTotal') || 'from your wallet'}</dt>
               <dd id="summary-total" class="vault-summary-val">—</dd>
             </div>
           </dl>
         </div>
 
-        <div class="vault-save-actions vault-save-col-full">
-          <p class="vault-save-withdraw">${t('save.withdraw') || 'Withdraw anytime · no lockup'}</p>
-          <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'Enter an amount'}</button>
+        <div class="vault-save-actions">
+          <p class="vault-save-withdraw">${t('save.withdraw') || 'withdraw anytime · no lockup · no penalty'}</p>
+          <button id="swap-confirm" class="vault-save-btn" disabled>${t('save.ctaNoAmount') || 'enter an amount'}</button>
           <div id="swap-status" class="vault-save-status"></div>
         </div>
       </section>
@@ -1428,12 +1405,19 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 
   function renderCta() {
     const val = parseFloat(swapInput.value)
+    // Progressive disclosure: reveal steps + summary only once the user
+    // has committed to an amount. Empty state = clean.
+    const hasAmt = !!val && !isNaN(val) && val > 0
+    const progressEl = dialog.querySelector('#swap-progress')
+    const summaryEl = dialog.querySelector('#swap-summary')
+    if (progressEl) progressEl.hidden = !hasAmt
+    if (summaryEl) summaryEl.hidden = !hasAmt
     // Clear any stale inline warning by default; specific branches re-set it.
     statusEl.textContent = ''
     statusEl.style.color = 'var(--muted)'
-    if (!val || isNaN(val) || val <= 0) {
+    if (!hasAmt) {
       confirmBtn.disabled = true
-      confirmBtn.textContent = t('save.ctaNoAmount') || 'Enter an amount'
+      confirmBtn.textContent = t('save.ctaNoAmount') || 'enter an amount'
       return
     }
     // Guard against amounts that would leave the sender unable to pay gas.
@@ -1654,7 +1638,7 @@ export async function showSendModal(fromAddress) {
         <div class="vault-save-sub">on Optimism</div>
       </div>
     </div>
-    <div class="vault-save-body">
+    <div class="vault-save-body vault-send-body">
       <div class="vault-save-field">
         <span class="vault-save-field-label">to</span>
         <div class="vault-save-input-row">
