@@ -621,7 +621,10 @@ async function initCashout() {
       const iterator = client.watch(result.depositId, { timeoutMs: 60 * 60_000 })
       for await (const order of iterator) {
         _renderInFlightState(els, order, selectedPlatform, els.payeeInput.value.trim(), latestEstimate?.receiveAmount || 0, cashCurrency)
-        if (order.state === 'delivered' || order.state === 'returned') break
+        if (order.state === 'delivered' || order.state === 'returned') {
+          _pruneServerOrder(result.depositId, authToken).catch(() => {})
+          break
+        }
       }
     } catch (e) {
       const code = e?.code
@@ -819,54 +822,71 @@ function _renderPlatforms(container, platforms, mobile) {
 }
 
 async function _renderResumeBanner(els, client, addr, cashCurrency) {
-  let inFlight = []
-  try { inFlight = await client.orders(addr, { inFlight: true, limit: 10 }) } catch { return }
-  if (!inFlight || inFlight.length === 0) return
-  const first = inFlight[0]
-  const depositId = first.depositId
+  // Peer's indexer can lag a fresh deposit by a few minutes, so
+  // `orders(inFlight:true)` returns [] right after a submit even
+  // though the on-chain deposit exists. Belt-and-braces: check
+  // both the SDK's view AND our own server-side depositId
+  // storage. The server row is written the moment cashout() returns
+  // — no indexer lag — and is pruned once we observe a terminal
+  // state via watch(). Whichever source gives a live order first
+  // becomes the pending state; the other backfills as it catches up.
+  let sdkOrders = []
+  try { sdkOrders = await client.orders(addr, { inFlight: true, limit: 10 }) } catch {}
 
-  // orders(inFlight:true) returns light rows — no payouts, no
-  // rate, no payee handle. Cross-reference our own persisted view
-  // (server-side depositId row + localStorage handle) to get the
-  // human-facing bits: platform, payee handle, fiat amount, currency.
-  let platform = ''
-  let payee = ''
-  let receiveFiat = 0
-  let currency = cashCurrency
+  const authToken = await getAuthToken?.().catch(() => null)
+  const serverOrders = await _readServerOrders(authToken)
+  // Only consider server rows from the last 24 h — Peer auto-returns
+  // after 24 h, so anything older is either stale or truly gone.
+  const recentServer = serverOrders.filter(o => Date.now() - (o.createdAt || 0) < 24 * 3600_000)
 
-  try {
-    const authToken = await getAuthToken?.().catch(() => null)
-    const serverOrders = await _readServerOrders(authToken)
-    const match = serverOrders.find(o => o.depositId === depositId)
-    if (match) {
-      platform = match.platform || ''
-      receiveFiat = Number(match.amountFiat || 0)
-      currency = match.currency || cashCurrency
-    }
-  } catch {}
+  const sdkFirst = sdkOrders?.[0]
+  const serverFirst = recentServer[0]
+  if (!sdkFirst && !serverFirst) return
 
-  // Fall back to the SDK's authoritative view if the server row is
-  // missing (older order, cache miss, cleared file).
-  if (!platform) {
+  // Prefer whichever source has an ID we can trust. If both, prefer
+  // the SDK's (authoritative on state), but hydrate copy from the
+  // server row when possible (more human data).
+  const depositId = sdkFirst?.depositId || serverFirst?.depositId
+  const serverMatch = recentServer.find(o => o.depositId === depositId) || serverFirst
+  let platform = serverMatch?.platform || ''
+  let receiveFiat = Number(serverMatch?.amountFiat || 0)
+  let currency = serverMatch?.currency || cashCurrency
+
+  if (!platform && sdkFirst) {
     try {
       const full = await client.order(depositId)
       platform = full?.payouts?.[0]?.platform || ''
     } catch {}
   }
-  if (platform) payee = _recallHandle(addr, platform)
+  const payee = platform ? _recallHandle(addr, platform) : ''
 
   _showInFlight(els, { depositId })
-  _renderInFlightState(els, first, platform, payee, receiveFiat, currency)
+  const initial = sdkFirst || { state: 'awaiting-buyer', depositId }
+  _renderInFlightState(els, initial, platform, payee, receiveFiat, currency)
 
   ;(async () => {
     try {
       const iterator = client.watch(depositId, { timeoutMs: 60 * 60_000 })
       for await (const order of iterator) {
         _renderInFlightState(els, order, platform, payee, receiveFiat, currency)
-        if (order.state === 'delivered' || order.state === 'returned') break
+        if (order.state === 'delivered' || order.state === 'returned') {
+          _pruneServerOrder(depositId, authToken).catch(() => {})
+          break
+        }
       }
     } catch {}
   })()
+}
+
+async function _pruneServerOrder(depositId, token) {
+  if (!token || !depositId) return
+  try {
+    await fetch('/api/cashout/orders', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ depositId }),
+    })
+  } catch {}
 }
 
 function _renderOrderState(els, order, platform) {

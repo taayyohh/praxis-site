@@ -37,6 +37,28 @@ export async function handleCashout(ctx) {
     } catch { json(res, { orders: [] }); return true }
   }
 
+  if (path === '/api/cashout/orders' && method === 'DELETE') {
+    // Prune a known-terminal (delivered/returned) order so the resume
+    // fallback stops treating it as pending. Body: { depositId }.
+    const session = getSession(req)
+    if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
+    const parsed = parseJson(await body(req))
+    if (!parsed || typeof parsed.depositId !== 'string') {
+      json(res, { error: 'depositId required' }, 400); return true
+    }
+    const ordersPath = join(siteDir, `cashout-orders-${session.addr.toLowerCase()}.json`)
+    let existing = []
+    try { existing = JSON.parse(await readFileAsync(ordersPath, 'utf8')) } catch {}
+    if (!Array.isArray(existing)) existing = []
+    const before = existing.length
+    existing = existing.filter(x => x.depositId !== parsed.depositId)
+    if (existing.length === before) { json(res, { ok: true, count: existing.length }); return true }
+    const tmp = ordersPath + '.tmp'
+    await writeFileAsync(tmp, JSON.stringify(existing))
+    renameSync(tmp, ordersPath)
+    json(res, { ok: true, count: existing.length }); return true
+  }
+
   if (path === '/api/cashout/orders' && method === 'POST') {
     const session = getSession(req)
     if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
