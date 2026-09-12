@@ -8284,6 +8284,296 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 
 /* ─────────────────────────────────────────────────────────────
+ * Cash out — the /cashout offramp sheet. Full-page bottom sheet
+ * matching the vault-save-doc pattern; primary content is the
+ * amount + platform + quote; nothing else on the page competes.
+ * ───────────────────────────────────────────────────────────── */
+.cashout-sheet {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 1.5em 1em 4em;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2em;
+}
+.cashout-lead { display: flex; flex-direction: column; gap: 0.4em; }
+.cashout-lead h1 {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.cashout-sub {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.cashout-balance-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.6em 0 0.2em;
+}
+.cashout-balance-sub {
+  color: var(--dim);
+  font-size: 0.72em;
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  margin-bottom: 0.4em;
+}
+.cashout-resume { margin-bottom: 0.6em; }
+.cashout-amount-conversion {
+  color: var(--dim);
+  font-size: 0.78em;
+  padding-top: 0.25em;
+  font-variant-numeric: tabular-nums;
+}
+.cashout-payee-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5ch;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.cashout-payee-row:focus-within { border-bottom-color: var(--fg); }
+.cashout-payee-row .cashout-payee-input {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.cashout-payee-check {
+  font-size: 1.1em;
+  font-weight: 600;
+  min-width: 1em;
+  text-align: center;
+}
+.cashout-platform[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cashout-platform[disabled]:hover { background: transparent; }
+.cashout-payee-scan {
+  background: transparent;
+  border: 0;
+  color: var(--dim);
+  font-size: 1.15em;
+  padding: 0.2em 0.4ch;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.cashout-payee-scan:hover { color: var(--fg); }
+.cashout-payee-scanner {
+  margin-top: 0.6em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+.cashout-payee-scanner video {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 8px;
+  background: #000;
+  display: block;
+}
+.cashout-payee-scanner button {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 0.3em 0.8em;
+  cursor: pointer;
+}
+.cashout-payee-scanner button:hover { color: var(--fg); border-color: var(--fg); }
+.cashout-balance-label {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7em;
+}
+.cashout-balance-value {
+  color: var(--fg);
+  font-size: 1.1em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.cashout-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  padding-top: 0.4em;
+}
+.cashout-field { display: flex; flex-direction: column; gap: 0.35em; }
+.cashout-field-label {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7em;
+}
+.cashout-amount-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4ch;
+  padding: 0.4em 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.cashout-amount-currency {
+  color: var(--dim);
+  font-size: 1.6em;
+  font-weight: 300;
+}
+.cashout-amount-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 2em;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+.cashout-amount-token {
+  color: var(--dim);
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.cashout-platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.5em;
+}
+.cashout-platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  padding: 0.7em 0.8em;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 8px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.cashout-platform:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.cashout-platform i { font-size: 1.15em; color: var(--dim); }
+.cashout-platform-active {
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.cashout-platform-active i { color: var(--fg); }
+.cashout-payee-input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  outline: none;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1em;
+  padding: 0.4em 0;
+}
+.cashout-payee-input:focus { border-bottom-color: var(--fg); }
+.cashout-quote {
+  padding: 0.8em 0.9em;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.cashout-quote-row { display: flex; justify-content: space-between; align-items: baseline; }
+.cashout-quote-label { color: var(--dim); font-size: 0.85em; }
+.cashout-quote-amount {
+  color: var(--green);
+  font-size: 1.3em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cashout-quote-eta { color: var(--dim); font-size: 0.8em; }
+.cashout-btn {
+  width: 100%;
+  padding: 0.95em 1em;
+  background: var(--green);
+  border: 0;
+  border-radius: 10px;
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+.cashout-btn:hover:not(:disabled) { opacity: 0.9; }
+.cashout-btn:disabled {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--dim);
+  cursor: default;
+}
+.cashout-btn-done { background: var(--green); color: var(--bg); }
+.cashout-status {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.85em;
+  text-align: center;
+  min-height: 1.2em;
+}
+.cashout-loading { color: var(--dim); font-size: 0.85em; }
+
+/* In-flight cashout banner on the vault. Sits between the balance
+   lead and the savings block. Each row updates in place via the
+   Peer SDK's watch() loop until it hits a terminal state. */
+.vault-cashout-banner {
+  border-radius: 12px;
+  padding: 0.6em 0.8em;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  margin: 0.6em 0 0.4em;
+}
+.vault-cashout-title {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7em;
+  font-weight: 500;
+}
+.vault-cashout-list { display: flex; flex-direction: column; gap: 0.25em; }
+.vault-cashout-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5ch;
+  font-size: 0.9em;
+}
+.vault-cashout-row-left { display: flex; flex-direction: column; gap: 0.15em; min-width: 0; }
+.vault-cashout-row-state { font-weight: 500; }
+.vault-cashout-row-note {
+  color: var(--dim);
+  font-size: 0.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60ch;
+}
+.vault-cashout-row-link {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.9em;
+  transition: color 0.12s;
+}
+.vault-cashout-row-link:hover { color: var(--fg); }
+
+/* ─────────────────────────────────────────────────────────────
  * Design catalog — /design. Internal review tool. Kept close to
  * the vault-doc pattern so the catalog itself doesn't drift from
  * its own principles.

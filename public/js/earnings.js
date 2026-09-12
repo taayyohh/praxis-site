@@ -222,6 +222,63 @@ async function _fetchPurchaseCovers(mediaIds) {
   } catch { return {} }
 }
 
+// In-flight cashout row — appears above the vault total when the
+// user has an open Peer deposit. Reads Peer's own live indexer via
+// the SDK's `orders(owner, { inFlight: true })` and updates in-place
+// via a lightweight watch loop. Non-blocking; failures are silent.
+async function _renderInFlightCashouts(contentEl, addr) {
+  let sdk
+  try { sdk = await import('./vendor-cash.js') } catch { return }
+  const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+  let client
+  try {
+    client = sdk.createCashClient({ environment: env, rpcUrl: 'https://mainnet.base.org', referrer: 'praxis' })
+  } catch { return }
+  let live
+  try { live = await client.orders(addr, { inFlight: true, limit: 10 }) } catch { return }
+  if (!live || live.length === 0) return
+  // Inject the row at the top of the vault-doc, between .vault-lead
+  // and .vault-act.
+  const doc = contentEl.querySelector('.vault-doc')
+  if (!doc) return
+  const banner = document.createElement('section')
+  banner.className = 'vault-cashout-banner'
+  banner.dataset.section = 'cashouts'
+  const rows = live.map(o => _cashoutRowHtml(o)).join('')
+  banner.innerHTML = `<div class="vault-cashout-title">money moving</div><div class="vault-cashout-list">${rows}</div>`
+  const leadSection = doc.querySelector('.vault-lead')
+  leadSection ? leadSection.after(banner) : doc.prepend(banner)
+  // Live watch — updates each row in place until it hits a terminal
+  // state. Uses the SDK's async iterator; each order gets its own.
+  for (const o of live) {
+    ;(async () => {
+      try {
+        for await (const upd of client.watch(o.depositId, { timeoutMs: 30 * 60_000 })) {
+          const row = banner.querySelector(`[data-deposit="${o.depositId}"]`)
+          if (row) row.outerHTML = _cashoutRowHtml(upd)
+          if (upd.state === 'delivered' || upd.state === 'returned') break
+        }
+      } catch { /* stream closed, ignore */ }
+    })()
+  }
+}
+function _cashoutRowHtml(order) {
+  const stateCopy = order.state === 'awaiting-buyer' ? 'waiting for a peer'
+    : order.state === 'matched' ? 'peer matched — waiting for payment'
+    : order.state === 'delivering' ? 'confirming delivery'
+    : order.state === 'delivered' ? 'delivered'
+    : order.state === 'returned' ? 'returned to wallet'
+    : escapeHtml(order.state)
+  const color = order.state === 'delivered' ? 'var(--green)' : order.state === 'returned' ? 'var(--muted)' : 'var(--accent)'
+  return `<div class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}">
+    <div class="vault-cashout-row-left">
+      <span class="vault-cashout-row-state" style="color:${color}">${stateCopy}</span>
+      <span class="vault-cashout-row-note">${escapeHtml(order.explain?.() || '')}</span>
+    </div>
+    <a class="vault-cashout-row-link" href="/cashout" title="open cash-out">↗</a>
+  </div>`
+}
+
 registerPage('vault-page', initVault)
 registerPage('earnings-page', initVault)
 
@@ -293,6 +350,8 @@ async function initVault() {
 
     try {
       renderVault(contentEl, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
+      // In-flight cashout banner: reads server + Peer, non-blocking.
+      _renderInFlightCashouts(contentEl, addr).catch(() => {})
     } catch (e) {
       // Isolate render failures from the load pipeline so a bad shape in
       // one section can't hide the whole vault. Log + fall through to a

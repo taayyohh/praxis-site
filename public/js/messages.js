@@ -1913,25 +1913,38 @@ async function loadConversations() {
         // sync individual conversation to get latest messages
         try { await c.sync() } catch (e) {
           const msg = e?.message || ''
-          if (msg.includes('inactive') || msg.includes('GroupError') || msg.includes('GroupInactive')) {
-            // Try to stitch: create a new DM to replace the inactive group
-            try {
-              const peerInbox = await c.peerInboxId?.()
-              if (peerInbox && client) {
-                dbg('praxis: stitching inactive conversation with', peerInbox.slice(0, 8))
-                const newC = await (client.conversations.getDmByInboxId?.(peerInbox) || client.conversations.createDm?.(peerInbox))
-                if (newC) {
-                  try { await newC.sync() } catch {}
-                  c = newC
-                } else {
-                  return null // can't stitch, skip
+          const isInactiveErr = msg.includes('inactive') || msg.includes('GroupError') || msg.includes('GroupInactive')
+          if (isInactiveErr) {
+            // Classify BEFORE the DM-stitch. A group has no peer inbox id;
+            // running it through the stitch path drops it silently because
+            // getDmByInboxId(null) returns nothing. Groups auto-reactivate
+            // when other members' clients sync back — keep them in the
+            // list with whatever cached lastMessage we already have and
+            // let the next stream tick refresh them.
+            let peerInbox = null
+            try { peerInbox = await c.peerInboxId?.() } catch { peerInbox = null }
+            if (!peerInbox) {
+              // Group (or DM missing its peer id — either way, don't stitch).
+              // Preserve it as-is; the render path below handles a stale
+              // lastMessage gracefully.
+              dbg('praxis: keeping inactive group in list', c.id?.slice(0, 8))
+            } else {
+              // DM path — safe to stitch.
+              try {
+                if (client) {
+                  dbg('praxis: stitching inactive DM with', peerInbox.slice(0, 8))
+                  const newC = await (client.conversations.getDmByInboxId?.(peerInbox) || client.conversations.createDm?.(peerInbox))
+                  if (newC) {
+                    try { await newC.sync() } catch {}
+                    c = newC
+                  } else {
+                    return null // stitch didn't produce a conversation
+                  }
                 }
-              } else {
-                return null // no peer to stitch to
+              } catch (se) {
+                console.warn('praxis: stitch failed:', se?.message)
+                return null
               }
-            } catch (se) {
-              console.warn('praxis: stitch failed:', se?.message)
-              return null
             }
           } else {
             // Non-inactive sync error — log but continue with cached messages

@@ -249,7 +249,46 @@ async function initDesign() {
           <button class="buy-btn" data-open="save">save to BOLD →</button>
           <button class="buy-btn" data-open="funding">funding sheet</button>
           <button class="buy-btn" data-open="onramp">onramp — buy with card</button>
-          <button class="buy-btn" data-open="offramp">offramp — cash out</button>
+          <button class="buy-btn" data-open="offramp">offramp — cash out (link)</button>
+        </div>
+
+        <div class="design-block">
+          <h3>cashout sheet — /cashout</h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            Real peer.xyz offramp flow — amount + platform picker + payee handle
+            + quote + submit button. Open at <a href="/cashout" style="color:var(--accent)">/cashout</a>.
+          </p>
+          <div class="cashout-sheet" style="max-width:520px;padding:1em;background:var(--bg);border:1px solid var(--border);border-radius:12px">
+            <div class="cashout-balance-line">
+              <span class="cashout-balance-label">available</span>
+              <span class="cashout-balance-value">50.00 USDC</span>
+            </div>
+            <div class="cashout-field">
+              <div class="cashout-field-label">amount</div>
+              <div class="cashout-amount-row">
+                <span class="cashout-amount-currency">$</span>
+                <input type="text" placeholder="25.00" class="cashout-amount-input" value="25">
+                <span class="cashout-amount-token">USDC</span>
+              </div>
+            </div>
+            <div class="cashout-field">
+              <div class="cashout-field-label">send to</div>
+              <div class="cashout-platforms">
+                <button class="cashout-platform cashout-platform-active"><i class="ph ph-hand-coins"></i><span>Venmo</span></button>
+                <button class="cashout-platform"><i class="ph ph-paypal-logo"></i><span>PayPal</span></button>
+                <button class="cashout-platform"><i class="ph ph-dollar"></i><span>Cash App</span></button>
+                <button class="cashout-platform"><i class="ph ph-bank"></i><span>Zelle</span></button>
+              </div>
+            </div>
+            <div class="cashout-quote">
+              <div class="cashout-quote-row">
+                <span class="cashout-quote-label">you'll get</span>
+                <span class="cashout-quote-amount">$24.85</span>
+              </div>
+              <div class="cashout-quote-eta">typically fills in ~4 min</div>
+            </div>
+            <button class="cashout-btn">cash out $24.85</button>
+          </div>
         </div>
       </section>
 

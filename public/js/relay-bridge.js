@@ -274,6 +274,98 @@ export async function bridgeToOptimism(fromChainId, address, amountWei, onStatus
   window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
 }
 
+// Optimism → Base ETH bridge, used by the cash-out sheet to
+// silently top up the ~0.0002 ETH the user needs on Base for
+// approve + createDeposit gas. Mirror of bridgeToOptimism above but
+// with the chain pair swapped; kept as its own function so the
+// existing bridge flow's error handling stays untouched.
+export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate) {
+  await initRelay()
+  const { getQuote } = await import('./vendor-relay.js')
+
+  onStatusUpdate?.('getting a quote…')
+  const quote = await getQuote({
+    chainId: 10, toChainId: 8453,
+    currency: '0x0000000000000000000000000000000000000000',
+    toCurrency: '0x0000000000000000000000000000000000000000',
+    amount: amountWei.toString(),
+    user: address, recipient: address,
+    tradeType: 'EXACT_INPUT',
+  })
+
+  const steps = quote.steps || []
+  if (!steps.length || !steps[0]?.items?.length) throw new Error('no bridge steps in quote')
+  const txData = steps[0].items[0].data
+  if (!txData?.to) throw new Error('no tx data in quote')
+
+  const { createPublicClient, http, keccak256, optimism, base } = await import('./vendor.js')
+
+  await window.ensureAuthorized?.()
+  const embeddedAcct = window.getEmbeddedAccount?.()
+  if (!embeddedAcct) throw new Error('wallet not available')
+
+  const opRpc = PUBLIC_RPCS[10]
+  const opChain = { ...optimism, rpcUrls: { ...optimism.rpcUrls, default: { http: [opRpc] } } }
+  const opPc = createPublicClient({ chain: opChain, transport: http(opRpc) })
+  const [nonce, block] = await Promise.all([
+    opPc.getTransactionCount({ address, blockTag: 'latest' }),
+    opPc.getBlock({ blockTag: 'latest' }),
+  ])
+  const baseFee = block.baseFeePerGas || 0n
+  const maxPriority = 3000000000n
+  const maxFee = baseFee * 2n + maxPriority
+  const gasEstimate = txData.gas ? BigInt(txData.gas) : await opPc.estimateGas({
+    account: embeddedAcct, to: txData.to, data: txData.data,
+    value: txData.value ? BigInt(txData.value) : 0n,
+  })
+  const txRequest = {
+    to: txData.to, data: txData.data,
+    value: txData.value ? BigInt(txData.value) : 0n,
+    nonce, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPriority,
+    gas: gasEstimate, chainId: 10, type: 'eip1559',
+  }
+  const balance = await opPc.getBalance({ address })
+  const maxCost = txRequest.value + gasEstimate * maxFee
+  if (balance < maxCost) throw new Error(`Optimism balance too low for the bridge (have ${balance} wei, need ${maxCost} wei)`)
+
+  const serializedTx = await embeddedAcct.signTransaction(txRequest)
+  const expectedHash = keccak256(serializedTx)
+  let hash = await _broadcastRawTx(opRpc, serializedTx)
+  if (!hash) hash = expectedHash
+
+  await new Promise(r => setTimeout(r, 3000))
+  const found = await _checkTxExists(opRpc, hash)
+  if (!found) {
+    await _broadcastRawTx(opRpc, serializedTx)
+    await new Promise(r => setTimeout(r, 3000))
+  }
+  onStatusUpdate?.('bridge submitted — waiting for confirmation…')
+
+  const receipt = await Promise.race([
+    opPc.waitForTransactionReceipt({ hash }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('bridge timeout after 5m')), 5 * 60 * 1000)),
+  ])
+  if (receipt.status === 'reverted') throw new Error('bridge tx reverted on Optimism')
+  onStatusUpdate?.('waiting for funds on Base…')
+
+  // Poll Base balance until it changes. Bridge cost + fees mean the
+  // arriving amount is a little less than `amountWei`; ANY increase is
+  // proof of arrival.
+  const baseRpc = 'https://mainnet.base.org'
+  const basePc = createPublicClient({ chain: base, transport: http(baseRpc) })
+  const before = await basePc.getBalance({ address }).catch(() => 0n)
+  for (let i = 0; i < 45; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+    const now = await basePc.getBalance({ address }).catch(() => 0n)
+    if (now > before) {
+      onStatusUpdate?.('gas ready on Base')
+      return now
+    }
+    onStatusUpdate?.(`waiting for Base… (${(i + 1) * 2}s)`)
+  }
+  throw new Error('bridge landed on Optimism but Base balance never updated — try again in a minute')
+}
+
 // Build a viem walletClient configured for the source chain.
 // Prefers the embedded wallet (Praxis default); falls back to window.ethereum.
 //
