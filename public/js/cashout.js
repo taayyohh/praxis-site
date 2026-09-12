@@ -537,13 +537,11 @@ async function initCashout() {
     _rememberHandle(addr, selectedPlatform, els.payeeInput.value.trim())
 
     try {
-      const { createWalletClient, custom, base, optimism } = await import('./vendor.js')
-      // Show the password modal if the embedded wallet is locked or
-      // its session expired. Without this, viem's custom(null) does
-      // provider.request.bind(null) inside its transport factory and
-      // throws "Cannot read properties of null (reading 'request')"
-      // the moment we build a signer. Use ensureAuthorized — the
-      // same helper the rest of the app calls before signing.
+      const { createWalletClient, http, base, optimism } = await import('./vendor.js')
+      // Ensure the embedded wallet is unlocked so getEmbeddedAccount
+      // returns the viem LocalAccount we sign with. Same helper every
+      // other Praxis signing surface uses — pops the password modal
+      // when the session's expired.
       if (typeof window.ensureAuthorized === 'function') {
         els.status.textContent = 'unlocking your wallet…'
         try {
@@ -555,16 +553,23 @@ async function initCashout() {
           return
         }
       }
-      const provider = getWalletProvider()
-      const stillLocked = window.isWalletUnlocked && !window.isWalletUnlocked()
-      if (!provider || typeof provider.request !== 'function' || stillLocked) {
+      const embeddedAcct = window.getEmbeddedAccount?.()
+      if (!embeddedAcct) {
         els.status.textContent = 'wallet still locked — enter your password and try again'
         els.submitBtn.textContent = 'try again'
         els.submitBtn.disabled = false
         return
       }
-      const baseSigner = createWalletClient({ chain: base, transport: custom(provider), account: addr })
-      const opSigner = createWalletClient({ chain: optimism, transport: custom(provider), account: addr })
+      // Build chain-specific signers with HTTP transports to each
+      // chain's real RPC, not the EIP-1193 provider. The embedded
+      // provider is Optimism-only for chainId purposes — asking it
+      // "which chain?" always returns 10, which trips the Peer SDK's
+      // assertWalletChainId(8453) at the Base-deposit step with
+      // SIGNER_CHAIN_MISMATCH. Same pattern relay-bridge.js uses for
+      // multi-chain routing: sign locally via the LocalAccount,
+      // JSON-RPC via the chain's own endpoint.
+      const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http('/api/rpc/8453') })
+      const opSigner = createWalletClient({ chain: optimism, account: embeddedAcct, transport: http('/api/rpc/10') })
 
       els.status.textContent = 'preparing your transfer…'
       const result = await client.cashout({
