@@ -538,19 +538,27 @@ async function initCashout() {
 
     try {
       const { createWalletClient, custom, base, optimism } = await import('./vendor.js')
-      // Ensure the embedded wallet is attached + unlocked before we
-      // build viem signers. viem's custom(null) does provider.request
-      // .bind(provider), which throws "Cannot read properties of null
-      // (reading 'request')" the moment we hand it back — a cryptic
-      // failure right at the wallet-signing step. Fail loud and clear
-      // instead so the user knows to unlock.
-      let provider = getWalletProvider()
-      if (!provider) {
-        try { if (typeof window.unlockWallet === 'function') await window.unlockWallet() } catch {}
-        provider = getWalletProvider()
+      // Show the password modal if the embedded wallet is locked or
+      // its session expired. Without this, viem's custom(null) does
+      // provider.request.bind(null) inside its transport factory and
+      // throws "Cannot read properties of null (reading 'request')"
+      // the moment we build a signer. Use ensureAuthorized — the
+      // same helper the rest of the app calls before signing.
+      if (typeof window.ensureAuthorized === 'function') {
+        els.status.textContent = 'unlocking your wallet…'
+        try {
+          await window.ensureAuthorized(addr)
+        } catch (e) {
+          els.status.textContent = 'wallet unlock cancelled — try again when ready'
+          els.submitBtn.textContent = 'try again'
+          els.submitBtn.disabled = false
+          return
+        }
       }
-      if (!provider || typeof provider.request !== 'function') {
-        els.status.textContent = 'unlock your Praxis wallet first, then try again'
+      const provider = getWalletProvider()
+      const stillLocked = window.isWalletUnlocked && !window.isWalletUnlocked()
+      if (!provider || typeof provider.request !== 'function' || stillLocked) {
+        els.status.textContent = 'wallet still locked — enter your password and try again'
         els.submitBtn.textContent = 'try again'
         els.submitBtn.disabled = false
         return
