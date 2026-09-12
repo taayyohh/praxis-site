@@ -797,6 +797,42 @@ async function _findPendingCashout(addr, cashCurrency) {
   }
   if (byId.size === 0) return null
 
+  // Drift-check server-only rows against the SDK's authoritative
+  // per-order view. Peer's indexer is source of truth for state —
+  // if this order actually settled (delivered/returned) while our
+  // server row lingered, prune it and drop it from the render set
+  // so we don't show a "pending" state that's already over.
+  const drifted = []
+  try {
+    const sdk = await import('./vendor-cash.js')
+    const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+    const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+    bareRelay.source = undefined
+    const client = sdk.createCashClient({
+      environment: env, rpcUrl: 'https://mainnet.base.org',
+      apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
+    })
+    await Promise.all([...byId.values()]
+      .filter(x => !x.sdk)  // sdk already told us they're inFlight
+      .map(async (x) => {
+        try {
+          const full = await client.order(x.depositId)
+          if (full?.state === 'delivered' || full?.state === 'returned') {
+            drifted.push(x.depositId)
+            byId.delete(x.depositId)
+          } else if (full) {
+            x.sdk = full  // hydrate for initial paint
+          }
+        } catch { /* keep the server row as-is; render optimistically */ }
+      }))
+  } catch { /* SDK unavailable — best-effort */ }
+
+  // Prune drifted server rows so we don't repeat the drift check
+  // on every visit.
+  for (const id of drifted) _pruneServerOrder(id, authToken).catch(() => {})
+
+  if (byId.size === 0) return null
+
   const items = [...byId.values()].map(({ depositId, sdk, server }) => {
     const platform = server?.platform || ''
     const receiveFiat = Number(server?.amountFiat || 0)
