@@ -227,12 +227,19 @@ async function _fetchPurchaseCovers(mediaIds) {
 // the SDK's `orders(owner, { inFlight: true })` and updates in-place
 // via a lightweight watch loop. Non-blocking; failures are silent.
 async function _renderInFlightCashouts(contentEl, addr) {
+  // Guard against a re-entry: SPA nav / init-on-focus can call this
+  // twice, which had us stacking two identical "money moving" banners.
+  const existingBanner = contentEl.querySelector('.vault-cashout-banner')
+  if (existingBanner) return
+
   // Belt + braces sourcing — same pattern the /cashout page uses.
   // Peer's indexer can lag a fresh deposit by minutes; our server
   // row is written the moment cashout() returns, so we cross-reference
-  // both and merge by depositId.
+  // both and merge by depositId. 401 on the server read is expected
+  // when the auth token has expired — treat it as no data, not a hard
+  // failure, since the SDK path is the source of truth for state.
   const authToken = await getAuthToken?.().catch(() => null)
-  const serverOrders = await _readCashoutServerOrders(authToken)
+  const serverOrders = authToken ? await _readCashoutServerOrders(authToken) : []
   const recentServer = serverOrders.filter(o => Date.now() - (o.createdAt || 0) < 24 * 3600_000)
 
   let sdk
