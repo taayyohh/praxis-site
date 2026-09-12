@@ -8528,24 +8528,27 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .cashout-loading { color: var(--dim); font-size: 0.85em; }
 
-/* Cash-out in-flight surface — shown once the deposit is created.
-   The entry form (amount, platform picker, handle, submit) is
-   hidden so the artist stops second-guessing what they just did
-   and looks at the pending state instead. */
+/* Cash-out in-flight surface — a full-page replacement for the
+   entry form once a deposit is live. Per design philosophy: one
+   story per page. Header of the sheet becomes the pending title,
+   safety block earns visible weight, receipt row is bottom
+   metadata. Padding matches .cashout-sheet's own so this feels
+   like the same page redrawn, not a modal on top. */
 .cashout-inflight {
   display: flex;
   flex-direction: column;
-  gap: 1.4em;
+  gap: 1.6em;
   padding: 0.4em 0 0.2em;
 }
-.cashout-inflight-head { display: flex; flex-direction: column; gap: 0.25em; }
+.cashout-inflight-head { display: flex; flex-direction: column; gap: 0.35em; }
 .cashout-inflight-title {
   color: var(--fg);
-  font-size: 1.35em;
-  line-height: 1.2;
+  font-size: 1.8em;
+  line-height: 1.15;
   font-weight: 500;
+  letter-spacing: -0.01em;
 }
-.cashout-inflight-sub { color: var(--dim); font-size: 0.9em; }
+.cashout-inflight-sub { color: var(--dim); font-size: 0.95em; }
 
 /* Progress steps — four dots joined by a hair-thin line. Filled
    dots for completed steps, the ring for the active one, hollow

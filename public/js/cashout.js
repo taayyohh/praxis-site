@@ -645,18 +645,19 @@ async function initCashout() {
 function _renderShell() {
   return `
     <div class="cashout-sheet">
-      <header class="cashout-lead">
-        <h1>cash out</h1>
-        <p class="cashout-sub">Move your earnings into Venmo, PayPal, Zelle, Cash App, Wise, or Revolut. Peer-to-peer — no bank required, no signup.</p>
-      </header>
+      <div id="cashout-entry-wrap" class="cashout-entry-wrap">
+        <header class="cashout-lead">
+          <h1>cash out</h1>
+          <p class="cashout-sub">Move your earnings into Venmo, PayPal, Zelle, Cash App, Wise, or Revolut. Peer-to-peer — no bank required, no signup.</p>
+        </header>
 
-      <div id="cashout-resume" class="cashout-resume" hidden></div>
+        <div id="cashout-resume" class="cashout-resume" hidden></div>
 
-      <div class="cashout-balance-line">
-        <span class="cashout-balance-label">available</span>
-        <span id="cashout-balance-value" class="cashout-balance-value">…</span>
-      </div>
-      <div id="cashout-balance-sub" class="cashout-balance-sub"></div>
+        <div class="cashout-balance-line">
+          <span class="cashout-balance-label">available</span>
+          <span id="cashout-balance-value" class="cashout-balance-value">…</span>
+        </div>
+        <div id="cashout-balance-sub" class="cashout-balance-sub"></div>
 
       <section class="cashout-body">
         <div class="cashout-field">
@@ -698,6 +699,8 @@ function _renderShell() {
 
         <button id="cashout-submit" type="button" class="cashout-btn" disabled>enter an amount</button>
         <p id="cashout-status" class="cashout-status"></p>
+      </section>
+      </div><!-- /#cashout-entry-wrap -->
 
         <div id="cashout-inflight" class="cashout-inflight" hidden>
           <div class="cashout-inflight-head">
@@ -740,7 +743,6 @@ function _renderShell() {
 
           <button id="cashout-inflight-close" type="button" class="cashout-btn cashout-btn-ghost">close — we'll notify you</button>
         </div>
-      </section>
     </div>
   `
 }
@@ -775,6 +777,7 @@ function _wireEls(root) {
     inflightDepositId: root.querySelector('#cashout-inflight-deposit-id'),
     inflightCopy: root.querySelector('#cashout-inflight-copy'),
     inflightClose: root.querySelector('#cashout-inflight-close'),
+    entryWrap: root.querySelector('#cashout-entry-wrap'),
   }
 }
 
@@ -820,38 +823,50 @@ async function _renderResumeBanner(els, client, addr, cashCurrency) {
   try { inFlight = await client.orders(addr, { inFlight: true, limit: 10 }) } catch { return }
   if (!inFlight || inFlight.length === 0) return
   const first = inFlight[0]
+  const depositId = first.depositId
 
-  // Refresh with a live pending order → jump straight into the
-  // in-flight surface. The form would just invite the artist to
-  // start over, and they'd panic about the ETH they already
-  // committed. Recover the platform + payee + amount from what
-  // the SDK order carries so the copy stays specific.
-  const receiveLeg = first.receive || {}
-  const platform = receiveLeg.platform || first.platform || 'the sender'
-  const payee = _extractPayeeString(receiveLeg.payee || first.payee || '')
-  const receiveFiat = Number(receiveLeg.amount || first.receiveAmount || 0)
-  const currency = receiveLeg.currency || cashCurrency
+  // orders(inFlight:true) returns light rows — no payouts, no
+  // rate, no payee handle. Cross-reference our own persisted view
+  // (server-side depositId row + localStorage handle) to get the
+  // human-facing bits: platform, payee handle, fiat amount, currency.
+  let platform = ''
+  let payee = ''
+  let receiveFiat = 0
+  let currency = cashCurrency
 
-  _showInFlight(els, { depositId: first.depositId || first.compositeId || '' })
+  try {
+    const authToken = await getAuthToken?.().catch(() => null)
+    const serverOrders = await _readServerOrders(authToken)
+    const match = serverOrders.find(o => o.depositId === depositId)
+    if (match) {
+      platform = match.platform || ''
+      receiveFiat = Number(match.amountFiat || 0)
+      currency = match.currency || cashCurrency
+    }
+  } catch {}
+
+  // Fall back to the SDK's authoritative view if the server row is
+  // missing (older order, cache miss, cleared file).
+  if (!platform) {
+    try {
+      const full = await client.order(depositId)
+      platform = full?.payouts?.[0]?.platform || ''
+    } catch {}
+  }
+  if (platform) payee = _recallHandle(addr, platform)
+
+  _showInFlight(els, { depositId })
   _renderInFlightState(els, first, platform, payee, receiveFiat, currency)
 
-  // Attach a fresh watch iterator so the page keeps updating in
-  // place as the order moves through states.
   ;(async () => {
     try {
-      const iterator = client.watch(first.depositId || first.compositeId, { timeoutMs: 60 * 60_000 })
+      const iterator = client.watch(depositId, { timeoutMs: 60 * 60_000 })
       for await (const order of iterator) {
         _renderInFlightState(els, order, platform, payee, receiveFiat, currency)
         if (order.state === 'delivered' || order.state === 'returned') break
       }
     } catch {}
   })()
-}
-
-function _extractPayeeString(payee) {
-  if (!payee) return ''
-  if (typeof payee === 'string') return payee
-  return payee.handle || payee.address || payee.email || payee.phone || payee.identifier || ''
 }
 
 function _renderOrderState(els, order, platform) {
@@ -862,23 +877,14 @@ function _renderOrderState(els, order, platform) {
 }
 
 function _showInFlight(els, { depositId }) {
-  // Hide the whole entry form — amount, platform picker, handle,
-  // quote, submit button, status line. The user just committed;
-  // showing the form again invites second-guessing.
-  const hide = ['amountInput', 'quote', 'submitBtn', 'status', 'payeeField', 'platforms', 'amountConversion']
-  for (const k of hide) {
-    const el = els[k]; if (!el) continue
-    const container = el.closest?.('.cashout-field') || el
-    container.hidden = true
-  }
-  // Also hide the top-of-sheet balance line + amount label — the
-  // "AMOUNT / $15" heading, since the pending state is now the focus.
-  const balanceLine = document.querySelector('.cashout-balance-line')
-  if (balanceLine) balanceLine.hidden = true
-  const balanceSub = document.getElementById('cashout-balance-sub')
-  if (balanceSub) balanceSub.hidden = true
-  // reveal the pending surface
+  // Swap surfaces. The entry wrap holds the "cash out" header,
+  // balance, form; the inflight surface takes the whole page — a
+  // single story, per the design philosophy. Scroll back to the top
+  // so the user sees the new state header first, not the tail of
+  // wherever they left the scroll.
+  if (els.entryWrap) els.entryWrap.hidden = true
   els.inflight.hidden = false
+  try { els.inflight.scrollIntoView({ behavior: 'auto', block: 'start' }) } catch {}
   els.inflightDepositId.textContent = _shortDepositId(depositId)
   els.inflightDepositId.title = depositId
   els.inflightCopy.onclick = () => {
@@ -897,37 +903,41 @@ function _showInFlight(els, { depositId }) {
 function _renderInFlightState(els, order, platform, payee, receiveFiat, cashCurrency) {
   if (!els.inflight || els.inflight.hidden) return
   const s = order.state
-  const prettyPlatform = _prettyPlatform(platform)
-  const prettyAmt = _formatFiat(receiveFiat, cashCurrency)
+  const prettyPlatform = platform ? _prettyPlatform(platform) : 'your payment method'
+  const platformPossessive = platform ? `your ${_prettyPlatform(platform)}` : 'your payment method'
+  const knowAmt = Number.isFinite(receiveFiat) && receiveFiat > 0
+  const prettyAmt = knowAmt ? _formatFiat(receiveFiat, cashCurrency) : ''
+  const amtPhrase = knowAmt ? `<strong>${prettyAmt}</strong>` : 'your cash-out'
+  const handlePhrase = payee ? ` <strong>${_escape(payee)}</strong>` : ''
   const stateCopy = {
     'awaiting-buyer': {
       title: 'waiting for a buyer',
       sub: order.eta?.label || 'usually starts within an hour',
-      body: `Someone on the peer marketplace will send <strong>${prettyAmt}</strong> to your ${prettyPlatform} <strong>${_escape(payee)}</strong>. When they do, your deposit auto-releases. You don't need to send anything.`,
+      body: `A buyer on the peer marketplace will send ${amtPhrase} to ${platformPossessive}${handlePhrase}. When they do, your deposit auto-releases. You don't need to send anything.`,
       activeStep: 'submitted',
     },
     'matched': {
-      title: `a buyer matched your cash-out`,
+      title: 'a buyer matched your cash-out',
       sub: 'they are sending your payment now — this can take a few minutes',
-      body: `A buyer is sending <strong>${prettyAmt}</strong> to your ${prettyPlatform} <strong>${_escape(payee)}</strong>. Watch that account for the incoming payment.`,
+      body: `A buyer is sending ${amtPhrase} to ${platformPossessive}${handlePhrase}. Watch that account for the incoming payment.`,
       activeStep: 'matched',
     },
     'delivering': {
       title: 'confirming your payment',
       sub: 'the buyer said they paid — verifying with a cryptographic proof',
-      body: `The buyer marked <strong>${prettyAmt}</strong> as sent to your ${prettyPlatform}. Peer is verifying the payment now. This takes about a minute.`,
+      body: `The buyer marked ${amtPhrase} as sent to ${platformPossessive}. Peer is verifying now. This takes about a minute.`,
       activeStep: 'paid',
     },
     'delivered': {
-      title: `${prettyAmt} sent to your ${prettyPlatform}`,
-      sub: 'check your account for the payment',
-      body: `Payment complete. <strong>${prettyAmt}</strong> is in your ${prettyPlatform} account (${_escape(payee)}).`,
+      title: knowAmt ? `${prettyAmt} sent to ${platformPossessive}` : 'payment sent',
+      sub: 'check your account for the incoming payment',
+      body: `Payment complete. ${amtPhrase} landed in ${platformPossessive}${handlePhrase}.`,
       activeStep: 'done',
     },
     'returned': {
       title: 'no buyer matched in time',
       sub: 'your funds are safely back in your wallet',
-      body: `No buyer matched within the 24 h window, so Peer returned your ETH. Try a smaller amount or a different payment method.`,
+      body: 'No buyer matched within the 24 h window, so Peer returned your ETH. Try a smaller amount or a different payment method.',
       activeStep: 'submitted',
     },
   }[s] || {
