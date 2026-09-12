@@ -3,7 +3,7 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals, getWalletProvider, formatTxError, getCachedBalance } from './utils.js'
+import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals, getWalletProvider, formatTxError, getCachedBalance, getAuthToken } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { getTicketPendingWithdrawals, withdrawTicketEarnings, TICKET_MARKET_ADDR } from './tickets.js'
@@ -227,53 +227,102 @@ async function _fetchPurchaseCovers(mediaIds) {
 // the SDK's `orders(owner, { inFlight: true })` and updates in-place
 // via a lightweight watch loop. Non-blocking; failures are silent.
 async function _renderInFlightCashouts(contentEl, addr) {
+  // Belt + braces sourcing — same pattern the /cashout page uses.
+  // Peer's indexer can lag a fresh deposit by minutes; our server
+  // row is written the moment cashout() returns, so we cross-reference
+  // both and merge by depositId.
+  const authToken = await getAuthToken?.().catch(() => null)
+  const serverOrders = await _readCashoutServerOrders(authToken)
+  const recentServer = serverOrders.filter(o => Date.now() - (o.createdAt || 0) < 24 * 3600_000)
+
   let sdk
   try { sdk = await import('./vendor-cash.js') } catch { return }
   const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
   let client
   try {
-    client = sdk.createCashClient({ environment: env, rpcUrl: 'https://mainnet.base.org', referrer: 'praxis' })
+    // Bare Relay client to avoid the UNAUTHORIZED_QUOTE gate.
+    const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+    bareRelay.source = undefined
+    client = sdk.createCashClient({
+      environment: env, rpcUrl: 'https://mainnet.base.org',
+      referrer: 'praxis', relay: { client: bareRelay },
+    })
   } catch { return }
-  let live
-  try { live = await client.orders(addr, { inFlight: true, limit: 10 }) } catch { return }
-  if (!live || live.length === 0) return
-  // Inject the row at the top of the vault-doc, between .vault-lead
-  // and .vault-act.
+  let live = []
+  try { live = await client.orders(addr, { inFlight: true, limit: 10 }).catch(() => []) } catch {}
+
+  const byId = new Map()
+  for (const o of live || []) {
+    if (!o?.depositId) continue
+    byId.set(o.depositId, { depositId: o.depositId, sdk: o, server: null })
+  }
+  for (const o of recentServer) {
+    if (!o?.depositId) continue
+    const existing = byId.get(o.depositId)
+    if (existing) existing.server = o
+    else byId.set(o.depositId, { depositId: o.depositId, sdk: null, server: o })
+  }
+  if (byId.size === 0) return
+
   const doc = contentEl.querySelector('.vault-doc')
   if (!doc) return
   const banner = document.createElement('section')
   banner.className = 'vault-cashout-banner'
   banner.dataset.section = 'cashouts'
-  const rows = live.map(o => _cashoutRowHtml(o)).join('')
+  const items = [...byId.values()]
+  const rows = items.map(x => _cashoutRowHtml(x.sdk || _sdkShapeFromServer(x.server), x.server)).join('')
   banner.innerHTML = `<div class="vault-cashout-title">money moving</div><div class="vault-cashout-list">${rows}</div>`
   const leadSection = doc.querySelector('.vault-lead')
   leadSection ? leadSection.after(banner) : doc.prepend(banner)
-  // Live watch — updates each row in place until it hits a terminal
-  // state. Uses the SDK's async iterator; each order gets its own.
-  for (const o of live) {
+
+  // Live watch per row — hydrates any server-only rows once Peer's
+  // indexer catches up, and moves rows through terminal states.
+  for (const x of items) {
     ;(async () => {
       try {
-        for await (const upd of client.watch(o.depositId, { timeoutMs: 30 * 60_000 })) {
-          const row = banner.querySelector(`[data-deposit="${o.depositId}"]`)
-          if (row) row.outerHTML = _cashoutRowHtml(upd)
+        for await (const upd of client.watch(x.depositId, { timeoutMs: 30 * 60_000 })) {
+          const row = banner.querySelector(`[data-deposit="${x.depositId}"]`)
+          if (row) row.outerHTML = _cashoutRowHtml(upd, x.server)
           if (upd.state === 'delivered' || upd.state === 'returned') break
         }
       } catch { /* stream closed, ignore */ }
     })()
   }
 }
-function _cashoutRowHtml(order) {
-  const stateCopy = order.state === 'awaiting-buyer' ? 'waiting for a peer'
-    : order.state === 'matched' ? 'peer matched — waiting for payment'
-    : order.state === 'delivering' ? 'confirming delivery'
+
+function _sdkShapeFromServer(server) {
+  // Minimal placeholder so _cashoutRowHtml renders while Peer's
+  // indexer hasn't caught up yet — replaced on the first watch tick.
+  return { depositId: server.depositId, state: 'awaiting-buyer', explain: () => 'just submitted — waiting for the indexer' }
+}
+
+async function _readCashoutServerOrders(token) {
+  if (!token) return []
+  try {
+    const res = await fetch('/api/cashout/orders', { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data?.orders) ? data.orders : []
+  } catch { return [] }
+}
+
+function _cashoutRowHtml(order, server) {
+  const stateCopy = order.state === 'awaiting-buyer' ? 'waiting for a buyer'
+    : order.state === 'matched' ? 'buyer matched — sending payment'
+    : order.state === 'delivering' ? 'confirming payment'
     : order.state === 'delivered' ? 'delivered'
     : order.state === 'returned' ? 'returned to wallet'
     : escapeHtml(order.state)
   const color = order.state === 'delivered' ? 'var(--green)' : order.state === 'returned' ? 'var(--muted)' : 'var(--accent)'
+  const platform = server?.platform ? String(server.platform).replace(/\b\w/g, c => c.toUpperCase()) : ''
+  const amt = server?.amountFiat > 0 ? formatFiat(Number(server.amountFiat), server.currency || getUserCurrency()) : ''
+  const note = amt && platform
+    ? `${amt} → ${escapeHtml(platform)}`
+    : escapeHtml(order.explain?.() || '')
   return `<div class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}">
     <div class="vault-cashout-row-left">
       <span class="vault-cashout-row-state" style="color:${color}">${stateCopy}</span>
-      <span class="vault-cashout-row-note">${escapeHtml(order.explain?.() || '')}</span>
+      <span class="vault-cashout-row-note">${note}</span>
     </div>
     <a class="vault-cashout-row-link" href="/cashout" title="open cash-out">↗</a>
   </div>`

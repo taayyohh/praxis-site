@@ -8528,34 +8528,156 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .cashout-loading { color: var(--dim); font-size: 0.85em; }
 
-/* Cash-out in-flight surface — a full-page replacement for the
-   entry form once a deposit is live. Per design philosophy: one
-   story per page. Header of the sheet becomes the pending title,
-   safety block earns visible weight, receipt row is bottom
-   metadata. Padding matches .cashout-sheet's own so this feels
-   like the same page redrawn, not a modal on top.
-
-   State switch: .cashout-sheet.is-inflight hides the entry-wrap
-   (form) and reveals the inflight surface. Belt-and-braces on
-   both selectors so no child toggling .hidden on itself can
-   accidentally re-show the form after we swap. */
-.cashout-sheet.is-inflight .cashout-entry-wrap { display: none; }
-.cashout-inflight { display: none; }
-.cashout-sheet.is-inflight .cashout-inflight { display: flex; }
-.cashout-inflight {
+/* Cash-out pending page — vault-language, its own /cashout render
+   path when the wallet has one or more live deposits. Big number
+   owns the top; each pending item is a card below; a small
+   affordance opens the entry form for another concurrent cash-out.
+   Same tokens the vault uses so this reads as the same document. */
+.cashout-doc {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5em 1em 4em;
+  display: flex;
   flex-direction: column;
-  gap: 1.6em;
-  padding: 0.4em 0 0.2em;
+  gap: 2em;
 }
-.cashout-inflight-head { display: flex; flex-direction: column; gap: 0.35em; }
-.cashout-inflight-title {
+.cashout-pending-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  padding: 0.5em 0 0.2em;
+}
+.cashout-pending-hero-label {
+  color: var(--dim);
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.cashout-pending-hero-value {
   color: var(--fg);
-  font-size: 1.8em;
-  line-height: 1.15;
+  font-size: 2.6em;
+  line-height: 1.05;
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
-.cashout-inflight-sub { color: var(--dim); font-size: 0.95em; }
+.cashout-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5em;
+}
+.cashout-pending-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2em;
+  padding: 1.2em 0;
+  border-top: 1px solid var(--border, color-mix(in srgb, var(--fg) 10%, transparent));
+}
+.cashout-pending-card:first-child { border-top: none; padding-top: 0.4em; }
+.cashout-pending-card-head { display: flex; flex-direction: column; gap: 0.3em; }
+.cashout-pending-card-title {
+  color: var(--fg);
+  font-size: 1.05em;
+  font-weight: 500;
+}
+.cashout-pending-card-sub { color: var(--dim); font-size: 0.88em; }
+.cashout-pending-card-body {
+  color: var(--fg);
+  font-size: 0.95em;
+  line-height: 1.55;
+  margin: 0;
+}
+.cashout-pending-card-body strong { color: var(--fg); font-weight: 500; }
+.cashout-pending-card-safety {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+.cashout-pending-card-safety li {
+  color: var(--dim);
+  font-size: 0.85em;
+  line-height: 1.4;
+  padding-left: 1.3em;
+  position: relative;
+}
+.cashout-pending-card-safety li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--green, #4ec9b0);
+}
+.cashout-pending-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  color: var(--dim);
+  font-size: 0.78em;
+  padding-top: 0.2em;
+}
+.cashout-pending-meta-key {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.9em;
+}
+.cashout-pending-meta-val {
+  color: var(--fg);
+  font-family: inherit;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cashout-pending-copy {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0.2em 0.4em;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.cashout-pending-copy:hover { color: var(--fg); }
+.cashout-pending-card.is-done .cashout-pending-card-title { color: var(--green, #4ec9b0); }
+.cashout-pending-card.is-returned .cashout-pending-card-title { color: var(--dim); }
+.cashout-pending-card-cancel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  padding-top: 0.2em;
+}
+.cashout-pending-card-cancel button {
+  align-self: flex-start;
+  padding-left: 0;
+  font-size: 0.85em;
+}
+.cashout-pending-card-cancel-status {
+  color: var(--dim);
+  font-size: 0.82em;
+  margin: 0;
+  min-height: 1.1em;
+}
+.cashout-pending-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  align-items: flex-start;
+  padding-top: 0.4em;
+}
+.cashout-link {
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+  padding: 0.3em 0;
+  text-align: left;
+}
+.cashout-link:hover { color: var(--accent, var(--fg)); }
+.cashout-link-muted { color: var(--dim); }
+.cashout-link-muted:hover { color: var(--fg); }
 
 /* Progress steps — four dots joined by a hair-thin line. Filled
    dots for completed steps, the ring for the active one, hollow

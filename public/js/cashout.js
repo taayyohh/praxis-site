@@ -193,6 +193,23 @@ async function initCashout() {
     return
   }
 
+  const cashCurrency = _cashoutCurrency()
+
+  // Decide upfront which page this is: pending or entry. The vault
+  // design philosophy — one story per page — means we render one or
+  // the other. Concurrent cash-outs are legal on peer.xyz; the
+  // pending page lists them all and has a "start another" affordance
+  // that lands here with ?new=1 to bypass this check.
+  const bypassPending = new URL(window.location.href).searchParams.get('new') === '1'
+  if (!bypassPending) {
+    const pending = await _findPendingCashout(addr, cashCurrency).catch(() => null)
+    if (pending) {
+      el.innerHTML = _renderPendingShell(pending)
+      _wirePendingShell(el, pending)
+      return
+    }
+  }
+
   el.innerHTML = _renderShell()
   const els = _wireEls(el)
 
@@ -202,7 +219,6 @@ async function initCashout() {
     getEthPrices().catch(() => null),
   ])
 
-  const cashCurrency = _cashoutCurrency()
   const userCurrencyRaw = String(getUserCurrency() || 'usd').toUpperCase()
   const currencyMismatch = cashCurrency !== userCurrencyRaw
 
@@ -268,10 +284,6 @@ async function initCashout() {
   const usable = _filterPlatforms(caps.platforms || [], fillStats, cashCurrency)
   const mobile = _isMobile()
   _renderPlatforms(els.platforms, usable, mobile)
-
-  // Resume banner — one-tap surface for any in-flight order the wallet
-  // still owns. Cheap; skips silently on error.
-  _renderResumeBanner(els, client, addr, cashCurrency).catch(() => {})
 
   // ─── Interactions ───
 
@@ -603,29 +615,14 @@ async function initCashout() {
         amountFiat: latestEstimate?.receiveAmount || 0,
         currency: cashCurrency,
       }, authToken).catch(() => {})
-      // Swap into the in-flight surface. The zero-crypto artist needs
-      // to see three things without hunting: (1) their money is safe,
-      // (2) they can walk away, (3) what happens next in plain terms.
-      // The form disappears — a form is not the right thing to look
-      // at while something is pending in a background marketplace.
-      _showInFlight(els, {
-        depositId: result.depositId,
-        receiveFiat: latestEstimate?.receiveAmount || 0,
-        cashCurrency,
-        platform: selectedPlatform,
-        payee: els.payeeInput.value.trim(),
-        etaLabel: latestEstimate?.eta?.label || 'usually starts within an hour',
-      })
-      _renderInFlightState(els, { state: 'awaiting-buyer' }, selectedPlatform, els.payeeInput.value.trim(), latestEstimate?.receiveAmount || 0, cashCurrency)
-
-      const iterator = client.watch(result.depositId, { timeoutMs: 60 * 60_000 })
-      for await (const order of iterator) {
-        _renderInFlightState(els, order, selectedPlatform, els.payeeInput.value.trim(), latestEstimate?.receiveAmount || 0, cashCurrency)
-        if (order.state === 'delivered' || order.state === 'returned') {
-          _pruneServerOrder(result.depositId, authToken).catch(() => {})
-          break
-        }
-      }
+      // Deposit created. The rendering of pending state lives on the
+      // /cashout root page (see initCashout — checks server-side rows,
+      // then paints the pending shell). Redirect there so we have a
+      // single code path for pending, and the form's local state (amount,
+      // payee input) doesn't linger on-screen. Server sync above already
+      // wrote the row, so the pending page will pick it up immediately.
+      location.href = '/cashout'
+      return
     } catch (e) {
       const code = e?.code
       if (code === 'PAYEE_VERIFICATION_REQUIRED') {
@@ -648,19 +645,16 @@ async function initCashout() {
 function _renderShell() {
   return `
     <div class="cashout-sheet">
-      <div id="cashout-entry-wrap" class="cashout-entry-wrap">
-        <header class="cashout-lead">
-          <h1>cash out</h1>
-          <p class="cashout-sub">Move your earnings into Venmo, PayPal, Zelle, Cash App, Wise, or Revolut. Peer-to-peer — no bank required, no signup.</p>
-        </header>
+      <header class="cashout-lead">
+        <h1>cash out</h1>
+        <p class="cashout-sub">Move your earnings into Venmo, PayPal, Zelle, Cash App, Wise, or Revolut. Peer-to-peer — no bank required, no signup.</p>
+      </header>
 
-        <div id="cashout-resume" class="cashout-resume" hidden></div>
-
-        <div class="cashout-balance-line">
-          <span class="cashout-balance-label">available</span>
-          <span id="cashout-balance-value" class="cashout-balance-value">…</span>
-        </div>
-        <div id="cashout-balance-sub" class="cashout-balance-sub"></div>
+      <div class="cashout-balance-line">
+        <span class="cashout-balance-label">available</span>
+        <span id="cashout-balance-value" class="cashout-balance-value">…</span>
+      </div>
+      <div id="cashout-balance-sub" class="cashout-balance-sub"></div>
 
       <section class="cashout-body">
         <div class="cashout-field">
@@ -703,49 +697,6 @@ function _renderShell() {
         <button id="cashout-submit" type="button" class="cashout-btn" disabled>enter an amount</button>
         <p id="cashout-status" class="cashout-status"></p>
       </section>
-      </div><!-- /#cashout-entry-wrap -->
-
-        <div id="cashout-inflight" class="cashout-inflight" hidden>
-          <div class="cashout-inflight-head">
-            <div id="cashout-inflight-title" class="cashout-inflight-title">waiting for a buyer</div>
-            <div id="cashout-inflight-sub" class="cashout-inflight-sub">this usually takes about an hour</div>
-          </div>
-
-          <ol class="cashout-inflight-steps" id="cashout-inflight-steps">
-            <li data-step="submitted" class="cashout-step is-done">
-              <span class="cashout-step-dot"></span>
-              <span class="cashout-step-label">deposit submitted</span>
-            </li>
-            <li data-step="matched" class="cashout-step">
-              <span class="cashout-step-dot"></span>
-              <span class="cashout-step-label">buyer matched</span>
-            </li>
-            <li data-step="paid" class="cashout-step">
-              <span class="cashout-step-dot"></span>
-              <span class="cashout-step-label">payment sent</span>
-            </li>
-            <li data-step="done" class="cashout-step">
-              <span class="cashout-step-dot"></span>
-              <span class="cashout-step-label">complete</span>
-            </li>
-          </ol>
-
-          <div id="cashout-inflight-body" class="cashout-inflight-body"></div>
-
-          <ul class="cashout-inflight-safety">
-            <li>your funds are locked in Peer's escrow — safe until a buyer matches</li>
-            <li>you can close this tab · we'll notify you when it lands</li>
-            <li>if no one matches in 24 h, everything returns to your wallet</li>
-          </ul>
-
-          <div class="cashout-inflight-meta">
-            <span class="cashout-inflight-meta-label">deposit id</span>
-            <code id="cashout-inflight-deposit-id" class="cashout-inflight-deposit-id"></code>
-            <button id="cashout-inflight-copy" type="button" class="cashout-inflight-copy" title="copy deposit id"><i class="ph ph-copy"></i></button>
-          </div>
-
-          <button id="cashout-inflight-close" type="button" class="cashout-btn cashout-btn-ghost">close — we'll notify you</button>
-        </div>
     </div>
   `
 }
@@ -771,16 +722,6 @@ function _wireEls(root) {
     quoteEta: root.querySelector('#cashout-quote-eta'),
     submitBtn: root.querySelector('#cashout-submit'),
     status: root.querySelector('#cashout-status'),
-    resume: root.querySelector('#cashout-resume'),
-    inflight: root.querySelector('#cashout-inflight'),
-    inflightTitle: root.querySelector('#cashout-inflight-title'),
-    inflightSub: root.querySelector('#cashout-inflight-sub'),
-    inflightSteps: root.querySelector('#cashout-inflight-steps'),
-    inflightBody: root.querySelector('#cashout-inflight-body'),
-    inflightDepositId: root.querySelector('#cashout-inflight-deposit-id'),
-    inflightCopy: root.querySelector('#cashout-inflight-copy'),
-    inflightClose: root.querySelector('#cashout-inflight-close'),
-    entryWrap: root.querySelector('#cashout-entry-wrap'),
   }
 }
 
@@ -821,61 +762,273 @@ function _renderPlatforms(container, platforms, mobile) {
   }).join('')
 }
 
-async function _renderResumeBanner(els, client, addr, cashCurrency) {
-  // Peer's indexer can lag a fresh deposit by a few minutes, so
-  // `orders(inFlight:true)` returns [] right after a submit even
-  // though the on-chain deposit exists. Belt-and-braces: check
-  // both the SDK's view AND our own server-side depositId
-  // storage. The server row is written the moment cashout() returns
-  // — no indexer lag — and is pruned once we observe a terminal
-  // state via watch(). Whichever source gives a live order first
-  // becomes the pending state; the other backfills as it catches up.
-  let sdkOrders = []
-  try { sdkOrders = await client.orders(addr, { inFlight: true, limit: 10 }) } catch {}
-
+// Find any live cash-outs the wallet still owns. Merges server-side
+// depositId rows (no indexer lag) with the SDK's authoritative view.
+// Returns a list — peer.xyz supports concurrent cash-outs, and we
+// surface all of them, not just the first.
+async function _findPendingCashout(addr, cashCurrency) {
   const authToken = await getAuthToken?.().catch(() => null)
   const serverOrders = await _readServerOrders(authToken)
-  // Only consider server rows from the last 24 h — Peer auto-returns
-  // after 24 h, so anything older is either stale or truly gone.
-  const recentServer = serverOrders.filter(o => Date.now() - (o.createdAt || 0) < 24 * 3600_000)
+  const recent = serverOrders.filter(o => Date.now() - (o.createdAt || 0) < 24 * 3600_000)
 
-  const sdkFirst = sdkOrders?.[0]
-  const serverFirst = recentServer[0]
-  if (!sdkFirst && !serverFirst) return
+  let sdkOrders = []
+  try {
+    const sdk = await import('./vendor-cash.js')
+    const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+    const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+    bareRelay.source = undefined
+    const client = sdk.createCashClient({
+      environment: env, rpcUrl: 'https://mainnet.base.org',
+      apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
+    })
+    sdkOrders = await client.orders(addr, { inFlight: true, limit: 10 }).catch(() => [])
+  } catch {}
 
-  // Prefer whichever source has an ID we can trust. If both, prefer
-  // the SDK's (authoritative on state), but hydrate copy from the
-  // server row when possible (more human data).
-  const depositId = sdkFirst?.depositId || serverFirst?.depositId
-  const serverMatch = recentServer.find(o => o.depositId === depositId) || serverFirst
-  let platform = serverMatch?.platform || ''
-  let receiveFiat = Number(serverMatch?.amountFiat || 0)
-  let currency = serverMatch?.currency || cashCurrency
-
-  if (!platform && sdkFirst) {
-    try {
-      const full = await client.order(depositId)
-      platform = full?.payouts?.[0]?.platform || ''
-    } catch {}
+  const byId = new Map()
+  for (const o of sdkOrders || []) {
+    if (!o?.depositId) continue
+    byId.set(o.depositId, { depositId: o.depositId, sdk: o, server: null })
   }
-  const payee = platform ? _recallHandle(addr, platform) : ''
+  for (const o of recent) {
+    if (!o?.depositId) continue
+    const existing = byId.get(o.depositId)
+    if (existing) existing.server = o
+    else byId.set(o.depositId, { depositId: o.depositId, sdk: null, server: o })
+  }
+  if (byId.size === 0) return null
 
-  _showInFlight(els, { depositId })
-  const initial = sdkFirst || { state: 'awaiting-buyer', depositId }
-  _renderInFlightState(els, initial, platform, payee, receiveFiat, currency)
+  const items = [...byId.values()].map(({ depositId, sdk, server }) => {
+    const platform = server?.platform || ''
+    const receiveFiat = Number(server?.amountFiat || 0)
+    const currency = server?.currency || cashCurrency
+    const payee = platform ? _recallHandle(addr, platform) : ''
+    return {
+      depositId, platform, payee, receiveFiat, currency,
+      initialOrder: sdk || null,
+      initialState: sdk?.state || 'awaiting-buyer',
+    }
+  })
+  return { addr, cashCurrency, authToken, items }
+}
 
-  ;(async () => {
-    try {
-      const iterator = client.watch(depositId, { timeoutMs: 60 * 60_000 })
-      for await (const order of iterator) {
-        _renderInFlightState(els, order, platform, payee, receiveFiat, currency)
-        if (order.state === 'delivered' || order.state === 'returned') {
-          _pruneServerOrder(depositId, authToken).catch(() => {})
-          break
+// Big number owns the page (per artist's weight); each pending item
+// is a card with its own state + steps + safety block. A "start
+// another cash-out" link stays visible so concurrent deposits work.
+function _renderPendingShell(p) {
+  const totalFiat = p.items.reduce((s, i) => s + (i.receiveFiat || 0), 0)
+  const currency = p.items[0]?.currency || p.cashCurrency
+  const heroItem = p.items[0]
+  const heroLabel = p.items.length > 1
+    ? `${p.items.length} cash-outs in flight`
+    : (heroItem?.payee
+        ? `sending to ${_escape(_prettyPlatform(heroItem.platform).toLowerCase())} · ${_escape(heroItem.payee)}`
+        : `sending to ${_escape(heroItem?.platform ? _prettyPlatform(heroItem.platform).toLowerCase() : 'your payment method')}`)
+  const heroValue = totalFiat > 0 ? _formatFiat(totalFiat, currency) : 'cash-out'
+  const cards = p.items.map(item => _renderPendingCard(item)).join('')
+  return `
+    <div class="cashout-doc">
+      <section class="cashout-pending-hero">
+        <div class="cashout-pending-hero-label">${heroLabel}</div>
+        <div class="cashout-pending-hero-value">${_escape(heroValue)}</div>
+      </section>
+      <div class="cashout-pending-list">${cards}</div>
+      <section class="cashout-pending-actions">
+        <button id="cashout-start-another" type="button" class="cashout-link">start another cash-out →</button>
+        <button id="cashout-back-earnings" type="button" class="cashout-link cashout-link-muted">back to earnings</button>
+      </section>
+    </div>
+  `
+}
+
+function _renderPendingCard(item) {
+  const prettyPlatform = item.platform ? _prettyPlatform(item.platform).toLowerCase() : 'your payment method'
+  const knowAmt = item.receiveFiat > 0
+  const amtHtml = knowAmt ? `<strong>${_escape(_formatFiat(item.receiveFiat, item.currency))}</strong>` : 'your cash-out'
+  const handleHtml = item.payee ? ` <strong>${_escape(item.payee)}</strong>` : ''
+  return `
+    <article class="cashout-pending-card" data-deposit="${_escape(item.depositId)}">
+      <header class="cashout-pending-card-head">
+        <div class="cashout-pending-card-title" data-slot="title">waiting for a buyer</div>
+        <div class="cashout-pending-card-sub" data-slot="sub">this usually takes about an hour</div>
+      </header>
+      <ol class="cashout-inflight-steps" data-slot="steps">
+        <li data-step="submitted" class="cashout-step is-done"><span class="cashout-step-dot"></span><span class="cashout-step-label">deposit submitted</span></li>
+        <li data-step="matched" class="cashout-step"><span class="cashout-step-dot"></span><span class="cashout-step-label">buyer matched</span></li>
+        <li data-step="paid" class="cashout-step"><span class="cashout-step-dot"></span><span class="cashout-step-label">payment sent</span></li>
+        <li data-step="done" class="cashout-step"><span class="cashout-step-dot"></span><span class="cashout-step-label">complete</span></li>
+      </ol>
+      <p class="cashout-pending-card-body" data-slot="body">A buyer will send ${amtHtml} to ${_escape(prettyPlatform)}${handleHtml}. Your deposit auto-releases when they do.</p>
+      <ul class="cashout-pending-card-safety">
+        <li>funds locked in Peer's escrow — safe until match</li>
+        <li>close this tab · we'll notify you</li>
+        <li>returns to your wallet if no match in 24 h</li>
+      </ul>
+      <footer class="cashout-pending-card-foot">
+        <span class="cashout-pending-meta-key">deposit id</span>
+        <code class="cashout-pending-meta-val" title="${_escape(item.depositId)}">${_escape(_shortDepositId(item.depositId))}</code>
+        <button type="button" class="cashout-pending-copy" data-copy="${_escape(item.depositId)}" title="copy deposit id"><i class="ph ph-copy"></i></button>
+      </footer>
+      <div class="cashout-pending-card-cancel">
+        <button type="button" class="cashout-link cashout-link-muted" data-cancel="${_escape(item.depositId)}">cancel · pull funds back to my wallet</button>
+        <p class="cashout-pending-card-cancel-status" data-cancel-status="${_escape(item.depositId)}"></p>
+      </div>
+    </article>
+  `
+}
+
+async function _wirePendingShell(el, p) {
+  el.querySelector('#cashout-back-earnings')?.addEventListener('click', () => { location.href = '/earnings' })
+  el.querySelector('#cashout-start-another')?.addEventListener('click', () => { location.href = '/cashout?new=1' })
+  el.querySelectorAll('.cashout-pending-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-copy') || ''
+      try { navigator.clipboard.writeText(id) } catch {}
+      btn.innerHTML = '<i class="ph ph-check"></i>'
+      setTimeout(() => { btn.innerHTML = '<i class="ph ph-copy"></i>' }, 1200)
+    })
+  })
+  el.querySelectorAll('[data-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => _handleCancel(el, btn, p))
+  })
+  for (const item of p.items) {
+    const card = el.querySelector(`.cashout-pending-card[data-deposit="${item.depositId}"]`)
+    if (!card) continue
+    const paint = (order) => _paintPendingCard(card, order, item)
+    if (item.initialOrder) paint(item.initialOrder)
+    ;(async () => {
+      try {
+        const sdk = await import('./vendor-cash.js')
+        const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+        const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+        bareRelay.source = undefined
+        const client = sdk.createCashClient({
+          environment: env, rpcUrl: 'https://mainnet.base.org',
+          apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
+        })
+        const iterator = client.watch(item.depositId, { timeoutMs: 60 * 60_000 })
+        for await (const order of iterator) {
+          paint(order)
+          if (order.state === 'delivered' || order.state === 'returned') {
+            _pruneServerOrder(item.depositId, p.authToken).catch(() => {})
+            break
+          }
         }
+      } catch {}
+    })()
+  }
+}
+
+function _paintPendingCard(card, order, item) {
+  const copy = _pendingStateCopy(order, item)
+  const titleEl = card.querySelector('[data-slot="title"]')
+  const subEl = card.querySelector('[data-slot="sub"]')
+  const bodyEl = card.querySelector('[data-slot="body"]')
+  const stepsEl = card.querySelector('[data-slot="steps"]')
+  if (titleEl) titleEl.textContent = copy.title
+  if (subEl) subEl.textContent = copy.sub
+  if (bodyEl) bodyEl.innerHTML = copy.body
+  _advanceInFlightSteps(stepsEl, copy.activeStep)
+  card.classList.toggle('is-done', order.state === 'delivered')
+  card.classList.toggle('is-returned', order.state === 'returned')
+}
+
+async function _handleCancel(root, btn, p) {
+  const depositId = btn.getAttribute('data-cancel')
+  if (!depositId) return
+  const statusEl = root.querySelector(`[data-cancel-status="${depositId}"]`)
+  const setStatus = (s) => { if (statusEl) statusEl.textContent = s }
+  if (!confirm("Cancel this cash-out and pull the funds back to your wallet? This costs a small gas fee on Base.")) return
+
+  btn.disabled = true
+  btn.style.opacity = '0.6'
+  setStatus('unlocking your wallet…')
+
+  try {
+    if (typeof window.ensureAuthorized === 'function') {
+      try { await window.ensureAuthorized(p.addr) } catch {
+        setStatus('cancel aborted — wallet unlock cancelled')
+        btn.disabled = false; btn.style.opacity = '1'
+        return
       }
-    } catch {}
-  })()
+    }
+    const embeddedAcct = window.getEmbeddedAccount?.()
+    if (!embeddedAcct) {
+      setStatus('wallet still locked — unlock and try again')
+      btn.disabled = false; btn.style.opacity = '1'
+      return
+    }
+
+    const { createWalletClient, http, base } = await import('./vendor.js')
+    const sdk = await import('./vendor-cash.js')
+    const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+    const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+    bareRelay.source = undefined
+    const client = sdk.createCashClient({
+      environment: env, rpcUrl: 'https://mainnet.base.org',
+      apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
+    })
+    const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http('/api/rpc/8453') })
+
+    setStatus('sending withdraw transaction…')
+    await client.withdraw(depositId, { signer: baseSigner })
+
+    setStatus('withdrew — your funds are back in your wallet on Base.')
+    _pruneServerOrder(depositId, p.authToken).catch(() => {})
+    // Reload so the pending shell recomputes — the card should now be
+    // gone (or moved to a done/returned terminal state via watch()).
+    setTimeout(() => { location.href = '/earnings' }, 1200)
+  } catch (e) {
+    console.warn('cashout cancel failed:', e)
+    const msg = e?.remediation || e?.message || 'try again in a moment'
+    setStatus(`couldn't cancel — ${String(msg).slice(0, 160)}`)
+    btn.disabled = false; btn.style.opacity = '1'
+  }
+}
+
+function _pendingStateCopy(order, item) {
+  const s = order.state
+  const prettyPlatform = item.platform ? _prettyPlatform(item.platform).toLowerCase() : 'your payment method'
+  const knowAmt = Number.isFinite(item.receiveFiat) && item.receiveFiat > 0
+  const prettyAmt = knowAmt ? _formatFiat(item.receiveFiat, item.currency) : ''
+  const amtPhrase = knowAmt ? `<strong>${_escape(prettyAmt)}</strong>` : 'your cash-out'
+  const handlePhrase = item.payee ? ` <strong>${_escape(item.payee)}</strong>` : ''
+  return {
+    'awaiting-buyer': {
+      title: 'waiting for a buyer',
+      sub: order.eta?.label || 'this usually takes about an hour',
+      body: `A buyer will send ${amtPhrase} to ${prettyPlatform}${handlePhrase}. Your deposit auto-releases when they do.`,
+      activeStep: 'submitted',
+    },
+    'matched': {
+      title: 'a buyer matched',
+      sub: 'they are sending your payment now',
+      body: `A buyer is sending ${amtPhrase} to ${prettyPlatform}${handlePhrase}. Watch that account for the incoming payment.`,
+      activeStep: 'matched',
+    },
+    'delivering': {
+      title: 'confirming your payment',
+      sub: 'verifying with a cryptographic proof',
+      body: `The buyer marked ${amtPhrase} as sent. Peer is verifying now — takes about a minute.`,
+      activeStep: 'paid',
+    },
+    'delivered': {
+      title: knowAmt ? `${prettyAmt} sent` : 'payment sent',
+      sub: 'check your account for the incoming payment',
+      body: `Payment complete. ${amtPhrase} landed in ${prettyPlatform}${handlePhrase}.`,
+      activeStep: 'done',
+    },
+    'returned': {
+      title: 'no buyer matched in time',
+      sub: 'funds returned to your wallet',
+      body: 'No buyer matched within the 24 h window, so Peer returned your ETH.',
+      activeStep: 'submitted',
+    },
+  }[s] || {
+    title: 'processing…',
+    sub: '',
+    body: order.explain?.() || 'working on it',
+    activeStep: 'submitted',
+  }
 }
 
 async function _pruneServerOrder(depositId, token) {
@@ -889,99 +1042,7 @@ async function _pruneServerOrder(depositId, token) {
   } catch {}
 }
 
-function _renderOrderState(els, order, platform) {
-  // Legacy — kept as a no-op so any resume-banner code that still
-  // calls it doesn't throw. The in-flight surface below is the real
-  // renderer for a live cashout.
-  void els; void order; void platform
-}
 
-function _showInFlight(els, { depositId }) {
-  // Swap surfaces via a class on the sheet root — CSS then hides
-  // the entry wrap (form) and shows the pending surface. Class-
-  // based over per-element `hidden` because a) it survives child
-  // handlers toggling their own .hidden (scanner, quote, payee
-  // field), and b) a single source of truth is easier to reason
-  // about than three toggles.
-  const sheet = document.querySelector('.cashout-sheet')
-  if (sheet) sheet.classList.add('is-inflight')
-  try { sheet?.scrollIntoView({ behavior: 'auto', block: 'start' }) } catch {}
-  els.inflightDepositId.textContent = _shortDepositId(depositId)
-  els.inflightDepositId.title = depositId
-  els.inflightCopy.onclick = () => {
-    try { navigator.clipboard.writeText(depositId) } catch {}
-    els.inflightCopy.innerHTML = '<i class="ph ph-check"></i>'
-    setTimeout(() => { els.inflightCopy.innerHTML = '<i class="ph ph-copy"></i>' }, 1200)
-  }
-  els.inflightClose.onclick = () => {
-    // The cashout keeps running in the sheet's iterator, but the
-    // user asked to leave. Send them home; the vault activity row
-    // will pick up the same order via server-side depositId storage.
-    location.href = '/earnings'
-  }
-}
-
-function _renderInFlightState(els, order, platform, payee, receiveFiat, cashCurrency) {
-  if (!els.inflight || els.inflight.hidden) return
-  const s = order.state
-  const prettyPlatform = platform ? _prettyPlatform(platform) : 'your payment method'
-  const platformPossessive = platform ? `your ${_prettyPlatform(platform)}` : 'your payment method'
-  const knowAmt = Number.isFinite(receiveFiat) && receiveFiat > 0
-  const prettyAmt = knowAmt ? _formatFiat(receiveFiat, cashCurrency) : ''
-  const amtPhrase = knowAmt ? `<strong>${prettyAmt}</strong>` : 'your cash-out'
-  const handlePhrase = payee ? ` <strong>${_escape(payee)}</strong>` : ''
-  const stateCopy = {
-    'awaiting-buyer': {
-      title: 'waiting for a buyer',
-      sub: order.eta?.label || 'usually starts within an hour',
-      body: `A buyer on the peer marketplace will send ${amtPhrase} to ${platformPossessive}${handlePhrase}. When they do, your deposit auto-releases. You don't need to send anything.`,
-      activeStep: 'submitted',
-    },
-    'matched': {
-      title: 'a buyer matched your cash-out',
-      sub: 'they are sending your payment now — this can take a few minutes',
-      body: `A buyer is sending ${amtPhrase} to ${platformPossessive}${handlePhrase}. Watch that account for the incoming payment.`,
-      activeStep: 'matched',
-    },
-    'delivering': {
-      title: 'confirming your payment',
-      sub: 'the buyer said they paid — verifying with a cryptographic proof',
-      body: `The buyer marked ${amtPhrase} as sent to ${platformPossessive}. Peer is verifying now. This takes about a minute.`,
-      activeStep: 'paid',
-    },
-    'delivered': {
-      title: knowAmt ? `${prettyAmt} sent to ${platformPossessive}` : 'payment sent',
-      sub: 'check your account for the incoming payment',
-      body: `Payment complete. ${amtPhrase} landed in ${platformPossessive}${handlePhrase}.`,
-      activeStep: 'done',
-    },
-    'returned': {
-      title: 'no buyer matched in time',
-      sub: 'your funds are safely back in your wallet',
-      body: 'No buyer matched within the 24 h window, so Peer returned your ETH. Try a smaller amount or a different payment method.',
-      activeStep: 'submitted',
-    },
-  }[s] || {
-    title: 'processing…',
-    sub: '',
-    body: order.explain?.() || 'working on it',
-    activeStep: 'submitted',
-  }
-
-  els.inflightTitle.textContent = stateCopy.title
-  els.inflightSub.textContent = stateCopy.sub
-  els.inflightBody.innerHTML = stateCopy.body
-  _advanceInFlightSteps(els.inflightSteps, stateCopy.activeStep)
-
-  // For terminal states, swap the close button copy so the user has
-  // a clear exit.
-  if (s === 'delivered') {
-    els.inflightClose.textContent = 'done · back to earnings'
-    els.inflightClose.classList.add('cashout-btn-done')
-  } else if (s === 'returned') {
-    els.inflightClose.textContent = 'back to earnings'
-  }
-}
 
 function _advanceInFlightSteps(root, active) {
   if (!root) return
