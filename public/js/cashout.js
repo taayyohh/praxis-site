@@ -897,14 +897,15 @@ function _renderOrderState(els, order, platform) {
 }
 
 function _showInFlight(els, { depositId }) {
-  // Swap surfaces. The entry wrap holds the "cash out" header,
-  // balance, form; the inflight surface takes the whole page — a
-  // single story, per the design philosophy. Scroll back to the top
-  // so the user sees the new state header first, not the tail of
-  // wherever they left the scroll.
-  if (els.entryWrap) els.entryWrap.hidden = true
-  els.inflight.hidden = false
-  try { els.inflight.scrollIntoView({ behavior: 'auto', block: 'start' }) } catch {}
+  // Swap surfaces via a class on the sheet root — CSS then hides
+  // the entry wrap (form) and shows the pending surface. Class-
+  // based over per-element `hidden` because a) it survives child
+  // handlers toggling their own .hidden (scanner, quote, payee
+  // field), and b) a single source of truth is easier to reason
+  // about than three toggles.
+  const sheet = document.querySelector('.cashout-sheet')
+  if (sheet) sheet.classList.add('is-inflight')
+  try { sheet?.scrollIntoView({ behavior: 'auto', block: 'start' }) } catch {}
   els.inflightDepositId.textContent = _shortDepositId(depositId)
   els.inflightDepositId.title = depositId
   els.inflightCopy.onclick = () => {

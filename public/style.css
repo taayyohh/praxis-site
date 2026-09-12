@@ -8533,9 +8533,16 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    story per page. Header of the sheet becomes the pending title,
    safety block earns visible weight, receipt row is bottom
    metadata. Padding matches .cashout-sheet's own so this feels
-   like the same page redrawn, not a modal on top. */
+   like the same page redrawn, not a modal on top.
+
+   State switch: .cashout-sheet.is-inflight hides the entry-wrap
+   (form) and reveals the inflight surface. Belt-and-braces on
+   both selectors so no child toggling .hidden on itself can
+   accidentally re-show the form after we swap. */
+.cashout-sheet.is-inflight .cashout-entry-wrap { display: none; }
+.cashout-inflight { display: none; }
+.cashout-sheet.is-inflight .cashout-inflight { display: flex; }
 .cashout-inflight {
-  display: flex;
   flex-direction: column;
   gap: 1.6em;
   padding: 0.4em 0 0.2em;
