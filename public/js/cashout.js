@@ -377,7 +377,25 @@ async function initCashout() {
   }
   els.scanClose?.addEventListener('click', _cashScanClose)
 
-  els.amountInput.addEventListener('input', _refreshQuote)
+  // Amount is fiat — strip anything that isn't a digit or a single
+  // decimal separator (accept both `.` and `,` for locale). Input is
+  // type=text (not type=number) so we get consistent mobile UX; that
+  // means WE do the sanitization. Preserve caret position when the
+  // user pastes junk from a copy/paste.
+  els.amountInput.addEventListener('input', (ev) => {
+    const raw = ev.target.value
+    const cleaned = raw
+      .replace(/,/g, '.')
+      .replace(/[^\d.]/g, '')
+      .replace(/^(\d*\.\d*)\..*$/, '$1')
+    if (cleaned !== raw) {
+      const caret = ev.target.selectionStart
+      ev.target.value = cleaned
+      const dropped = raw.length - cleaned.length
+      try { ev.target.setSelectionRange(Math.max(0, caret - dropped), Math.max(0, caret - dropped)) } catch {}
+    }
+    _refreshQuote()
+  })
   els.payeeInput.addEventListener('input', () => {
     // Debounce to avoid a green flicker while the user is still typing.
     clearTimeout(handleValidTimer)
@@ -520,7 +538,23 @@ async function initCashout() {
 
     try {
       const { createWalletClient, custom, base, optimism } = await import('./vendor.js')
-      const provider = getWalletProvider()
+      // Ensure the embedded wallet is attached + unlocked before we
+      // build viem signers. viem's custom(null) does provider.request
+      // .bind(provider), which throws "Cannot read properties of null
+      // (reading 'request')" the moment we hand it back — a cryptic
+      // failure right at the wallet-signing step. Fail loud and clear
+      // instead so the user knows to unlock.
+      let provider = getWalletProvider()
+      if (!provider) {
+        try { if (typeof window.unlockWallet === 'function') await window.unlockWallet() } catch {}
+        provider = getWalletProvider()
+      }
+      if (!provider || typeof provider.request !== 'function') {
+        els.status.textContent = 'unlock your Praxis wallet first, then try again'
+        els.submitBtn.textContent = 'try again'
+        els.submitBtn.disabled = false
+        return
+      }
       const baseSigner = createWalletClient({ chain: base, transport: custom(provider), account: addr })
       const opSigner = createWalletClient({ chain: optimism, transport: custom(provider), account: addr })
 
