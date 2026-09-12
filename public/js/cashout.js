@@ -271,7 +271,7 @@ async function initCashout() {
 
   // Resume banner — one-tap surface for any in-flight order the wallet
   // still owns. Cheap; skips silently on error.
-  _renderResumeBanner(els, client, addr).catch(() => {})
+  _renderResumeBanner(els, client, addr, cashCurrency).catch(() => {})
 
   // ─── Interactions ───
 
@@ -815,17 +815,43 @@ function _renderPlatforms(container, platforms, mobile) {
   }).join('')
 }
 
-async function _renderResumeBanner(els, client, addr) {
+async function _renderResumeBanner(els, client, addr, cashCurrency) {
   let inFlight = []
   try { inFlight = await client.orders(addr, { inFlight: true, limit: 10 }) } catch { return }
   if (!inFlight || inFlight.length === 0) return
   const first = inFlight[0]
-  els.resume.hidden = false
-  els.resume.innerHTML = `
-    <div style="padding:0.7em 0.9em;background:color-mix(in srgb, var(--accent) 12%, transparent);border-radius:8px;font-size:0.9em;line-height:1.5">
-      <div style="color:var(--fg);font-weight:600">a cash-out is in flight · ${escapeHtml(first.state)}</div>
-      <div style="color:var(--dim);font-size:0.85em">${escapeHtml(first.explain?.() || '')}</div>
-    </div>`
+
+  // Refresh with a live pending order → jump straight into the
+  // in-flight surface. The form would just invite the artist to
+  // start over, and they'd panic about the ETH they already
+  // committed. Recover the platform + payee + amount from what
+  // the SDK order carries so the copy stays specific.
+  const receiveLeg = first.receive || {}
+  const platform = receiveLeg.platform || first.platform || 'the sender'
+  const payee = _extractPayeeString(receiveLeg.payee || first.payee || '')
+  const receiveFiat = Number(receiveLeg.amount || first.receiveAmount || 0)
+  const currency = receiveLeg.currency || cashCurrency
+
+  _showInFlight(els, { depositId: first.depositId || first.compositeId || '' })
+  _renderInFlightState(els, first, platform, payee, receiveFiat, currency)
+
+  // Attach a fresh watch iterator so the page keeps updating in
+  // place as the order moves through states.
+  ;(async () => {
+    try {
+      const iterator = client.watch(first.depositId || first.compositeId, { timeoutMs: 60 * 60_000 })
+      for await (const order of iterator) {
+        _renderInFlightState(els, order, platform, payee, receiveFiat, currency)
+        if (order.state === 'delivered' || order.state === 'returned') break
+      }
+    } catch {}
+  })()
+}
+
+function _extractPayeeString(payee) {
+  if (!payee) return ''
+  if (typeof payee === 'string') return payee
+  return payee.handle || payee.address || payee.email || payee.phone || payee.identifier || ''
 }
 
 function _renderOrderState(els, order, platform) {
