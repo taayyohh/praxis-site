@@ -603,25 +603,25 @@ async function initCashout() {
         amountFiat: latestEstimate?.receiveAmount || 0,
         currency: cashCurrency,
       }, authToken).catch(() => {})
-      els.status.textContent = 'deposit created — waiting for a peer to match'
-      els.submitBtn.textContent = 'waiting for a peer…'
+      // Swap into the in-flight surface. The zero-crypto artist needs
+      // to see three things without hunting: (1) their money is safe,
+      // (2) they can walk away, (3) what happens next in plain terms.
+      // The form disappears — a form is not the right thing to look
+      // at while something is pending in a background marketplace.
+      _showInFlight(els, {
+        depositId: result.depositId,
+        receiveFiat: latestEstimate?.receiveAmount || 0,
+        cashCurrency,
+        platform: selectedPlatform,
+        payee: els.payeeInput.value.trim(),
+        etaLabel: latestEstimate?.eta?.label || 'usually starts within an hour',
+      })
+      _renderInFlightState(els, { state: 'awaiting-buyer' }, selectedPlatform, els.payeeInput.value.trim(), latestEstimate?.receiveAmount || 0, cashCurrency)
 
       const iterator = client.watch(result.depositId, { timeoutMs: 60 * 60_000 })
       for await (const order of iterator) {
-        _renderOrderState(els, order, selectedPlatform)
-        if (order.state === 'delivered') {
-          els.submitBtn.textContent = 'sent ✓'
-          els.submitBtn.classList.add('cashout-btn-done')
-          els.status.textContent = `${_formatFiat(latestEstimate?.receiveAmount || 0, cashCurrency)} sent to your ${_prettyPlatform(selectedPlatform)} — check for the payment`
-          break
-        }
-        if (order.state === 'returned') {
-          els.status.textContent = `no peer matched in time — your funds are safely back in your wallet. Try a smaller amount or a different platform.`
-          els.submitBtn.textContent = 'try again'
-          els.submitBtn.classList.remove('cashout-btn-done')
-          els.submitBtn.disabled = false
-          break
-        }
+        _renderInFlightState(els, order, selectedPlatform, els.payeeInput.value.trim(), latestEstimate?.receiveAmount || 0, cashCurrency)
+        if (order.state === 'delivered' || order.state === 'returned') break
       }
     } catch (e) {
       const code = e?.code
@@ -698,6 +698,48 @@ function _renderShell() {
 
         <button id="cashout-submit" type="button" class="cashout-btn" disabled>enter an amount</button>
         <p id="cashout-status" class="cashout-status"></p>
+
+        <div id="cashout-inflight" class="cashout-inflight" hidden>
+          <div class="cashout-inflight-head">
+            <div id="cashout-inflight-title" class="cashout-inflight-title">waiting for a buyer</div>
+            <div id="cashout-inflight-sub" class="cashout-inflight-sub">this usually takes about an hour</div>
+          </div>
+
+          <ol class="cashout-inflight-steps" id="cashout-inflight-steps">
+            <li data-step="submitted" class="cashout-step is-done">
+              <span class="cashout-step-dot"></span>
+              <span class="cashout-step-label">deposit submitted</span>
+            </li>
+            <li data-step="matched" class="cashout-step">
+              <span class="cashout-step-dot"></span>
+              <span class="cashout-step-label">buyer matched</span>
+            </li>
+            <li data-step="paid" class="cashout-step">
+              <span class="cashout-step-dot"></span>
+              <span class="cashout-step-label">payment sent</span>
+            </li>
+            <li data-step="done" class="cashout-step">
+              <span class="cashout-step-dot"></span>
+              <span class="cashout-step-label">complete</span>
+            </li>
+          </ol>
+
+          <div id="cashout-inflight-body" class="cashout-inflight-body"></div>
+
+          <ul class="cashout-inflight-safety">
+            <li>your funds are locked in Peer's escrow — safe until a buyer matches</li>
+            <li>you can close this tab · we'll notify you when it lands</li>
+            <li>if no one matches in 24 h, everything returns to your wallet</li>
+          </ul>
+
+          <div class="cashout-inflight-meta">
+            <span class="cashout-inflight-meta-label">deposit id</span>
+            <code id="cashout-inflight-deposit-id" class="cashout-inflight-deposit-id"></code>
+            <button id="cashout-inflight-copy" type="button" class="cashout-inflight-copy" title="copy deposit id"><i class="ph ph-copy"></i></button>
+          </div>
+
+          <button id="cashout-inflight-close" type="button" class="cashout-btn cashout-btn-ghost">close — we'll notify you</button>
+        </div>
       </section>
     </div>
   `
@@ -725,6 +767,14 @@ function _wireEls(root) {
     submitBtn: root.querySelector('#cashout-submit'),
     status: root.querySelector('#cashout-status'),
     resume: root.querySelector('#cashout-resume'),
+    inflight: root.querySelector('#cashout-inflight'),
+    inflightTitle: root.querySelector('#cashout-inflight-title'),
+    inflightSub: root.querySelector('#cashout-inflight-sub'),
+    inflightSteps: root.querySelector('#cashout-inflight-steps'),
+    inflightBody: root.querySelector('#cashout-inflight-body'),
+    inflightDepositId: root.querySelector('#cashout-inflight-deposit-id'),
+    inflightCopy: root.querySelector('#cashout-inflight-copy'),
+    inflightClose: root.querySelector('#cashout-inflight-close'),
   }
 }
 
@@ -779,17 +829,123 @@ async function _renderResumeBanner(els, client, addr) {
 }
 
 function _renderOrderState(els, order, platform) {
-  const s = order.state
-  if (s === 'awaiting-buyer') {
-    els.submitBtn.textContent = 'waiting for a peer…'
-    els.status.textContent = order.explain?.() || 'looking for someone to match — usually a few minutes'
-  } else if (s === 'matched') {
-    els.submitBtn.textContent = 'peer matched · waiting for payment…'
-    els.status.textContent = order.explain?.() || `a peer is sending your ${_prettyPlatform(platform)} payment now`
-  } else if (s === 'delivering') {
-    els.submitBtn.textContent = 'confirming delivery…'
-    els.status.textContent = order.explain?.() || 'payment received — releasing your funds'
+  // Legacy — kept as a no-op so any resume-banner code that still
+  // calls it doesn't throw. The in-flight surface below is the real
+  // renderer for a live cashout.
+  void els; void order; void platform
+}
+
+function _showInFlight(els, { depositId }) {
+  // Hide the whole entry form — amount, platform picker, handle,
+  // quote, submit button, status line. The user just committed;
+  // showing the form again invites second-guessing.
+  const hide = ['amountInput', 'quote', 'submitBtn', 'status', 'payeeField', 'platforms', 'amountConversion']
+  for (const k of hide) {
+    const el = els[k]; if (!el) continue
+    const container = el.closest?.('.cashout-field') || el
+    container.hidden = true
   }
+  // Also hide the top-of-sheet balance line + amount label — the
+  // "AMOUNT / $15" heading, since the pending state is now the focus.
+  const balanceLine = document.querySelector('.cashout-balance-line')
+  if (balanceLine) balanceLine.hidden = true
+  const balanceSub = document.getElementById('cashout-balance-sub')
+  if (balanceSub) balanceSub.hidden = true
+  // reveal the pending surface
+  els.inflight.hidden = false
+  els.inflightDepositId.textContent = _shortDepositId(depositId)
+  els.inflightDepositId.title = depositId
+  els.inflightCopy.onclick = () => {
+    try { navigator.clipboard.writeText(depositId) } catch {}
+    els.inflightCopy.innerHTML = '<i class="ph ph-check"></i>'
+    setTimeout(() => { els.inflightCopy.innerHTML = '<i class="ph ph-copy"></i>' }, 1200)
+  }
+  els.inflightClose.onclick = () => {
+    // The cashout keeps running in the sheet's iterator, but the
+    // user asked to leave. Send them home; the vault activity row
+    // will pick up the same order via server-side depositId storage.
+    location.href = '/earnings'
+  }
+}
+
+function _renderInFlightState(els, order, platform, payee, receiveFiat, cashCurrency) {
+  if (!els.inflight || els.inflight.hidden) return
+  const s = order.state
+  const prettyPlatform = _prettyPlatform(platform)
+  const prettyAmt = _formatFiat(receiveFiat, cashCurrency)
+  const stateCopy = {
+    'awaiting-buyer': {
+      title: 'waiting for a buyer',
+      sub: order.eta?.label || 'usually starts within an hour',
+      body: `Someone on the peer marketplace will send <strong>${prettyAmt}</strong> to your ${prettyPlatform} <strong>${_escape(payee)}</strong>. When they do, your deposit auto-releases. You don't need to send anything.`,
+      activeStep: 'submitted',
+    },
+    'matched': {
+      title: `a buyer matched your cash-out`,
+      sub: 'they are sending your payment now — this can take a few minutes',
+      body: `A buyer is sending <strong>${prettyAmt}</strong> to your ${prettyPlatform} <strong>${_escape(payee)}</strong>. Watch that account for the incoming payment.`,
+      activeStep: 'matched',
+    },
+    'delivering': {
+      title: 'confirming your payment',
+      sub: 'the buyer said they paid — verifying with a cryptographic proof',
+      body: `The buyer marked <strong>${prettyAmt}</strong> as sent to your ${prettyPlatform}. Peer is verifying the payment now. This takes about a minute.`,
+      activeStep: 'paid',
+    },
+    'delivered': {
+      title: `${prettyAmt} sent to your ${prettyPlatform}`,
+      sub: 'check your account for the payment',
+      body: `Payment complete. <strong>${prettyAmt}</strong> is in your ${prettyPlatform} account (${_escape(payee)}).`,
+      activeStep: 'done',
+    },
+    'returned': {
+      title: 'no buyer matched in time',
+      sub: 'your funds are safely back in your wallet',
+      body: `No buyer matched within the 24 h window, so Peer returned your ETH. Try a smaller amount or a different payment method.`,
+      activeStep: 'submitted',
+    },
+  }[s] || {
+    title: 'processing…',
+    sub: '',
+    body: order.explain?.() || 'working on it',
+    activeStep: 'submitted',
+  }
+
+  els.inflightTitle.textContent = stateCopy.title
+  els.inflightSub.textContent = stateCopy.sub
+  els.inflightBody.innerHTML = stateCopy.body
+  _advanceInFlightSteps(els.inflightSteps, stateCopy.activeStep)
+
+  // For terminal states, swap the close button copy so the user has
+  // a clear exit.
+  if (s === 'delivered') {
+    els.inflightClose.textContent = 'done · back to earnings'
+    els.inflightClose.classList.add('cashout-btn-done')
+  } else if (s === 'returned') {
+    els.inflightClose.textContent = 'back to earnings'
+  }
+}
+
+function _advanceInFlightSteps(root, active) {
+  if (!root) return
+  const order = ['submitted', 'matched', 'paid', 'done']
+  const idx = Math.max(0, order.indexOf(active))
+  for (const li of root.querySelectorAll('.cashout-step')) {
+    const step = li.getAttribute('data-step')
+    const pos = order.indexOf(step)
+    li.classList.toggle('is-done', pos < idx)
+    li.classList.toggle('is-active', pos === idx)
+  }
+}
+
+function _shortDepositId(id) {
+  if (!id) return ''
+  if (id.length < 14) return id
+  return `${id.slice(0, 6)}…${id.slice(-4)}`
+}
+
+function _escape(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 // ─── Reads ───

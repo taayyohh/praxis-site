@@ -8528,6 +8528,161 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .cashout-loading { color: var(--dim); font-size: 0.85em; }
 
+/* Cash-out in-flight surface — shown once the deposit is created.
+   The entry form (amount, platform picker, handle, submit) is
+   hidden so the artist stops second-guessing what they just did
+   and looks at the pending state instead. */
+.cashout-inflight {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4em;
+  padding: 0.4em 0 0.2em;
+}
+.cashout-inflight-head { display: flex; flex-direction: column; gap: 0.25em; }
+.cashout-inflight-title {
+  color: var(--fg);
+  font-size: 1.35em;
+  line-height: 1.2;
+  font-weight: 500;
+}
+.cashout-inflight-sub { color: var(--dim); font-size: 0.9em; }
+
+/* Progress steps — four dots joined by a hair-thin line. Filled
+   dots for completed steps, the ring for the active one, hollow
+   for future. Reads like a receipt, not a spinner. */
+.cashout-inflight-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  position: relative;
+}
+.cashout-inflight-steps::before {
+  content: '';
+  position: absolute;
+  top: 0.42em;
+  left: 12.5%;
+  right: 12.5%;
+  height: 1px;
+  background: var(--border, color-mix(in srgb, var(--fg) 12%, transparent));
+  z-index: 0;
+}
+.cashout-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  z-index: 1;
+}
+.cashout-step-dot {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  border: 1px solid var(--border, color-mix(in srgb, var(--fg) 24%, transparent));
+  background: var(--bg);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.cashout-step-label {
+  color: var(--dim);
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: center;
+  line-height: 1.2;
+}
+.cashout-step.is-done .cashout-step-dot {
+  background: var(--green, #4ec9b0);
+  border-color: var(--green, #4ec9b0);
+}
+.cashout-step.is-active .cashout-step-dot {
+  border-color: var(--green, #4ec9b0);
+  background: var(--bg);
+  transform: scale(1.15);
+  animation: cashout-step-pulse 1.6s ease-in-out infinite;
+}
+.cashout-step.is-active .cashout-step-label { color: var(--fg); }
+@keyframes cashout-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green, #4ec9b0) 40%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--green, #4ec9b0) 0%, transparent); }
+}
+
+.cashout-inflight-body {
+  color: var(--fg);
+  font-size: 0.95em;
+  line-height: 1.55;
+}
+.cashout-inflight-body strong { color: var(--fg); font-weight: 500; }
+
+.cashout-inflight-safety {
+  list-style: none;
+  padding: 0.9em 1em;
+  margin: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+.cashout-inflight-safety li {
+  color: var(--dim);
+  font-size: 0.85em;
+  line-height: 1.4;
+  padding-left: 1.4em;
+  position: relative;
+}
+.cashout-inflight-safety li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--green, #4ec9b0);
+}
+
+.cashout-inflight-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.5em 0.7em;
+  border: 1px dashed var(--border, color-mix(in srgb, var(--fg) 14%, transparent));
+  border-radius: 8px;
+  font-size: 0.8em;
+}
+.cashout-inflight-meta-label {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75em;
+}
+.cashout-inflight-deposit-id {
+  color: var(--fg);
+  font-family: inherit;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cashout-inflight-copy {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0.2em 0.4em;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.cashout-inflight-copy:hover { color: var(--fg); }
+
+.cashout-btn-ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border, color-mix(in srgb, var(--fg) 18%, transparent));
+}
+.cashout-btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  opacity: 1;
+}
+
 /* In-flight cashout banner on the vault. Sits between the balance
    lead and the savings block. Each row updates in place via the
    Peer SDK's watch() loop until it hits a terminal state. */
