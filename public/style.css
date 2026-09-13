@@ -8527,6 +8527,18 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   min-height: 1.2em;
 }
 .cashout-loading { color: var(--dim); font-size: 0.85em; }
+.cashout-ext-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 0.5em 0 0;
+  cursor: pointer;
+  text-align: left;
+  align-self: flex-start;
+}
+.cashout-ext-toggle:hover { color: var(--fg); }
 
 /* Cash-out pending page — vault-language, its own /cashout render
    path when the wallet has one or more live deposits. Big number
@@ -8641,6 +8653,14 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .cashout-pending-copy:hover { color: var(--fg); }
 .cashout-pending-card.is-done .cashout-pending-card-title { color: var(--green, #4ec9b0); }
 .cashout-pending-card.is-returned .cashout-pending-card-title { color: var(--dim); }
+/* Cancel makes no sense once the deposit's settled — hide it. */
+.cashout-pending-card.is-done .cashout-pending-card-cancel,
+.cashout-pending-card.is-returned .cashout-pending-card-cancel { display: none; }
+/* Progress steps + safety are also nostalgic once it's complete —
+   trim visual noise on terminal states. */
+.cashout-pending-card.is-done .cashout-pending-card-safety,
+.cashout-pending-card.is-returned .cashout-pending-card-safety { display: none; }
+.cashout-pending-card.is-done .cashout-inflight-steps { opacity: 0.6; }
 .cashout-pending-card-cancel {
   display: flex;
   flex-direction: column;

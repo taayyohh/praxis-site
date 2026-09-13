@@ -314,22 +314,22 @@ async function _readCashoutServerOrders(token) {
 }
 
 function _cashoutRowHtml(order, server) {
+  const platform = server?.platform ? String(server.platform).replace(/\b\w/g, c => c.toUpperCase()) : ''
+  const amt = server?.amountFiat > 0 ? formatFiat(Number(server.amountFiat), server.currency || getUserCurrency()) : ''
   const stateCopy = order.state === 'awaiting-buyer' ? 'waiting for a buyer'
     : order.state === 'matched' ? 'buyer matched — sending payment'
     : order.state === 'delivering' ? 'confirming payment'
-    : order.state === 'delivered' ? 'delivered'
-    : order.state === 'returned' ? 'returned to wallet'
+    : order.state === 'delivered' ? (amt && platform ? `${amt} sent to ${escapeHtml(platform)} ✓` : 'complete ✓')
+    : order.state === 'returned' ? 'returned to your wallet'
     : escapeHtml(order.state)
   const color = order.state === 'delivered' ? 'var(--green)' : order.state === 'returned' ? 'var(--muted)' : 'var(--accent)'
-  const platform = server?.platform ? String(server.platform).replace(/\b\w/g, c => c.toUpperCase()) : ''
-  const amt = server?.amountFiat > 0 ? formatFiat(Number(server.amountFiat), server.currency || getUserCurrency()) : ''
-  const note = amt && platform
-    ? `${amt} → ${escapeHtml(platform)}`
-    : escapeHtml(order.explain?.() || '')
-  return `<div class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}">
+  const note = order.state === 'delivered' || order.state === 'returned'
+    ? ''
+    : (amt && platform ? `${amt} → ${escapeHtml(platform)}` : escapeHtml(order.explain?.() || ''))
+  return `<div class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}" data-state="${escapeHtml(order.state)}">
     <div class="vault-cashout-row-left">
       <span class="vault-cashout-row-state" style="color:${color}">${stateCopy}</span>
-      <span class="vault-cashout-row-note">${note}</span>
+      ${note ? `<span class="vault-cashout-row-note">${note}</span>` : ''}
     </div>
     <a class="vault-cashout-row-link" href="/cashout" title="open cash-out">↗</a>
   </div>`

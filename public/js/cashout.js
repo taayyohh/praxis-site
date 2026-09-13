@@ -281,9 +281,14 @@ async function initCashout() {
     return
   }
 
-  const usable = _filterPlatforms(caps.platforms || [], fillStats, cashCurrency)
+  const allPlatforms = caps.platforms || []
   const mobile = _isMobile()
-  _renderPlatforms(els.platforms, usable, mobile)
+  const rerenderPlatforms = () => {
+    const usable = _filterPlatforms(allPlatforms, fillStats, cashCurrency)
+    _renderPlatforms(els.platforms, usable, mobile)
+    _renderExtToggle(els.platforms, allPlatforms, () => rerenderPlatforms())
+  }
+  rerenderPlatforms()
 
   // ─── Interactions ───
 
@@ -743,7 +748,7 @@ function _renderBalances(els, b, ethPrices, sourceKind, cashCurrency) {
 
 function _renderPlatforms(container, platforms, mobile) {
   if (platforms.length === 0) {
-    container.innerHTML = `<span class="cashout-loading" style="color:var(--muted)">no supported payout platforms right now</span>`
+    container.innerHTML = `<span class="cashout-loading" style="color:var(--muted)">no active corridors right now — try again in a few minutes</span>`
     return
   }
   container.innerHTML = platforms.map(p => {
@@ -760,6 +765,29 @@ function _renderPlatforms(container, platforms, mobile) {
     const attrs = disabledOnMobile ? 'disabled title="requires Peer\'s browser extension — open on a laptop to use"' : ''
     return `<button type="button" class="cashout-platform" data-platform="${escapeHtml(p.platform)}" data-attest="${needsAttest ? '1' : '0'}" ${attrs}><i class="ph ${meta.icon}"></i><span>${escapeHtml(label)}</span>${note}</button>`
   }).join('')
+}
+
+// Small toggle appended below the platforms grid. If the wallet has
+// Peer's browser extension installed, the user opts in once and we
+// stop hiding Wise/PayPal/Alipay. localStorage-persisted, so this is
+// a one-time affordance per browser profile.
+function _renderExtToggle(container, allPlatforms, onChange) {
+  const hasAttest = allPlatforms.some(p => p.requiresIdentityAttestation)
+  if (!hasAttest) return
+  const existing = container.parentElement?.querySelector('.cashout-ext-toggle')
+  if (existing) existing.remove()
+  const shown = _shouldRevealExtensionPlatforms()
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.className = 'cashout-ext-toggle'
+  toggle.textContent = shown
+    ? 'hide extension-only platforms (Wise, PayPal, Alipay)'
+    : "I have Peer's extension → show Wise, PayPal, Alipay"
+  toggle.addEventListener('click', () => {
+    _setRevealExtensionPlatforms(!shown)
+    onChange()
+  })
+  container.after(toggle)
 }
 
 // Find any live cash-outs the wallet still owns. Merges server-side
@@ -926,32 +954,74 @@ async function _wirePendingShell(el, p) {
   el.querySelectorAll('[data-cancel]').forEach(btn => {
     btn.addEventListener('click', () => _handleCancel(el, btn, p))
   })
+
+  // Build one SDK client for all watchers so we don't spin up N of
+  // them and so we can also use it for tab-focus refreshes.
+  let client = null
+  try {
+    const sdk = await import('./vendor-cash.js')
+    const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
+    const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
+    bareRelay.source = undefined
+    client = sdk.createCashClient({
+      environment: env, rpcUrl: 'https://mainnet.base.org',
+      apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
+    })
+  } catch {}
+
+  // Terminal states we treat as "done" — any further action gets
+  // suppressed once we know an item has settled.
+  const terminalStates = new Set(['delivered', 'returned'])
+  const settled = new Set()
+
+  // Per-item paint + watch. `paint` is closed over the item, so a
+  // focus-refresh handler below can re-fetch and repaint any card.
+  const painters = new Map()
   for (const item of p.items) {
     const card = el.querySelector(`.cashout-pending-card[data-deposit="${item.depositId}"]`)
     if (!card) continue
-    const paint = (order) => _paintPendingCard(card, order, item)
+    const paint = (order) => {
+      _paintPendingCard(card, order, item)
+      if (terminalStates.has(order.state)) {
+        settled.add(item.depositId)
+        _pruneServerOrder(item.depositId, p.authToken).catch(() => {})
+      }
+    }
+    painters.set(item.depositId, paint)
     if (item.initialOrder) paint(item.initialOrder)
+
+    if (!client) continue
     ;(async () => {
       try {
-        const sdk = await import('./vendor-cash.js')
-        const env = new URL(window.location.href).searchParams.get('env') === 'staging' ? 'staging' : 'production'
-        const bareRelay = sdk.createRelayClient({ baseApiUrl: sdk.MAINNET_RELAY_API })
-        bareRelay.source = undefined
-        const client = sdk.createCashClient({
-          environment: env, rpcUrl: 'https://mainnet.base.org',
-          apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
-        })
         const iterator = client.watch(item.depositId, { timeoutMs: 60 * 60_000 })
         for await (const order of iterator) {
           paint(order)
-          if (order.state === 'delivered' || order.state === 'returned') {
-            _pruneServerOrder(item.depositId, p.authToken).catch(() => {})
-            break
-          }
+          if (terminalStates.has(order.state)) break
         }
-      } catch {}
+      } catch { /* network hiccup — focus-refresh below covers it */ }
     })()
   }
+
+  // Refresh authoritative state whenever the tab comes back to focus.
+  // Fixes the classic "watch() polled while the tab was backgrounded
+  // or the net was down, so state's stuck at 'delivering' even
+  // though Peer already marked delivered." One targeted client.order()
+  // per non-settled item and we repaint from that.
+  const refresh = async () => {
+    if (!client) return
+    await Promise.all([...painters.entries()].map(async ([depositId, paint]) => {
+      if (settled.has(depositId)) return
+      try {
+        const fresh = await client.order(depositId)
+        if (fresh) paint(fresh)
+      } catch {}
+    }))
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refresh()
+  })
+  window.addEventListener('focus', refresh)
+  window.addEventListener('online', refresh)
 }
 
 function _paintPendingCard(card, order, item) {
@@ -1162,15 +1232,37 @@ function _sourceToFiat(sourceAmt, cashCurrency, sourceKind, ethPrices) {
 // ─── Helpers ───
 
 function _filterPlatforms(platforms, fillStats, currency) {
-  const gated = platforms.filter(p => {
+  // Two guards run here:
+  //
+  // 1. Extension gate. Wise/PayPal/Alipay throw PAYEE_VERIFICATION_
+  //    REQUIRED unless the user has Peer's browser extension. We
+  //    don't have a reliable extension probe yet, so default to
+  //    hiding them; users who have the extension can reveal them via
+  //    the "show advanced" toggle (localStorage-persisted) so they
+  //    only opt in once.
+  // 2. Fill stats. Corridors with no recent activity would work in
+  //    theory but leave the user waiting indefinitely. Filter them
+  //    out; if every corridor fails the check, return the EMPTY set
+  //    and let the caller show a "no active corridors" message rather
+  //    than fall back to the unfiltered list.
+  const revealExt = _shouldRevealExtensionPlatforms()
+  const withoutAttest = platforms.filter(p => revealExt || !p.requiresIdentityAttestation)
+  return withoutAttest.filter(p => {
     const key = `${p.platform}:${currency}`
     const stats = fillStats?.[key]
-    if (!stats) return true
+    if (!stats) return true  // unknown corridor — optimistic, but not a hard block
     if (stats.fills < 10) return false
     if (stats.medianFillSeconds && stats.medianFillSeconds > 48 * 3600) return false
     return true
   })
-  return gated.length > 0 ? gated : platforms
+}
+
+const EXT_REVEAL_KEY = 'praxis-cashout-reveal-ext'
+function _shouldRevealExtensionPlatforms() {
+  try { return localStorage.getItem(EXT_REVEAL_KEY) === '1' } catch { return false }
+}
+function _setRevealExtensionPlatforms(v) {
+  try { localStorage.setItem(EXT_REVEAL_KEY, v ? '1' : '0') } catch {}
 }
 
 function _parseFiat(s) {
