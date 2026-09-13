@@ -1261,23 +1261,24 @@ async function showUnlockPrompt() {
     overlay.style.zIndex = '10010'
 
     const dialog = document.createElement('div')
-    dialog.className = 'praxis-modal-dialog'
-    dialog.style.cssText = 'max-width:360px'
+    dialog.className = 'praxis-modal-dialog praxis-modal-unlock'
     // Show which account is being unlocked
     const _storedAddr = localStorage.getItem(ADDR_KEY) || ''
     const _addrShort = _storedAddr ? `${_storedAddr.slice(0, 6)}...${_storedAddr.slice(-4)}` : ''
     dialog.innerHTML = `
-      <h3 style="color:var(--accent, #00ff41);margin-bottom:0.25em">${useBiometric ? 'verify identity' : 'sign in'}</h3>
-      <div id="unlock-account-label" style="color:var(--dim, #666);font-size:0.8em;margin-bottom:0.75em">${_addrShort ? `account: ${_addrShort}` : ''}</div>
-      <input type="password" id="unlock-password" placeholder="password" autocomplete="current-password" style="width:100%;background:var(--surface, #111);border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:1em;padding:0.5em 1ch;margin-bottom:0.75em;box-sizing:border-box">
-      <p id="unlock-error" style="color:#ef4444;font-size:0.85em;min-height:1.2em;margin-bottom:0.5em"></p>
-      <div style="display:flex;gap:1ch;justify-content:flex-end">
-        <button id="unlock-cancel-btn" style="background:none;border:1px solid var(--border, #333);color:var(--dim, #666);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">cancel</button>
-        <button id="unlock-submit-btn" style="background:none;border:1px solid var(--border, #333);color:var(--fg, #c0c0c0);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer">unlock</button>
+      <svg class="praxis-unlock-mark" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+        <defs><mask id="unlock-bridge-m"><rect width="200" height="200" fill="white"/><rect x="96" y="30" width="8" height="55" fill="black"/><rect x="96" y="115" width="8" height="55" fill="black"/></mask></defs>
+        <circle cx="100" cy="100" r="70" fill="currentColor" mask="url(#unlock-bridge-m)"/>
+      </svg>
+      <h3 class="praxis-unlock-title">${useBiometric ? 'verify identity' : 'sign in to praxis'}</h3>
+      <p id="unlock-account-label" class="praxis-unlock-sub">${_addrShort ? `account · ${_addrShort}` : 'enter your password to continue'}</p>
+      <input type="password" id="unlock-password" class="praxis-unlock-input" placeholder="password" autocomplete="current-password" autofocus>
+      <p id="unlock-error" class="praxis-unlock-error"></p>
+      <div class="praxis-unlock-actions">
+        <button id="unlock-submit-btn" class="praxis-unlock-btn-primary">unlock</button>
+        <button id="unlock-cancel-btn" class="praxis-unlock-btn-secondary">cancel</button>
       </div>
-      <div style="margin-top:1em;border-top:1px solid var(--border, #222);padding-top:0.75em">
-        <button id="unlock-switch-btn" style="background:none;border:none;color:var(--muted, #999);font-family:inherit;font-size:0.85em;padding:0;cursor:pointer;text-decoration:underline">use a different account</button>
-      </div>
+      <button id="unlock-switch-btn" class="praxis-unlock-switch">use a different account</button>
     `
     overlay.appendChild(dialog)
     document.body.appendChild(overlay)
@@ -1300,15 +1301,22 @@ async function showUnlockPrompt() {
     const passwordInput = document.getElementById('unlock-password')
     const errorEl = document.getElementById('unlock-error')
 
+    // Animate the overlay out then remove — matches iOS system-
+    // sheet dismissal. The CSS class flips the enter animation to
+    // its reverse; we call remove() after it plays.
+    function dismiss(then) {
+      overlay.classList.add('is-closing')
+      setTimeout(() => { overlay.remove(); then?.() }, 180)
+    }
+
     async function doUnlock() {
       const pw = passwordInput.value
       if (!pw) { errorEl.textContent = 'enter your password'; return }
-      errorEl.textContent = 'unlocking...'
+      errorEl.textContent = 'unlocking…'
       try {
         const account = await unlockWallet(pw)
         activateEmbeddedProvider(account)
-        overlay.remove()
-        resolve(account.address)
+        dismiss(() => resolve(account.address))
       } catch (e) {
         errorEl.textContent = 'wrong password'
       }
@@ -1319,8 +1327,7 @@ async function showUnlockPrompt() {
       if (e.key === 'Enter') doUnlock()
     })
     document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
-      overlay.remove()
-      resolve(null)
+      dismiss(() => resolve(null))
     })
     document.getElementById('unlock-switch-btn').addEventListener('click', async () => {
       // Clear current wallet from local storage so user can sign in with a different account
@@ -1333,12 +1340,13 @@ async function showUnlockPrompt() {
       clearWalletCookie()
       _cachedAccount = null
       _cachedPassword = null
-      overlay.remove()
-      // Show full sign-in choice screen (sign in / create / recover)
-      const addr = await window.connectWallet?.(true)
-      resolve(addr)
+      dismiss(async () => {
+        // Show full sign-in choice screen (sign in / create / recover)
+        const addr = await window.connectWallet?.(true)
+        resolve(addr)
+      })
     })
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); resolve(null) } })
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(() => resolve(null)) })
 
     passwordInput.focus()
   })

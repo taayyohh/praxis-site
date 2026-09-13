@@ -6363,16 +6363,44 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   height: 1em;
 }
 
-/* --- Modal overlay / bottom sheet system --- */
+/* --- Modal overlay / bottom sheet system ---
+   iOS-style enter animation on the overlay (fade) and the dialog
+   (scale + rise). Add `.is-closing` on dismiss for the reverse. */
 .praxis-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1em;
+  animation: praxis-modal-fade-in 0.22s ease-out;
+}
+.praxis-modal-overlay.is-closing { animation: praxis-modal-fade-out 0.18s ease-in forwards; }
+.praxis-modal-overlay > .praxis-modal-dialog {
+  animation: praxis-modal-scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.praxis-modal-overlay.is-closing > .praxis-modal-dialog {
+  animation: praxis-modal-scale-out 0.18s ease-in forwards;
+}
+@keyframes praxis-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes praxis-modal-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes praxis-modal-scale-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes praxis-modal-scale-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.96); }
 }
 .praxis-modal-overlay.z-10001 {
   z-index: 10001;
@@ -6389,6 +6417,101 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   width: 95%;
 }
 .praxis-modal-dialog h3 { color: var(--accent, #fff); }
+
+/* --- Branded signing modal (wallet unlock, etc.) ---
+   Compact iOS-style sheet: Praxis mark up top, big title, generous
+   input, primary/secondary button pair. Rounded, animated,
+   feels like a system sheet. */
+.praxis-unlock-mark {
+  display: block;
+  margin: 0 auto 1em;
+  width: 54px;
+  height: 54px;
+  color: var(--fg);
+}
+.praxis-unlock-title {
+  color: var(--fg);
+  font-size: 1.35em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  margin: 0 0 0.25em;
+}
+.praxis-unlock-sub {
+  color: var(--dim);
+  font-size: 0.9em;
+  text-align: center;
+  margin: 0 0 1.6em;
+}
+.praxis-unlock-input {
+  width: 100%;
+  background: color-mix(in srgb, var(--bg, #0a0a0a) 60%, transparent);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  color: var(--fg, #c0c0c0);
+  font-family: inherit;
+  font-size: 1.1em;
+  padding: 0.9em 1em;
+  margin-bottom: 0.8em;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background 0.15s;
+}
+.praxis-unlock-input:focus {
+  outline: none;
+  border-color: var(--fg, #c0c0c0);
+  background: color-mix(in srgb, var(--bg, #0a0a0a) 40%, transparent);
+}
+.praxis-unlock-error {
+  color: #ef4444;
+  font-size: 0.86em;
+  min-height: 1.2em;
+  margin: 0 0 1em;
+  text-align: center;
+}
+.praxis-unlock-actions {
+  display: flex;
+  gap: 0.5em;
+  flex-direction: column;
+}
+.praxis-unlock-btn-primary {
+  background: var(--fg);
+  color: var(--bg);
+  border: none;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 500;
+  padding: 0.85em 1.6em;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.praxis-unlock-btn-primary:hover { opacity: 0.9; }
+.praxis-unlock-btn-primary:active { transform: scale(0.98); }
+.praxis-unlock-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.praxis-unlock-btn-secondary {
+  background: none;
+  color: var(--dim);
+  border: none;
+  font-family: inherit;
+  font-size: 0.95em;
+  padding: 0.7em 1em;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.praxis-unlock-btn-secondary:hover { color: var(--fg); }
+.praxis-unlock-switch {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.82em;
+  padding: 0.5em 0;
+  cursor: pointer;
+  text-align: center;
+  width: 100%;
+  margin-top: 1em;
+}
+.praxis-unlock-switch:hover { color: var(--fg); }
 .praxis-modal-dialog input[type="text"],
 .praxis-modal-dialog input[type="password"],
 .praxis-modal-dialog select {
