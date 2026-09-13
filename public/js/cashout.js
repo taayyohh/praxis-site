@@ -213,26 +213,42 @@ async function initCashout() {
   el.innerHTML = _renderShell()
   const els = _wireEls(el)
 
-  // Fire the crypto-side reads AND the price feed in parallel.
-  const [balances, ethPrices] = await Promise.all([
-    _readBalances(addr).catch(() => null),
-    getEthPrices().catch(() => null),
-  ])
-
   const userCurrencyRaw = String(getUserCurrency() || 'usd').toUpperCase()
   const currencyMismatch = cashCurrency !== userCurrencyRaw
 
-  // Prefer USDC over ETH (no swap fee); fall back if it's the only
-  // balance. If both are zero, still open the sheet — user might fund.
-  const sourceKind = (balances?.opUsdc ?? 0n) > 0n
-    ? 'usdc'
-    : (balances?.opEth ?? 0n) > 0n
-      ? 'eth'
-      : 'usdc' // default label; the amount input will block on zero
-  const sourceCurrency = sourceKind === 'usdc' ? OPTIMISM_USDC : ETH_NATIVE
-  const sourceDecimals = sourceKind === 'usdc' ? USDC_DECIMALS : ETH_DECIMALS
+  // Prices first (need them to compute chain fiat totals), then
+  // multi-chain balances + legacy read + Base gas balance in parallel.
+  const ethPrices = await getEthPrices().catch(() => null)
+  const [chainBalances, legacyBalances] = await Promise.all([
+    _readMultiChainBalances(addr, ethPrices, cashCurrency).catch(() => []),
+    _readBalances(addr).catch(() => null),
+  ])
+  const balances = legacyBalances  // for the submit-path auto-bridge check
 
-  _renderBalances(els, balances, ethPrices, sourceKind, cashCurrency)
+  // Auto-pick the highest-value chain source. The user can override
+  // by tapping a specific chain in the breakdown; that's stored in
+  // `selectedSource` which the deposit path reads at submit time.
+  let selectedSource = _pickBestSource(chainBalances) || {
+    chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', kind: 'usdc',
+    amountFiat: 0, amountBase: 0n,
+  }
+  // Legacy alias into the existing sheet code — sourceKind/currency
+  // now derive from selectedSource so quote + submit follow the pick.
+  let sourceKind = selectedSource.kind
+  let sourceCurrency = selectedSource.kind === 'usdc' ? _usdcAddressForChain(selectedSource.chainId) : ETH_NATIVE
+  let sourceDecimals = selectedSource.kind === 'usdc' ? USDC_DECIMALS : ETH_DECIMALS
+
+  _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, selectedSource, (picked) => {
+    selectedSource = picked
+    sourceKind = picked.kind
+    sourceCurrency = picked.kind === 'usdc' ? _usdcAddressForChain(picked.chainId) : ETH_NATIVE
+    sourceDecimals = picked.kind === 'usdc' ? USDC_DECIMALS : ETH_DECIMALS
+    // Force the quote to re-run for the new source. Firing the input
+    // event on the amount input is the least-coupled way — the same
+    // listener that runs when the user changes the amount picks this
+    // up and re-quotes with the new source.
+    try { els.amountInput?.dispatchEvent(new Event('input')) } catch {}
+  })
   els.amountCurrency.textContent = _currencySymbol(cashCurrency)
 
   // SDK
@@ -460,7 +476,7 @@ async function initCashout() {
         currency: cashCurrency,
         platform: selectedPlatform,
         source: {
-          chainId: OPTIMISM_CHAIN_ID,
+          chainId: selectedSource.chainId,
           currency: sourceCurrency,
           user: addr,
           recipient: addr,
@@ -484,8 +500,10 @@ async function initCashout() {
 
   function _updateSubmitState() {
     const fiatAmt = _parseFiat(els.amountInput.value)
-    const bal = sourceKind === 'usdc' ? (balances?.opUsdc ?? 0n) : (balances?.opEth ?? 0n)
-    const balFiat = _sourceToFiat(bal, cashCurrency, sourceKind, ethPrices)
+    // Use the selected source's balance for the "only \$X available"
+    // check — could be USDC on Base, ETH on Arbitrum, etc.
+    const bal = selectedSource.amountBase || 0n
+    const balFiat = selectedSource.amountFiat || 0
     const hasPayee = els.payeeInput.value.trim().length > 0
     const meta = selectedPlatform ? PLATFORMS[selectedPlatform] : null
     const handleOk = meta?.validate?.test(els.payeeInput.value.trim()) !== false
@@ -554,7 +572,7 @@ async function initCashout() {
     _rememberHandle(addr, selectedPlatform, els.payeeInput.value.trim())
 
     try {
-      const { createWalletClient, http, base, optimism } = await import('./vendor.js')
+      const { createWalletClient, http, base, optimism, mainnet, arbitrum, polygon } = await import('./vendor.js')
       // Ensure the embedded wallet is unlocked so getEmbeddedAccount
       // returns the viem LocalAccount we sign with. Same helper every
       // other Praxis signing surface uses — pops the password modal
@@ -578,21 +596,24 @@ async function initCashout() {
         return
       }
       // Build chain-specific signers with HTTP transports to each
-      // chain's real RPC, not the EIP-1193 provider. The embedded
-      // provider is Optimism-only for chainId purposes — asking it
-      // "which chain?" always returns 10, which trips the Peer SDK's
-      // assertWalletChainId(8453) at the Base-deposit step with
-      // SIGNER_CHAIN_MISMATCH. Same pattern relay-bridge.js uses for
-      // multi-chain routing: sign locally via the LocalAccount,
-      // JSON-RPC via the chain's own endpoint.
+      // chain's real RPC, not the EIP-1193 provider (which reports
+      // chainId=10 for everything, tripping the Peer SDK's
+      // assertWalletChainId checks). baseSigner always lands on Base
+      // (that's where Peer's escrow lives); sourceSigner lands on
+      // whatever chain the user picked in the balance breakdown.
       const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http('/api/rpc/8453') })
-      const opSigner = createWalletClient({ chain: optimism, account: embeddedAcct, transport: http('/api/rpc/10') })
+      const sourceChainDef = _viemChainFor(selectedSource.chainId, { base, optimism, mainnet, arbitrum, polygon })
+      const sourceSigner = createWalletClient({
+        chain: sourceChainDef,
+        account: embeddedAcct,
+        transport: http(`/api/rpc/${selectedSource.chainId}`),
+      })
 
       els.status.textContent = 'preparing your transfer…'
       const result = await client.cashout({
         amount: sourceAmt,
         source: {
-          chainId: OPTIMISM_CHAIN_ID,
+          chainId: selectedSource.chainId,
           currency: sourceCurrency,
           recipient: addr,
           tradeType: 'EXACT_INPUT',
@@ -604,7 +625,7 @@ async function initCashout() {
         },
       }, {
         signer: baseSigner,
-        sourceSigner: opSigner,
+        sourceSigner: sourceSigner,
         onSourceProgress: (data) => {
           if (data?.step) els.status.textContent = `preparing your transfer · ${data.step}`
         },
@@ -1183,6 +1204,148 @@ async function _readBalances(addr) {
     _readBaseEthBalance(addr).catch(() => 0n),
   ])
   return { opEth, opUsdc, baseEth }
+}
+
+// Multi-chain source read — ETH + USDC on every chain Peer's Relay
+// SDK can bridge from. Runs in parallel so the sheet doesn't stall
+// on one slow RPC. Each row carries native ETH + USDC amounts +
+// pre-computed fiat totals so the picker can rank by value without
+// re-doing the math.
+const SOURCE_CHAINS = [
+  { chainId: 10,    name: 'Optimism', usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' },
+  { chainId: 8453,  name: 'Base',     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
+  { chainId: 42161, name: 'Arbitrum', usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
+  { chainId: 1,     name: 'Ethereum', usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+  { chainId: 137,   name: 'Polygon',  usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' },
+]
+const ERC20_BAL_ABI = [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }]
+
+async function _readMultiChainBalances(addr, ethPrices, cashCurrency) {
+  const { createPublicClient, http } = await import('./vendor.js')
+  const ethRate = ethPrices?.[cashCurrency.toUpperCase()] || ethPrices?.USD || 0
+  const results = await Promise.all(SOURCE_CHAINS.map(async ({ chainId, name, usdc }) => {
+    const rpcUrl = `/api/rpc/${chainId}`
+    const pc = createPublicClient({
+      chain: { id: chainId, name, nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
+      transport: http(rpcUrl),
+    })
+    const [ethWei, usdcUnits] = await Promise.all([
+      chainId === 137 ? Promise.resolve(0n) : pc.getBalance({ address: addr }).catch(() => 0n),  // Polygon: MATIC not ETH; skip native
+      pc.readContract({ address: usdc, abi: ERC20_BAL_ABI, functionName: 'balanceOf', args: [addr] }).catch(() => 0n),
+    ])
+    const ethNum = Number(ethWei) / 1e18
+    const usdcNum = Number(usdcUnits) / 1e6
+    const ethFiat = ethRate ? ethNum * ethRate : 0
+    const usdcFiat = usdcNum
+    return { chainId, name, ethWei, usdcUnits, ethNum, usdcNum, ethFiat, usdcFiat, totalFiat: ethFiat + usdcFiat }
+  }))
+  return results
+}
+
+// Given the multi-chain read + a chosen currency, pick the best
+// single source for the deposit. Prefer USDC over ETH (no swap fee
+// through Relay) when USDC is >= 90% of the chain's total value;
+// otherwise take the chain's higher-value asset. Return null if
+// every chain is empty.
+function _usdcAddressForChain(chainId) {
+  const row = SOURCE_CHAINS.find(c => c.chainId === chainId)
+  return row?.usdc || OPTIMISM_USDC
+}
+
+function _viemChainFor(chainId, chains) {
+  const { base, optimism, mainnet, arbitrum, polygon } = chains
+  const map = { 1: mainnet, 10: optimism, 137: polygon, 8453: base, 42161: arbitrum }
+  return map[chainId] || optimism
+}
+
+function _chainDisplay(chain, cashCurrency) {
+  const parts = []
+  if (chain.ethNum > 0) parts.push(`${chain.ethNum.toFixed(4)} ETH`)
+  if (chain.usdcNum > 0) parts.push(`${chain.usdcNum.toFixed(2)} USDC`)
+  const fiat = _formatFiat(chain.totalFiat, cashCurrency)
+  return { parts, fiat }
+}
+
+// Vault-lead-style hero: one big fiat number on the balance line
+// with an expandable breakdown of per-chain balances. Clicking a
+// chain row selects that chain as the deposit source.
+function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initialPick, onSelect) {
+  const totalFiat = chainBalances.reduce((s, c) => s + c.totalFiat, 0)
+  els.balanceValue.textContent = _formatFiat(totalFiat, cashCurrency)
+
+  const active = chainBalances.filter(c => c.totalFiat > 0.01)
+  if (active.length === 0) {
+    els.balanceSub.textContent = 'no funds detected yet — add some to your wallet first'
+    return
+  }
+  if (active.length === 1) {
+    const only = active[0]
+    els.balanceSub.textContent = `${_chainDisplay(only, cashCurrency).parts.join(' · ')} on ${only.name}`
+    return
+  }
+
+  // Multi-chain — show the picked chain's short label on the sub-
+  // line, and a toggle to expand the full breakdown for override.
+  const renderSub = (pick) => {
+    const chain = chainBalances.find(c => c.chainId === pick.chainId) || active[0]
+    const asset = pick.kind === 'usdc' ? `${chain.usdcNum.toFixed(2)} USDC` : `${chain.ethNum.toFixed(4)} ETH`
+    els.balanceSub.innerHTML = `<span>${asset} on ${chain.name}</span> <button type="button" class="cashout-source-toggle" aria-expanded="false">change</button>`
+    els.balanceSub.querySelector('.cashout-source-toggle')?.addEventListener('click', (ev) => {
+      const btn = ev.currentTarget
+      const expanded = btn.getAttribute('aria-expanded') === 'true'
+      btn.setAttribute('aria-expanded', String(!expanded))
+      renderBreakdown(!expanded)
+    })
+  }
+
+  // Breakdown lives after the sub-line — one row per chain-asset
+  // that has value. Click selects.
+  let breakdownEl = null
+  const renderBreakdown = (show) => {
+    if (!breakdownEl) {
+      breakdownEl = document.createElement('div')
+      breakdownEl.className = 'cashout-source-breakdown'
+      els.balanceSub.after(breakdownEl)
+    }
+    if (!show) { breakdownEl.hidden = true; return }
+    breakdownEl.hidden = false
+    const rows = []
+    for (const c of active) {
+      if (c.usdcNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'usdc', asset: `${c.usdcNum.toFixed(2)} USDC`, fiat: c.usdcFiat, base: c.usdcUnits })
+      if (c.ethNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'eth', asset: `${c.ethNum.toFixed(4)} ETH`, fiat: c.ethFiat, base: c.ethWei })
+    }
+    rows.sort((a, b) => b.fiat - a.fiat)
+    breakdownEl.innerHTML = rows.map(r => {
+      const isPicked = r.chainId === (currentPick?.chainId) && r.kind === currentPick?.kind
+      return `<button type="button" class="cashout-source-row${isPicked ? ' is-picked' : ''}" data-chain="${r.chainId}" data-kind="${r.kind}">
+        <span class="cashout-source-row-name">${_escape(r.asset)} <span class="cashout-source-row-chain">on ${_escape(r.name)}</span></span>
+        <span class="cashout-source-row-fiat">${_escape(_formatFiat(r.fiat, cashCurrency))}</span>
+      </button>`
+    }).join('')
+    breakdownEl.querySelectorAll('.cashout-source-row').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const chainId = Number(btn.getAttribute('data-chain'))
+        const kind = btn.getAttribute('data-kind')
+        const row = rows.find(r => r.chainId === chainId && r.kind === kind)
+        if (!row) return
+        currentPick = { chainId: row.chainId, name: row.name, kind: row.kind, amountFiat: row.fiat, amountBase: row.base }
+        onSelect(currentPick)
+        renderSub(currentPick)
+        renderBreakdown(true)  // re-render so is-picked reflects the new selection
+      })
+    })
+  }
+
+  let currentPick = initialPick
+  renderSub(currentPick)
+}
+
+function _pickBestSource(chains) {
+  const ranked = [...chains].sort((a, b) => b.totalFiat - a.totalFiat)
+  const top = ranked[0]
+  if (!top || top.totalFiat <= 0) return null
+  const kind = top.usdcFiat >= top.totalFiat * 0.5 ? 'usdc' : 'eth'
+  return { chainId: top.chainId, name: top.name, kind, amountFiat: kind === 'usdc' ? top.usdcFiat : top.ethFiat, amountBase: kind === 'usdc' ? top.usdcUnits : top.ethWei }
 }
 
 async function _readBaseEthBalance(addr) {

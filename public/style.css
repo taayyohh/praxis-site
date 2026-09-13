@@ -8540,6 +8540,53 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .cashout-ext-toggle:hover { color: var(--fg); }
 
+/* Cross-chain source picker — attached to the balance-sub line.
+   "0.005 ETH on Optimism · change" reads as one sentence; the
+   `change` toggle expands a per-chain breakdown below. */
+.cashout-balance-sub .cashout-source-toggle {
+  background: none;
+  border: none;
+  color: var(--accent, var(--fg));
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin-left: 0.4em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent, var(--fg)) 40%, transparent);
+  text-underline-offset: 3px;
+}
+.cashout-balance-sub .cashout-source-toggle:hover { color: var(--fg); }
+.cashout-source-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  margin: 0.6em 0 0.2em;
+}
+.cashout-source-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8em;
+  background: none;
+  border: none;
+  padding: 0.55em 0.7em;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.88em;
+  text-align: left;
+}
+.cashout-source-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.cashout-source-row.is-picked {
+  background: color-mix(in srgb, var(--accent, var(--fg)) 8%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent, var(--fg)) 24%, transparent);
+}
+.cashout-source-row-name { font-variant-numeric: tabular-nums; }
+.cashout-source-row-chain { color: var(--dim); font-size: 0.92em; }
+.cashout-source-row-fiat { color: var(--dim); font-variant-numeric: tabular-nums; }
+
 /* Cash-out pending page — vault-language, its own /cashout render
    path when the wallet has one or more live deposits. Big number
    owns the top; each pending item is a card below; a small
