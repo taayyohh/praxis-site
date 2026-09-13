@@ -58,6 +58,29 @@ const OPTIMISM_USDC = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
 const ETH_NATIVE = '0x0000000000000000000000000000000000000000'
 const USDC_DECIMALS = 6
 const ETH_DECIMALS = 18
+const BOLD_DECIMALS = 18
+// Liquity V2 BOLD lives on Ethereum L1. Verified via
+// scripts/bold-cashout-dryrun.js that Peer/Relay accepts it as a
+// source directly — BOLD → USDC on Base is a normal source route,
+// no manual swap needed on our side. The only cashout-specific work
+// is unstaking BOLD from the SPs when the user's liquid balance
+// doesn't cover the requested amount.
+const BOLD_MAINNET = '0x6440f144b7e50d6a8439336510312d2f54beb01d'
+const BOLD_SPS = {
+  ETH:    '0x5721cbbd64fc7ae3ef44a0a3f9a790a9264cf9bf',
+  rETH:   '0xd442e41019b7f5c4dd78f50dc03726c446148695',
+  wstETH: '0x9502b7c397e9aa22fe9db7ef7daf21cd2aebe56b',
+}
+// Withdraw is the same shape as provideToSP in earnings.js — Liquity
+// v2 SP surface is deposit/withdraw symmetric. Second arg claims the
+// ETH yield along with the withdrawal so the user's yield lands in
+// their wallet automatically (their money, no reason to strand it).
+const BOLD_SP_ABI = [
+  { name: 'getCompoundedBoldDeposit', type: 'function', stateMutability: 'view',
+    inputs: [{ name: '_depositor', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'withdrawFromSP', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: '_amount', type: 'uint256' }, { name: '_doClaim', type: 'bool' }], outputs: [] },
+]
 const RECOMMENDED_MIN_FIAT = 3 // Peer's own floor
 const BASE_GAS_MIN_WEI = 200_000_000_000_000n // 0.0002 ETH
 
@@ -235,14 +258,14 @@ async function initCashout() {
   // Legacy alias into the existing sheet code — sourceKind/currency
   // now derive from selectedSource so quote + submit follow the pick.
   let sourceKind = selectedSource.kind
-  let sourceCurrency = selectedSource.kind === 'usdc' ? _usdcAddressForChain(selectedSource.chainId) : ETH_NATIVE
-  let sourceDecimals = selectedSource.kind === 'usdc' ? USDC_DECIMALS : ETH_DECIMALS
+  let sourceCurrency = _sourceCurrencyFor(selectedSource)
+  let sourceDecimals = _sourceDecimalsFor(selectedSource.kind)
 
   _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, selectedSource, (picked) => {
     selectedSource = picked
     sourceKind = picked.kind
-    sourceCurrency = picked.kind === 'usdc' ? _usdcAddressForChain(picked.chainId) : ETH_NATIVE
-    sourceDecimals = picked.kind === 'usdc' ? USDC_DECIMALS : ETH_DECIMALS
+    sourceCurrency = _sourceCurrencyFor(picked)
+    sourceDecimals = _sourceDecimalsFor(picked.kind)
     // Force the quote to re-run for the new source. Firing the input
     // event on the amount input is the least-coupled way — the same
     // listener that runs when the user changes the amount picks this
@@ -464,7 +487,7 @@ async function initCashout() {
     }
     // Show the tiny meta line so the user can see the bridge maths
     // without it dominating the UI.
-    els.amountConversion.textContent = `≈ ${_sourceDisplay(sourceAmt, sourceKind)} on Optimism`
+    els.amountConversion.textContent = `≈ ${_sourceDisplay(sourceAmt, sourceKind)} on ${selectedSource.name}`
 
     const myToken = ++quoteToken
     els.quote.hidden = false
@@ -608,6 +631,28 @@ async function initCashout() {
         account: embeddedAcct,
         transport: http(`/api/rpc/${selectedSource.chainId}`),
       })
+
+      // BOLD path: if the picked source is BOLD savings, we need to
+      // unstake enough from the Liquity V2 SPs to cover `sourceAmt`
+      // BEFORE Peer/Relay can pull the tokens. When the user's liquid
+      // BOLD covers it, this is a no-op.
+      if (selectedSource.kind === 'bold') {
+        try {
+          await _unstakeBoldIfNeeded({
+            addr, sourceAmt,
+            liquid: selectedSource.boldLiquid || 0n,
+            sps: selectedSource.boldSps || {},
+            sourceSigner,
+            onStatus: (s) => { els.status.textContent = s },
+          })
+        } catch (e) {
+          console.warn('bold unstake failed', e)
+          els.status.textContent = `couldn't unstake your BOLD savings — ${_humanError(e).slice(0, 140)}`
+          els.submitBtn.textContent = 'try again'
+          els.submitBtn.disabled = false
+          return
+        }
+      }
 
       els.status.textContent = 'preparing your transfer…'
       const result = await client.cashout({
@@ -1229,17 +1274,83 @@ async function _readMultiChainBalances(addr, ethPrices, cashCurrency) {
       chain: { id: chainId, name, nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
       transport: http(rpcUrl),
     })
-    const [ethWei, usdcUnits] = await Promise.all([
+    const [ethWei, usdcUnits, boldPos] = await Promise.all([
       chainId === 137 ? Promise.resolve(0n) : pc.getBalance({ address: addr }).catch(() => 0n),  // Polygon: MATIC not ETH; skip native
       pc.readContract({ address: usdc, abi: ERC20_BAL_ABI, functionName: 'balanceOf', args: [addr] }).catch(() => 0n),
+      chainId === 1 ? _readBoldPosition(pc, addr) : Promise.resolve({ liquid: 0n, sps: {}, total: 0n }),
     ])
     const ethNum = Number(ethWei) / 1e18
     const usdcNum = Number(usdcUnits) / 1e6
+    const boldNum = Number(boldPos.total) / 1e18
     const ethFiat = ethRate ? ethNum * ethRate : 0
     const usdcFiat = usdcNum
-    return { chainId, name, ethWei, usdcUnits, ethNum, usdcNum, ethFiat, usdcFiat, totalFiat: ethFiat + usdcFiat }
+    // BOLD is roughly USD-pegged (Liquity V2 debt token); if we get a
+    // live rate later, plug it here. Use the same fiat scale as USDC.
+    const boldFiat = boldNum
+    return {
+      chainId, name,
+      ethWei, usdcUnits,
+      boldWei: boldPos.total, boldLiquid: boldPos.liquid, boldSps: boldPos.sps,
+      ethNum, usdcNum, boldNum,
+      ethFiat, usdcFiat, boldFiat,
+      totalFiat: ethFiat + usdcFiat + boldFiat,
+    }
   }))
   return results
+}
+
+// Withdraw enough BOLD from the Liquity V2 SPs to cover the requested
+// amount. Order: ETH SP first (most yield, most liquid), then rETH,
+// then wstETH. `sourceSigner` is expected to be on chainId=1.
+// Passes `_doClaim=true` so any ETH yield accrued in the SP position
+// lands in the user's wallet at the same time — it's theirs, no
+// reason to leave it stranded.
+async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner, onStatus }) {
+  if (liquid >= sourceAmt) return  // enough liquid BOLD already
+  const needed = sourceAmt - liquid
+  const order = ['ETH', 'rETH', 'wstETH']
+  let remaining = needed
+  const withdraws = []
+  for (const name of order) {
+    if (remaining <= 0n) break
+    const bal = sps[name] || 0n
+    if (bal <= 0n) continue
+    const take = bal >= remaining ? remaining : bal
+    withdraws.push({ name, spAddr: BOLD_SPS[name], amount: take })
+    remaining -= take
+  }
+  if (remaining > 0n) {
+    const shortBold = Number(remaining) / 10 ** BOLD_DECIMALS
+    throw new Error(`not enough BOLD in savings — short by ${shortBold.toFixed(2)} BOLD`)
+  }
+  const { createPublicClient, http, mainnet } = await import('./vendor.js')
+  const pc = createPublicClient({
+    chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } },
+    transport: http('/api/rpc/1'),
+  })
+  for (let i = 0; i < withdraws.length; i++) {
+    const w = withdraws[i]
+    const boldAmt = Number(w.amount) / 10 ** BOLD_DECIMALS
+    onStatus?.(`unstaking ${boldAmt.toFixed(2)} BOLD from ${w.name} savings…${withdraws.length > 1 ? ` (${i + 1}/${withdraws.length})` : ''}`)
+    const hash = await sourceSigner.writeContract({
+      address: w.spAddr, abi: BOLD_SP_ABI, functionName: 'withdrawFromSP',
+      args: [w.amount, true], account: sourceSigner.account,
+    })
+    await pc.waitForTransactionReceipt({ hash, timeout: 180_000 })
+  }
+}
+
+async function _readBoldPosition(pc, addr) {
+  const [liquid, ...spBalances] = await Promise.all([
+    pc.readContract({ address: BOLD_MAINNET, abi: ERC20_BAL_ABI, functionName: 'balanceOf', args: [addr] }).catch(() => 0n),
+    ...Object.values(BOLD_SPS).map(spAddr =>
+      pc.readContract({ address: spAddr, abi: BOLD_SP_ABI, functionName: 'getCompoundedBoldDeposit', args: [addr] }).catch(() => 0n)),
+  ])
+  const spNames = Object.keys(BOLD_SPS)
+  const sps = {}
+  for (let i = 0; i < spNames.length; i++) sps[spNames[i]] = spBalances[i]
+  const spTotal = spBalances.reduce((s, b) => s + b, 0n)
+  return { liquid, sps, total: liquid + spTotal }
 }
 
 // Given the multi-chain read + a chosen currency, pick the best
@@ -1250,6 +1361,18 @@ async function _readMultiChainBalances(addr, ethPrices, cashCurrency) {
 function _usdcAddressForChain(chainId) {
   const row = SOURCE_CHAINS.find(c => c.chainId === chainId)
   return row?.usdc || OPTIMISM_USDC
+}
+
+function _sourceCurrencyFor(sel) {
+  if (sel.kind === 'usdc') return _usdcAddressForChain(sel.chainId)
+  if (sel.kind === 'bold') return BOLD_MAINNET
+  return ETH_NATIVE
+}
+
+function _sourceDecimalsFor(kind) {
+  if (kind === 'usdc') return USDC_DECIMALS
+  if (kind === 'bold') return BOLD_DECIMALS
+  return ETH_DECIMALS
 }
 
 function _viemChainFor(chainId, chains) {
@@ -1288,7 +1411,11 @@ function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initial
   // line, and a toggle to expand the full breakdown for override.
   const renderSub = (pick) => {
     const chain = chainBalances.find(c => c.chainId === pick.chainId) || active[0]
-    const asset = pick.kind === 'usdc' ? `${chain.usdcNum.toFixed(2)} USDC` : `${chain.ethNum.toFixed(4)} ETH`
+    let asset
+    if (pick.kind === 'usdc') asset = `${chain.usdcNum.toFixed(2)} USDC`
+    else if (pick.kind === 'eth') asset = `${chain.ethNum.toFixed(4)} ETH`
+    else if (pick.kind === 'bold') asset = `${chain.boldNum.toFixed(2)} BOLD (savings)`
+    else asset = ''
     els.balanceSub.innerHTML = `<span>${asset} on ${chain.name}</span> <button type="button" class="cashout-source-toggle" aria-expanded="false">change</button>`
     els.balanceSub.querySelector('.cashout-source-toggle')?.addEventListener('click', (ev) => {
       const btn = ev.currentTarget
@@ -1311,14 +1438,16 @@ function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initial
     breakdownEl.hidden = false
     const rows = []
     for (const c of active) {
-      if (c.usdcNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'usdc', asset: `${c.usdcNum.toFixed(2)} USDC`, fiat: c.usdcFiat, base: c.usdcUnits })
-      if (c.ethNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'eth', asset: `${c.ethNum.toFixed(4)} ETH`, fiat: c.ethFiat, base: c.ethWei })
+      if (c.usdcNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'usdc', asset: `${c.usdcNum.toFixed(2)} USDC`, fiat: c.usdcFiat, base: c.usdcUnits, tag: '' })
+      if (c.ethNum > 0)  rows.push({ chainId: c.chainId, name: c.name, kind: 'eth',  asset: `${c.ethNum.toFixed(4)} ETH`,   fiat: c.ethFiat,  base: c.ethWei, tag: '' })
+      if (c.boldNum > 0) rows.push({ chainId: c.chainId, name: c.name, kind: 'bold', asset: `${c.boldNum.toFixed(2)} BOLD`,  fiat: c.boldFiat, base: c.boldWei, tag: 'savings', boldLiquid: c.boldLiquid, boldSps: c.boldSps })
     }
     rows.sort((a, b) => b.fiat - a.fiat)
     breakdownEl.innerHTML = rows.map(r => {
       const isPicked = r.chainId === (currentPick?.chainId) && r.kind === currentPick?.kind
+      const tag = r.tag ? ` <span class="cashout-source-row-tag">${_escape(r.tag)}</span>` : ''
       return `<button type="button" class="cashout-source-row${isPicked ? ' is-picked' : ''}" data-chain="${r.chainId}" data-kind="${r.kind}">
-        <span class="cashout-source-row-name">${_escape(r.asset)} <span class="cashout-source-row-chain">on ${_escape(r.name)}</span></span>
+        <span class="cashout-source-row-name">${_escape(r.asset)}${tag} <span class="cashout-source-row-chain">on ${_escape(r.name)}</span></span>
         <span class="cashout-source-row-fiat">${_escape(_formatFiat(r.fiat, cashCurrency))}</span>
       </button>`
     }).join('')
@@ -1328,7 +1457,7 @@ function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initial
         const kind = btn.getAttribute('data-kind')
         const row = rows.find(r => r.chainId === chainId && r.kind === kind)
         if (!row) return
-        currentPick = { chainId: row.chainId, name: row.name, kind: row.kind, amountFiat: row.fiat, amountBase: row.base }
+        currentPick = { chainId: row.chainId, name: row.name, kind: row.kind, amountFiat: row.fiat, amountBase: row.base, boldLiquid: row.boldLiquid, boldSps: row.boldSps }
         onSelect(currentPick)
         renderSub(currentPick)
         renderBreakdown(true)  // re-render so is-picked reflects the new selection
@@ -1341,11 +1470,21 @@ function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initial
 }
 
 function _pickBestSource(chains) {
-  const ranked = [...chains].sort((a, b) => b.totalFiat - a.totalFiat)
-  const top = ranked[0]
-  if (!top || top.totalFiat <= 0) return null
-  const kind = top.usdcFiat >= top.totalFiat * 0.5 ? 'usdc' : 'eth'
-  return { chainId: top.chainId, name: top.name, kind, amountFiat: kind === 'usdc' ? top.usdcFiat : top.ethFiat, amountBase: kind === 'usdc' ? top.usdcUnits : top.ethWei }
+  // Rank assets, not chains — the biggest single asset wins. Prefers
+  // USDC first when it's the biggest (no Relay swap fee), then falls
+  // back to whatever asset (ETH, BOLD) has the highest fiat value.
+  // BOLD is intentionally treated as a first-class asset here so a
+  // user whose only funds are in Liquity savings still lands on a
+  // real, workable source pick.
+  const assets = []
+  for (const c of chains) {
+    if (c.usdcFiat > 0) assets.push({ chainId: c.chainId, name: c.name, kind: 'usdc', amountFiat: c.usdcFiat, amountBase: c.usdcUnits })
+    if (c.ethFiat > 0)  assets.push({ chainId: c.chainId, name: c.name, kind: 'eth',  amountFiat: c.ethFiat,  amountBase: c.ethWei })
+    if (c.boldFiat > 0) assets.push({ chainId: c.chainId, name: c.name, kind: 'bold', amountFiat: c.boldFiat, amountBase: c.boldWei, boldLiquid: c.boldLiquid, boldSps: c.boldSps })
+  }
+  if (assets.length === 0) return null
+  assets.sort((a, b) => (b.kind === 'usdc' ? 0.01 : 0) + b.amountFiat - a.amountFiat - (a.kind === 'usdc' ? 0.01 : 0))
+  return assets[0]
 }
 
 async function _readBaseEthBalance(addr) {
@@ -1374,6 +1513,11 @@ function _fiatToSource(fiatAmt, cashCurrency, sourceKind, ethPrices) {
     const eth = fiatAmt / localEthRate
     return BigInt(Math.round(eth * 10 ** ETH_DECIMALS))
   }
+  if (sourceKind === 'bold') {
+    // BOLD ≈ 1 USD, 18 decimals. Convert fiat → USD → BOLD base units.
+    const usd = fiatAmt * (usdEthRate / localEthRate)
+    return BigInt(Math.round(usd * 10 ** BOLD_DECIMALS))
+  }
   // USDC ≈ 1 USD. Convert fiat → USD → USDC.
   const usd = fiatAmt * (usdEthRate / localEthRate)
   return BigInt(Math.round(usd * 10 ** USDC_DECIMALS))
@@ -1386,6 +1530,10 @@ function _sourceToFiat(sourceAmt, cashCurrency, sourceKind, ethPrices) {
   if (!localEthRate || !usdEthRate || sourceAmt <= 0n) return 0
   if (sourceKind === 'eth') {
     return (Number(sourceAmt) / 10 ** ETH_DECIMALS) * localEthRate
+  }
+  if (sourceKind === 'bold') {
+    const usd = Number(sourceAmt) / 10 ** BOLD_DECIMALS
+    return usd * (localEthRate / usdEthRate)
   }
   // USDC-primary user typing in local currency.
   const usd = Number(sourceAmt) / 10 ** USDC_DECIMALS
@@ -1452,6 +1600,9 @@ function _sourceDisplay(amt, sourceKind) {
   if (sourceKind === 'eth') {
     const eth = Number(amt) / 10 ** ETH_DECIMALS
     return eth < 0.001 ? `${(eth * 1000).toFixed(3)} mETH` : `${eth.toFixed(6)} ETH`
+  }
+  if (sourceKind === 'bold') {
+    return `${(Number(amt) / 10 ** BOLD_DECIMALS).toFixed(2)} BOLD`
   }
   return `${(Number(amt) / 10 ** USDC_DECIMALS).toFixed(2)} USDC`
 }
