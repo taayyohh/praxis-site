@@ -85,7 +85,37 @@ export async function handleWallet(ctx) {
       }
       const filename = data.address.toLowerCase().replace(/[^0-9a-fx]/g, '') + '.json'
       const existingSharedPath = join(SHARED_WALLET_DIR, filename)
-      if (existsSync(existingSharedPath)) {
+      const isFirstWrite = !existsSync(existingSharedPath)
+
+      // First-write squatting defence: without an owner session for this
+      // address, require a signed `praxis-store:<addr>:<ts>` challenge
+      // proving the caller holds the private key that maps to `address`.
+      // Rate limit already prevents high-volume spray; this makes each
+      // slot claim require the actual key.
+      if (isFirstWrite) {
+        const session = getSession(req)
+        const sessionOk = session?.wallet?.toLowerCase() === data.address.toLowerCase()
+        if (!sessionOk) {
+          if (!data.message || !data.signature) {
+            json(res, { error: 'first-write requires signed challenge or auth' }, 401); return true
+          }
+          const expectedPrefix = `praxis-store:${data.address.toLowerCase()}:`
+          if (!data.message.startsWith(expectedPrefix)) {
+            json(res, { error: 'invalid store challenge' }, 401); return true
+          }
+          const ts = parseInt(data.message.slice(expectedPrefix.length), 10)
+          if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
+            json(res, { error: 'store challenge expired' }, 401); return true
+          }
+          try {
+            const { verifyMessage } = await import('viem')
+            const ok = await verifyMessage({ address: data.address.toLowerCase(), message: data.message, signature: data.signature })
+            if (!ok) { json(res, { error: 'invalid store signature' }, 401); return true }
+          } catch {
+            json(res, { error: 'store signature verification failed' }, 401); return true
+          }
+        }
+      } else {
         const session = getSession(req)
         if (!session?.wallet || session.wallet.toLowerCase() !== data.address.toLowerCase()) {
           json(res, { error: 'auth required to overwrite existing backup' }, 403); return true
@@ -188,6 +218,18 @@ export async function handleWallet(ctx) {
           aoEntry.count++
         } else {
           dc.set(aoKey, { start: now, count: 1 })
+        }
+        // Per-address daily cap (independent of IP). Distributed offline
+        // brute-force otherwise scales by rotating source IPs; capping
+        // per-address at 10/day gates any single blob to at most 10
+        // retrievals per day across the entire internet.
+        const perAddrKey = `wallet-retrieve-addr:${addrLc}`
+        const perAddrEntry = dc.get(perAddrKey)
+        if (perAddrEntry && now - perAddrEntry.start < 86400000) {
+          if (perAddrEntry.count >= 10) { json(res, { error: 'address retrieval limit exceeded — try again tomorrow' }, 429); return true }
+          perAddrEntry.count++
+        } else {
+          dc.set(perAddrKey, { start: now, count: 1 })
         }
       }
 

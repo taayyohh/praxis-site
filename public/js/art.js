@@ -412,7 +412,7 @@ function renderFilmWork(el, work) {
   html += `</div>`
 
   if (work.video) {
-    html += `<div style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" style="max-width:100%"></video></div>`
+    html += `<div style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" playsinline style="max-width:100%"></video></div>`
   }
 
   el.innerHTML = html
@@ -460,7 +460,7 @@ function renderAudioItem(el, item, idx) {
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title || 'untitled')}</h1>`
   if (item.description) html += `<p style="color:var(--fg);margin-bottom:1em">${escapeHtml(item.description)}</p>`
   if (item.year) html += `<div style="color:var(--muted);margin-bottom:1em">${item.year}</div>`
-  if (item.src) html += `<audio src="${escapeHtml(item.src)}" controls preload="none" style="width:100%;margin-bottom:1.5em"></audio>`
+  if (item.src) html += `<div style="margin-bottom:1.5em"><button class="track-play-btn" data-track-src="${escapeHtml(item.src)}" data-track-title="${escapeHtml(item.title || '')}" data-track-artist="${escapeHtml(item.artist || item.credit || '')}">play</button></div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
@@ -732,7 +732,8 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
         video.controls = true
         video.autoplay = true
         video.preload = 'metadata'
-        video.playsinline = true
+        video.playsInline = true
+        video.setAttribute('playsinline', '')
         video.style.cssText = 'width:100%;aspect-ratio:16/9;background:#000'
         lazy.replaceWith(video)
       })

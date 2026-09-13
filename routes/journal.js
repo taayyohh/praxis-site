@@ -1,7 +1,7 @@
 // Journal routes — E2E encrypted journal CRUD + bookmarks
 // All encryption/decryption happens client-side. Server stores opaque encrypted blobs.
-import { readFileSync, existsSync, readdirSync, unlinkSync, renameSync, statSync, mkdirSync } from 'fs'
-import { readdir as readdirAsync, stat as statAsync, readFile as readFileAsync, writeFile as writeFileAsync } from 'fs/promises'
+import { existsSync } from 'fs'
+import { readdir as readdirAsync, stat as statAsync, readFile as readFileAsync, writeFile as writeFileAsync, mkdir as mkdirAsync, unlink as unlinkAsync, rename as renameAsync } from 'fs/promises'
 import { join } from 'path'
 import { JournalPostSchema, JournalPutSchema, JournalPatchSchema, BookmarksPutSchema, validate } from '../lib/schemas.js'
 
@@ -60,7 +60,7 @@ export async function handleJournal(ctx) {
     const data = v.data
     const safe = data.filename.toLowerCase().replace(/[^a-z0-9-]/g, '')
     if (!safe) { json(res, { error: 'invalid filename' }, 400); return true }
-    if (!existsSync(JOURNAL_DIR)) mkdirSync(JOURNAL_DIR, { recursive: true })
+    if (!existsSync(JOURNAL_DIR)) await mkdirAsync(JOURNAL_DIR, { recursive: true })
     await writeFileAsync(join(JOURNAL_DIR, `${safe}.enc`), data.content)
     json(res, { ok: true, file: safe }); return true
   }
@@ -92,10 +92,10 @@ export async function handleJournal(ctx) {
     const activePath = join(JOURNAL_DIR, `${safe}.enc`)
     const archivedPath = join(JOURNAL_DIR, `${safe}.enc.archived`)
     if (v.data.archived) {
-      if (existsSync(activePath)) renameSync(activePath, archivedPath)
+      if (existsSync(activePath)) await renameAsync(activePath, archivedPath)
       json(res, { ok: true, archived: true }); return true
     } else {
-      if (existsSync(archivedPath)) renameSync(archivedPath, activePath)
+      if (existsSync(archivedPath)) await renameAsync(archivedPath, activePath)
       json(res, { ok: true, archived: false }); return true
     }
   }
@@ -108,7 +108,7 @@ export async function handleJournal(ctx) {
     const safe = file.toLowerCase().replace(/[^a-z0-9-]/g, '')
     const archivedPath = join(JOURNAL_DIR, `${safe}.enc.archived`)
     if (!existsSync(archivedPath)) { json(res, { error: 'only archived entries can be deleted' }, 400); return true }
-    unlinkSync(archivedPath)
+    await unlinkAsync(archivedPath)
     json(res, { ok: true }); return true
   }
 
@@ -133,7 +133,7 @@ export async function handleJournal(ctx) {
     const _bmPath = join(siteDir, 'bookmarks.enc')
     const _bmTmp = _bmPath + '.tmp'
     await writeFileAsync(_bmTmp, v.data.data)
-    renameSync(_bmTmp, _bmPath)
+    await renameAsync(_bmTmp, _bmPath)
     json(res, { ok: true }); return true
   }
 

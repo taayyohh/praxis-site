@@ -88,25 +88,25 @@ export default {
         const videoThumb = vidCidMatch ? `/api/video-thumb?cid=${vidCidMatch[1]}&w=400` : ''
         const poster = item.poster || imgProxy || videoThumb
         artHtml = poster ? `<img src="${esc(poster)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''
-        artOverlay = `<div class="video-lazy" data-src="${videoSrc}" data-title="${esc(item.title || '')}" style="position:absolute;inset:0;cursor:pointer;display:flex;align-items:center;justify-content:center"><button class="media-play-overlay media-play-overlay--video" style="position:relative;top:auto;left:auto;transform:none"><i class="ph ph-play"></i></button></div>`
+        artOverlay = `<div class="video-lazy" data-src="${videoSrc}" data-title="${esc(item.title || '')}" style="position:absolute;inset:0;cursor:pointer;display:flex;align-items:center;justify-content:center"><button class="media-play-overlay media-play-overlay--video" style="position:relative;top:auto;left:auto;transform:none" aria-label="Play ${esc(item.title || 'video')}"><i class="ph ph-play"></i></button></div>`
       } else if (type === 'image') {
         const imgSrc = item.image || item.src
         const fullImgSrc = esc(imgSrc.startsWith('/') || imgSrc.startsWith('http') ? imgSrc : `/api/img?url=${encodeURIComponent(imgSrc)}&w=1200`)
         artHtml = `<img src="${esc(`/api/img?url=${encodeURIComponent(imgSrc)}&w=400`)}" alt="${esc(item.title || '')}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
-        artOverlay = `<button class="demo-img-view media-play-overlay" data-full-src="${fullImgSrc}" data-title="${esc(item.title || '')}"><i class="ph ph-arrows-out-simple"></i></button>`
+        artOverlay = `<button class="demo-img-view media-play-overlay" data-full-src="${fullImgSrc}" data-title="${esc(item.title || '')}" aria-label="View ${esc(item.title || 'image')}"><i class="ph ph-arrows-out-simple"></i></button>`
       } else if (type === 'audio') {
         if (imgProxy) {
           artHtml = `<img src="${esc(imgProxy)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
-          artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist=""><i class="ph ph-play"></i></button>`
+          artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist="" aria-label="Play ${esc(item.title || 'audio')}"><i class="ph ph-play"></i></button>`
         } else {
           artHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--surface)"><i class="ph ph-music-notes" style="font-size:2em;color:var(--dim)"></i></div>`
-          artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist=""><i class="ph ph-play"></i></button>`
+          artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist="" aria-label="Play ${esc(item.title || 'audio')}"><i class="ph ph-play"></i></button>`
         }
       } else if (type === 'pdf') {
         // PDF: render first-page thumbnail via canvas (client-side)
         const pdfUid = 'demo-pdf-art-' + Math.random().toString(36).slice(2, 8)
         artHtml = `<div id="${pdfUid}" class="demo-pdf-thumb" data-pdf-src="${esc(item.src)}" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--surface)"><i class="ph ph-file-pdf" style="font-size:2.5em;color:var(--muted)"></i></div>`
-        artOverlay = `<button class="media-play-overlay" data-pdf-open="${esc(item.src)}" data-pdf-title="${esc(item.title || '')}" style="z-index:2"><i class="ph ph-book-open"></i></button>`
+        artOverlay = `<button class="media-play-overlay" data-pdf-open="${esc(item.src)}" data-pdf-title="${esc(item.title || '')}" style="z-index:2" aria-label="Open ${esc(item.title || 'PDF')}"><i class="ph ph-book-open"></i></button>`
       } else if (type === 'unknown' && item.src) {
         if (imgProxy) {
           artHtml = `<img src="${esc(imgProxy)}" alt="${esc(item.title || '')}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`

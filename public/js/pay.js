@@ -116,7 +116,10 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
     if (_fiatRate) fiatStr = _formatFiat(parseFloat(priceEth) * _fiatRate, _fiatCurrency)
   } catch {}
 
-  // Check balance proactively
+  // Check balance proactively. Fail-closed: if the balance read throws
+  // (RPC hiccup, wrong chain, extension revoked), assume the user needs
+  // funding so we open the funding sheet instead of pretending they're
+  // solvent and letting the actual purchase revert on-chain.
   let balance = 0n
   let needsFunding = false
   try {
@@ -125,7 +128,10 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
       balance = await publicClient.getBalance({ address: addr })
       needsFunding = balance < BigInt(priceWei)
     }
-  } catch {}
+  } catch (e) {
+    console.warn('pay: balance read failed, treating as needs-funding:', e?.message)
+    needsFunding = true
+  }
   const balEth = (Number(balance) / 1e18).toFixed(4)
   const balFiat = (_fiatRate && _formatFiat) ? _formatFiat(parseFloat(balEth) * _fiatRate, _fiatCurrency) : ''
   const shortfallWei = needsFunding ? BigInt(priceWei) - balance : 0n

@@ -174,6 +174,12 @@ let _bgSyncKicked = false
 window.addEventListener('xmtp-teardown', () => {
   try { activeStream?.return?.() } catch {}
   activeStream = null
+  // Also close the module-scoped unread stream — without this it keeps
+  // iterating against the torn-down client after every wallet disconnect,
+  // pinning the OPFS database and leaking a growing async iterator on
+  // each reconnect (matches the upgrade-path teardown at line ~3336).
+  try { _unreadStream?.return?.() } catch {}
+  _unreadStream = null
   activeConvo = null
   client = null
   _initInFlight = false
@@ -287,6 +293,33 @@ function setInboxToAddr(key, value) {
 }
 
 registerPage('messages-page', initMessages)
+
+// Delegated click for DM attachment previews. Inline onclick would
+// let a URL with an apostrophe break out of the string and execute
+// arbitrary JS in this origin (wallet drain). data-open holds the
+// escaped URL; we unescape via the DOM (textContent) rather than
+// touching the raw string.
+document.addEventListener('click', (e) => {
+  const el = e.target.closest?.('[data-open]')
+  if (!el) return
+  const url = el.getAttribute('data-open') || ''
+  if (!/^(https?:\/\/|\/)/i.test(url)) return
+  e.preventDefault()
+  window.open(url, '_blank', 'noopener,noreferrer')
+})
+
+// PDF thumbnail fallback — swap the thumb img for the icon+name row
+// when the thumbnail 404s. Non-bubbling error event, so we listen in
+// the capture phase at document level and match the marker attribute.
+document.addEventListener('error', (e) => {
+  const el = e.target
+  if (!(el instanceof HTMLImageElement)) return
+  if (el.dataset?.pdfFallback !== '1') return
+  el.style.display = 'none'
+  const wrap = el.parentElement
+  const fallback = wrap?.querySelector?.('.dm-pdf-fallback')
+  if (fallback) fallback.style.display = 'flex'
+}, true)
 
 function clearMsgDot() {
   const dot = document.getElementById('dock-msg-dot')
@@ -2859,13 +2892,19 @@ function _renderMsgPayCard(text, isMe) {
 
 function renderMessageContent(text) {
   const escaped = escapeHtml(text)
-  // Detect attachment embeds: [image:filename](url) or [pdf:filename](url)
+  // Detect attachment embeds: [image:filename](url) or [pdf:filename](url).
+  // No inline onclick handlers — a '&#39;' in the URL survives escapeHtml
+  // and breaks out of the attribute string when the browser decodes
+  // entities inside on* handlers, giving arbitrary JS in the Praxis
+  // origin. Use `data-open="…"` + a delegated listener wired once
+  // at module load; the attribute value is the escaped URL, and the
+  // click handler reads it back safely.
   let html = escaped.replace(/\[image:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
     if (!/^(https?:\/\/|\/)/i.test(url)) return `[image:${escapeHtml(name)}](${escapeHtml(url)})`
     const safeUrl = escapeHtml(url)
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
-      <img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer" loading="lazy" onclick="window.open('${safeUrl}','_blank')">
-      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
+      <img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer" loading="lazy" data-open="${safeUrl}">
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download" rel="noopener noreferrer"><i class="ph ph-download-simple"></i></a>
     </div>`
   })
   html = html.replace(/\[video:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
@@ -2875,7 +2914,7 @@ function renderMessageContent(text) {
     const posterUrl = cidMatch ? `/api/video-thumb?cid=${cidMatch[1]}&w=400` : ''
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
       <video src="${safeUrl}" controls preload="none" playsinline ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} style="max-width:100%;max-height:300px;border-radius:8px;display:block"></video>
-      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download" rel="noopener noreferrer"><i class="ph ph-download-simple"></i></a>
     </div>`
   })
   html = html.replace(/\[pdf:([^\]]*)\]\(([^)]+)\)/g, (_, name, url) => {
@@ -2883,9 +2922,9 @@ function renderMessageContent(text) {
     const safeUrl = escapeHtml(url)
     const thumbUrl = `/api/pdf-thumb?url=${encodeURIComponent(url)}`
     return `<div style="margin:0.3em 0;position:relative" class="dm-img-wrap">
-      <img src="${thumbUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer;background:#fff" loading="lazy" onclick="window.open('${safeUrl}','_blank')" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div style="display:none;align-items:center;gap:0.5ch;padding:0.75em 1em;cursor:pointer;font-size:0.9em" onclick="window.open('${safeUrl}','_blank')"><i class="ph ph-file-pdf" style="font-size:1.2em"></i><span>${escapeHtml(name)}</span></div>
-      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download"><i class="ph ph-download-simple"></i></a>
+      <img src="${thumbUrl}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:300px;border-radius:8px;display:block;cursor:pointer;background:#fff" loading="lazy" data-open="${safeUrl}" data-pdf-fallback="1">
+      <div class="dm-pdf-fallback" style="display:none;align-items:center;gap:0.5ch;padding:0.75em 1em;cursor:pointer;font-size:0.9em" data-open="${safeUrl}"><i class="ph ph-file-pdf" style="font-size:1.2em"></i><span>${escapeHtml(name)}</span></div>
+      <a href="${safeUrl}" download="${escapeHtml(name)}" class="dm-img-download" title="download" rel="noopener noreferrer"><i class="ph ph-download-simple"></i></a>
     </div>`
   })
   // Detect artist domain URLs and render as link cards

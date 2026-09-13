@@ -36,7 +36,14 @@ if (typeof window !== 'undefined') {
 
 export function getCachedAuthToken() { return _authToken }
 
-export async function getAuthToken() {
+// Force-drop the cached admin token so the next `getAuthToken()` call
+// re-signs a fresh `admin:<host>:<ts>` message. Callers reach for
+// this after a 401 that suggests the server's session table doesn't
+// know our token any more (pm2 reload, expiry, migration).
+export function clearAuthToken() { _authToken = '' }
+
+export async function getAuthToken({ force = false } = {}) {
+  if (force) _authToken = ''
   if (_authToken) return _authToken
   let addr = window.getWalletAddress?.()
   if (!addr || !getWalletProvider()) {
@@ -522,7 +529,7 @@ function renderPdf(url) {
           const actions = document.createElement('span')
           actions.className = 'pdf-actions'
           actions.style.cssText = 'display:flex;gap:0.5ch;margin-left:auto;align-items:center'
-          actions.innerHTML = `<a href="${url}" target="_blank" style="color:var(--muted);font-size:0.8em;padding:0.2em 0.8ch;border:1px solid var(--border,#333);border-radius:3px;text-decoration:none">open</a>`
+          actions.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.8em;padding:0.2em 0.8ch;border:1px solid var(--border,#333);border-radius:3px;text-decoration:none">open</a>`
           const saveBtn = el.closest('#library-sheet')?.querySelector('#library-sheet-save')
           if (saveBtn) { const isSaved = saveBtn.textContent.includes('saved'); saveBtn.style.cssText = 'background:none;border:1px solid ' + (isSaved ? 'var(--accent)' : 'var(--border,#333)') + ';color:' + (isSaved ? 'var(--accent)' : 'var(--muted)') + ';font-family:inherit;font-size:0.85em;padding:0.3em 1ch;cursor:pointer;border-radius:3px;position:static;display:flex;align-items:center;gap:0.4ch'; actions.appendChild(saveBtn) }
           sheetHeader.appendChild(actions)
@@ -538,11 +545,12 @@ function renderPdf(url) {
           const link = document.createElement('a')
           link.href = url
           link.target = '_blank'
+          link.rel = 'noopener noreferrer'
           link.style.cssText = 'color:var(--accent);display:block;text-align:center;padding:0.5em'
           link.textContent = 'open PDF'
           el.appendChild(link)
         } catch {
-          el.innerHTML = `<a href="${url}" target="_blank" style="color:var(--accent);padding:2em;display:block;text-align:center">open PDF</a>`
+          el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);padding:2em;display:block;text-align:center">open PDF</a>`
         }
       }
     }, 0)
@@ -571,7 +579,7 @@ function renderPdf(url) {
         if (sheetHeader) {
           const actions = document.createElement('span')
           actions.style.cssText = 'display:flex;gap:0.5ch;margin-left:auto;align-items:center'
-          actions.innerHTML = `<a href="${url}" target="_blank" style="color:var(--muted);font-size:0.8em;padding:0.2em 0.8ch;border:1px solid var(--border,#333);border-radius:3px;text-decoration:none">open</a>`
+          actions.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.8em;padding:0.2em 0.8ch;border:1px solid var(--border,#333);border-radius:3px;text-decoration:none">open</a>`
           // Move the save button into the header if it exists
           const saveBtn = el.closest('#library-sheet')?.querySelector('#library-sheet-save')
           if (saveBtn) { const isSaved = saveBtn.textContent.includes('saved'); saveBtn.style.cssText = 'background:none;border:1px solid ' + (isSaved ? 'var(--accent)' : 'var(--border,#333)') + ';color:' + (isSaved ? 'var(--accent)' : 'var(--muted)') + ';font-family:inherit;font-size:0.85em;padding:0.3em 1ch;cursor:pointer;border-radius:3px;position:static;display:flex;align-items:center;gap:0.4ch'; actions.appendChild(saveBtn) }
@@ -580,7 +588,7 @@ function renderPdf(url) {
         return
       } catch (e) {
         if (attempt < maxRetries) { el.innerHTML = `<span class="praxis-loader"></span> retrying...`; await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue }
-        el.innerHTML = `<a href="${url}" target="_blank" style="color:var(--accent)">open PDF</a>`
+        el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">open PDF</a>`
       }
     }
   }, 0)

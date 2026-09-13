@@ -27,7 +27,7 @@ export default {
           if (cidMatch) posterUrl = `/api/video-thumb?cid=${cidMatch[1]}&w=${isFeatured ? 960 : 640}`
         }
         html += `<div class="video-player">
-          <div class="video-lazy" data-src="${esc(v.src)}" data-poster="${esc(posterUrl)}" data-title="${esc(v.title || '')}">
+          <div class="video-lazy" data-src="${esc(v.src)}" data-poster="${esc(posterUrl)}" data-title="${esc(v.title || '')}" tabindex="0" role="button" aria-label="Play ${esc(v.title || 'video')}">
             ${posterUrl ? `<img src="${esc(posterUrl)}" alt="" loading="lazy" style="cursor:pointer">` : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
           </div>
 
@@ -153,7 +153,7 @@ export default {
       let html = `<div class="video-item">`
       if (v.src) {
         html += `<div class="video-player">
-          <div class="video-lazy" data-src="${esc(v.src)}" data-poster="${esc(posterUrl)}" data-title="${esc(v.title || '')}">
+          <div class="video-lazy" data-src="${esc(v.src)}" data-poster="${esc(posterUrl)}" data-title="${esc(v.title || '')}" tabindex="0" role="button" aria-label="Play ${esc(v.title || 'video')}">
             ${posterUrl ? `<img src="${esc(posterUrl)}" alt="" loading="lazy" style="cursor:pointer">` : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
           </div>
 

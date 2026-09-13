@@ -3,28 +3,31 @@ import { F } from './fragments.js'
 import { createWalletClient, custom, formatEther, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
-import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals, getWalletProvider, formatTxError, getCachedBalance, getAuthToken } from './utils.js'
+import { getPublicClient, resolveAddresses, resolveDomain, formatEthAmount, escapeHtml, registerPage, getPendingWithdrawals, getWalletProvider, formatTxError, getCachedBalance, getAuthToken, clearAuthToken } from './utils.js'
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { getTicketPendingWithdrawals, withdrawTicketEarnings, TICKET_MARKET_ADDR } from './tickets.js'
 import { getEthPrices, formatPriceSync, formatPriceFiatPrimary, getUserCurrency, formatFiat } from './fiat.js'
 
 import { PRAXIS_ADDR, PRAXIS_ABI, MEDIA_ABI } from './contracts.js'
+import {
+  OPTIMISM_CHAIN_ID, ETHEREUM_CHAIN_ID, BASE_CHAIN_ID, ARBITRUM_CHAIN_ID, ZKSYNC_CHAIN_ID,
+  ZERO_ADDRESS as ETH_ZERO, rpcUrlFor,
+} from './chains.js'
 
 const HISTORY_PAGE_SIZE = 20
 
 const BOLD_MAINNET = '0x6440f144b7e50d6a8439336510312d2f54beb01d'
-const ETH_ZERO = '0x0000000000000000000000000000000000000000'
 
 // Chains where the gas token is ETH. Polygon (137) is skipped because its
 // native token is POL/MATIC and we don't price it. zkSync is included but
 // often has flaky RPC — treat failures as zero.
 const ETH_CHAINS = [
-  { chainId: 10, name: 'Optimism' },
-  { chainId: 1, name: 'Ethereum' },
-  { chainId: 8453, name: 'Base' },
-  { chainId: 42161, name: 'Arbitrum' },
-  { chainId: 324, name: 'zkSync Era' },
+  { chainId: OPTIMISM_CHAIN_ID, name: 'Optimism' },
+  { chainId: ETHEREUM_CHAIN_ID, name: 'Ethereum' },
+  { chainId: BASE_CHAIN_ID, name: 'Base' },
+  { chainId: ARBITRUM_CHAIN_ID, name: 'Arbitrum' },
+  { chainId: ZKSYNC_CHAIN_ID, name: 'zkSync Era' },
 ]
 
 // Conservative gas-unit estimates per chain for the tx we're about to send.
@@ -35,7 +38,7 @@ const GAS_UNITS = { 1: 300000n, 10: 220000n, 8453: 220000n, 42161: 1200000n, 324
 
 async function _fetchGasPrice(chainId) {
   try {
-    const res = await fetch(`/api/rpc/${chainId}`, {
+    const res = await fetch(rpcUrlFor(chainId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }),
@@ -142,6 +145,17 @@ const STABILITY_POOL_ABI = [
 
 let _vaultBound = false
 let _allHistory = []
+
+// Privacy toggle: hide fiat/crypto amounts behind a blur so
+// screensharing or shoulder-surfing doesn't leak balances. Off by
+// default (users opt in from the eye icon next to 'total balance').
+const _VAULT_PRIVATE_KEY = 'praxis-vault-private'
+function _isVaultPrivate() {
+  try { return localStorage.getItem(_VAULT_PRIVATE_KEY) === '1' } catch { return false }
+}
+function _setVaultPrivate(v) {
+  try { localStorage.setItem(_VAULT_PRIVATE_KEY, v ? '1' : '0') } catch {}
+}
 let _historyShown = 0
 let _ethPrices = null
 let _yieldData = null
@@ -226,11 +240,25 @@ async function _fetchPurchaseCovers(mediaIds) {
 // user has an open Peer deposit. Reads Peer's own live indexer via
 // the SDK's `orders(owner, { inFlight: true })` and updates in-place
 // via a lightweight watch loop. Non-blocking; failures are silent.
+// Module-scoped abort controller for the per-row Peer watch iterators.
+// Each _renderInFlightCashouts pass replaces the previous one; without
+// this, every SPA re-nav or wallet-event re-init leaks up to 10 iterators
+// that each live for 30 minutes.
+let _cashoutWatchAbort = null
+
 async function _renderInFlightCashouts(contentEl, addr) {
-  // Guard against a re-entry: SPA nav / init-on-focus can call this
-  // twice, which had us stacking two identical "money moving" banners.
+  // Concurrent-run guard for a single init cycle. renderVault renders
+  // a reserved (hidden) `.vault-cashout-banner` slot every time, so
+  // "banner exists in DOM" is no longer a valid populated check —
+  // we only skip when the slot is already populated with content.
   const existingBanner = contentEl.querySelector('.vault-cashout-banner')
-  if (existingBanner) return
+  if (existingBanner && !existingBanner.hidden && existingBanner.childElementCount > 0) return
+  if (contentEl.dataset.cashoutsInit === '1') return
+  contentEl.dataset.cashoutsInit = '1'
+  // Cancel any prior pass's watch iterators before starting the new one.
+  try { _cashoutWatchAbort?.abort() } catch {}
+  _cashoutWatchAbort = new AbortController()
+  const abortSignal = _cashoutWatchAbort.signal
 
   // Belt + braces sourcing — same pattern the /cashout page uses.
   // Peer's indexer can lag a fresh deposit by minutes; our server
@@ -252,6 +280,10 @@ async function _renderInFlightCashouts(contentEl, addr) {
     bareRelay.source = undefined
     client = sdk.createCashClient({
       environment: env, rpcUrl: 'https://mainnet.base.org',
+      // Public integrator key — same as cashout.js uses; without it,
+      // client.orders() returns empty and the vault silently drops the
+      // money-moving row. Exposed by SDK design (client-side calls).
+      apiKey: 'fwRSnzmXz9BPWt6Dm-h1XdhglpoGV3XWwTjFDyswSso',
       referrer: 'praxis', relay: { client: bareRelay },
     })
   } catch { return }
@@ -273,26 +305,39 @@ async function _renderInFlightCashouts(contentEl, addr) {
 
   const doc = contentEl.querySelector('.vault-doc')
   if (!doc) return
-  const banner = document.createElement('section')
-  banner.className = 'vault-cashout-banner'
-  banner.dataset.section = 'cashouts'
+  // Fill the reserved slot rendered by renderVault. If the slot isn't
+  // there (fallback render path), create + insert as before — but the
+  // normal path lands in the pre-existing hidden section so nothing
+  // below the hero shifts when Peer's `orders()` response arrives.
+  let banner = doc.querySelector('.vault-cashout-banner')
+  if (!banner) {
+    banner = document.createElement('section')
+    banner.className = 'vault-cashout-banner'
+    banner.dataset.section = 'cashouts'
+    const leadSection = doc.querySelector('.vault-lead')
+    leadSection ? leadSection.after(banner) : doc.prepend(banner)
+  }
   const items = [...byId.values()]
   const rows = items.map(x => _cashoutRowHtml(x.sdk || _sdkShapeFromServer(x.server), x.server)).join('')
   banner.innerHTML = `<div class="vault-cashout-title">money moving</div><div class="vault-cashout-list">${rows}</div>`
-  const leadSection = doc.querySelector('.vault-lead')
-  leadSection ? leadSection.after(banner) : doc.prepend(banner)
+  banner.hidden = false
 
   // Live watch per row — hydrates any server-only rows once Peer's
   // indexer catches up, and moves rows through terminal states.
   for (const x of items) {
     ;(async () => {
+      const iter = client.watch(x.depositId, { timeoutMs: 30 * 60_000 })
+      const onAbort = () => { try { iter.return?.() } catch {} }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
       try {
-        for await (const upd of client.watch(x.depositId, { timeoutMs: 30 * 60_000 })) {
+        for await (const upd of iter) {
+          if (abortSignal.aborted) break
           const row = banner.querySelector(`[data-deposit="${x.depositId}"]`)
           if (row) row.outerHTML = _cashoutRowHtml(upd, x.server)
           if (upd.state === 'delivered' || upd.state === 'returned') break
         }
       } catch { /* stream closed, ignore */ }
+      finally { abortSignal.removeEventListener('abort', onAbort) }
     })()
   }
 }
@@ -306,7 +351,18 @@ function _sdkShapeFromServer(server) {
 async function _readCashoutServerOrders(token) {
   if (!token) return []
   try {
-    const res = await fetch('/api/cashout/orders', { headers: { Authorization: `Bearer ${token}` } })
+    let res = await fetch('/api/cashout/orders', { headers: { Authorization: `Bearer ${token}` } })
+    // Stale-session recovery: the module-scoped `_authToken` in utils.js
+    // survives a browser tab across a pm2 reload / session-map wipe, so
+    // the cached token starts 401ing. Force a fresh admin sign, retry
+    // once. If the second attempt still 401s, treat as no server data
+    // and fall through to the SDK-only render (unchanged behaviour).
+    if (res.status === 401) {
+      clearAuthToken()
+      const fresh = await getAuthToken({ force: true })
+      if (!fresh) return []
+      res = await fetch('/api/cashout/orders', { headers: { Authorization: `Bearer ${fresh}` } })
+    }
     if (!res.ok) return []
     const data = await res.json()
     return Array.isArray(data?.orders) ? data.orders : []
@@ -315,35 +371,83 @@ async function _readCashoutServerOrders(token) {
 
 function _cashoutRowHtml(order, server) {
   const platform = server?.platform ? String(server.platform).replace(/\b\w/g, c => c.toUpperCase()) : ''
-  const amt = server?.amountFiat > 0 ? formatFiat(Number(server.amountFiat), server.currency || getUserCurrency()) : ''
-  const stateCopy = order.state === 'awaiting-buyer' ? 'waiting for a buyer'
-    : order.state === 'matched' ? 'buyer matched — sending payment'
-    : order.state === 'delivering' ? 'confirming payment'
-    : order.state === 'delivered' ? (amt && platform ? `${amt} sent to ${escapeHtml(platform)} ✓` : 'complete ✓')
-    : order.state === 'returned' ? 'returned to your wallet'
+  // Prefer the server-persisted fiat when we have it; fall back to
+  // the SDK's on-chain totalAmount (USDC base units) which is
+  // roughly USD-pegged. Without this fallback the '$X sent · $Y
+  // waiting' breakdown reads '$0.00' on legacy deposits that were
+  // made before the amountFiat column was reliably persisted.
+  const currency = server?.currency || getUserCurrency()
+
+  // Partial-fill math — the SDK's CashOrder exposes filledAmount
+  // and totalAmount in USDC base units. When multiple buyers cover
+  // the deposit in parts, we want a visible progress track and a
+  // 'X of Y sent · Z waiting' breakdown, not a prose sentence
+  // burying it. Content earns its size (principle 1) and numbers
+  // are first-class (principle 4).
+  //
+  // Compute the money numbers straight from the BigInt legs so a
+  // mis-typed / missing server row can never zero them out when the
+  // SDK clearly knows the amounts — the previous formulation
+  // (`totalFiat * filledFrac`) silently rendered "$0.00 sent · $0.00
+  // waiting" whenever the /api/cashout/orders read 401/502'd and the
+  // SDK was our only source.
+  const filledBig = order.filledAmount ? BigInt(order.filledAmount) : 0n
+  const totalBig = order.totalAmount ? BigInt(order.totalAmount) : 0n
+  const filledFrac = totalBig > 0n ? Number(filledBig * 10000n / totalBig) / 10000 : 0
+  const pct = Math.round(filledFrac * 100)
+  const serverAmtFiat = Number(server?.amountFiat)
+  const filledFromOrder = Number(filledBig) / 1e6
+  const totalFromOrder = Number(totalBig) / 1e6
+  const totalFiat = serverAmtFiat > 0 ? serverAmtFiat : totalFromOrder
+  const filledFiat = serverAmtFiat > 0 && totalFromOrder > 0
+    ? (serverAmtFiat * filledFrac)
+    : filledFromOrder
+  const remainingFiat = Math.max(0, totalFiat - filledFiat)
+  const amt = totalFiat > 0 ? formatFiat(totalFiat, currency) : ''
+  const isPartial = filledFrac > 0 && filledFrac < 1 && totalFiat > 0 && (order.state === 'awaiting-buyer' || order.state === 'matched' || order.state === 'delivering')
+
+  const headline = order.state === 'delivered'
+    ? (amt && platform ? `${amt} sent to ${escapeHtml(platform)}` : 'complete')
+    : order.state === 'returned'
+      ? 'returned to your wallet'
+      : (amt && platform ? `${amt} → ${escapeHtml(platform)}` : (amt || 'cash-out'))
+
+  const stateSub = order.state === 'awaiting-buyer' ? (isPartial ? `${pct}% delivered · waiting for another buyer` : 'waiting for a buyer')
+    : order.state === 'matched' ? (isPartial ? `${pct}% delivered · another buyer sending` : 'buyer matched · sending payment')
+    : order.state === 'delivering' ? (isPartial ? `${pct}% delivered · confirming this fill` : 'confirming payment')
+    : order.state === 'delivered' ? '✓ complete'
+    : order.state === 'returned' ? 'funds back in your wallet'
     : escapeHtml(order.state)
-  const color = order.state === 'delivered' ? 'var(--green)' : order.state === 'returned' ? 'var(--muted)' : 'var(--accent)'
-  const note = order.state === 'delivered' || order.state === 'returned'
-    ? ''
-    : (amt && platform ? `${amt} → ${escapeHtml(platform)}` : escapeHtml(order.explain?.() || ''))
-  return `<div class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}" data-state="${escapeHtml(order.state)}">
-    <div class="vault-cashout-row-left">
-      <span class="vault-cashout-row-state" style="color:${color}">${stateCopy}</span>
-      ${note ? `<span class="vault-cashout-row-note">${note}</span>` : ''}
+
+  const stateColor = order.state === 'delivered' ? 'var(--green)' : order.state === 'returned' ? 'var(--muted)' : 'var(--accent)'
+  const progressHtml = totalBig > 0n && order.state !== 'returned' ? `
+    <div class="vault-cashout-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+      <div class="vault-cashout-progress-fill" style="width:${pct}%"></div>
     </div>
-    <a class="vault-cashout-row-link" href="/cashout" title="open cash-out">↗</a>
-  </div>`
+    ${isPartial ? `<div class="vault-cashout-progress-detail"><span>${escapeHtml(formatFiat(filledFiat, currency))} sent</span><span>${escapeHtml(formatFiat(remainingFiat, currency))} waiting</span></div>` : ''}
+  ` : ''
+
+  return `<a class="vault-cashout-row" data-deposit="${escapeHtml(order.depositId)}" data-state="${escapeHtml(order.state)}" href="/cashout" title="open cash-out">
+    <div class="vault-cashout-row-head">
+      <span class="vault-cashout-row-headline">${headline}</span>
+      <span class="vault-cashout-row-state" style="color:${stateColor}">${stateSub}</span>
+    </div>
+    ${progressHtml}
+  </a>`
 }
 
 registerPage('vault-page', initVault)
-registerPage('earnings-page', initVault)
 
 async function initVault() {
   _allHistory = []
   _historyShown = 0
 
-  const contentEl = document.getElementById('vault-content') || document.getElementById('earnings-content')
+  const contentEl = document.getElementById('vault-content')
   if (!contentEl) return
+  // Reset the money-moving guard so a re-render can paint again.
+  // Without this, a stale '1' flag from an earlier visit blocks
+  // every subsequent load from ever showing a pending cashout.
+  try { delete contentEl.dataset.cashoutsInit } catch {}
 
   if (!_vaultBound) {
     _vaultBound = true
@@ -366,7 +470,7 @@ async function initVault() {
 
   try {
     const [chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, ticketUnclaimed, ethPrices, yieldData] = await Promise.all([
-      fetchChainBalances(addr).catch(() => [{ chainId: 10, name: 'Optimism', balance: 0n }]),
+      fetchChainBalances(addr).catch(() => [{ chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: 0n }]),
       getBoldBalanceMainnet(addr).catch(() => 0n),
       getStabilityDeposits(addr).catch(() => ({ total: 0n, pools: [] })),
       getPendingWithdrawals(addr).catch(() => ({ praxis: 0n, media: 0n })),
@@ -416,7 +520,7 @@ async function initVault() {
       // Fallback breakdown row lists Optimism so the chain-composition
       // toggle in the design still opens onto real content — otherwise a
       // partial failure would hide the app's only home chain.
-      const fbChains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: 10, name: 'Optimism', balance: 0n }])
+      const fbChains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: 0n }])
       const fbBreakdown = fbChains.map(c =>
         `<div class="vault-lead-row"><span class="vault-lead-row-name">${escapeHtml(c.name)}</span><span class="vault-lead-row-bal">0 <span style="color:var(--dim)">ETH</span></span><span class="vault-lead-row-fiat"></span></div>`
       ).join('')
@@ -454,7 +558,7 @@ async function initVault() {
 async function fetchChainBalances(addr) {
   const results = await Promise.all(ETH_CHAINS.map(async ({ chainId, name }) => {
     try {
-      const res = await fetch(`/api/rpc/${chainId}`, {
+      const res = await fetch(rpcUrlFor(chainId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [addr, 'latest'] }),
@@ -471,7 +575,7 @@ async function fetchChainBalances(addr) {
 
 async function getBoldBalanceMainnet(addr) {
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
-  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(ETHEREUM_CHAIN_ID)] } } }, transport: http(rpcUrlFor(ETHEREUM_CHAIN_ID)) })
   return pc.readContract({ address: BOLD_MAINNET, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr] })
 }
 
@@ -484,7 +588,7 @@ const SP_DEPOSIT_ABI = [{
 
 async function getStabilityDeposits(addr) {
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
-  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(ETHEREUM_CHAIN_ID)] } } }, transport: http(rpcUrlFor(ETHEREUM_CHAIN_ID)) })
   const entries = Object.entries(STABILITY_POOLS)
   const results = await Promise.all(entries.map(async ([name, spAddr]) =>
     pc.readContract({ address: spAddr, abi: SP_DEPOSIT_ABI, functionName: 'getCompoundedBoldDeposit', args: [addr] })
@@ -505,7 +609,7 @@ let _mainnetPc = null
 async function getMainnetClient() {
   if (_mainnetPc) return _mainnetPc
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
-  _mainnetPc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  _mainnetPc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(ETHEREUM_CHAIN_ID)] } } }, transport: http(rpcUrlFor(ETHEREUM_CHAIN_ID)) })
   return _mainnetPc
 }
 
@@ -562,7 +666,7 @@ async function getRelayBridgeQuote(fromChainId, amountWei, addr) {
 
 async function getSpDeposit(spAddress, depositor) {
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
-  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } }, transport: http('/api/rpc/1') })
+  const pc = createPublicClient({ chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(ETHEREUM_CHAIN_ID)] } } }, transport: http(rpcUrlFor(ETHEREUM_CHAIN_ID)) })
   const [deposit, collGain] = await Promise.all([
     pc.readContract({ address: spAddress, abi: STABILITY_POOL_ABI, functionName: 'getCompoundedBoldDeposit', args: [depositor] }),
     pc.readContract({ address: spAddress, abi: STABILITY_POOL_ABI, functionName: 'getDepositorCollGain', args: [depositor] }),
@@ -1023,7 +1127,11 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // where it lives, what it's earning, what's moving." Every element
   // earns its size from the number it carries.
 
-  html += `<div class="vault-doc">`
+  // Private-mode toggle — persisted per browser. On, every fiat/
+  // crypto amount is blurred until the user hovers or taps the eye
+  // icon in the total-balance row. Off, everything renders normally.
+  const privateMode = _isVaultPrivate()
+  html += `<div class="vault-doc${privateMode ? ' is-private' : ''}">`
 
   // --- The number ---
   // The largest number on the page: total balance. Clicking it expands a
@@ -1031,14 +1139,14 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   // can inspect composition without a separate "where it lives" section
   // competing for weight.
   html += `<section class="vault-lead">`
-  html += `<div class="vault-lead-label">total balance</div>`
+  html += `<div class="vault-lead-label">total balance <button type="button" id="vault-privacy-toggle" class="vault-privacy-toggle" title="${privateMode ? 'show values' : 'hide values'}" aria-label="${privateMode ? 'show values' : 'hide values'}"><i class="ph ${privateMode ? 'ph-eye-slash' : 'ph-eye'}"></i></button></div>`
   html += `<button type="button" class="vault-lead-toggle" id="vault-lead-toggle" aria-expanded="false" aria-controls="vault-lead-breakdown">`
   html += `<span class="vault-lead-value">${formatFiat(totalFiat, currency)}</span>`
   html += `<span class="vault-lead-caret" aria-hidden="true">▾</span>`
   html += `</button>`
   // Inline breakdown of chains — hidden until user clicks the total.
   html += `<div class="vault-lead-breakdown" id="vault-lead-breakdown" hidden>`
-  const breakdownRows = (chainBalances || [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+  const breakdownRows = (chainBalances || [{ chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: ethBalance }])
     .filter(c => c.balance > 0n || c.chainId === 10)
   for (const c of breakdownRows) {
     const fiat = ethRate ? Number(c.balance) / 1e18 * ethRate : 0
@@ -1063,7 +1171,12 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">earned</span> <span style="color:var(--green)">${formatFiat(totalEarnedFiat, currency)}</span></span>`
     html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">spent</span> ${formatFiat(totalSpentFiat, currency)}</span>`
     if (Math.abs(netFiat) > 0.01) {
-      const netColor = netFiat >= 0 ? 'var(--green)' : 'var(--muted)'
+      // Positive net earns the green accent (money in > money out).
+      // Negative net stays neutral (`--fg`) — muted would silently
+      // downgrade a bad month into background text, which the design
+      // philosophy rules out; red is reserved for "user must act",
+      // and a spending-heavier month is not one of those.
+      const netColor = netFiat >= 0 ? 'var(--green)' : 'var(--fg)'
       const netSign = netFiat >= 0 ? '+' : '−'
       html += `<span class="vault-lead-chip"><span class="vault-lead-chip-key">net</span> <span style="color:${netColor}">${netSign}${formatFiat(Math.abs(netFiat), currency)}</span></span>`
     }
@@ -1078,6 +1191,14 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
   html += `<button type="button" class="vault-verb" id="vault-cashout-btn">cash out</button>`
   html += `</div>`
   html += `</section>`
+
+  // Reserved slot for `_renderInFlightCashouts`. Rendered hidden so
+  // savings + activity keep their vertical position, then unhidden
+  // when Peer's `orders()` returns actual in-flight deposits. Without
+  // this, the async fill inserted a new section between the hero and
+  // savings and jerked everything below it downward on first paint
+  // (principle 9: UI doesn't shift or jerk in response to state).
+  html += `<section class="vault-cashout-banner" data-section="cashouts" hidden></section>`
 
   // --- What it's earning ---
   // Savings gets its own act. The "save" action lives HERE, attached to
@@ -1350,6 +1471,19 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
     btn.classList.toggle('vault-lead-toggle-open', !open)
   })
 
+  document.getElementById('vault-privacy-toggle')?.addEventListener('click', (e) => {
+    e.stopPropagation()  // don't also trigger the balance-toggle expand
+    const doc = document.querySelector('.vault-doc')
+    if (!doc) return
+    const nowPrivate = !doc.classList.contains('is-private')
+    doc.classList.toggle('is-private', nowPrivate)
+    _setVaultPrivate(nowPrivate)
+    const icon = e.currentTarget.querySelector('i')
+    if (icon) icon.className = `ph ${nowPrivate ? 'ph-eye-slash' : 'ph-eye'}`
+    e.currentTarget.title = nowPrivate ? 'show values' : 'hide values'
+    e.currentTarget.setAttribute('aria-label', e.currentTarget.title)
+  })
+
   // Collapsed pool-details toggle (only rendered when the user has no
   // deposits — otherwise the table is visible so they can see their pool).
   document.getElementById('vault-pool-table-toggle')?.addEventListener('click', (e) => {
@@ -1420,30 +1554,32 @@ export async function showReceiveModal(addr) {
   overlay.className = 'wizard-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
 
-  let qrHtml = ''
-  try {
-    const { generateQR } = await import('./qr.js')
-    // EIP-681: encode the recipient AND the target chain so wallets that
-    // support the URI scheme (MetaMask mobile, Coinbase Wallet, Rainbow,
-    // Trust) auto-select Optimism when scanning — no more "sent on
-    // mainnet by accident". Wallets that only understand raw hex still
-    // fall back to the address portion of the scheme, so nothing gets
-    // worse for legacy scanners.
-    const payload = `ethereum:${addr}@10`
-    qrHtml = `<div class="vault-recv-qr">${generateQR(payload)}</div>`
-  } catch (e) { console.warn('QR generation failed:', e) }
+  const RECV_CHAINS = [
+    { chainId: OPTIMISM_CHAIN_ID, name: 'Optimism' },
+    { chainId: BASE_CHAIN_ID,     name: 'Base' },
+    { chainId: ARBITRUM_CHAIN_ID, name: 'Arbitrum' },
+    { chainId: ETHEREUM_CHAIN_ID, name: 'Ethereum' },
+    { chainId: 137,   name: 'Polygon' },
+  ]
+  let picked = RECV_CHAINS[0]
+  let generateQR = null
+  try { ({ generateQR } = await import('./qr.js')) } catch (e) { console.warn('QR module failed:', e) }
 
   overlay.innerHTML = `
     <button class="wizard-close vault-save-close" aria-label="close">×</button>
     <div class="vault-save-doc vault-recv-doc">
       <header class="vault-save-lead">
         <div class="vault-save-lead-title"><h1>receive</h1></div>
-        <div class="vault-save-lead-apr"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+        <button type="button" id="recv-chain-badge" class="send-chain-badge" aria-expanded="false">
+          <span id="recv-chain-name">${escapeHtml(picked.name)}</span>
+          <span class="send-chain-caret">▾</span>
+        </button>
       </header>
-      <p class="vault-save-lead-sub">Anyone can send ETH or tokens to this address on Optimism.</p>
+      <p class="vault-save-lead-sub" id="recv-sub"></p>
+      <div id="recv-chain-breakdown" class="send-source-breakdown" hidden></div>
 
       <section class="vault-save-doc-body vault-recv-body">
-        ${qrHtml}
+        <div id="recv-qr-mount"></div>
         <div class="vault-recv-addr">${escapeHtml(addr)}</div>
         <button id="vault-copy-addr" type="button" class="vault-recv-copy"><i class="ph ph-copy"></i> copy address</button>
       </section>
@@ -1452,6 +1588,51 @@ export async function showReceiveModal(addr) {
   document.body.appendChild(overlay)
   overlay.querySelector('.vault-save-close')?.addEventListener('click', () => overlay.remove())
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+
+  const badge = overlay.querySelector('#recv-chain-badge')
+  const nameEl = overlay.querySelector('#recv-chain-name')
+  const subEl = overlay.querySelector('#recv-sub')
+  const breakdownEl = overlay.querySelector('#recv-chain-breakdown')
+  const qrMount = overlay.querySelector('#recv-qr-mount')
+
+  function renderSub() {
+    subEl.textContent = `Send ETH or tokens to this address on ${picked.name}. The QR encodes the ${picked.name} network so scanning wallets pick the right chain automatically. It's the same address on every EVM chain — pick another to regenerate the QR.`
+  }
+  function renderQR() {
+    // EIP-681: encode the recipient AND the target chain so wallets
+    // that support the URI scheme (MetaMask mobile, Coinbase Wallet,
+    // Rainbow, Trust) auto-select the right chain when scanning.
+    if (!generateQR) return
+    const payload = `ethereum:${addr}@${picked.chainId}`
+    qrMount.innerHTML = `<div class="vault-recv-qr">${generateQR(payload)}</div>`
+  }
+  function renderBreakdown(show) {
+    if (!show) { breakdownEl.hidden = true; badge.setAttribute('aria-expanded', 'false'); return }
+    breakdownEl.hidden = false
+    badge.setAttribute('aria-expanded', 'true')
+    breakdownEl.innerHTML = RECV_CHAINS.map(c => {
+      const isPicked = c.chainId === picked.chainId
+      return `<button type="button" class="cashout-source-row${isPicked ? ' is-picked' : ''}" data-chain="${c.chainId}">
+        <span class="cashout-source-row-name">${escapeHtml(c.name)} <span class="cashout-source-row-chain">chain ${c.chainId}</span></span>
+      </button>`
+    }).join('')
+    breakdownEl.querySelectorAll('.cashout-source-row').forEach(b => {
+      b.addEventListener('click', () => {
+        const cid = Number(b.getAttribute('data-chain'))
+        const next = RECV_CHAINS.find(c => c.chainId === cid)
+        if (!next) return
+        picked = next
+        nameEl.textContent = picked.name
+        renderSub()
+        renderQR()
+        renderBreakdown(false)  // collapse — user made their choice
+      })
+    })
+  }
+  badge.addEventListener('click', () => renderBreakdown(badge.getAttribute('aria-expanded') !== 'true'))
+  renderSub()
+  renderQR()
+
   overlay.querySelector('#vault-copy-addr').addEventListener('click', async () => {
     await navigator.clipboard.writeText(addr)
     const btn = overlay.querySelector('#vault-copy-addr')
@@ -1476,7 +1657,7 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   // If the user has ETH on mainnet, prefer it as the source — usually means
   // a prior save flow bridged successfully but the swap didn't complete,
   // so we're picking up where they left off (no re-bridging).
-  const chains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: 10, name: 'Optimism', balance: ethBalance }])
+  const chains = (chainBalances && chainBalances.length ? chainBalances : [{ chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: ethBalance }])
   const chainOrder = [...chains].sort((a, b) => {
     if (b.balance !== a.balance) return b.balance > a.balance ? 1 : -1
     return 0
@@ -2053,37 +2234,42 @@ export async function showSendModal(fromAddress) {
   const existing = document.getElementById('send-modal-overlay')
   if (existing) { existing.remove(); return }
 
-  // Full-screen doc modal — matches save-to-BOLD. Same pattern across the
-  // app for every money action: the modal IS a page, not a floating card,
-  // so mobile keyboards + focus don't fight it.
   const overlay = document.createElement('div')
   overlay.id = 'send-modal-overlay'
   overlay.className = 'wizard-overlay vault-save-overlay'
   overlay.style.zIndex = '10002'
 
-  const balance = await getCachedBalance(fromAddress).catch(() => 0n)
-  const balEth = formatEthAmount(balance)
-  const ethBal = Number(balance) / 1e18
-  let prices = await getEthPrices().catch(() => null)
+  // Multi-chain read + prices in parallel — same pattern the cashout
+  // sheet uses. User's principle: send should be cross-chain and
+  // fiat-first, matching the vault's design language.
   const currency = getUserCurrency()
-  const ethRate = prices?.[currency] || 0
-  const balFiat = ethRate ? formatFiat(ethBal * ethRate, currency) : ''
+  const [chainRows, prices] = await Promise.all([
+    fetchChainBalances(fromAddress).catch(() => []),
+    getEthPrices().catch(() => null),
+  ])
+  const ethRate = prices?.[currency] || prices?.USD || 0
 
-  const presets = [25, 50, 75, 100].map(pct => {
-    const amt = Math.max(0, ethBal * pct / 100 - (pct === 100 ? 0.0005 : 0))
-    return `<button type="button" class="vault-preset" data-amount="${amt.toFixed(6)}">${pct === 100 ? 'max' : pct + '%'}</button>`
-  }).join('')
+  // Compute fiat per chain and pick the highest-value one as the
+  // default source. User can override in the chain-picker breakdown.
+  const rows = (chainRows || [])
+    .map(c => ({ ...c, ethNum: Number(c.balance) / 1e18, fiat: ethRate ? (Number(c.balance) / 1e18) * ethRate : 0 }))
+    .filter(c => c.balance > 0n)
+  const initialSource = rows.sort((a, b) => b.fiat - a.fiat)[0] || { chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: 0n, ethNum: 0, fiat: 0 }
+  let source = initialSource
 
   overlay.innerHTML = `
     <button class="wizard-close vault-save-close" aria-label="close">×</button>
     <div class="vault-save-doc">
       <header class="vault-save-lead">
-        <div class="vault-save-lead-title">
-          <h1>send</h1>
-        </div>
-        <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+        <div class="vault-save-lead-title"><h1>send</h1></div>
+        <button type="button" id="send-source-badge" class="send-chain-badge" aria-expanded="false">
+          <span id="send-source-name">${escapeHtml(source.name)}</span>
+          <span class="send-chain-caret">▾</span>
+        </button>
       </header>
-      <p class="vault-save-lead-sub">Send ETH to another wallet — by handle, ENS-style domain, or 0x address. Sends over Optimism (fast + cheap).</p>
+      <p class="vault-save-lead-sub">Send ETH to another wallet — by handle, ourpraxis.network domain, or 0x address.</p>
+
+      <div id="send-source-breakdown" class="send-source-breakdown" hidden></div>
 
       <section class="vault-save-doc-body">
         <div>
@@ -2095,22 +2281,22 @@ export async function showSendModal(fromAddress) {
         <div class="vault-save-amount">
           <div class="vault-save-amount-head">
             <span class="vault-save-field-label">amount</span>
-            <span class="vault-save-bal">${balEth} ETH${balFiat ? ' · ' + balFiat : ''}</span>
+            <span class="vault-save-bal" id="send-source-bal"></span>
           </div>
-          <div class="vault-save-amount-row">
-            <input id="send-amount" type="text" inputmode="decimal" placeholder="0.00" class="vault-save-amount-input" autocomplete="off">
-            <div class="vault-save-amount-token">${ETH_ICON}<span>ETH</span></div>
+          <div class="vault-save-amount-row send-amount-row-fiat">
+            <span class="send-amount-currency">${_currencySymbol(currency)}</span>
+            <input id="send-amount" type="text" inputmode="decimal" placeholder="0" class="vault-save-amount-input" autocomplete="off">
           </div>
           <div class="vault-save-amount-foot">
-            <span id="send-fiat" class="vault-save-fiat">≈ ${ethRate ? formatFiat(0, currency) : '$0.00'}</span>
+            <span id="send-eth-preview" class="vault-save-fiat">≈ 0 ETH</span>
             <span style="flex:1"></span>
-            <div class="vault-presets">${presets}</div>
+            <div class="vault-presets" id="send-presets"></div>
           </div>
         </div>
 
         <div class="vault-save-actions">
           <button id="send-confirm" class="vault-save-btn">send</button>
-          <div id="send-status" class="vault-save-status"></div>
+          <div id="send-status" class="vault-save-status" role="status"></div>
         </div>
       </section>
     </div>
@@ -2121,59 +2307,187 @@ export async function showSendModal(fromAddress) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
 
   const amountInput = dialog.querySelector('#send-amount')
-  const fiatEl = dialog.querySelector('#send-fiat')
+  const ethPreviewEl = dialog.querySelector('#send-eth-preview')
   const toInput = dialog.querySelector('#send-to')
   const resolvedEl = dialog.querySelector('#send-resolved')
+  const sourceNameEl = dialog.querySelector('#send-source-name')
+  const sourceBalEl = dialog.querySelector('#send-source-bal')
+  const badge = dialog.querySelector('#send-source-badge')
+  const breakdownEl = dialog.querySelector('#send-source-breakdown')
+  const presetsEl = dialog.querySelector('#send-presets')
 
-  dialog.querySelectorAll('.vault-preset').forEach(btn => {
-    btn.addEventListener('click', () => {
-      amountInput.value = parseFloat(btn.dataset.amount).toFixed(6)
-      amountInput.dispatchEvent(new Event('input'))
+  // Sanitize amount to fiat-numeric — matches the cashout amount input.
+  amountInput.addEventListener('input', (ev) => {
+    const raw = ev.target.value
+    const cleaned = raw.replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/^(\d*\.\d*)\..*$/, '$1')
+    if (cleaned !== raw) {
+      const caret = ev.target.selectionStart
+      const dropped = raw.length - cleaned.length
+      ev.target.value = cleaned
+      try { ev.target.setSelectionRange(Math.max(0, caret - dropped), Math.max(0, caret - dropped)) } catch {}
+    }
+    renderEthPreview()
+  })
+
+  function renderEthPreview() {
+    const fiat = parseFloat(amountInput.value || '0')
+    if (!fiat || !ethRate) { ethPreviewEl.textContent = '≈ 0 ETH'; return }
+    const eth = fiat / ethRate
+    ethPreviewEl.textContent = `≈ ${eth.toFixed(6)} ETH`
+  }
+
+  function renderSourceUi() {
+    sourceNameEl.textContent = source.name
+    const balFiat = ethRate ? formatFiat(source.fiat, currency) : ''
+    sourceBalEl.textContent = `${source.ethNum.toFixed(6)} ETH${balFiat ? ' · ' + balFiat : ''}`
+    // Presets are % of source balance's fiat value — one tap = 25%
+    // of what's actually sendable from the selected chain.
+    presetsEl.innerHTML = [25, 50, 75, 100].map(pct => {
+      const fiatAmt = source.fiat * (pct === 100 ? 0.995 : pct / 100)  // 100% keeps a tiny gas cushion
+      return `<button type="button" class="vault-preset" data-fiat="${fiatAmt.toFixed(2)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+    }).join('')
+    presetsEl.querySelectorAll('.vault-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        amountInput.value = parseFloat(btn.dataset.fiat || '0').toFixed(2)
+        amountInput.dispatchEvent(new Event('input'))
+      })
     })
+    renderEthPreview()
+  }
+
+  function renderBreakdown(show) {
+    if (!show) { breakdownEl.hidden = true; badge.setAttribute('aria-expanded', 'false'); return }
+    breakdownEl.hidden = false
+    badge.setAttribute('aria-expanded', 'true')
+    breakdownEl.innerHTML = (rows.length ? rows : [initialSource]).map(r => {
+      const isPicked = r.chainId === source.chainId
+      const fiatStr = ethRate ? formatFiat(r.fiat, currency) : ''
+      return `<button type="button" class="cashout-source-row${isPicked ? ' is-picked' : ''}" data-chain="${r.chainId}">
+        <span class="cashout-source-row-name">${r.ethNum.toFixed(6)} ETH <span class="cashout-source-row-chain">on ${escapeHtml(r.name)}</span></span>
+        <span class="cashout-source-row-fiat">${escapeHtml(fiatStr)}</span>
+      </button>`
+    }).join('')
+    breakdownEl.querySelectorAll('.cashout-source-row').forEach(b => {
+      b.addEventListener('click', () => {
+        const cid = Number(b.getAttribute('data-chain'))
+        const picked = rows.find(r => r.chainId === cid)
+        if (picked) {
+          source = picked
+          renderSourceUi()
+          renderBreakdown(false)  // collapse — user made their choice
+        }
+      })
+    })
+  }
+
+  badge.addEventListener('click', () => {
+    renderBreakdown(badge.getAttribute('aria-expanded') !== 'true')
   })
 
-  amountInput.addEventListener('input', () => {
-    const val = parseFloat(amountInput.value)
-    if (!val || isNaN(val) || !ethRate) { fiatEl.textContent = ''; return }
-    fiatEl.textContent = `≈ ${formatFiat(val * ethRate, currency)}`
-  })
+  renderSourceUi()
 
   let resolvedAddress = null
   let resolveTimer = null
+  let resolveToken = 0
+
+  // Compound resolver: 0x address → verbatim; anything ending in
+  // .eth → ENS via viem's mainnet client; anything else (bare
+  // handle, ourpraxis subdomain, custom domain) → Praxis network
+  // search. Runs everything in parallel and takes whichever
+  // resolves first; the resolveToken guards against a stale
+  // response landing on top of a newer input.
+  async function resolveRecipient(raw) {
+    const val = raw.trim()
+    if (val.startsWith('0x') && val.length === 42) return { address: val, label: '', kind: 'address' }
+
+    // ENS forward lookup.
+    if (val.endsWith('.eth') && val.length > 4) {
+      try {
+        const { createPublicClient, http, mainnet } = await import('./vendor.js')
+        const client = createPublicClient({ chain: mainnet, transport: http(rpcUrlFor(ETHEREUM_CHAIN_ID)) })
+        const addr = await client.getEnsAddress({ name: val.toLowerCase() }).catch(() => null)
+        if (addr) return { address: addr, label: val, kind: 'ens' }
+      } catch {}
+      return null
+    }
+
+    // Normalize inputs — strip scheme + trailing slash. Keep the
+    // custom domain intact ('nappynina.com' should search as-is).
+    const normalized = val.toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/$/, '')
+    // Also try the bare-handle form for the .ourpraxis.network case.
+    const stripped = normalized.replace(/\.ourpraxis\.network$/, '')
+
+    try {
+      const res = await fetch(`/api/network/search?q=${encodeURIComponent(normalized)}&limit=1`)
+      const data = await res.json()
+      const match = data.results?.[0]
+      if (match?.address) return { address: match.address, label: match.name || match.domain || normalized, kind: 'praxis' }
+    } catch {}
+
+    // Second pass with the bare-handle form when the raw input was a
+    // .ourpraxis.network URL — some search indexes tokenize handles
+    // separately.
+    if (stripped !== normalized) {
+      try {
+        const res = await fetch(`/api/network/search?q=${encodeURIComponent(stripped)}&limit=1`)
+        const data = await res.json()
+        const match = data.results?.[0]
+        if (match?.address) return { address: match.address, label: match.name || match.domain || stripped, kind: 'praxis' }
+      } catch {}
+    }
+
+    // Custom-domain fallback: the artist may own their own domain
+    // ('nappynina.com') that isn't in the FTS index but IS a live
+    // Praxis site with a site.json exposing the wallet. Proxy-fetch
+    // through our server so we don't run into CORS.
+    if (normalized.includes('.') && !normalized.endsWith('.eth')) {
+      try {
+        const res = await fetch(`/api/proxy-site?domain=${encodeURIComponent(normalized)}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.wallet) return { address: data.wallet, label: data.name || data.handle || normalized, kind: 'praxis-domain' }
+        }
+      } catch {}
+    }
+
+    return null
+  }
+
   toInput.addEventListener('input', () => {
     resolvedAddress = null
     resolvedEl.textContent = ''
     clearTimeout(resolveTimer)
     const val = toInput.value.trim()
+    if (!val) return
     if (val.startsWith('0x') && val.length === 42) {
       resolvedAddress = val
-      resolvedEl.textContent = ''
+      resolvedEl.style.color = 'var(--muted)'
+      resolvedEl.textContent = 'valid address'
       return
     }
     if (val.length < 2) return
+    const myToken = ++resolveToken
     resolveTimer = setTimeout(async () => {
+      if (myToken !== resolveToken) return
       resolvedEl.style.color = 'var(--dim)'
-      resolvedEl.textContent = 'looking up...'
-      try {
-        const res = await fetch(`/api/network/search?q=${encodeURIComponent(val)}&limit=1`)
-        const data = await res.json()
-        const match = data.results?.[0]
-        if (match && match.address) {
-          resolvedAddress = match.address
-          resolvedEl.style.color = 'var(--muted)'
-          resolvedEl.textContent = `${match.name || match.domain} — ${match.address.slice(0,6)}...${match.address.slice(-4)}`
-        } else {
-          resolvedEl.style.color = 'var(--dim)'
-          resolvedEl.textContent = 'not found'
-        }
-      } catch {
-        resolvedEl.textContent = ''
+      resolvedEl.textContent = 'looking up…'
+      const result = await resolveRecipient(val)
+      if (myToken !== resolveToken) return
+      if (result) {
+        resolvedAddress = result.address
+        resolvedEl.style.color = 'var(--muted)'
+        const shortAddr = `${result.address.slice(0,6)}…${result.address.slice(-4)}`
+        resolvedEl.textContent = result.label ? `${result.label} · ${shortAddr}` : shortAddr
+      } else {
+        resolvedEl.style.color = '#ef4444'
+        resolvedEl.textContent = 'no match — try a Praxis handle, .eth, or 0x address'
       }
     }, 400)
   })
 
   dialog.querySelector('#send-confirm').addEventListener('click', async () => {
-    const amountStr = amountInput.value.trim()
     const status = dialog.querySelector('#send-status')
     const btn = dialog.querySelector('#send-confirm')
 
@@ -2182,29 +2496,53 @@ export async function showSendModal(fromAddress) {
       status.textContent = 'enter a valid address or handle'
       return
     }
-    if (!amountStr) { status.textContent = 'enter an amount'; return }
-    const amount = parseFloat(amountStr)
-    if (isNaN(amount) || amount <= 0) { status.textContent = 'invalid amount'; return }
+    const fiatAmt = parseFloat(amountInput.value || '0')
+    if (!fiatAmt || fiatAmt <= 0) { status.textContent = 'enter an amount'; return }
+    if (!ethRate) { status.textContent = 'price feed unavailable — try again in a moment'; return }
+    const ethAmount = fiatAmt / ethRate
+    if (ethAmount > source.ethNum) { status.textContent = `only ${formatFiat(source.fiat, currency)} available on ${source.name}`; return }
 
     btn.disabled = true
-    btn.textContent = 'sending...'
+    btn.textContent = 'sending…'
     status.textContent = ''
     status.style.color = 'var(--muted)'
 
     try {
-      const provider = await getWalletProvider()
-      const wc = createWalletClient({ chain: optimism, transport: custom(provider) })
+      // Sign locally via the embedded LocalAccount, route JSON-RPC to
+      // the picked chain's own endpoint. Same pattern the cashout
+      // sheet uses to bypass the embedded provider's Optimism-only
+      // chainId behavior.
+      // Do NOT swallow ensureAuthorized errors here — if the user cancels
+      // the biometric/password prompt we must abort, otherwise we'd fall
+      // through to sendTransaction on an unauthorized signer and burn a
+      // real gas prompt for no reason.
+      if (typeof window.ensureAuthorized === 'function') {
+        try { await window.ensureAuthorized(fromAddress) }
+        catch (e) {
+          status.style.color = 'var(--fg)'
+          status.textContent = e?.message?.includes('cancel') ? 'cancelled' : 'unlock your wallet and try again'
+          btn.disabled = false; btn.textContent = 'send'
+          return
+        }
+      }
+      const embeddedAcct = window.getEmbeddedAccount?.()
+      if (!embeddedAcct) { status.textContent = 'unlock your wallet and try again'; btn.disabled = false; btn.textContent = 'send'; return }
+
+      const { http, mainnet, arbitrum, base, polygon } = await import('./vendor.js')
+      const chainMap = { 1: mainnet, 10: optimism, 137: polygon, 8453: base, 42161: arbitrum }
+      const chainDef = chainMap[source.chainId] || optimism
+      const wc = createWalletClient({ chain: chainDef, account: embeddedAcct, transport: http(rpcUrlFor(source.chainId)) })
       await wc.sendTransaction({
         to: toAddr,
-        value: parseEther(amountStr),
-        account: window.getEmbeddedAccount?.() || fromAddress,
+        value: parseEther(ethAmount.toFixed(18).replace(/0+$/, '').replace(/\.$/, '.0')),
+        account: embeddedAcct,
       })
 
       status.style.color = 'var(--green)'
       status.textContent = 'sent!'
       btn.textContent = 'done'
       window.dispatchEvent(new CustomEvent('wallet-balance-changed'))
-      setTimeout(() => overlay.remove(), 2000)
+      setTimeout(() => overlay.remove(), 1600)
     } catch (e) {
       btn.disabled = false
       btn.textContent = 'send'
@@ -2212,4 +2550,9 @@ export async function showSendModal(fromAddress) {
       status.textContent = formatTxError(e)
     }
   })
+}
+
+function _currencySymbol(code) {
+  try { return (0).toLocaleString(undefined, { style: 'currency', currency: code, minimumFractionDigits: 0 }).replace(/[\d\s.,]/g, '') || '$' }
+  catch { return '$' }
 }

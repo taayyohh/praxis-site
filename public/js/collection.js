@@ -271,6 +271,19 @@ async function loadCollection(addr, statusEl, contentEl) {
       entry.domain = aliasName || rawDomain || `${addr.slice(0,6)}...${addr.slice(-4)}`
     }
 
+    // Honor /collection?artist=<domain> so attribution links from
+    // elsewhere in the app (album/media cards) land pre-filtered on
+    // the current tenant's local collection view.
+    try {
+      const wantedDomain = new URLSearchParams(location.search).get('artist')?.toLowerCase() || ''
+      if (wantedDomain) {
+        for (const [addr, entry] of _artistMap) {
+          const domain = String(entry.domain || _domainMap[addr] || '').toLowerCase()
+          if (domain === wantedDomain) { _selectedArtist = addr; break }
+        }
+      }
+    } catch {}
+
     let mainHtml = ''
 
     // filter pills
@@ -984,7 +997,11 @@ function renderMediaItems(mediaPurchases) {
     const first = album.items[0]
     const media = _mediaDetails.get(first.mediaId)
     const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
-    const artistLink = `https://${escapeHtml(artistDomain)}`
+    // Attribution link routes through the collection's own artist filter
+    // so clicking "by <artist>" stays on the current tenant, per the ask
+    // that everything in the collection render locally rather than jump
+    // off to the source artist site.
+    const artistLink = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : '#'
     const coverUrl = ipfsUrl(album.coverCid)
     const sorted = [...album.items].sort((a, b) => { try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 } })
     const trackCount = sorted.length
@@ -994,7 +1011,15 @@ function renderMediaItems(mediaPurchases) {
     const albumName = info.name || `${trackCount} tracks`
     const aliasName = info.aliasName || artistDomain
     const albumPath = info.path
-    const albumLink = (info.aliasName && info.name) ? `https://${escapeHtml(artistDomain)}/music/${slugify(info.aliasName)}/${slugify(info.name)}` : `/art?media=${first.mediaId}`
+    // Local detail route — /art hydrates from the artist's site.json via
+    // /api/artist-site, so an album (or any purchased media type) renders
+    // an in-house detail page on the current tenant instead of jumping
+    // off to the source artist's domain. Carrying artist + album + alias
+    // in the URL gives /art enough to fetch and render the album view;
+    // it still falls back to a single-track detail if album info is missing.
+    const albumLink = (info.aliasName && info.name)
+      ? `/art?media=${first.mediaId}&album=${encodeURIComponent(info.name)}&alias=${encodeURIComponent(info.aliasName)}&artist=${encodeURIComponent(artistDomain)}`
+      : `/art?media=${first.mediaId}`
 
     // Build play-all queue
     const queueTracks = sorted.filter(p => _mediaDetails.get(p.mediaId)?.ipfsCid).map(p => {
@@ -1057,7 +1082,11 @@ function renderMediaItems(mediaPurchases) {
     const media = _mediaDetails.get(purchase.mediaId)
     const title = media ? escapeHtml(media.title) : `#${purchase.mediaId}`
     const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
-    const artistLink = `https://${escapeHtml(artistDomain)}`
+    // Attribution link routes through the collection's own artist filter
+    // so clicking "by <artist>" stays on the current tenant, per the ask
+    // that everything in the collection render locally rather than jump
+    // off to the source artist site.
+    const artistLink = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : '#'
     const mediaUrl = media?.ipfsCid ? ipfsUrl(media.ipfsCid) : ''
     const coverCid = _coverArtMap.get(purchase.mediaId) || ''
     const coverUrl = coverCid ? ipfsUrl(coverCid) : ''

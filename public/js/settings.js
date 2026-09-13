@@ -3442,6 +3442,13 @@ async function captureVideoThumbnail(file) {
     const video = document.createElement('video')
     video.preload = 'metadata'
     video.muted = true
+    // Media Rendering Rule: iOS Safari refuses to render a video frame
+    // to a canvas from a video element that isn't playsInline. Even
+    // though we never .play() this element, some UAs still fullscreen
+    // on `.currentTime =`; setting both variants keeps the offscreen
+    // capture strictly inline.
+    video.playsInline = true
+    video.setAttribute('playsinline', '')
     video.src = URL.createObjectURL(file)
     video.addEventListener('loadeddata', () => {
       video.currentTime = Math.min(2, video.duration / 4)
@@ -3514,7 +3521,10 @@ function showLocalMediaPreview(btn, file) {
     if (isVideo) {
       wrap.innerHTML = `<video controls preload="metadata" playsinline src="${url}" style="width:100%;max-height:180px;background:#000"></video>`
     } else {
-      wrap.innerHTML = `<audio controls preload="metadata" src="${url}" style="width:100%"></audio>`
+      // Persistent-player pattern (see Media Rendering Rules) — routes the
+      // blob preview through player.js so it inherits site chrome, keyboard
+      // shortcuts, and Media Session controls instead of raw browser chrome.
+      wrap.innerHTML = `<button class="track-play-btn" data-track-src="${url}" data-track-title="${file.name || 'upload preview'}">play</button>`
     }
     // Insert right after the button
     if (btn.nextSibling) btn.parentNode.insertBefore(wrap, btn.nextSibling)

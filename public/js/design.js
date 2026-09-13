@@ -572,9 +572,9 @@ async function initDesign() {
     const addr = window.getWalletAddress?.() || '0x0000000000000000000000000000000000000dEaD'
     try {
       if (kind === 'send') {
-        const mod = await import('./earnings.js'); await mod.showSendModal(addr)
+        const mod = await import('./vault.js'); await mod.showSendModal(addr)
       } else if (kind === 'receive') {
-        const mod = await import('./earnings.js'); await mod.showReceiveModal(addr)
+        const mod = await import('./vault.js'); await mod.showReceiveModal(addr)
       } else if (kind === 'save') {
         // showSwapModal depends on state initVault computes; hop over.
         window.location.href = '/vault'

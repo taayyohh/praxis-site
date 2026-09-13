@@ -178,7 +178,7 @@
     if (msend) msend.addEventListener('click', async function() {
       closeMenu()
       try {
-        var earn = await import('/js/earnings.js')
+        var earn = await import('/js/vault.js')
         var addr = localStorage.getItem('praxis-wallet')
         if (addr) earn.showSendModal(addr)
       } catch(e) { console.warn('send error:', e) }

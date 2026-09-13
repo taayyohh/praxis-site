@@ -21,9 +21,16 @@
 //
 // Design decisions grounded in @zkp2p/cash/dist/createCashClient-*.d.ts.
 
-import { registerPage, escapeHtml, getPublicClient, getWalletProvider, getAuthToken } from './utils.js'
+import { registerPage, escapeHtml, getPublicClient, getWalletProvider, getAuthToken, clearAuthToken } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { getUserCurrency, getEthPrices, formatFiat } from './fiat.js'
+import {
+  OPTIMISM_CHAIN_ID, BASE_CHAIN_ID,
+  USDC_OPTIMISM as OPTIMISM_USDC,
+  ETH_NATIVE,
+  USDC_DECIMALS, ETH_DECIMALS,
+  rpcUrlFor,
+} from './chains.js'
 
 // ─── Peer.xyz config ───
 
@@ -52,12 +59,8 @@ function _cashoutCurrency() {
 
 registerPage('cashout-page', initCashout)
 
-const OPTIMISM_CHAIN_ID = 10
-const BASE_CHAIN_ID = 8453
-const OPTIMISM_USDC = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
-const ETH_NATIVE = '0x0000000000000000000000000000000000000000'
-const USDC_DECIMALS = 6
-const ETH_DECIMALS = 18
+// Chain / token constants imported from ./chains.js — the module owns the
+// canonical values so a redeploy or new chain adds only one line there.
 const BOLD_DECIMALS = 18
 // Liquity V2 BOLD lives on Ethereum L1. Verified via
 // scripts/bold-cashout-dryrun.js that Peer/Relay accepts it as a
@@ -71,7 +74,7 @@ const BOLD_SPS = {
   rETH:   '0xd442e41019b7f5c4dd78f50dc03726c446148695',
   wstETH: '0x9502b7c397e9aa22fe9db7ef7daf21cd2aebe56b',
 }
-// Withdraw is the same shape as provideToSP in earnings.js — Liquity
+// Withdraw is the same shape as provideToSP in vault.js — Liquity
 // v2 SP surface is deposit/withdraw symmetric. Second arg claims the
 // ETH yield along with the withdrawal so the user's yield lands in
 // their wallet automatically (their money, no reason to strand it).
@@ -182,9 +185,18 @@ async function _syncDepositToServer(record, token) {
 async function _readServerOrders(token) {
   if (!token) return []
   try {
-    const res = await fetch('/api/cashout/orders', {
+    let res = await fetch('/api/cashout/orders', {
       headers: { Authorization: `Bearer ${token}` },
     })
+    // Stale-session recovery — same pattern vault.js uses. A tab that
+    // survives a server restart caches an admin token the server no
+    // longer knows about; we clear + re-sign once, then retry.
+    if (res.status === 401) {
+      clearAuthToken()
+      const fresh = await getAuthToken({ force: true })
+      if (!fresh) return []
+      res = await fetch('/api/cashout/orders', { headers: { Authorization: `Bearer ${fresh}` } })
+    }
     if (!res.ok) return []
     const data = await res.json()
     return Array.isArray(data?.orders) ? data.orders : []
@@ -561,6 +573,30 @@ async function initCashout() {
     els.submitBtn.textContent = 'preparing…'
     els.status.textContent = ''
 
+    // Unlock the wallet FIRST — before any signing path fires. The
+    // auto-bridge below needs a signer; without a live unlock, the
+    // bridge tx call sits waiting for a locked signer forever and
+    // the page shows an infinite spinner after the password modal
+    // closes. Do the unlock explicitly, up front, so no downstream
+    // code path can hang the flow while it looks like it's working.
+    if (typeof window.ensureAuthorized === 'function') {
+      els.status.textContent = 'unlocking your wallet…'
+      try {
+        await window.ensureAuthorized(addr)
+      } catch (e) {
+        els.status.textContent = 'wallet unlock cancelled — try again when ready'
+        els.submitBtn.textContent = 'try again'
+        els.submitBtn.disabled = false
+        return
+      }
+      if (window.isWalletUnlocked && !window.isWalletUnlocked()) {
+        els.status.textContent = 'wallet still locked — try again'
+        els.submitBtn.textContent = 'try again'
+        els.submitBtn.disabled = false
+        return
+      }
+    }
+
     // Base ETH gas — silent auto-bridge. Zero-crypto users should
     // never see the words "Base" or "gas". If the Base signer is
     // below the floor, we send a small top-up via Relay before
@@ -596,21 +632,10 @@ async function initCashout() {
 
     try {
       const { createWalletClient, http, base, optimism, mainnet, arbitrum, polygon } = await import('./vendor.js')
-      // Ensure the embedded wallet is unlocked so getEmbeddedAccount
-      // returns the viem LocalAccount we sign with. Same helper every
-      // other Praxis signing surface uses — pops the password modal
-      // when the session's expired.
-      if (typeof window.ensureAuthorized === 'function') {
-        els.status.textContent = 'unlocking your wallet…'
-        try {
-          await window.ensureAuthorized(addr)
-        } catch (e) {
-          els.status.textContent = 'wallet unlock cancelled — try again when ready'
-          els.submitBtn.textContent = 'try again'
-          els.submitBtn.disabled = false
-          return
-        }
-      }
+      // Wallet was already unlocked up top before the auto-bridge, so
+      // getEmbeddedAccount should return a live LocalAccount. This
+      // guard is the belt if something evicted the session between
+      // the unlock and here.
       const embeddedAcct = window.getEmbeddedAccount?.()
       if (!embeddedAcct) {
         els.status.textContent = 'wallet still locked — enter your password and try again'
@@ -624,12 +649,12 @@ async function initCashout() {
       // assertWalletChainId checks). baseSigner always lands on Base
       // (that's where Peer's escrow lives); sourceSigner lands on
       // whatever chain the user picked in the balance breakdown.
-      const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http('/api/rpc/8453') })
+      const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http(rpcUrlFor(BASE_CHAIN_ID)) })
       const sourceChainDef = _viemChainFor(selectedSource.chainId, { base, optimism, mainnet, arbitrum, polygon })
       const sourceSigner = createWalletClient({
         chain: sourceChainDef,
         account: embeddedAcct,
-        transport: http(`/api/rpc/${selectedSource.chainId}`),
+        transport: http(rpcUrlFor(selectedSource.chainId)),
       })
 
       // BOLD path: if the picked source is BOLD savings, we need to
@@ -714,13 +739,14 @@ async function initCashout() {
 // ─── DOM shell ───
 
 function _renderShell() {
+  // Header was `<h1>cash out</h1>` + a marketing sub-line. The user
+  // already committed to this page (they clicked "cash out"), so the
+  // title was doing no work and stole visual weight from the two
+  // numbers that matter: available balance and the amount input.
+  // Balance now leads; the amount input is the hero the eye lands on
+  // when picking an amount. `available` is dimmed, the number is not.
   return `
     <div class="cashout-sheet">
-      <header class="cashout-lead">
-        <h1>cash out</h1>
-        <p class="cashout-sub">Move your earnings into Venmo, PayPal, Zelle, Cash App, Wise, or Revolut. Peer-to-peer — no bank required, no signup.</p>
-      </header>
-
       <div class="cashout-balance-line">
         <span class="cashout-balance-label">available</span>
         <span id="cashout-balance-value" class="cashout-balance-value">…</span>
@@ -875,8 +901,13 @@ async function _findPendingCashout(addr, cashCurrency) {
       environment: env, rpcUrl: 'https://mainnet.base.org',
       apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
     })
-    sdkOrders = await client.orders(addr, { inFlight: true, limit: 10 }).catch(() => [])
-  } catch {}
+    sdkOrders = await client.orders(addr, { inFlight: true, limit: 10 }).catch((e) => {
+      console.warn('praxis: peer orders() read failed:', e?.message)
+      return []
+    })
+  } catch (e) {
+    console.warn('praxis: peer SDK import/init failed, using server rows only:', e?.message)
+  }
 
   const byId = new Map()
   for (const o of sdkOrders || []) {
@@ -964,7 +995,7 @@ function _renderPendingShell(p) {
       <div class="cashout-pending-list">${cards}</div>
       <section class="cashout-pending-actions">
         <button id="cashout-start-another" type="button" class="cashout-link">start another cash-out →</button>
-        <button id="cashout-back-earnings" type="button" class="cashout-link cashout-link-muted">back to earnings</button>
+        <button id="cashout-back-earnings" type="button" class="cashout-link cashout-link-muted">back to vault</button>
       </section>
     </div>
   `
@@ -987,6 +1018,12 @@ function _renderPendingCard(item) {
         <li data-step="paid" class="cashout-step"><span class="cashout-step-dot"></span><span class="cashout-step-label">payment sent</span></li>
         <li data-step="done" class="cashout-step"><span class="cashout-step-dot"></span><span class="cashout-step-label">complete</span></li>
       </ol>
+      <div class="cashout-pending-progress" data-slot="progress" hidden>
+        <div class="cashout-pending-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+          <div class="cashout-pending-progress-fill" data-slot="progress-fill" style="width:0%"></div>
+        </div>
+        <div class="cashout-pending-progress-detail" data-slot="progress-detail" hidden></div>
+      </div>
       <p class="cashout-pending-card-body" data-slot="body">A buyer will send ${amtHtml} to ${_escape(prettyPlatform)}${handleHtml}. Your deposit auto-releases when they do.</p>
       <ul class="cashout-pending-card-safety">
         <li>funds locked in Peer's escrow — safe until match</li>
@@ -998,16 +1035,31 @@ function _renderPendingCard(item) {
         <code class="cashout-pending-meta-val" title="${_escape(item.depositId)}">${_escape(_shortDepositId(item.depositId))}</code>
         <button type="button" class="cashout-pending-copy" data-copy="${_escape(item.depositId)}" title="copy deposit id"><i class="ph ph-copy"></i></button>
       </footer>
-      <div class="cashout-pending-card-cancel">
-        <button type="button" class="cashout-link cashout-link-muted" data-cancel="${_escape(item.depositId)}">cancel · pull funds back to my wallet</button>
+      <div class="cashout-pending-card-cancel" data-cancel-slot="${_escape(item.depositId)}">
+        <button type="button" class="cashout-link cashout-link-muted" data-cancel-start="${_escape(item.depositId)}">cancel · pull funds back to my wallet</button>
+        <div class="cashout-pending-card-cancel-confirm" data-cancel-confirm-row="${_escape(item.depositId)}" hidden>
+          <span class="cashout-pending-card-cancel-question">cancel this cash-out? a small gas fee on Base to withdraw.</span>
+          <div class="cashout-pending-card-cancel-actions">
+            <button type="button" class="cashout-link cashout-link-danger" data-cancel-confirm="${_escape(item.depositId)}">yes, pull funds back</button>
+            <button type="button" class="cashout-link cashout-link-muted" data-cancel-abort="${_escape(item.depositId)}">keep going</button>
+          </div>
+        </div>
         <p class="cashout-pending-card-cancel-status" data-cancel-status="${_escape(item.depositId)}"></p>
       </div>
     </article>
   `
 }
 
+// Cancel the previous pending-shell's watchers + global listeners so
+// re-entering /cashout (SPA nav, wallet re-connect, etc.) doesn't stack
+// hour-long iterators and duplicate visibility/focus/online handlers.
+let _pendingShellAbort = null
+
 async function _wirePendingShell(el, p) {
-  el.querySelector('#cashout-back-earnings')?.addEventListener('click', () => { location.href = '/earnings' })
+  try { _pendingShellAbort?.abort() } catch {}
+  _pendingShellAbort = new AbortController()
+  const abortSignal = _pendingShellAbort.signal
+  el.querySelector('#cashout-back-earnings')?.addEventListener('click', () => { location.href = '/vault' })
   el.querySelector('#cashout-start-another')?.addEventListener('click', () => { location.href = '/cashout?new=1' })
   el.querySelectorAll('.cashout-pending-copy').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1017,7 +1069,27 @@ async function _wirePendingShell(el, p) {
       setTimeout(() => { btn.innerHTML = '<i class="ph ph-copy"></i>' }, 1200)
     })
   })
-  el.querySelectorAll('[data-cancel]').forEach(btn => {
+  // Two-step cancel: first tap opens the inline confirm row, second
+  // tap fires the actual withdraw. Native confirm() dialogs snap the
+  // browser out of the app aesthetic, so we do the ceremony in-card.
+  el.querySelectorAll('[data-cancel-start]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-cancel-start') || ''
+      const confirmRow = el.querySelector(`[data-cancel-confirm-row="${CSS.escape(id)}"]`)
+      if (confirmRow) confirmRow.hidden = false
+      btn.hidden = true
+    })
+  })
+  el.querySelectorAll('[data-cancel-abort]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-cancel-abort') || ''
+      const confirmRow = el.querySelector(`[data-cancel-confirm-row="${CSS.escape(id)}"]`)
+      const startBtn = el.querySelector(`[data-cancel-start="${CSS.escape(id)}"]`)
+      if (confirmRow) confirmRow.hidden = true
+      if (startBtn) startBtn.hidden = false
+    })
+  })
+  el.querySelectorAll('[data-cancel-confirm]').forEach(btn => {
     btn.addEventListener('click', () => _handleCancel(el, btn, p))
   })
 
@@ -1058,13 +1130,17 @@ async function _wirePendingShell(el, p) {
 
     if (!client) continue
     ;(async () => {
+      const iterator = client.watch(item.depositId, { timeoutMs: 60 * 60_000 })
+      const onAbort = () => { try { iterator.return?.() } catch {} }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
       try {
-        const iterator = client.watch(item.depositId, { timeoutMs: 60 * 60_000 })
         for await (const order of iterator) {
+          if (abortSignal.aborted) break
           paint(order)
           if (terminalStates.has(order.state)) break
         }
       } catch { /* network hiccup — focus-refresh below covers it */ }
+      finally { abortSignal.removeEventListener('abort', onAbort) }
     })()
   }
 
@@ -1074,7 +1150,7 @@ async function _wirePendingShell(el, p) {
   // though Peer already marked delivered." One targeted client.order()
   // per non-settled item and we repaint from that.
   const refresh = async () => {
-    if (!client) return
+    if (!client || abortSignal.aborted) return
     await Promise.all([...painters.entries()].map(async ([depositId, paint]) => {
       if (settled.has(depositId)) return
       try {
@@ -1083,11 +1159,17 @@ async function _wirePendingShell(el, p) {
       } catch {}
     }))
   }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refresh()
-  })
+  const onVis = () => { if (document.visibilityState === 'visible') refresh() }
+  document.addEventListener('visibilitychange', onVis)
   window.addEventListener('focus', refresh)
   window.addEventListener('online', refresh)
+  // Detach global listeners when this pending-shell instance is retired
+  // so /cashout re-entries don't stack another set on top.
+  abortSignal.addEventListener('abort', () => {
+    document.removeEventListener('visibilitychange', onVis)
+    window.removeEventListener('focus', refresh)
+    window.removeEventListener('online', refresh)
+  }, { once: true })
 }
 
 function _paintPendingCard(card, order, item) {
@@ -1096,23 +1178,53 @@ function _paintPendingCard(card, order, item) {
   const subEl = card.querySelector('[data-slot="sub"]')
   const bodyEl = card.querySelector('[data-slot="body"]')
   const stepsEl = card.querySelector('[data-slot="steps"]')
+  const progressEl = card.querySelector('[data-slot="progress"]')
   if (titleEl) titleEl.textContent = copy.title
   if (subEl) subEl.textContent = copy.sub
   if (bodyEl) bodyEl.innerHTML = copy.body
   _advanceInFlightSteps(stepsEl, copy.activeStep)
+
+  // Progress track — always present in the DOM (reserved height per
+  // design principle 9, no layout shift). Shows filled % via CSS
+  // width, and the "$X sent · $Y waiting" breakdown appears only on
+  // partial fills.
+  if (progressEl) {
+    if (copy.partial) {
+      progressEl.hidden = false
+      const fill = progressEl.querySelector('[data-slot="progress-fill"]')
+      if (fill) fill.style.width = `${copy.partial.pct}%`
+      const detail = progressEl.querySelector('[data-slot="progress-detail"]')
+      if (detail) {
+        if (copy.partial.isPartial && copy.partial.filledPretty) {
+          detail.innerHTML = `<span>${_escape(copy.partial.filledPretty)} sent</span><span>${_escape(copy.partial.remainingPretty)} waiting</span>`
+          detail.hidden = false
+        } else {
+          detail.hidden = true
+        }
+      }
+    } else {
+      progressEl.hidden = true
+    }
+  }
+
   card.classList.toggle('is-done', order.state === 'delivered')
   card.classList.toggle('is-returned', order.state === 'returned')
+  card.classList.toggle('is-partial', !!copy.partial?.isPartial)
 }
 
 async function _handleCancel(root, btn, p) {
-  const depositId = btn.getAttribute('data-cancel')
+  // btn is the inline "yes, pull funds back" confirm button; the
+  // arm-step already happened via the start button click, so we go
+  // straight into the withdraw ceremony.
+  const depositId = btn.getAttribute('data-cancel-confirm')
   if (!depositId) return
-  const statusEl = root.querySelector(`[data-cancel-status="${depositId}"]`)
+  const statusEl = root.querySelector(`[data-cancel-status="${CSS.escape(depositId)}"]`)
+  const abortBtn = root.querySelector(`[data-cancel-abort="${CSS.escape(depositId)}"]`)
   const setStatus = (s) => { if (statusEl) statusEl.textContent = s }
-  if (!confirm("Cancel this cash-out and pull the funds back to your wallet? This costs a small gas fee on Base.")) return
 
   btn.disabled = true
   btn.style.opacity = '0.6'
+  if (abortBtn) abortBtn.disabled = true
   setStatus('unlocking your wallet…')
 
   try {
@@ -1120,6 +1232,7 @@ async function _handleCancel(root, btn, p) {
       try { await window.ensureAuthorized(p.addr) } catch {
         setStatus('cancel aborted — wallet unlock cancelled')
         btn.disabled = false; btn.style.opacity = '1'
+        if (abortBtn) abortBtn.disabled = false
         return
       }
     }
@@ -1127,6 +1240,7 @@ async function _handleCancel(root, btn, p) {
     if (!embeddedAcct) {
       setStatus('wallet still locked — unlock and try again')
       btn.disabled = false; btn.style.opacity = '1'
+      if (abortBtn) abortBtn.disabled = false
       return
     }
 
@@ -1139,7 +1253,7 @@ async function _handleCancel(root, btn, p) {
       environment: env, rpcUrl: 'https://mainnet.base.org',
       apiKey: _peerCashApiKey(), referrer: 'praxis', relay: { client: bareRelay },
     })
-    const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http('/api/rpc/8453') })
+    const baseSigner = createWalletClient({ chain: base, account: embeddedAcct, transport: http(rpcUrlFor(BASE_CHAIN_ID)) })
 
     setStatus('sending withdraw transaction…')
     await client.withdraw(depositId, { signer: baseSigner })
@@ -1148,12 +1262,13 @@ async function _handleCancel(root, btn, p) {
     _pruneServerOrder(depositId, p.authToken).catch(() => {})
     // Reload so the pending shell recomputes — the card should now be
     // gone (or moved to a done/returned terminal state via watch()).
-    setTimeout(() => { location.href = '/earnings' }, 1200)
+    setTimeout(() => { location.href = '/vault' }, 1200)
   } catch (e) {
     console.warn('cashout cancel failed:', e)
     const msg = e?.remediation || e?.message || 'try again in a moment'
     setStatus(`couldn't cancel — ${String(msg).slice(0, 160)}`)
     btn.disabled = false; btn.style.opacity = '1'
+    if (abortBtn) abortBtn.disabled = false
   }
 }
 
@@ -1164,7 +1279,21 @@ function _pendingStateCopy(order, item) {
   const prettyAmt = knowAmt ? _formatFiat(item.receiveFiat, item.currency) : ''
   const amtPhrase = knowAmt ? `<strong>${_escape(prettyAmt)}</strong>` : 'your cash-out'
   const handlePhrase = item.payee ? ` <strong>${_escape(item.payee)}</strong>` : ''
-  return {
+
+  // Partial-fill data — multiple buyers can cover one deposit. Surface
+  // the progress rather than a generic "confirming payment" line that
+  // hides the fact that money already moved. Principles 1 + 4 + 5.
+  const filledBig = order.filledAmount ? BigInt(order.filledAmount) : 0n
+  const totalBig = order.totalAmount ? BigInt(order.totalAmount) : 0n
+  const filledFrac = totalBig > 0n ? Number(filledBig * 10000n / totalBig) / 10000 : 0
+  const isPartial = filledFrac > 0 && filledFrac < 1 && (s === 'awaiting-buyer' || s === 'matched' || s === 'delivering')
+  const filledFiat = knowAmt ? item.receiveFiat * filledFrac : 0
+  const remainingFiat = knowAmt ? Math.max(0, item.receiveFiat - filledFiat) : 0
+  const filledPretty = knowAmt ? _formatFiat(filledFiat, item.currency) : ''
+  const remainingPretty = knowAmt ? _formatFiat(remainingFiat, item.currency) : ''
+  const pct = Math.round(filledFrac * 100)
+
+  const base = {
     'awaiting-buyer': {
       title: 'waiting for a buyer',
       sub: order.eta?.label || 'this usually takes about an hour',
@@ -1201,6 +1330,26 @@ function _pendingStateCopy(order, item) {
     body: order.explain?.() || 'working on it',
     activeStep: 'submitted',
   }
+
+  // Rewrite for partial fills — the primary story is "$X of $Y
+  // delivered", not "waiting for a buyer" (there ALREADY was one).
+  if (isPartial) {
+    if (s === 'awaiting-buyer' || s === 'matched') {
+      base.title = knowAmt ? `${filledPretty} sent · ${remainingPretty} still to fill` : `${pct}% delivered`
+      base.sub = s === 'awaiting-buyer' ? 'waiting for another buyer for the rest' : 'a second buyer is sending the rest now'
+      base.body = `${knowAmt ? filledPretty : 'Part'} landed in ${prettyPlatform}${handlePhrase}. Peer's marketplace is filling the remaining ${remainingPretty || 'balance'} — same auto-release when that buyer pays.`
+      base.activeStep = 'matched'
+    } else if (s === 'delivering') {
+      base.title = 'confirming the latest fill'
+      base.sub = knowAmt ? `${filledPretty} confirmed · ${remainingPretty} pending` : 'verifying with a cryptographic proof'
+    }
+  }
+  // Expose the raw numbers so the painter can render the progress bar.
+  base.partial = totalBig > 0n && s !== 'returned' ? {
+    pct, filledPretty, remainingPretty, filledFrac,
+    isPartial,
+  } : null
+  return base
 }
 
 async function _pruneServerOrder(depositId, token) {
@@ -1267,9 +1416,17 @@ const ERC20_BAL_ABI = [{ name: 'balanceOf', type: 'function', inputs: [{ name: '
 
 async function _readMultiChainBalances(addr, ethPrices, cashCurrency) {
   const { createPublicClient, http } = await import('./vendor.js')
-  const ethRate = ethPrices?.[cashCurrency.toUpperCase()] || ethPrices?.USD || 0
+  // /api/eth-price returns LOWERCASE keys ({ usd: 2500, eur: 2300 })
+  // — an early version of this code looked for uppercase and quietly
+  // returned 0, painting every ETH row at $0.00. Read both.
+  // Per the CLAUDE.md Fiat Currency rule, prefer the user's chosen fiat
+  // before the USD backstop. Peer's SDK supplies `cashCurrency` when it
+  // knows one; when it doesn't we look up the user's setting rather
+  // than dropping straight to USD.
+  const cc = String(cashCurrency || getUserCurrency() || 'USD').toLowerCase()
+  const ethRate = ethPrices?.[cc] || ethPrices?.[cc.toUpperCase()] || ethPrices?.usd || ethPrices?.USD || 0
   const results = await Promise.all(SOURCE_CHAINS.map(async ({ chainId, name, usdc }) => {
-    const rpcUrl = `/api/rpc/${chainId}`
+    const rpcUrl = rpcUrlFor(chainId)
     const pc = createPublicClient({
       chain: { id: chainId, name, nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
       transport: http(rpcUrl),
@@ -1325,8 +1482,8 @@ async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner
   }
   const { createPublicClient, http, mainnet } = await import('./vendor.js')
   const pc = createPublicClient({
-    chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: ['/api/rpc/1'] } } },
-    transport: http('/api/rpc/1'),
+    chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(1)] } } },
+    transport: http(rpcUrlFor(1)),
   })
   for (let i = 0; i < withdraws.length; i++) {
     const w = withdraws[i]
@@ -1396,7 +1553,10 @@ function _renderBalanceHero(els, chainBalances, ethPrices, cashCurrency, initial
   const totalFiat = chainBalances.reduce((s, c) => s + c.totalFiat, 0)
   els.balanceValue.textContent = _formatFiat(totalFiat, cashCurrency)
 
-  const active = chainBalances.filter(c => c.totalFiat > 0.01)
+  // Any chain with non-zero raw balance surfaces — filtering by
+  // fiat threshold hid chains where the ETH price feed was missing
+  // (fiat = 0 even for real balances). Truth is in the raw amounts.
+  const active = chainBalances.filter(c => c.ethWei > 0n || c.usdcUnits > 0n || c.boldWei > 0n)
   if (active.length === 0) {
     els.balanceSub.textContent = 'no funds detected yet — add some to your wallet first'
     return

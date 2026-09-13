@@ -1,6 +1,6 @@
 // Journal — encrypted private writing, wallet-only access
 // Includes script mode: Fountain-based screenplay editor
-import { escapeHtml, registerPage, getWalletProvider, dbg } from './utils.js'
+import { escapeHtml, registerPage, getWalletProvider, dbg, getAuthToken } from './utils.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 import { createMarkdownEditor } from './markdown-editor.js'
 import {
@@ -60,7 +60,14 @@ async function _decryptE2E(data) {
   return new TextDecoder().decode(plainBuf)
 }
 
-// Re-authenticate when session expires (server restart, 24h expiry)
+// Re-authenticate when session expires (server restart, 24h expiry).
+// The journal-key personal_sign is used ONLY to derive the AES key —
+// never as an /api/auth message. A deterministic message has no
+// freshness or host binding, so a signature captured once would mint
+// permanent sessions on any Praxis instance the wallet owner touches.
+// We piggy-back on the same `admin:<host>:<ts>` session token every
+// other Praxis surface uses (via `getAuthToken`) and keep the v1
+// derivation signature strictly local.
 async function reauthJournal() {
   const addr = window.getWalletAddress?.()
   if (!addr || !getWalletProvider()) return false
@@ -69,14 +76,10 @@ async function reauthJournal() {
     const normalAddr = addr.toLowerCase()
     const keyMsg = `praxis:journal-key:v1:${normalAddr}`
     const keySig = await getWalletProvider().request({ method: 'personal_sign', params: [keyMsg, normalAddr] })
-    const authRes = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: normalAddr, signature: keySig, message: keyMsg }),
-    })
-    const authData = await authRes.json()
-    if (authData.error) return false
-    journalToken = authData.token
+    // Fresh, host-bound session — no journal-key round-trip to /api/auth.
+    const token = await getAuthToken()
+    if (!token) return false
+    journalToken = token
     sessionStorage.setItem('praxis:journal-token', journalToken)
 
     const sigBytes = new Uint8Array(keySig.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)))
@@ -265,20 +268,17 @@ async function initJournal() {
 
       if (unlockStatus) unlockStatus.textContent = t('journal.authenticating')
       const normalAddr = addr.toLowerCase()
-      // single signature: deterministic key message, also used for auth
+      // v1 signature is a LOCAL secret used only to derive the AES key;
+      // it never travels to the server. The Praxis session token comes
+      // from the shared `admin:<host>:<ts>` flow (fresh + host-pinned).
       const keyMsg = `praxis:journal-key:v1:${normalAddr}`
       const keySig = await getWalletProvider().request({
         method: 'personal_sign',
         params: [keyMsg, normalAddr],
       })
-      const authRes = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: normalAddr, signature: keySig, message: keyMsg }),
-      })
-      const authData = await authRes.json()
-      if (authData.error) { if (unlockStatus) unlockStatus.textContent = authData.error; return }
-      journalToken = authData.token
+      const token = await getAuthToken()
+      if (!token) { if (unlockStatus) unlockStatus.textContent = 'auth unavailable — try again'; return }
+      journalToken = token
       sessionStorage.setItem('praxis:journal-token', journalToken)
 
       if (unlockStatus) unlockStatus.textContent = t('journal.derivingKey')

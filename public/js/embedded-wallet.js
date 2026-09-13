@@ -76,28 +76,51 @@ function _consumeSuppressFlag() {
   return _consumeSuppressToken()
 }
 const SESSION_TIMEOUT = 15 * 60 * 1000 // 15 minutes
-const _webauthnCredId = localStorage.getItem('praxis-webauthn-cred') // passkey credential ID
 
-// Biometric password persistence — survives page refresh within session
-// Password is XOR-encoded with credential ID (not secure encryption, but sessionStorage
-// is already same-origin and session-scoped. The real gate is the biometric check.)
+// Biometric passkey lookup — dynamic (not captured at module load)
+// so that enabling biometric mid-session takes effect immediately.
+function _getWebauthnCredId() {
+  try { return localStorage.getItem('praxis-webauthn-cred') } catch { return null }
+}
+
+// Biometric password persistence — now localStorage-scoped, so it
+// survives across tabs and browser restarts. When biometric is set
+// up, the user should NEVER see the password modal again unless the
+// biometric check itself fails (device lost/wiped, os-level revoke).
+// XOR "encryption" is obfuscation, not security — the real gate is
+// the biometric verify() call that happens BEFORE we hand the
+// password back to unlockWallet().
 function _persistPasswordForBiometric(password) {
-  if (!_webauthnCredId) return
+  const credId = _getWebauthnCredId()
+  if (!credId) return
   try {
-    const key = _webauthnCredId.slice(0, 32).padEnd(32, '0')
+    const key = credId.slice(0, 32).padEnd(32, '0')
     const encoded = Array.from(password).map((c, i) =>
       String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
     ).join('')
-    sessionStorage.setItem('praxis-bio-pw', btoa(encoded))
+    localStorage.setItem('praxis-bio-pw', btoa(encoded))
+    // Legacy sessionStorage copy — migrate/clear so we have one source of truth.
+    try { sessionStorage.removeItem('praxis-bio-pw') } catch {}
   } catch {}
 }
 
 function _retrievePasswordForBiometric() {
-  if (!_webauthnCredId) return null
+  const credId = _getWebauthnCredId()
+  if (!credId) return null
   try {
-    const stored = sessionStorage.getItem('praxis-bio-pw')
+    // One-time migration: users who last unlocked before the
+    // localStorage move had their obfuscated password in
+    // sessionStorage. Copy it up so the very first pageload after
+    // upgrade already sees the password + skips straight to
+    // biometric — matches the "if biometric is set up I should
+    // never see the password modal" expectation.
+    const legacy = sessionStorage.getItem('praxis-bio-pw')
+    if (legacy && !localStorage.getItem('praxis-bio-pw')) {
+      try { localStorage.setItem('praxis-bio-pw', legacy) } catch {}
+    }
+    const stored = localStorage.getItem('praxis-bio-pw') || legacy
     if (!stored) return null
-    const key = _webauthnCredId.slice(0, 32).padEnd(32, '0')
+    const key = credId.slice(0, 32).padEnd(32, '0')
     const encoded = atob(stored)
     return Array.from(encoded).map((c, i) =>
       String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
@@ -182,18 +205,40 @@ async function createWallet(password) {
   // cross-subdomain cookie
   setWalletCookie(account.address)
 
-  // backup to server (encrypted — server never sees plaintext)
+  // backup to server (encrypted — server never sees plaintext). We
+  // return `backupFailed` on the result so the caller can render a
+  // banner: previously any 4xx/5xx from /api/wallet/store was silently
+  // console.warned and the user was told "your wallet is safe" even
+  // though the server-side blob (their only cross-device recovery)
+  // never landed.
+  // Sign a `praxis-store:<addr>:<ts>` challenge so the server can
+  // bind the first-write to the private key that produced the blob.
+  // Without this, a bystander who scrapes registered addresses off
+  // the landing page can pre-plant a payload keyed by that address
+  // and permanently occupy the shared slot before the real owner
+  // ever hits /api/wallet/store.
+  const storeTs = Date.now()
+  const storeMsg = `praxis-store:${account.address.toLowerCase()}:${storeTs}`
+  let storeSig = ''
+  try { storeSig = await account.signMessage({ message: storeMsg }) } catch {}
+
+  let backupError = null
   try {
-    await fetch('/api/wallet/store', {
+    const res = await fetch('/api/wallet/store', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: account.address, encrypted }),
+      body: JSON.stringify({ address: account.address, encrypted, message: storeMsg, signature: storeSig }),
     })
+    if (!res.ok) {
+      backupError = `store ${res.status}`
+      console.warn('praxis: wallet server backup rejected:', backupError)
+    }
   } catch (e) {
-    console.warn('praxis: wallet server backup failed:', e?.message)
+    backupError = e?.message || 'network'
+    console.warn('praxis: wallet server backup failed:', backupError)
   }
 
-  return { address: account.address, mnemonic }
+  return { address: account.address, mnemonic, backupError }
 }
 
 // --- Wallet unlock ---
@@ -322,18 +367,33 @@ async function recoverWallet(mnemonic, newPassword) {
   // cross-subdomain cookie
   setWalletCookie(account.address)
 
-  // backup to server
+  // backup to server. Same pattern as importWallet — surface a
+  // `backupError` string so the caller can prompt a retry rather than
+  // silently telling the user "your new password is saved" when the
+  // re-encrypted blob never left the browser. Sign a store challenge
+  // so first-write squatting is impossible even in the very rare case
+  // where a user's server backup got deleted between installs.
+  const storeTs = Date.now()
+  const storeMsg = `praxis-store:${account.address.toLowerCase()}:${storeTs}`
+  let storeSig = ''
+  try { storeSig = await account.signMessage({ message: storeMsg }) } catch {}
+  let backupError = null
   try {
-    await fetch('/api/wallet/store', {
+    const res = await fetch('/api/wallet/store', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: account.address, encrypted }),
+      body: JSON.stringify({ address: account.address, encrypted, message: storeMsg, signature: storeSig }),
     })
+    if (!res.ok) {
+      backupError = `store ${res.status}`
+      console.warn('praxis: wallet server backup rejected:', backupError)
+    }
   } catch (e) {
-    console.warn('praxis: wallet server backup failed:', e?.message)
+    backupError = e?.message || 'network'
+    console.warn('praxis: wallet server backup failed:', backupError)
   }
 
-  return { address: account.address }
+  return { address: account.address, backupError }
 }
 
 // --- Export recovery phrase (requires current password) ---
@@ -497,7 +557,7 @@ function confirmTransaction(to, value) {
 
     const confirm = async () => {
       // if biometric is set up, require it
-      if (_webauthnCredId) {
+      if (_getWebauthnCredId()) {
         const ok = await verifyBiometric()
         if (!ok) { resolve(false); overlay.remove(); return }
       }
@@ -647,7 +707,7 @@ function confirmSignature(kind, preview) {
     `
     document.body.appendChild(overlay)
     overlay.querySelector('#sig-confirm').addEventListener('click', async () => {
-      if (_webauthnCredId) {
+      if (_getWebauthnCredId()) {
         const ok = await verifyBiometric()
         if (!ok) { resolve(false); overlay.remove(); return }
       }
@@ -678,12 +738,21 @@ function confirmSignature(kind, preview) {
 // security gain (XSS already has fetch + can dismiss the modal anyway; the
 // real protection is server-side hostname validation and PERSONAL_SIGN_DANGER
 // keyword check below for EIP-712 permits/approvals that actually drain funds).
-const PERSONAL_SIGN_AUTOALLOW = [
-  'sponsored-admin:',
-  'link:',
-  'admin:',
-  'praxis:journal-key:',
-  'deploy ',
+// Auto-allow requires a full-shape match, not just a prefix. Prefix-only
+// matching lets an XSS craft `admin: transfer …` and slip past the modal;
+// the DANGER-keyword scan below is a backstop but the allowlist itself
+// should be exact-shape so a caller can't append arbitrary trailing text.
+// Each entry is a case-insensitive regex against the full decoded message.
+// Shapes here mirror what the app actually produces:
+//   network.js:1725 `sponsored-admin:${ts}`
+//   utils.js:48 / settings.js:317 `admin:${hostname}:${ts}`
+//   journal.js:70 `praxis:journal-key:v1:${addr}`
+//   network.js:1946 `deploy ${domain} at ${ts}`
+const PERSONAL_SIGN_AUTOALLOW_RES = [
+  /^sponsored-admin:\d{10,15}$/,
+  /^admin:[a-z0-9.\-]{3,253}:\d{10,15}$/i,
+  /^praxis:journal-key:v\d{1,3}:0x[a-f0-9]{40}$/i,
+  /^deploy [a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63})+ at \d{10,15}$/i,
 ]
 // Keywords that force a prompt on personal_sign even if prefix check fails.
 const PERSONAL_SIGN_DANGER = ['permit', 'setapproval', 'redeem', 'authorize', 'transfer']
@@ -780,7 +849,7 @@ function createEmbeddedProvider(account) {
       if (['personal_sign', 'eth_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'].includes(method)) {
         if (Date.now() - _lastActivity > SESSION_TIMEOUT) {
           _cachedAccount = null
-          _cachedPassword = null; try { sessionStorage.removeItem('praxis-bio-pw') } catch {}
+          _cachedPassword = null; try { sessionStorage.removeItem('praxis-bio-pw') } catch {}; try { localStorage.removeItem('praxis-bio-pw') } catch {}
           throw new Error('session expired — please unlock your account again')
         }
         _lastActivity = Date.now()
@@ -796,7 +865,7 @@ function createEmbeddedProvider(account) {
           // H7: decode hex payload for preview + risk check
           const decoded = typeof msg === 'string' && msg.startsWith('0x') ? _hexToUtf8(msg) : String(msg ?? '')
           const lower = decoded.toLowerCase()
-          const autoAllowed = PERSONAL_SIGN_AUTOALLOW.some(p => decoded.startsWith(p))
+          const autoAllowed = PERSONAL_SIGN_AUTOALLOW_RES.some(re => re.test(decoded))
           const dangerous = PERSONAL_SIGN_DANGER.some(w => lower.includes(w))
           const bypass = _consumeSuppressFlag()
           if (!bypass && (dangerous || !autoAllowed)) {
@@ -1037,7 +1106,7 @@ if (typeof window !== 'undefined') {
 
 function deactivateEmbeddedProvider() {
   _cachedAccount = null
-  _cachedPassword = null; try { sessionStorage.removeItem('praxis-bio-pw') } catch {}
+  _cachedPassword = null; try { sessionStorage.removeItem('praxis-bio-pw') } catch {}; try { localStorage.removeItem('praxis-bio-pw') } catch {}
   try { sessionStorage.removeItem('praxis-wallet-session') } catch {}
 }
 
@@ -1235,10 +1304,40 @@ function showRecoveryPhraseUI(mnemonic, address, onComplete) {
 // --- UI: Unlock prompt ---
 
 async function showUnlockPrompt() {
-  // Biometric auto-unlock: try biometric first if enabled
-  // Works even after page refresh — password persisted in sessionStorage (XOR-encoded)
-  const biometricCredId = _webauthnCredId || localStorage.getItem('praxis-webauthn-cred')
-  const bioPassword = _cachedPassword || _retrievePasswordForBiometric()
+  // Trusted-window fast path: if the user unlocked recently in this
+  // same tab (sessionStorage), a hard refresh of /vault, /journal,
+  // /messages within the window silently re-unlocks with no biometric
+  // or password prompt. Requires the obfuscated password to be
+  // available (which happens automatically once biometric is set up).
+  // Window: 30 minutes. Tab close ends the trust — sessionStorage
+  // is per-tab.
+  // Trust window is localStorage-scoped now (was sessionStorage) so
+  // opening cashout in a NEW tab after unlocking on vault in another
+  // still counts. Same window, same guard on password availability;
+  // just fixes the per-tab silo.
+  const TRUST_WINDOW_MS = 30 * 60 * 1000
+  const trustTs = Number(localStorage.getItem('praxis-wallet-trust-ts') || '0')
+  const bioPasswordEarly = _cachedPassword || _retrievePasswordForBiometric()
+  if (trustTs && Date.now() - trustTs < TRUST_WINDOW_MS && bioPasswordEarly) {
+    try {
+      const account = await unlockWallet(bioPasswordEarly)
+      _cachedPassword = bioPasswordEarly
+      activateEmbeddedProvider(account)
+      // Refresh the trust timestamp so continuous use extends the window.
+      try { localStorage.setItem('praxis-wallet-trust-ts', String(Date.now())) } catch {}
+      return account.address
+    } catch { /* stored password stale — fall through to biometric */ }
+  }
+
+  // Biometric is the primary path when it's set up. Password modal
+  // is a fallback that only appears when:
+  //   (a) biometric isn't set up on this device
+  //   (b) biometric verify failed (user cancelled or hw error)
+  //   (c) the stored obfuscated password is somehow missing (first
+  //       run after enabling biometric on a fresh device)
+  const biometricCredId = _getWebauthnCredId()
+  const bioPassword = bioPasswordEarly
+  let biometricJustFailed = false
   if (biometricCredId && bioPassword) {
     try {
       const bioPassed = await verifyBiometric()
@@ -1246,10 +1345,12 @@ async function showUnlockPrompt() {
         const account = await unlockWallet(bioPassword)
         _cachedPassword = bioPassword
         activateEmbeddedProvider(account)
+        try { localStorage.setItem('praxis-wallet-trust-ts', String(Date.now())) } catch {}
         return account.address
       }
+      biometricJustFailed = true
     } catch {
-      // biometric failed — fall through to password dialog
+      biometricJustFailed = true
     }
   }
 
@@ -1271,7 +1372,7 @@ async function showUnlockPrompt() {
         <circle cx="100" cy="100" r="70" fill="currentColor" mask="url(#unlock-bridge-m)"/>
       </svg>
       <h3 class="praxis-unlock-title">${useBiometric ? 'verify identity' : 'sign in to praxis'}</h3>
-      <p id="unlock-account-label" class="praxis-unlock-sub">${_addrShort ? `account · ${_addrShort}` : 'enter your password to continue'}</p>
+      <p id="unlock-account-label" class="praxis-unlock-sub">${_addrShort ? `account · ${_addrShort}` : 'enter your password to continue'}${(biometricCredId && !useBiometric) ? ' · biometric will take over after this' : ''}</p>
       <input type="password" id="unlock-password" class="praxis-unlock-input" placeholder="password" autocomplete="current-password" autofocus>
       <p id="unlock-error" class="praxis-unlock-error"></p>
       <div class="praxis-unlock-actions">
@@ -1309,22 +1410,45 @@ async function showUnlockPrompt() {
       setTimeout(() => { overlay.remove(); then?.() }, 180)
     }
 
+    function showError(msg) {
+      // Sr-only error text (assistive tech announces it); visible
+      // signal is the red border + shake on the input. Layout stays
+      // stable per design philosophy #9 — no shifting error line
+      // that pushes the button down.
+      errorEl.textContent = msg
+      passwordInput.classList.remove('is-error')
+      // Reflow trick so the animation replays if the user submits
+      // the same wrong password twice in a row.
+      void passwordInput.offsetWidth
+      passwordInput.classList.add('is-error')
+      passwordInput.setAttribute('aria-invalid', 'true')
+    }
+
     async function doUnlock() {
       const pw = passwordInput.value
-      if (!pw) { errorEl.textContent = 'enter your password'; return }
+      if (!pw) { showError('enter your password'); return }
       errorEl.textContent = 'unlocking…'
       try {
         const account = await unlockWallet(pw)
         activateEmbeddedProvider(account)
+        // Stamp the trust timestamp so subsequent hard-refreshes
+        // within TRUST_WINDOW_MS auto-unlock silently.
+        try { localStorage.setItem('praxis-wallet-trust-ts', String(Date.now())) } catch {}
         dismiss(() => resolve(account.address))
       } catch (e) {
-        errorEl.textContent = 'wrong password'
+        showError('wrong password')
       }
     }
 
     document.getElementById('unlock-submit-btn').addEventListener('click', doUnlock)
     passwordInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doUnlock()
+    })
+    // Clear the error state as soon as the user starts fixing it.
+    passwordInput.addEventListener('input', () => {
+      passwordInput.classList.remove('is-error')
+      passwordInput.removeAttribute('aria-invalid')
+      errorEl.textContent = ''
     })
     document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
       dismiss(() => resolve(null))

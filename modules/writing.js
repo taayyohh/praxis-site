@@ -44,7 +44,7 @@ export default {
         if (p.language) metaHtml += `<span style="color:var(--dim);font-size:0.75em">[${esc(p.language)}]</span> `
         if (p.isbn) metaHtml += `<span class="writing-isbn" style="color:var(--dim);font-size:0.7em">ISBN ${esc(p.isbn)}</span> `
         if (p.awards) metaHtml += `<div class="writing-awards" style="color:var(--green,var(--accent));font-size:0.8em;margin-top:0.15em">${esc(p.awards)}</div>`
-        return `<div class="writing-card${hasSrc ? ' writing-card-clickable' : ''}" ${hasSrc ? `data-src="${esc(p.src)}" data-title="${esc(p.title || '')}"` : ''} style="display:flex;gap:1em;padding:0.75em;border:1px solid var(--border);border-radius:4px;${hasSrc ? 'cursor:pointer;' : ''}transition:border-color 0.2s">
+        return `<div class="writing-card${hasSrc ? ' writing-card-clickable' : ''}" ${hasSrc ? `data-src="${esc(p.src)}" data-title="${esc(p.title || '')}" tabindex="0" role="button"` : ''} style="display:flex;gap:1em;padding:0.75em;border:1px solid var(--border);border-radius:4px;${hasSrc ? 'cursor:pointer;' : ''}transition:border-color 0.2s">
           ${coverHtml}
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:0.5ch;flex-wrap:wrap">

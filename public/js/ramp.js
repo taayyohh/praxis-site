@@ -4,15 +4,13 @@
 
 import { bridgeToOptimism, bridgeUsdcToOptimismEth, initRelay } from './relay-bridge.js'
 import { dbg } from './utils.js'
+import { getUserCurrency } from './fiat.js'
+import { BASE_CHAIN_ID, OPTIMISM_CHAIN_ID, USDC_BASE, ZERO_ADDRESS as ETH_ADDRESS, ETH_NATIVE_CURRENCY } from './chains.js'
 
 const ZKP2P_API = 'https://api.zkp2p.xyz/v1'
 const ZKP2P_INDEXER = 'https://indexer.zkp2p.xyz/v1/graphql'
-const BASE_CHAIN_ID = 8453
 const BASE_RPC = 'https://mainnet.base.org'
-const BASE_CHAIN = { id: BASE_CHAIN_ID, name: 'Base', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [BASE_RPC] } } }
-const OPTIMISM_CHAIN_ID = 10
-const ETH_ADDRESS = '0x0000000000000000000000000000000000000000'
-const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+const BASE_CHAIN = { id: BASE_CHAIN_ID, name: 'Base', nativeCurrency: { ...ETH_NATIVE_CURRENCY }, rpcUrls: { default: { http: [BASE_RPC] } } }
 const ESCROW_V2 = '0x777777779d229cdF3110e9de47943791c26300Ef'
 const ORCHESTRATOR_V2 = '0x888888359E981B5225CA48fbCdCeff702FC3b888'
 const SWAP_ROUTER_BASE = '0x2626664c2603336E57B271c5C0b26F421741e481'
@@ -56,6 +54,17 @@ const PAYMENT_METHODS = [
   { id: 'cashapp', label: 'Cash App', icon: 'ph-currency-dollar' },
   { id: 'venmo', label: 'Venmo', icon: 'ph-venmo-logo', disabled: true, disabledReason: 'coming soon' },
 ]
+
+// Human-friendly one-liners for each provider row — kept short so the row stays
+// legible on a phone. No % fee is quoted because zkp2p rates are peer-set and
+// float; the actual rate is shown as its own line once a quote lands.
+const PROVIDER_FEE_BLURB = {
+  wise: 'bank transfer · fast in the US, EU, UK',
+  revolut: 'revolut-to-revolut · usually instant',
+  cashapp: 'send with your $cashtag · US only',
+  venmo: 'send from your Venmo balance',
+  paypal: 'send from your PayPal balance',
+}
 
 // Status states: idle → quoting → matching → paying → funded → swapping → bridging → done
 const STATUS = {
@@ -846,7 +855,7 @@ export async function signalOnrampIntent(client, depositQuote, recipientAddress,
     toAddress: recipientAddress,
     processorName: depositQuote.processorName,
     payeeDetails: depositQuote.payeeDetails || '',
-    fiatCurrencyCode: depositQuote.fiatCurrencyCode || 'USD',
+    fiatCurrencyCode: depositQuote.fiatCurrencyCode || (getUserCurrency?.() || 'USD').toUpperCase(),
     conversionRate: BigInt(depositQuote.conversionRate || '0'),
     escrowAddress: depositQuote.escrowAddress,
     orchestratorAddress: depositQuote.orchestratorAddress || ORCHESTRATOR_V2,
@@ -1219,9 +1228,26 @@ function clearPendingIntent() {
 // --- Onramp Modal ---
 
 export async function showOnrampModal(recipientAddress, amountUSD = 20) {
-  const { overlay, dialog } = createModal()
-  dialog.classList.add('ramp-dialog')
-  dialog.style.maxWidth = '460px'
+  // Full-screen doc shell — mirrors showSendModal / showSwapModal in vault.js.
+  // The modal IS the page: on mobile the on-screen keyboard doesn't fight a
+  // floating card, and the amount input gets to be the hero.
+  const existing = document.getElementById('ramp-onramp-modal')
+  if (existing) { existing.remove(); return }
+  const overlay = document.createElement('div')
+  overlay.id = 'ramp-onramp-modal'
+  overlay.className = 'praxis-modal-overlay vault-save-overlay'
+  overlay.style.zIndex = '10002'
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'wizard-close vault-save-close'
+  closeBtn.setAttribute('aria-label', 'close')
+  closeBtn.innerHTML = '&times;'
+  const dialog = document.createElement('div')
+  dialog.className = 'vault-save-doc ramp-doc'
+  overlay.appendChild(closeBtn)
+  overlay.appendChild(dialog)
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler) }
+  })
   let currentMethod = getPreferredMethod()
   let currentAmount = amountUSD
   let quoteData = null
@@ -1275,6 +1301,23 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) { cleanup(); overlay.remove() }
   })
+  closeBtn.addEventListener('click', () => { cleanup(); overlay.remove() })
+
+  // Small helper: render a payment provider as a vertical row (icon + name + fee blurb),
+  // per docs/design-philosophy.md — content earns its size, no chunky card grid.
+  function _providerRow(m, opts = {}) {
+    const active = opts.active
+    const disabled = m.disabled
+    const feeBlurb = PROVIDER_FEE_BLURB[m.id] || (disabled ? (m.disabledReason || 'coming soon') : 'competitive rates · P2P')
+    return `<button class="ramp-provider-row${active ? ' active' : ''}" data-method="${m.id}" ${disabled ? 'disabled' : ''}>
+      <span class="ramp-provider-icon"><i class="ph ${m.icon}"></i></span>
+      <span class="ramp-provider-body">
+        <span class="ramp-provider-name">${m.label}${disabled ? ` <span class="ramp-provider-soon">${m.disabledReason || 'soon'}</span>` : ''}</span>
+        <span class="ramp-provider-fee">${feeBlurb}</span>
+      </span>
+      ${active ? '<span class="ramp-provider-check"><i class="ph ph-check"></i></span>' : '<i class="ph ph-caret-right ramp-provider-caret" aria-hidden="true"></i>'}
+    </button>`
+  }
 
   // Determine which view to show based on status + state
   function currentView() {
@@ -1289,18 +1332,27 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
     const view = currentView()
     const canEdit = status === STATUS.idle || status === STATUS.quoting || status === STATUS.error
 
-    // Header
-    let headerTitle = 'BUY'
-    if (view === 'pay') headerTitle = 'COMPLETE PAYMENT'
-    else if (view === 'verify') headerTitle = 'VERIFY PAYMENT'
-    else if (view === 'done') headerTitle = 'COMPLETE'
+    // Lead — title + short warm subtitle changes per view.
+    let leadTitle = 'add funds'
+    let leadSub = 'Send money to your Praxis wallet — with Wise, Cash App, or Revolut. Funds arrive on Optimism.'
+    if (view === 'pay') {
+      leadTitle = 'complete payment'
+      leadSub = 'Open your payment app and send exactly the amount below. It\'s safe to close this — we\'ll pick up where you left off.'
+    } else if (view === 'verify') {
+      leadTitle = 'verifying'
+      leadSub = 'We\'re confirming your transfer with a zero-knowledge proof. Usually 2–5 minutes.'
+    } else if (view === 'done') {
+      leadTitle = 'all set'
+      leadSub = 'Your funds are on Optimism and ready to spend.'
+    }
 
-    let html = ''
-    html += `<div class="ramp-header">
-      <button class="ramp-header-back" id="ramp-cancel" title="close"><i class="ph ph-arrow-left"></i></button>
-      <div class="ramp-header-title">${headerTitle}</div>
-      <div class="ramp-header-spacer"></div>
-    </div>`
+    let html = `
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title"><h1>${leadTitle}</h1></div>
+        <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+      </header>
+      <p class="vault-save-lead-sub">${leadSub}</p>
+    `
 
     // Buy view
     if (view === 'buy') {
@@ -1312,63 +1364,74 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
       const methodLabel = PAYMENT_METHOD_LABEL[currentMethod] || currentMethod
       const methodIcon = PAYMENT_METHODS.find(p => p.id === currentMethod)?.icon || 'ph-currency-circle-dollar'
       const quoteCount = quoteData?.quotes?.length || 0
+      const amountEntered = Number(currentAmount) > 0
+      const feeBlurb = PROVIDER_FEE_BLURB[currentMethod] || ''
 
-      html += `<div class="ramp-tabs">
-        <button class="ramp-tab active" data-tab="buy">BUY</button>
-        <button class="ramp-tab" data-tab="sell">SELL</button>
+      // Small BUY/SELL toggle above the doc body — one home per action.
+      html += `<div class="ramp-tabs ramp-tabs-doc">
+        <button class="ramp-tab active" data-tab="buy">buy</button>
+        <button class="ramp-tab" data-tab="sell">sell</button>
       </div>`
 
-      html += `<div class="ramp-body">`
+      html += `<section class="vault-save-doc-body">`
 
-      // If a stale pending intent exists (from localStorage or on-chain) but we ended up on the Buy view,
-      // surface a banner so the user can resume or discard it without having to navigate around.
+      // Stale pending banner — surface but keep it small.
       const stalePending = loadPendingIntent(recipientAddress)
       if (stalePending && status !== STATUS.paying) {
         const stub = stalePending.depositQuote || {}
         const stubMethod = PAYMENT_METHOD_LABEL[stub.processorName] || stub.processorName || 'Cash App'
         const stubAmount = stub.fiatAmountFormatted || stalePending.currentAmount || '?'
-        html += `<div class="ramp-status-msg" style="display:flex;align-items:center;gap:0.6em;flex-wrap:wrap">
-          <i class="ph ph-clock" style="font-size:1em;color:var(--accent)"></i>
-          <span style="flex:1">pending order: $${stubAmount} via ${stubMethod}</span>
-          <button class="ramp-method-pill" id="ramp-resume-pending" style="font-size:0.75em;padding:0.25em 0.7ch">resume</button>
-          <button class="ramp-method-pill" id="ramp-discard-pending" style="font-size:0.75em;padding:0.25em 0.7ch;border-color:var(--red,#a44);color:var(--red,#a44)">discard</button>
+        html += `<div class="ramp-pending-banner">
+          <i class="ph ph-clock"></i>
+          <span>pending order: $${escapeHtml(String(stubAmount))} via ${escapeHtml(stubMethod)}</span>
+          <button class="ramp-method-pill" id="ramp-resume-pending">resume</button>
+          <button class="ramp-method-pill ramp-danger" id="ramp-discard-pending">discard</button>
         </div>`
       }
-      html += `<div class="ramp-input-card">
-        <div class="ramp-input-label">You send</div>
-        <div class="ramp-input-row">
-          <input id="ramp-amount" class="ramp-amount-input" type="number" min="1" step="1" value="${currentAmount}" ${canEdit ? '' : 'disabled'} />
-          <span class="ramp-currency-pill"><i class="ph ph-flag" style="font-size:0.95em"></i>${fiatCcy}</span>
+
+      // AMOUNT: hero input, mirrors .vault-save-amount from vault.js.
+      html += `<div class="vault-save-amount">
+        <div class="vault-save-amount-head">
+          <span class="vault-save-field-label">you send</span>
+        </div>
+        <div class="vault-save-amount-row">
+          <input id="ramp-amount" type="number" min="1" step="1" value="${currentAmount}" class="vault-save-amount-input" inputmode="decimal" autocomplete="off" ${canEdit ? '' : 'disabled'} />
+          <div class="vault-save-amount-token"><i class="ph ph-flag"></i><span>${fiatCcy}</span></div>
+        </div>
+        <div class="vault-save-amount-foot">
+          <span class="vault-save-fiat">≈ ${tokenAmount} USDC</span>
+          <span class="vault-save-amount-arrow" aria-hidden="true">→</span>
+          <span class="vault-save-output">auto-bridged to Optimism</span>
         </div>
       </div>`
 
-      html += `<div class="ramp-input-card">
-        <div class="ramp-input-label">Paying using</div>
-        <div class="ramp-input-row">
-          <button id="ramp-method-picker" class="ramp-method-pill"><i class="ph ${methodIcon}"></i>${methodLabel}<i class="ph ph-caret-down" style="font-size:0.75em"></i></button>
-        </div>
-      </div>`
+      // PROVIDER row (progressive: only prompt once amount > 0).
+      if (amountEntered) {
+        html += `<div class="ramp-provider-section">
+          <div class="vault-save-field-label">pay with</div>
+          <button id="ramp-method-picker" class="ramp-provider-row ramp-provider-row-selected" type="button">
+            <span class="ramp-provider-icon"><i class="ph ${methodIcon}"></i></span>
+            <span class="ramp-provider-body">
+              <span class="ramp-provider-name">${methodLabel}</span>
+              <span class="ramp-provider-fee">${feeBlurb}</span>
+            </span>
+            <span class="ramp-provider-change">change</span>
+          </button>
+        </div>`
+      }
 
-      html += `<div class="ramp-input-card">
-        <div class="ramp-input-label">You receive</div>
-        <div class="ramp-input-row">
-          <div class="ramp-amount-input" style="pointer-events:none">${tokenAmount}</div>
-          <span class="ramp-currency-pill"><i class="ph ph-coin" style="font-size:0.95em"></i>USDC</span>
-        </div>
-        <div class="ramp-receive-meta"><span>≈ $${currentAmount}</span><span>auto-bridged to Optimism</span></div>
-      </div>`
-
+      // QUOTE row — best rate + link to alternatives. Only after a quote lands.
       if (status === STATUS.quoting) {
         html += `<div class="ramp-status-msg"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> fetching best rate…</div>`
-      } else if (quoteData && quoteData.amount !== '~') {
+      } else if (quoteData && quoteData.amount !== '~' && amountEntered) {
         const bestQuote = quoteData.quotes?.[0]
         const depShort = bestQuote?.depositor ? `${bestQuote.depositor.slice(0, 6)}…${bestQuote.depositor.slice(-4)}` : ''
         const appLabel = PAYMENT_METHOD_LABEL[bestQuote?.processorName || currentMethod] || methodLabel
-        html += `<div class="ramp-rate-row" id="ramp-view-quotes">
+        html += `<div class="ramp-rate-row ramp-rate-row-doc" id="ramp-view-quotes">
           <div style="flex:1">
             <div class="ramp-rate-info">
               <span class="ramp-rate-text">1 USDC = ${rate} ${fiatCcy}</span>
-              <span class="ramp-rate-best">BEST</span>
+              <span class="ramp-rate-best">best</span>
             </div>
             <div class="ramp-rate-meta">
               ${depShort ? `<span>${depShort}</span><span>·</span>` : ''}
@@ -1384,17 +1447,19 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
         html += `<div class="ramp-status-msg error">${escapeHtml(errorMessage)}</div>`
       }
       if (status === STATUS.matching) {
-        html += `<div class="ramp-status-msg"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> finding liquidity…</div>`
+        html += `<div class="ramp-status-msg"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> finding a seller…</div>`
       }
 
-      html += `<button id="ramp-confirm" class="ramp-primary-btn" ${canEdit ? '' : 'disabled'}>${status === STATUS.matching ? 'STARTING…' : 'START ORDER'}</button>`
-      html += `</div>` // ramp-body
+      html += `<div class="vault-save-actions">
+        <button id="ramp-confirm" class="vault-save-btn" ${canEdit && amountEntered ? '' : 'disabled'}>${status === STATUS.matching ? 'starting…' : (amountEntered ? 'start order' : 'enter an amount')}</button>
+      </div>`
+      html += `</section>`
     }
 
     // Payment view
     else if (view === 'pay') {
+      html += `<section class="vault-save-doc-body">`
       html += _stepsHtml('payment', [])
-      html += `<div class="ramp-body">`
 
       const remaining = paymentExpiresAt - Date.now()
       html += `<div class="ramp-timer" id="ramp-timer"><i class="ph ph-clock"></i> Order expires in ${_formatTimer(remaining)}</div>`
@@ -1431,16 +1496,18 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
         <span>I understand that not following the instructions above may lead to permanent loss of funds.</span>
       </label>`
 
-      html += `<button id="ramp-paid-btn" class="ramp-primary-btn" ${confirmChecked ? '' : 'disabled'}>I'VE SENT THE PAYMENT</button>`
-      html += `<button id="ramp-discard-btn" class="ramp-secondary-btn">discard this order</button>`
-      html += `<div id="ramp-status" class="ramp-status-msg" style="display:none"></div>`
-      html += `</div>` // body
+      html += `<div class="vault-save-actions">
+        <button id="ramp-paid-btn" class="vault-save-btn" ${confirmChecked ? '' : 'disabled'}>I've sent the payment</button>
+        <button id="ramp-discard-btn" class="ramp-secondary-btn">discard this order</button>
+        <div id="ramp-status" class="vault-save-status" style="display:none"></div>
+      </div>`
+      html += `</section>`
     }
 
     // Verify view
     else if (view === 'verify') {
+      html += `<section class="vault-save-doc-body">`
       html += _stepsHtml('verify', ['payment', 'authenticate'])
-      html += `<div class="ramp-body">`
       html += `<div class="ramp-verify-list">
         <div class="ramp-verify-item">
           <div class="ramp-verify-item-icon done"><i class="ph ph-check"></i></div>
@@ -1464,21 +1531,19 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
           </div>
         </div>
       </div>`
-      html += `<div id="ramp-status" class="ramp-status-msg"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> waiting for verification…</div>`
-      // PeerAuth deep link
-      // Peer doesn't expose a per-intent verify URL — they detect it from the connected wallet.
-      // Send the user to peer.xyz and tell them to connect the same wallet they used here.
-      html += `<a href="https://peer.xyz" target="_blank" rel="noopener" class="ramp-primary-btn" style="text-decoration:none;text-align:center;display:block">VERIFY WITH PEERAUTH ↗</a>`
-      html += `<div class="ramp-help" style="text-align:center;margin-top:0.5em">embedded wallet users: export your private key from settings → account, import to MetaMask, then verify on peer.xyz</div>`
-      // Manual escape hatch: if USDC is already on Base (e.g. verified externally), bridge it directly
-      html += `<button id="ramp-manual-bridge" class="ramp-secondary-btn" style="margin-top:1em">already received USDC? bridge to Optimism →</button>`
-      html += `</div>`
+      html += `<div id="ramp-status" class="vault-save-status"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> waiting for verification…</div>`
+      html += `<div class="vault-save-actions">
+        <a href="https://peer.xyz" target="_blank" rel="noopener" class="vault-save-btn" style="text-decoration:none;text-align:center;display:block">verify with PeerAuth ↗</a>
+        <div class="ramp-help" style="text-align:center">embedded wallet users: export your private key from settings → account, import to MetaMask, then verify on peer.xyz</div>
+        <button id="ramp-manual-bridge" class="ramp-secondary-btn">already received USDC? bridge to Optimism →</button>
+      </div>`
+      html += `</section>`
     }
 
     // Done view
     else if (view === 'done') {
+      html += `<section class="vault-save-doc-body">`
       html += _stepsHtml(null, ['payment', 'authenticate', 'verify'])
-      html += `<div class="ramp-body">`
       html += `<div class="ramp-verify-list">
         <div class="ramp-verify-item">
           <div class="ramp-verify-item-icon done"><i class="ph ph-check"></i></div>
@@ -1494,8 +1559,10 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
         </div>
       </div>`
       html += `<div class="ramp-status-msg success">${escapeHtml(successMessage) || `Received ~${escapeHtml(String(quoteData?.amount || currentAmount))} USDC`}</div>`
-      html += `<button id="ramp-cancel" class="ramp-primary-btn">DONE</button>`
-      html += `</div>`
+      html += `<div class="vault-save-actions">
+        <button id="ramp-cancel" class="vault-save-btn">done</button>
+      </div>`
+      html += `</section>`
     }
 
     dialog.innerHTML = html
@@ -1740,29 +1807,32 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
     }
   }
 
-  // Sub-modal: method picker (pill dropdown)
+  // Sub-modal: method picker — vertical provider rows, doc shell.
   function _showMethodPicker() {
     const pickerOverlay = document.createElement('div')
-    pickerOverlay.className = 'praxis-modal-overlay'
-    pickerOverlay.style.zIndex = '10002'
-    const pickerDialog = document.createElement('div')
-    pickerDialog.className = 'praxis-modal-dialog ramp-dialog'
-    pickerDialog.style.maxWidth = '360px'
-    pickerDialog.innerHTML = `<div class="ramp-header"><button class="ramp-header-back" id="picker-close"><i class="ph ph-x"></i></button><div class="ramp-header-title">PAY WITH</div><div class="ramp-header-spacer"></div></div>
-      <div class="ramp-body">
-        ${PAYMENT_METHODS.map(m => `<button class="ramp-rate-row" data-method="${m.id}" style="width:100%;text-align:left" ${m.disabled ? 'disabled' : ''}>
-          <div class="ramp-rate-info">
-            <i class="ph ${m.icon}" style="font-size:1.1em"></i>
-            <span class="ramp-rate-text">${m.label}${m.disabled ? ` <span style="color:var(--dim);font-size:0.75em">(${m.disabledReason || 'soon'})</span>` : ''}</span>
-            ${m.id === currentMethod ? '<span class="ramp-rate-best">ACTIVE</span>' : ''}
-          </div>
-        </button>`).join('')}
-      </div>`
-    pickerOverlay.appendChild(pickerDialog)
+    pickerOverlay.className = 'praxis-modal-overlay vault-save-overlay'
+    pickerOverlay.style.zIndex = '10003'
+    const pickerClose = document.createElement('button')
+    pickerClose.className = 'wizard-close vault-save-close'
+    pickerClose.setAttribute('aria-label', 'close')
+    pickerClose.innerHTML = '&times;'
+    const pickerDoc = document.createElement('div')
+    pickerDoc.className = 'vault-save-doc ramp-doc'
+    pickerDoc.innerHTML = `
+      <header class="vault-save-lead"><div class="vault-save-lead-title"><h1>pay with</h1></div></header>
+      <p class="vault-save-lead-sub">Choose your bank or payment app. We'll fetch the best rate from sellers accepting that method.</p>
+      <section class="vault-save-doc-body">
+        <div class="ramp-provider-list">
+          ${PAYMENT_METHODS.map(m => _providerRow(m, { active: m.id === currentMethod && !m.disabled })).join('')}
+        </div>
+      </section>
+    `
+    pickerOverlay.appendChild(pickerClose)
+    pickerOverlay.appendChild(pickerDoc)
     document.body.appendChild(pickerOverlay)
     pickerOverlay.addEventListener('click', (e) => { if (e.target === pickerOverlay) pickerOverlay.remove() })
-    pickerDialog.querySelector('#picker-close')?.addEventListener('click', () => pickerOverlay.remove())
-    pickerDialog.querySelectorAll('[data-method]').forEach(btn => {
+    pickerClose.addEventListener('click', () => pickerOverlay.remove())
+    pickerDoc.querySelectorAll('[data-method]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.disabled) return
         currentMethod = btn.dataset.method
@@ -1779,29 +1849,34 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
     })
   }
 
-  // Sub-modal: multi-quote selector
+  // Sub-modal: multi-quote selector — doc shell.
   function _showQuoteSelector() {
     if (!quoteData?.quotes?.length) return
     const qOverlay = document.createElement('div')
-    qOverlay.className = 'praxis-modal-overlay'
-    qOverlay.style.zIndex = '10002'
-    const qDialog = document.createElement('div')
-    qDialog.className = 'praxis-modal-dialog ramp-dialog'
-    qDialog.style.maxWidth = '420px'
+    qOverlay.className = 'praxis-modal-overlay vault-save-overlay'
+    qOverlay.style.zIndex = '10003'
+    const qClose = document.createElement('button')
+    qClose.className = 'wizard-close vault-save-close'
+    qClose.setAttribute('aria-label', 'close')
+    qClose.innerHTML = '&times;'
+    const qDoc = document.createElement('div')
+    qDoc.className = 'vault-save-doc ramp-doc'
     let activeFilter = 'all'
     const methodsInQuotes = [...new Set(quoteData.quotes.map(q => q.processorName).filter(Boolean))]
 
     function renderList() {
       const filtered = activeFilter === 'all' ? quoteData.quotes : quoteData.quotes.filter(q => q.processorName === activeFilter)
       const bestAmount = quoteData.quotes[0]?.tokenAmount
-      qDialog.innerHTML = `<div class="ramp-header"><button class="ramp-header-back" id="q-close"><i class="ph ph-x"></i></button><div class="ramp-header-title">SELECT A QUOTE (${filtered.length})</div><div class="ramp-header-spacer"></div></div>
-        <div class="ramp-body">
+      qDoc.innerHTML = `
+        <header class="vault-save-lead"><div class="vault-save-lead-title"><h1>compare quotes</h1></div></header>
+        <p class="vault-save-lead-sub">Rates from ${filtered.length} sellers. The best price is highlighted — the rest let you pick a different payment app or a specific seller.</p>
+        <section class="vault-save-doc-body">
           ${methodsInQuotes.length > 1 ? `<div class="ramp-method-filters">
-            <button class="ramp-method-filter ${activeFilter === 'all' ? 'active' : ''}" data-f="all">All</button>
+            <button class="ramp-method-filter ${activeFilter === 'all' ? 'active' : ''}" data-f="all">all</button>
             ${methodsInQuotes.map(m => `<button class="ramp-method-filter ${activeFilter === m ? 'active' : ''}" data-f="${m}">${PAYMENT_METHOD_LABEL[m] || m}</button>`).join('')}
           </div>` : ''}
           <div class="ramp-quote-list">
-            ${filtered.map((q, i) => {
+            ${filtered.map((q) => {
               const isBest = q.tokenAmount === bestAmount
               const discount = bestAmount && q.tokenAmount ? ((Number(q.tokenAmount) - Number(bestAmount)) / Number(bestAmount) * 100) : 0
               const depShort = q.depositor ? `${q.depositor.slice(0, 6)}…${q.depositor.slice(-4)}` : ''
@@ -1812,21 +1887,22 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
                   <div class="ramp-quote-rate">≈ $${q.fiatAmount} · ${(Number(q.rate || '1000000000000000000') / 1e18).toFixed(3).replace(/\.?0+$/, '')} ${PAYMENT_METHOD_CURRENCIES[q.processorName] || 'USD'} / USDC</div>
                 </div>
                 <div class="ramp-quote-right">
-                  ${isBest ? '<span class="ramp-rate-best">BEST</span>' : `<span class="ramp-quote-discount ${discount < 0 ? 'negative' : ''}">${discount > 0 ? '+' : ''}${discount.toFixed(2)}%</span>`}
+                  ${isBest ? '<span class="ramp-rate-best">best</span>' : `<span class="ramp-quote-discount ${discount < 0 ? 'negative' : ''}">${discount > 0 ? '+' : ''}${discount.toFixed(2)}%</span>`}
                   ${depShort ? `<span class="ramp-quote-handle">${depShort}</span>` : ''}
                   <span class="ramp-quote-method">${appLabel}</span>
                 </div>
               </div>`
             }).join('')}
           </div>
-        </div>`
-      qDialog.querySelector('#q-close')?.addEventListener('click', () => qOverlay.remove())
-      qDialog.querySelectorAll('.ramp-method-filter').forEach(b => b.addEventListener('click', () => { activeFilter = b.dataset.f; renderList() }))
-      qDialog.querySelectorAll('[data-idx]').forEach(b => b.addEventListener('click', () => { qOverlay.remove() }))
+        </section>`
+      qDoc.querySelectorAll('.ramp-method-filter').forEach(b => b.addEventListener('click', () => { activeFilter = b.dataset.f; renderList() }))
+      qDoc.querySelectorAll('[data-idx]').forEach(b => b.addEventListener('click', () => { qOverlay.remove() }))
     }
-    qOverlay.appendChild(qDialog)
+    qOverlay.appendChild(qClose)
+    qOverlay.appendChild(qDoc)
     document.body.appendChild(qOverlay)
     qOverlay.addEventListener('click', (e) => { if (e.target === qOverlay) qOverlay.remove() })
+    qClose.addEventListener('click', () => qOverlay.remove())
     renderList()
   }
 
@@ -2161,9 +2237,24 @@ export async function showOnrampModal(recipientAddress, amountUSD = 20) {
 // --- Offramp Modal ---
 
 export async function showOfframpModal(senderAddress, amountETH = '0.01') {
-  const { overlay, dialog } = createModal()
-  dialog.classList.add('ramp-dialog')
-  dialog.style.maxWidth = '460px'
+  // Full-screen doc shell — matches showOnrampModal + showSendModal / showSwapModal.
+  const existing = document.getElementById('ramp-offramp-modal')
+  if (existing) { existing.remove(); return }
+  const overlay = document.createElement('div')
+  overlay.id = 'ramp-offramp-modal'
+  overlay.className = 'praxis-modal-overlay vault-save-overlay'
+  overlay.style.zIndex = '10002'
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'wizard-close vault-save-close'
+  closeBtn.setAttribute('aria-label', 'close')
+  closeBtn.innerHTML = '&times;'
+  const dialog = document.createElement('div')
+  dialog.className = 'vault-save-doc ramp-doc'
+  overlay.appendChild(closeBtn)
+  overlay.appendChild(dialog)
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler) }
+  })
   let currentMethod = getPreferredMethod()
   let currentAmount = amountETH
   let paymentDetails = ''
@@ -2195,8 +2286,24 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
   }
 
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) cleanup()
+    if (e.target === overlay) { cleanup(); overlay.remove() }
   })
+  closeBtn.addEventListener('click', () => { cleanup(); overlay.remove() })
+
+  // Local provider-row helper mirrors the one in showOnrampModal.
+  function _providerRowOff(m, opts = {}) {
+    const active = opts.active
+    const disabled = m.disabled
+    const feeBlurb = PROVIDER_FEE_BLURB[m.id] || (disabled ? (m.disabledReason || 'coming soon') : 'competitive rates · P2P')
+    return `<button class="ramp-provider-row${active ? ' active' : ''}" data-method="${m.id}" ${disabled ? 'disabled' : ''}>
+      <span class="ramp-provider-icon"><i class="ph ${m.icon}"></i></span>
+      <span class="ramp-provider-body">
+        <span class="ramp-provider-name">${m.label}${disabled ? ` <span class="ramp-provider-soon">${m.disabledReason || 'soon'}</span>` : ''}</span>
+        <span class="ramp-provider-fee">${feeBlurb}</span>
+      </span>
+      ${active ? '<span class="ramp-provider-check"><i class="ph ph-check"></i></span>' : '<i class="ph ph-caret-right ramp-provider-caret" aria-hidden="true"></i>'}
+    </button>`
+  }
 
   function getOfframpStatusMessage() {
     switch (status) {
@@ -2264,12 +2371,17 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
       ? `≈ $${(parseFloat(currentAmount) * _ethPriceUsd).toFixed(2)} ${PAYMENT_METHOD_CURRENCIES[currentMethod] || 'USD'}`
       : ''
 
+    const amountEntered = parseFloat(currentAmount) > 0
+    const methodLabel = PAYMENT_METHOD_LABEL[currentMethod] || currentMethod
+    const methodIcon = PAYMENT_METHODS.find(p => p.id === currentMethod)?.icon || 'ph-currency-circle-dollar'
+    const feeBlurb = PROVIDER_FEE_BLURB[currentMethod] || ''
+
     // --- Active deposits dashboard rows ---
     let depositsHtml = ''
     if (_depositsLoading) {
       depositsHtml = `<div class="ramp-help" style="text-align:center;padding:0.5em">checking your active listings…</div>`
     } else if (_myDeposits.length === 0) {
-      depositsHtml = `<div class="ramp-help" style="text-align:center;padding:0.5em;color:var(--dim)">no active listings</div>`
+      depositsHtml = `<div class="ramp-help" style="text-align:center;padding:0.5em;color:var(--dim)">no active listings yet</div>`
     } else {
       depositsHtml = _myDeposits.map(d => {
         const remaining = (Number(d.remainingDepositAmount || d.deposit?.remainingDepositAmount || 0n) / 1e6).toFixed(2)
@@ -2286,67 +2398,83 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
               ${intentsCount > 0 ? `<span>·</span><span style="color:var(--accent)">${intentsCount} pending</span>` : ''}
             </div>
           </div>
-          <button class="ramp-method-pill ramp-withdraw-btn" data-deposit-id="${id}" style="font-size:0.75em;padding:0.3em 0.8ch;border-color:var(--red,#a44);color:var(--red,#a44)">withdraw</button>
+          <button class="ramp-method-pill ramp-withdraw-btn ramp-danger" data-deposit-id="${id}">withdraw</button>
         </div>`
       }).join('')
     }
 
     dialog.innerHTML = `
-      <div class="ramp-header">
-        <button class="ramp-header-back" id="ramp-cancel"><i class="ph ph-arrow-left"></i></button>
-        <div class="ramp-header-title">SELL</div>
-        <div class="ramp-header-spacer"></div>
+      <header class="vault-save-lead">
+        <div class="vault-save-lead-title"><h1>cash out</h1></div>
+        <div class="vault-save-lead-apr" style="color:var(--dim);text-transform:uppercase;letter-spacing:0.14em;font-size:0.72em"><span style="color:var(--fg);font-size:0.95em;font-weight:400;letter-spacing:0;text-transform:none">Optimism</span></div>
+      </header>
+      <p class="vault-save-lead-sub">Sell ETH and get paid on Wise, Cash App, or Revolut. A buyer sends you cash directly — usually matched in minutes.</p>
+
+      <div class="ramp-tabs ramp-tabs-doc">
+        <button class="ramp-tab" data-tab="buy">buy</button>
+        <button class="ramp-tab active" data-tab="sell">sell</button>
       </div>
-      <div class="ramp-tabs">
-        <button class="ramp-tab" data-tab="buy">BUY</button>
-        <button class="ramp-tab active" data-tab="sell">SELL</button>
-      </div>
-      <div class="ramp-body">
+
+      <section class="vault-save-doc-body">
 
         ${isDone ? `
-          <div class="ramp-status-msg success" style="margin-bottom:1em">
-            ✓ your listing is live (#${String(_lastCreatedDepositId).slice(-6)}). buyers can now match it and pay you on ${PAYMENT_METHOD_LABEL[currentMethod] || currentMethod}. you can close this and we'll show pending sales below when buyers signal.
+          <div class="ramp-status-msg success">
+            <i class="ph ph-check-circle" style="color:var(--green)"></i>
+            your listing is live (#${String(_lastCreatedDepositId).slice(-6)}). buyers can match it and pay you on ${methodLabel}. you can close this — we'll show pending sales below when a buyer signals.
           </div>
         ` : ''}
 
-        <div class="ramp-input-card">
-          <div class="ramp-input-label">You sell</div>
-          <div class="ramp-input-row">
-            <input id="ramp-amount" type="number" min="0.001" step="0.001" value="${currentAmount}" class="ramp-amount-input" ${isProcessing ? 'disabled' : ''} />
-            <span class="ramp-currency-pill"><i class="ph ph-currency-eth"></i>ETH</span>
+        <!-- AMOUNT: hero input -->
+        <div class="vault-save-amount">
+          <div class="vault-save-amount-head">
+            <span class="vault-save-field-label">you sell</span>
+            <button id="ramp-max" class="vault-preset" ${_walletBalance === null || _walletBalance === 0n ? 'disabled' : ''}>max</button>
           </div>
-          <div class="ramp-receive-meta">
-            <span>${usdEstimate || '&nbsp;'}</span>
-            <span>${ethBalDisplay} on Optimism <button id="ramp-max" class="ramp-method-pill" style="font-size:0.7em;padding:0.15em 0.5ch;margin-left:0.4ch" ${_walletBalance === null || _walletBalance === 0n ? 'disabled' : ''}>max</button></span>
+          <div class="vault-save-amount-row">
+            <input id="ramp-amount" type="number" min="0.001" step="0.001" value="${currentAmount}" class="vault-save-amount-input" inputmode="decimal" autocomplete="off" ${isProcessing ? 'disabled' : ''} />
+            <div class="vault-save-amount-token"><i class="ph ph-currency-eth"></i><span>ETH</span></div>
+          </div>
+          <div class="vault-save-amount-foot">
+            <span class="vault-save-fiat">${usdEstimate || '≈ $0.00'}</span>
+            <span style="flex:1"></span>
+            <span class="vault-save-bal">${ethBalDisplay}</span>
           </div>
         </div>
 
-        <div class="ramp-input-card">
-          <div class="ramp-input-label">Receive via</div>
-          <div class="ramp-input-row">
-            <button id="ramp-method-picker" class="ramp-method-pill"><i class="ph ${PAYMENT_METHODS.find(p=>p.id===currentMethod)?.icon || 'ph-currency-circle-dollar'}"></i>${PAYMENT_METHOD_LABEL[currentMethod] || currentMethod}<i class="ph ph-caret-down" style="font-size:0.75em"></i></button>
-          </div>
-          <div style="margin-top:0.5em">
+        <!-- PROVIDER row + payment-details input, progressive on amount -->
+        ${amountEntered ? `
+          <div class="ramp-provider-section">
+            <div class="vault-save-field-label">get paid on</div>
+            <button id="ramp-method-picker" class="ramp-provider-row ramp-provider-row-selected" type="button">
+              <span class="ramp-provider-icon"><i class="ph ${methodIcon}"></i></span>
+              <span class="ramp-provider-body">
+                <span class="ramp-provider-name">${methodLabel}</span>
+                <span class="ramp-provider-fee">${feeBlurb}</span>
+              </span>
+              <span class="ramp-provider-change">change</span>
+            </button>
             <input id="ramp-payment-details" type="text" value="${paymentDetails.replace(/"/g, '&quot;')}"
               placeholder="${PAYMENT_DETAIL_PLACEHOLDERS[currentMethod] || 'your handle / cashtag / email'}"
-              style="width:100%;padding:0.5em;background:var(--bg, #0a0a0a);color:var(--fg, #c0c0c0);border:1px solid var(--border, #333);font-family:inherit;font-size:0.9em;box-sizing:border-box"
+              class="vault-save-to-input"
               ${isProcessing ? 'disabled' : ''} />
           </div>
+
+          <div class="ramp-help">
+            You'll list <strong>$${_ethPriceUsd ? (parseFloat(currentAmount) * _ethPriceUsd).toFixed(2) : '—'}</strong> USDC at a 1:1 rate. Buyers pay in ${PAYMENT_METHOD_CURRENCIES[currentMethod] || 'USD'} via ${methodLabel}. Match time depends on demand.
+          </div>
+        ` : ''}
+
+        <div id="ramp-status" class="vault-save-status" style="${statusMsg ? '' : 'display:none'};color:${statusColor}">${statusMsg}</div>
+
+        <div class="vault-save-actions">
+          ${showRetry
+            ? `<button id="ramp-retry" class="vault-save-btn">retry</button>`
+            : `<button id="ramp-confirm" class="vault-save-btn" ${isProcessing || !amountEntered || !paymentDetails.trim() ? 'disabled' : ''}>${isProcessing ? 'processing…' : (amountEntered ? 'list for sale' : 'enter an amount')}</button>`
+          }
         </div>
-
-        <div class="ramp-help" style="margin:0.6em 0">
-          You'll create a P2P listing with $${parseFloat(currentAmount || '0') > 0 && _ethPriceUsd ? (parseFloat(currentAmount) * _ethPriceUsd).toFixed(2) : '—'} USDC at 1:1 rate. Buyers send you ${PAYMENT_METHOD_CURRENCIES[currentMethod] || 'USD'} via ${PAYMENT_METHOD_LABEL[currentMethod] || currentMethod}. Match time depends on demand.
-        </div>
-
-        <div id="ramp-status" class="ramp-status-msg" style="${statusMsg ? '' : 'display:none'};color:${statusColor}">${statusMsg}</div>
-
-        ${showRetry
-          ? `<button id="ramp-retry" class="ramp-primary-btn">retry</button>`
-          : `<button id="ramp-confirm" class="ramp-primary-btn" ${isProcessing || !paymentDetails.trim() ? 'disabled' : ''}>${isProcessing ? 'PROCESSING…' : 'LIST FOR SALE'}</button>`
-        }
 
         ${_activeIntents.length > 0 ? `
-          <div class="ramp-input-label" style="margin-top:1.5em">Buyers waiting (${_activeIntents.length})</div>
+          <div class="vault-save-field-label" style="margin-top:1em">buyers waiting (${_activeIntents.length})</div>
           ${_activeIntents.map(it => {
             const amt = (Number(it.amount || it.intent?.amount || 0) / 1e6).toFixed(2)
             const buyer = (it.owner || it.intent?.owner || '').slice(0, 6) + '…' + (it.owner || it.intent?.owner || '').slice(-4)
@@ -2356,17 +2484,17 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
                 <div class="ramp-rate-meta">
                   <span style="color:var(--accent)">payment incoming</span>
                   <span>·</span>
-                  <span>watch your ${PAYMENT_METHOD_LABEL[currentMethod] || 'app'}</span>
+                  <span>watch your ${methodLabel} app</span>
                 </div>
               </div>
             </div>`
           }).join('')}
         ` : ''}
 
-        <div class="ramp-input-label" style="margin-top:1.5em">Your active listings</div>
+        <div class="vault-save-field-label" style="margin-top:1em">your active listings</div>
         ${depositsHtml}
 
-      </div>
+      </section>
     `
 
     // bind events
@@ -2450,29 +2578,32 @@ export async function showOfframpModal(senderAddress, amountETH = '0.01') {
     })
   }
 
-  // Method picker sub-modal (mirrors the onramp picker)
+  // Method picker sub-modal (mirrors the onramp picker) — doc shell.
   function _showOfframpMethodPicker() {
     const pickerOverlay = document.createElement('div')
-    pickerOverlay.className = 'praxis-modal-overlay'
-    pickerOverlay.style.zIndex = '10002'
-    const pickerDialog = document.createElement('div')
-    pickerDialog.className = 'praxis-modal-dialog ramp-dialog'
-    pickerDialog.style.maxWidth = '360px'
-    pickerDialog.innerHTML = `<div class="ramp-header"><button class="ramp-header-back" id="picker-close"><i class="ph ph-x"></i></button><div class="ramp-header-title">RECEIVE VIA</div><div class="ramp-header-spacer"></div></div>
-      <div class="ramp-body">
-        ${PAYMENT_METHODS.map(m => `<button class="ramp-rate-row" data-method="${m.id}" style="width:100%;text-align:left" ${m.disabled ? 'disabled' : ''}>
-          <div class="ramp-rate-info">
-            <i class="ph ${m.icon}" style="font-size:1.1em"></i>
-            <span class="ramp-rate-text">${m.label}${m.disabled ? ` <span style="color:var(--dim);font-size:0.75em">(${m.disabledReason || 'soon'})</span>` : ''}</span>
-            ${m.id === currentMethod ? '<span class="ramp-rate-best">ACTIVE</span>' : ''}
-          </div>
-        </button>`).join('')}
-      </div>`
-    pickerOverlay.appendChild(pickerDialog)
+    pickerOverlay.className = 'praxis-modal-overlay vault-save-overlay'
+    pickerOverlay.style.zIndex = '10003'
+    const pickerClose = document.createElement('button')
+    pickerClose.className = 'wizard-close vault-save-close'
+    pickerClose.setAttribute('aria-label', 'close')
+    pickerClose.innerHTML = '&times;'
+    const pickerDoc = document.createElement('div')
+    pickerDoc.className = 'vault-save-doc ramp-doc'
+    pickerDoc.innerHTML = `
+      <header class="vault-save-lead"><div class="vault-save-lead-title"><h1>get paid on</h1></div></header>
+      <p class="vault-save-lead-sub">Choose where buyers should send your payment. We only list your ETH once you've entered your handle for that app.</p>
+      <section class="vault-save-doc-body">
+        <div class="ramp-provider-list">
+          ${PAYMENT_METHODS.map(m => _providerRowOff(m, { active: m.id === currentMethod && !m.disabled })).join('')}
+        </div>
+      </section>
+    `
+    pickerOverlay.appendChild(pickerClose)
+    pickerOverlay.appendChild(pickerDoc)
     document.body.appendChild(pickerOverlay)
     pickerOverlay.addEventListener('click', (e) => { if (e.target === pickerOverlay) pickerOverlay.remove() })
-    pickerDialog.querySelector('#picker-close')?.addEventListener('click', () => pickerOverlay.remove())
-    pickerDialog.querySelectorAll('[data-method]').forEach(btn => {
+    pickerClose.addEventListener('click', () => pickerOverlay.remove())
+    pickerDoc.querySelectorAll('[data-method]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.disabled) return
         currentMethod = btn.dataset.method

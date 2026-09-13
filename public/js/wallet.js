@@ -316,7 +316,7 @@ function showAddress(address) {
     topBarWallet.innerHTML = `
       <div class="dd-nav">
         <a href="/network" class="dd-nav-btn" id="dd-praxis"><span class="dd-nav-icon" data-icon="praxis"></span><span class="dd-nav-label" data-i18n="wallet.navPraxis">${escapeHtml(_walletWord('praxis', 'wallet.navPraxis'))}</span></a>
-        ${isOwnerView ? `<a href="/earnings" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>` : ''}
+        ${isOwnerView ? `<a href="/vault" class="dd-nav-btn" id="dd-vault"><i class="ph ph-bank dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navVault">${escapeHtml(_walletWord('vault', 'wallet.navVault'))}</span></a>` : ''}
         ${isOwnerView ? `<button type="button" class="dd-nav-btn" id="dd-manage"><i class="ph ph-gear-six dd-nav-icon"></i><span class="dd-nav-label" data-i18n="wallet.navManage">${escapeHtml(_walletWord('manage', 'wallet.navManage'))}</span></button>` : ''}
       </div>
     `
@@ -908,7 +908,15 @@ function showAudiencePrompt(address, registryAddress, publicClient) {
 async function disconnect() {
   const token = getCachedAuthToken()
   if (token) {
-    try { fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {}) } catch {}
+    // Best-effort but audible — a swallowed logout leaves the server
+    // session live, so a later attacker with the same token can still
+    // act as the wallet even after the user hit "disconnect".
+    try {
+      fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+        .catch((e) => console.warn('praxis: /api/auth/logout network error:', e?.message))
+    } catch (e) {
+      console.warn('praxis: /api/auth/logout dispatch failed:', e?.message)
+    }
   }
   connectedAddress = null
   localStorage.setItem('wallet-disconnected', '1')
@@ -1018,45 +1026,50 @@ async function connect(forceChoice = false) {
     overlay.appendChild(dialog)
     document.body.appendChild(overlay)
 
-    function cleanup() { overlay.remove() }
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(null) } })
+    // Animated dismiss — lets the exit animation play before the
+    // caller opens the next modal, so chained modals feel like one
+    // continuous flow instead of two jarring snaps.
+    function cleanup(then) {
+      overlay.classList.add('is-closing')
+      setTimeout(() => { overlay.remove(); then?.() }, 180)
+    }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(() => resolve(null)) })
 
-    document.getElementById('choice-embedded')?.addEventListener('click', async () => {
-      cleanup()
-      resolve(await connectEmbedded())
+    document.getElementById('choice-embedded')?.addEventListener('click', () => {
+      cleanup(async () => resolve(await connectEmbedded()))
     })
 
-    document.getElementById('choice-signin')?.addEventListener('click', async () => {
-      cleanup()
-      const addr = await window.showSignInPrompt?.()
-      if (addr) {
-        _usingEmbeddedWallet = true
-        showAddress(addr)
-        resolve(addr)
-      } else { resolve(null) }
+    document.getElementById('choice-signin')?.addEventListener('click', () => {
+      cleanup(async () => {
+        const addr = await window.showSignInPrompt?.()
+        if (addr) {
+          _usingEmbeddedWallet = true
+          showAddress(addr)
+          resolve(addr)
+        } else { resolve(null) }
+      })
     })
 
-    document.getElementById('choice-create')?.addEventListener('click', async () => {
-      cleanup()
-      resolve(await connectEmbedded())
+    document.getElementById('choice-create')?.addEventListener('click', () => {
+      cleanup(async () => resolve(await connectEmbedded()))
     })
 
-    document.getElementById('choice-recover')?.addEventListener('click', async () => {
-      cleanup()
-      await import('./embedded-wallet.js')
-      const address = await window.showRecoveryPrompt?.()
-      if (address) {
-        _usingEmbeddedWallet = true
-        showAddress(address)
-        resolve(address)
-      } else {
-        resolve(null)
-      }
+    document.getElementById('choice-recover')?.addEventListener('click', () => {
+      cleanup(async () => {
+        await import('./embedded-wallet.js')
+        const address = await window.showRecoveryPrompt?.()
+        if (address) {
+          _usingEmbeddedWallet = true
+          showAddress(address)
+          resolve(address)
+        } else {
+          resolve(null)
+        }
+      })
     })
 
     document.getElementById('choice-cancel')?.addEventListener('click', () => {
-      cleanup()
-      resolve(null)
+      cleanup(() => resolve(null))
     })
   })
 }
@@ -1098,9 +1111,13 @@ async function autoConnect() {
                 localStorage.setItem('praxis-embedded-addr', restoreAddr.toLowerCase())
                 restored = true
               }
+            } else {
+              console.warn('praxis: bridge-token retrieve rejected:', resp.status)
             }
           }
-        } catch {}
+        } catch (e) {
+          console.warn('praxis: bridge-token retrieve failed:', e?.message)
+        }
         // Fallback: address-only retrieve (rate-limited, no token needed).
         // Handles the case where the bridge doesn't have the address yet
         // (first visit, ourpraxis.network localStorage empty) but the URL
@@ -1118,8 +1135,12 @@ async function autoConnect() {
                 localStorage.setItem('praxis-wallet-enc', encrypted)
                 localStorage.setItem('praxis-embedded-addr', restoreAddr.toLowerCase())
               }
+            } else {
+              console.warn('praxis: address-only retrieve rejected:', resp.status)
             }
-          } catch {}
+          } catch (e) {
+            console.warn('praxis: address-only retrieve failed:', e?.message)
+          }
         }
       }
       // wallet backup is now in localStorage — show password prompt

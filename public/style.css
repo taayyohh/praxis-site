@@ -6429,7 +6429,11 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   height: 54px;
   color: var(--fg);
 }
-.praxis-unlock-title {
+/* Extra ancestor bumps specificity so we beat the shared
+   '.praxis-modal-dialog h3 { color: var(--accent) }' rule that was
+   painting the title green. Title is fg, not accent — accent is
+   reserved for the one focal moment per screen. */
+.praxis-modal-dialog .praxis-unlock-title {
   color: var(--fg);
   font-size: 1.35em;
   font-weight: 500;
@@ -6461,23 +6465,51 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   border-color: var(--fg, #c0c0c0);
   background: color-mix(in srgb, var(--bg, #0a0a0a) 40%, transparent);
 }
+/* Error state: red border + subtle shake. Border alone tells the
+   eye WHAT is wrong; motion is the momentary signal. No error text
+   pushes the button down — layout stays stable per design
+   philosophy principle 9. The shared '.praxis-modal-dialog
+   input[type="password"] { border: ... !important }' rule beats a
+   normal border-color, so we !important the error color to win. */
+.praxis-modal-dialog .praxis-unlock-input.is-error {
+  border-color: #ef4444 !important;
+  animation: praxis-input-shake 0.28s ease-in-out;
+}
+@keyframes praxis-input-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-4px); }
+  40%      { transform: translateX(3px); }
+  60%      { transform: translateX(-2px); }
+  80%      { transform: translateX(1px); }
+}
+/* Reserved space for a screen-reader-visible label. Off-screen so
+   assistive tech still announces the error without shifting the
+   dialog. */
 .praxis-unlock-error {
-  color: #ef4444;
-  font-size: 0.86em;
-  min-height: 1.2em;
-  margin: 0 0 1em;
-  text-align: center;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
 }
 .praxis-unlock-actions {
   display: flex;
   gap: 0.5em;
   flex-direction: column;
 }
-.praxis-unlock-btn-primary {
+/* Extra specificity via .praxis-modal-dialog ancestor beats the
+   shared '.praxis-modal-dialog button' rule that otherwise wins by
+   0-2-1 specificity and hides our primary button text (color: --fg
+   on background: --fg == invisible). */
+.praxis-modal-dialog .praxis-unlock-btn-primary {
   background: var(--fg);
   color: var(--bg);
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   font-family: inherit;
   font-size: 1em;
   font-weight: 500;
@@ -6485,21 +6517,22 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   cursor: pointer;
   transition: opacity 0.15s, transform 0.1s;
 }
-.praxis-unlock-btn-primary:hover { opacity: 0.9; }
-.praxis-unlock-btn-primary:active { transform: scale(0.98); }
-.praxis-unlock-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.praxis-unlock-btn-secondary {
+.praxis-modal-dialog .praxis-unlock-btn-primary:hover { opacity: 0.9; }
+.praxis-modal-dialog .praxis-unlock-btn-primary:active { transform: scale(0.98); }
+.praxis-modal-dialog .praxis-unlock-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.praxis-modal-dialog .praxis-unlock-btn-secondary {
   background: none;
   color: var(--dim);
   border: none;
+  border-radius: 6px;
   font-family: inherit;
   font-size: 0.95em;
   padding: 0.7em 1em;
   cursor: pointer;
   transition: color 0.15s;
 }
-.praxis-unlock-btn-secondary:hover { color: var(--fg); }
-.praxis-unlock-switch {
+.praxis-modal-dialog .praxis-unlock-btn-secondary:hover { color: var(--fg); }
+.praxis-modal-dialog .praxis-unlock-switch {
   background: none;
   border: none;
   color: var(--muted);
@@ -6511,7 +6544,7 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   width: 100%;
   margin-top: 1em;
 }
-.praxis-unlock-switch:hover { color: var(--fg); }
+.praxis-modal-dialog .praxis-unlock-switch:hover { color: var(--fg); }
 .praxis-modal-dialog input[type="text"],
 .praxis-modal-dialog input[type="password"],
 .praxis-modal-dialog select {
@@ -7199,6 +7232,47 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   text-transform: uppercase;
   letter-spacing: 0.14em;
   margin-bottom: 0.25em;
+  /* flex, not inline-flex — the label needs to stay block-level so the
+     total-balance value below it doesn't push up onto the same row. */
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.vault-privacy-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0.15em;
+  font-size: 1.2em;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.vault-privacy-toggle:hover { color: var(--fg); }
+
+/* Blur every monetary value in the vault while private mode is on.
+   Un-blurs on hover so users can peek without toggling. Balance,
+   earned/spent/net chips, chain rows, savings values, income/
+   outflow, history rows — all covered by one selector list. */
+.vault-doc.is-private .vault-lead-value,
+.vault-doc.is-private .vault-lead-chip,
+.vault-doc.is-private .vault-lead-row-bal,
+.vault-doc.is-private .vault-lead-row-fiat,
+.vault-doc.is-private [data-vault-private],
+.vault-doc.is-private .vault-cashout-row-note,
+.vault-doc.is-private .vault-history-row-amt {
+  filter: blur(9px);
+  transition: filter 0.25s;
+  cursor: pointer;
+}
+.vault-doc.is-private .vault-lead-value:hover,
+.vault-doc.is-private .vault-lead-chip:hover,
+.vault-doc.is-private .vault-lead-row-bal:hover,
+.vault-doc.is-private .vault-lead-row-fiat:hover,
+.vault-doc.is-private [data-vault-private]:hover,
+.vault-doc.is-private .vault-cashout-row-note:hover,
+.vault-doc.is-private .vault-history-row-amt:hover {
+  filter: none;
 }
 .vault-lead-value {
   font-size: 3.4em;
@@ -8141,6 +8215,53 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-save-token { display: flex; align-items: center; gap: 0.3em; font-size: 0.82em; font-weight: 600; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 20px; padding: 0.3em 0.6em 0.3em 0.3em; flex-shrink: 0; }
 .vault-save-token svg { width: 18px; height: 18px; }
 .vault-save-fiat { font-size: 0.72em; color: var(--dim); min-height: 1em; font-variant-numeric: tabular-nums; }
+
+/* Send-modal chain badge — small pill in the header row that
+   expands a per-chain breakdown when clicked. Same visual grammar
+   as the cashout balance-hero source picker. */
+.send-chain-badge {
+  background: none;
+  border: 1px solid var(--border, color-mix(in srgb, var(--fg) 14%, transparent));
+  border-radius: 999px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.82em;
+  padding: 0.35em 0.9em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  transition: border-color 0.15s;
+}
+.send-chain-badge:hover { border-color: var(--fg); }
+.send-chain-caret { color: var(--dim); font-size: 0.85em; transition: transform 0.15s; }
+.send-chain-badge[aria-expanded="true"] .send-chain-caret { transform: rotate(180deg); }
+.send-source-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  margin: 0.4em 0 0.8em;
+}
+.send-source-breakdown[hidden] { display: none; }
+
+/* Fiat-first amount row — the currency symbol sits inline with a
+   massive number, and 'you're sending X ETH' lives below in the
+   dim conversion line. Mirrors the cashout amount input. */
+.send-amount-row-fiat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2ch;
+}
+.send-amount-currency {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-size: 1.6em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.send-amount-row-fiat .vault-save-amount-input {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
 .vault-save-arrow { text-align: center; color: var(--dim); padding: 0.2em 0; font-size: 0.85em; margin: -0.15em 0; position: relative; z-index: 1; }
 /* Pool selector cards */
 .vault-pool-cards { display: flex; flex-direction: column; gap: 0.3em; margin-top: 0.4em; margin-bottom: 0.5em; }
@@ -8491,6 +8612,11 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   flex-direction: column;
   gap: 0.4em;
 }
+/* Explicit display:flex above beat the UA [hidden]{display:none}
+   rule on tie specificity, so the QR scanner was leaking through
+   even when the JS set .hidden=true. Same for the payee field. */
+.cashout-payee-scanner[hidden],
+.cashout-field[hidden] { display: none; }
 .cashout-payee-scanner video {
   width: 100%;
   max-width: 360px;
@@ -8518,8 +8644,12 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .cashout-balance-value {
   color: var(--fg);
-  font-size: 1.1em;
+  /* Promoted from 1.1em — this is the pre-flight sanity check for
+     the amount the user is about to enter. Big enough to read at a
+     glance, still smaller than the .cashout-amount-input hero. */
+  font-size: 1.4em;
   font-weight: 500;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 .cashout-body {
@@ -8620,9 +8750,16 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.cashout-quote-eta { color: var(--dim); font-size: 0.8em; }
+/* Reserved line height so an empty ETA doesn't collapse and refill
+   as the quote hydrates (principle 9). */
+.cashout-quote-eta { color: var(--dim); font-size: 0.8em; min-height: 1em; }
 .cashout-btn {
   width: 100%;
+  /* Fixed min-height so the button label swap across the seven
+     states (`enter an amount` → `pick a payout method` → `only $X
+     available` → `$3.00 minimum` → `cash out $Y` → `preparing…` →
+     `try again`) doesn't reflow the section around it. */
+  min-height: 3em;
   padding: 0.95em 1em;
   background: var(--green);
   border: 0;
@@ -8766,6 +8903,29 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   padding: 1.2em 0;
   border-top: 1px solid var(--border, color-mix(in srgb, var(--fg) 10%, transparent));
 }
+/* Safety + cancel + meta-foot animate to zero height when the card
+   reaches a terminal state, so the card gracefully settles instead
+   of snapping shorter (principle 9). max-height is generous enough
+   that any real content transitions from natural to zero. Every
+   collapsible section uses the same transition, so it feels like
+   one motion rather than three cascading pops. */
+.cashout-pending-card-safety,
+.cashout-pending-card-cancel,
+.cashout-pending-card-foot {
+  overflow: hidden;
+  max-height: 24em;
+  opacity: 1;
+  transition: max-height 0.35s ease, opacity 0.28s ease, margin 0.35s ease, padding 0.35s ease;
+}
+.cashout-pending-card.is-done .cashout-pending-card-safety,
+.cashout-pending-card.is-done .cashout-pending-card-cancel,
+.cashout-pending-card.is-returned .cashout-pending-card-safety,
+.cashout-pending-card.is-returned .cashout-pending-card-cancel {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+}
 .cashout-pending-card:first-child { border-top: none; padding-top: 0.4em; }
 .cashout-pending-card-head { display: flex; flex-direction: column; gap: 0.3em; }
 .cashout-pending-card-title {
@@ -8834,13 +8994,9 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .cashout-pending-copy:hover { color: var(--fg); }
 .cashout-pending-card.is-done .cashout-pending-card-title { color: var(--green, #4ec9b0); }
 .cashout-pending-card.is-returned .cashout-pending-card-title { color: var(--dim); }
-/* Cancel makes no sense once the deposit's settled — hide it. */
-.cashout-pending-card.is-done .cashout-pending-card-cancel,
-.cashout-pending-card.is-returned .cashout-pending-card-cancel { display: none; }
-/* Progress steps + safety are also nostalgic once it's complete —
-   trim visual noise on terminal states. */
-.cashout-pending-card.is-done .cashout-pending-card-safety,
-.cashout-pending-card.is-returned .cashout-pending-card-safety { display: none; }
+/* Terminal-state cancel + safety fade via the max-height transition
+   above (rather than a raw `display: none` snap), so the card
+   settles instead of jerking on state change. */
 .cashout-pending-card.is-done .cashout-inflight-steps { opacity: 0.6; }
 .cashout-pending-card-cancel {
   display: flex;
@@ -8859,6 +9015,37 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   margin: 0;
   min-height: 1.1em;
 }
+
+/* Pending-card progress track — surfaces partial-fill state
+   (multiple buyers filling one deposit) so the primary story
+   becomes "\$13 of \$14.64 delivered" instead of a generic
+   "confirming payment". Track is always in the DOM even when
+   hidden so the layout doesn't shift (principle 9). */
+.cashout-pending-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+.cashout-pending-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  overflow: hidden;
+}
+.cashout-pending-progress-fill {
+  height: 100%;
+  background: var(--green, #4ec9b0);
+  border-radius: 999px;
+  transition: width 0.4s ease-out;
+}
+.cashout-pending-progress-detail {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+}
+.cashout-pending-card.is-partial .cashout-pending-card-title { color: var(--green, #4ec9b0); }
 .cashout-pending-actions {
   display: flex;
   flex-direction: column;
@@ -8879,6 +9066,34 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .cashout-link:hover { color: var(--accent, var(--fg)); }
 .cashout-link-muted { color: var(--dim); }
 .cashout-link-muted:hover { color: var(--fg); }
+/* Red text for the confirmed-destructive action inside the inline
+   cancel affordance. Meaning-carrying per principle 6: this action
+   is irreversible, so it earns the "user must act (and know it)"
+   color that the vault otherwise reserves for warning states. */
+.cashout-link-danger { color: var(--red, #d84a4a); font-weight: 500; }
+.cashout-link-danger:hover { color: var(--red, #d84a4a); text-decoration: underline; }
+.cashout-link-danger:disabled { opacity: 0.55; cursor: default; }
+
+/* Inline cancel confirm — replaces the native browser confirm()
+   snap-out. The question is a plain typographic line and the two
+   actions are inline text links, so the ceremony reads as part of
+   the card, not a modal dialog on top of it. */
+.cashout-pending-card-cancel-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  padding: 0.4em 0 0.2em;
+}
+.cashout-pending-card-cancel-question {
+  color: var(--fg);
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+.cashout-pending-card-cancel-actions {
+  display: flex;
+  gap: 1.2ch;
+  align-items: baseline;
+}
 
 /* Progress steps — four dots joined by a hair-thin line. Filled
    dots for completed steps, the ring for the active one, hollow
@@ -9016,35 +9231,86 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   opacity: 1;
 }
 
-/* In-flight cashout banner on the vault. Sits between the balance
+/* In-flight cashout section on the vault. Sits between the balance
    lead and the savings block. Each row updates in place via the
-   Peer SDK's watch() loop until it hits a terminal state. */
+   Peer SDK's watch() loop until it hits a terminal state.
+
+   Per design-philosophy principle 3 (hierarchy through typography,
+   not boxes) the section carries no background and no radius —
+   it reads as an inline part of the vault flow, separated from
+   savings by whitespace and a bottom rule the same way `savings`
+   and `activity` are. Rows are typographic list items, not chips. */
 .vault-cashout-banner {
-  border-radius: 12px;
-  padding: 0.6em 0.8em;
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 0.4em;
-  margin: 0.6em 0 0.4em;
+  gap: 0.55em;
+  margin: 1em 0 0.6em;
+  padding: 0 0 0.9em;
+  border-bottom: 1px solid var(--border);
 }
 .vault-cashout-title {
   color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.7em;
+  letter-spacing: -0.005em;
+  font-size: 0.95em;
   font-weight: 500;
 }
-.vault-cashout-list { display: flex; flex-direction: column; gap: 0.25em; }
+.vault-cashout-list { display: flex; flex-direction: column; gap: 0.65em; }
+
+/* Money-moving row — the amount + destination is the headline
+   (principle 1 'content earns its size'), state is its own tiny label,
+   a thin progress bar visualizes partial fills (principle 4 'numbers
+   are first-class'). No background; hover just lifts the headline. */
 .vault-cashout-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5ch;
-  font-size: 0.9em;
+  flex-direction: column;
+  gap: 0.35em;
+  padding: 0.15em 0;
+  color: var(--fg);
+  text-decoration: none;
 }
-.vault-cashout-row-left { display: flex; flex-direction: column; gap: 0.15em; min-width: 0; }
-.vault-cashout-row-state { font-weight: 500; }
+.vault-cashout-row:hover .vault-cashout-row-headline { color: var(--accent); }
+.vault-cashout-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8ch;
+}
+.vault-cashout-row-headline {
+  color: var(--fg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.98em;
+  transition: color 0.12s;
+}
+.vault-cashout-row-state {
+  font-size: 0.78em;
+  letter-spacing: -0.005em;
+  color: var(--dim);
+}
+.vault-cashout-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  overflow: hidden;
+}
+.vault-cashout-progress-fill {
+  height: 100%;
+  background: var(--green, #4ec9b0);
+  border-radius: 999px;
+  transition: width 0.4s ease-out;
+}
+.vault-cashout-progress-detail {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+}
+.vault-cashout-row[data-state="delivered"] .vault-cashout-row-headline { color: var(--green, #4ec9b0); }
+.vault-cashout-row[data-state="returned"] .vault-cashout-row-headline { color: var(--muted); }
+
+/* Legacy row-note kept for older card renders / any straggler
+   callers so they don't 404 the selector list. */
 .vault-cashout-row-note {
   color: var(--dim);
   font-size: 0.78em;

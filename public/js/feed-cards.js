@@ -1,5 +1,6 @@
 // Shared feed card renderers — used by both artist feed (feed.js) and landing (landing.js)
 import { escapeHtml as esc, getProfilePic, getArtistName, slugify } from './utils.js'
+import { OPTIMISM_CHAIN_ID, USDC_OPTIMISM, rpcUrlFor } from './chains.js'
 const DELIST_PRICE_SENTINEL = 2n ** 128n
 let t = (k) => k // fallback
 try { const i18n = await import('./i18n.js'); t = i18n.t } catch {}
@@ -102,7 +103,7 @@ if (typeof document !== 'undefined') {
           const { getPublicClient } = await import('./utils.js')
           const pc = await getPublicClient()
 
-          const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
+          const USDC_OP = USDC_OPTIMISM
           const ERC20_ABI = [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }]
 
           statusEl.textContent = 'waiting for USDC...'
@@ -131,8 +132,8 @@ if (typeof document !== 'undefined') {
 
             const { getQuote, execute } = await import('./vendor-relay.js')
             const quote = await getQuote({
-              chainId: 10,
-              toChainId: 10,
+              chainId: OPTIMISM_CHAIN_ID,
+              toChainId: OPTIMISM_CHAIN_ID,
               currency: USDC_OP,
               toCurrency: '0x0000000000000000000000000000000000000000',
               amount: usdcBal.toString(),
@@ -146,7 +147,7 @@ if (typeof document !== 'undefined') {
             const embeddedAcct = window.getEmbeddedAccount?.()
             let walletClient
             if (embeddedAcct) {
-              walletClient = createWalletClient({ chain: optimism, account: embeddedAcct, transport: http('/api/rpc/10') })
+              walletClient = createWalletClient({ chain: optimism, account: embeddedAcct, transport: http(rpcUrlFor(OPTIMISM_CHAIN_ID)) })
             } else {
               const provider = window.getWalletProvider?.() || window.ethereum
               if (!provider) throw new Error('no wallet available')

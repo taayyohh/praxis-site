@@ -28,7 +28,7 @@ export async function handleCashout(ctx) {
   if (path === '/api/cashout/orders' && method === 'GET') {
     const session = getSession(req)
     if (!session) { json(res, { error: 'unauthorized' }, 401); return true }
-    const ordersPath = join(siteDir, `cashout-orders-${session.addr.toLowerCase()}.json`)
+    const ordersPath = join(siteDir, `cashout-orders-${session.wallet.toLowerCase()}.json`)
     if (!existsSync(ordersPath)) { json(res, { orders: [] }); return true }
     try {
       const raw = await readFileAsync(ordersPath, 'utf8')
@@ -46,7 +46,7 @@ export async function handleCashout(ctx) {
     if (!parsed || typeof parsed.depositId !== 'string') {
       json(res, { error: 'depositId required' }, 400); return true
     }
-    const ordersPath = join(siteDir, `cashout-orders-${session.addr.toLowerCase()}.json`)
+    const ordersPath = join(siteDir, `cashout-orders-${session.wallet.toLowerCase()}.json`)
     let existing = []
     try { existing = JSON.parse(await readFileAsync(ordersPath, 'utf8')) } catch {}
     if (!Array.isArray(existing)) existing = []
@@ -73,7 +73,7 @@ export async function handleCashout(ctx) {
       currency: String(parsed.currency || 'USD').slice(0, 8).toUpperCase(),
       createdAt: Date.now(),
     }
-    const ordersPath = join(siteDir, `cashout-orders-${session.addr.toLowerCase()}.json`)
+    const ordersPath = join(siteDir, `cashout-orders-${session.wallet.toLowerCase()}.json`)
     let existing = []
     try { existing = JSON.parse(await readFileAsync(ordersPath, 'utf8')) } catch {}
     if (!Array.isArray(existing)) existing = []
