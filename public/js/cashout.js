@@ -1383,6 +1383,15 @@ function _pendingStateCopy(order, item) {
     } else if (s === 'delivering') {
       base.title = 'confirming the latest fill'
       base.sub = knowAmt ? `${filledPretty} confirmed · ${remainingPretty} pending` : 'verifying with a cryptographic proof'
+      // Honest body for partial-delivering. The "Peer is verifying
+      // now — takes about a minute" copy is true for a full delivery,
+      // but a small residual (e.g. 3% / $0.44 left) is not being
+      // verified — it's waiting for another buyer to match, and
+      // small dust can sit for days because no buyer finds it worth
+      // their time. Say that out loud and point at the cancel.
+      base.body = knowAmt
+        ? `${filledPretty} landed in ${prettyPlatform}${handlePhrase}. The remaining ${remainingPretty} is waiting for another buyer to match — small residuals can sit here for a while. Cancel below to pull that ${remainingPretty} back if you'd rather move on.`
+        : `Part of your cash-out landed. The rest is still waiting for another buyer to match — small residuals can take longer than the full amount would.`
     }
   }
   // Expose the raw numbers so the painter can render the progress bar.
