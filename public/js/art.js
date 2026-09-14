@@ -69,10 +69,23 @@ async function initArt() {
   const params = new URLSearchParams(window.location.search)
   const mediaId = params.get('media')
   const type = params.get('type')
+  const artist = params.get('artist')
+  const album = params.get('album')
   const vanity = parseVanityPath()
 
   try {
-    if (mediaId !== null) {
+    // Cross-artist item — collection cards link here so they render on
+    // the current tenant instead of jumping off to the source artist's
+    // site. `?artist=<domain>` names the source; `?album=<name>&alias=`
+    // (music) or `?type=<t>&item=<slug>` (everything else) name the
+    // item. When neither album nor type context is supplied we still
+    // fall through to the on-chain single-media render so a bare
+    // `?media=<id>&artist=<domain>` behaves like `?media=<id>` did.
+    if (artist && album && params.get('alias')) {
+      await renderCrossArtistAlbum(params, loadingEl, contentEl)
+    } else if (artist && type && params.get('item')) {
+      await renderCrossArtistItem(params, loadingEl, contentEl)
+    } else if (mediaId !== null) {
       await renderOnChainMedia(mediaId, loadingEl, contentEl)
     } else if (vanity) {
       await renderVanityItem(vanity, loadingEl, contentEl)
@@ -85,6 +98,76 @@ async function initArt() {
     console.warn('art page error:', e)
     loadingEl.textContent = 'could not load item'
   }
+}
+
+// Fetch another artist's public site.json via /api/artist-site. Returns
+// `{ modules: [...] }` (same shape as /site.json for module lookup).
+// Same 3-attempt retry pattern the local-site fetchers use — the
+// multi-tenant proxy occasionally returns a transient 5xx during
+// rebuild windows and we don't want a single blip to strand the page.
+async function _fetchCrossArtistSite(artistDomain) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(`/api/artist-site?domain=${encodeURIComponent(artistDomain)}`, { signal: _artAbortController?.signal })
+      if (!resp.ok) continue
+      const data = await resp.json()
+      return data
+    } catch (e) {
+      if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+    }
+  }
+  return null
+}
+
+// Album view for another artist's release. The album lives in the
+// source artist's `music` module under aliases[].albums[], keyed by
+// alias name + album title. Same render path as the local album view
+// (renderMusicAlbum) so it inherits play-all + track list + buy
+// buttons for free.
+async function renderCrossArtistAlbum(params, loadingEl, contentEl) {
+  const artistDomain = params.get('artist')
+  const albumName = params.get('album')
+  const aliasName = params.get('alias')
+  const site = await _fetchCrossArtistSite(artistDomain)
+  if (!site) { loadingEl.textContent = 'could not load artist site'; return }
+  const mod = (site.modules || []).find(m => m.type === 'music')
+  if (!mod) { loadingEl.textContent = 'this artist has no music module'; return }
+  const aliases = mod.data?.aliases || []
+  const aliasIdx = aliases.findIndex(a => a.name === aliasName || slugify(a.name) === slugify(aliasName))
+  if (aliasIdx === -1) { loadingEl.textContent = 'artist alias not found'; return }
+  const alias = aliases[aliasIdx]
+  const albums = alias.albums || []
+  const albumIdx = albums.findIndex(al => al.title === albumName || slugify(al.title) === slugify(albumName))
+  if (albumIdx === -1) { loadingEl.textContent = 'album not found'; return }
+  loadingEl.style.display = 'none'
+  renderMusicAlbum(contentEl, alias, albums[albumIdx], aliasIdx, albumIdx)
+}
+
+// Cross-artist singleton (gallery / film / video / audio / writing).
+// The item lives in the source artist's module of the given type;
+// we match by slug against the module's items array and delegate
+// to the same per-type renderer the local site uses.
+async function renderCrossArtistItem(params, loadingEl, contentEl) {
+  const artistDomain = params.get('artist')
+  const type = params.get('type')
+  const itemSlug = params.get('item')
+  const site = await _fetchCrossArtistSite(artistDomain)
+  if (!site) { loadingEl.textContent = 'could not load artist site'; return }
+  const mod = (site.modules || []).find(m => m.type === type)
+  if (!mod) { loadingEl.textContent = 'module not found'; return }
+  const items = type === 'gallery' ? (mod.data?.images || [])
+    : type === 'film' ? (mod.data?.works || [])
+    : type === 'writing' ? (mod.data?.publications || [])
+    : Array.isArray(mod.data) ? mod.data : (mod.data?.items || [])
+  const idx = items.findIndex(it => slugify(it.title || '') === itemSlug)
+  if (idx === -1) { loadingEl.textContent = 'item not found'; return }
+  loadingEl.style.display = 'none'
+  if (type === 'gallery') renderGalleryImage(contentEl, items[idx], idx)
+  else if (type === 'film') renderFilmWork(contentEl, items[idx])
+  else if (type === 'video') renderVideoItem(contentEl, items[idx])
+  else if (type === 'audio') renderAudioItem(contentEl, items[idx], idx)
+  else if (type === 'writing') renderWritingItem(contentEl, items[idx], idx)
+  else loadingEl.textContent = 'unsupported type'
 }
 
 // --- Vanity URL: /music/alias-slug/album-slug, /gallery/slug, etc. ---
@@ -247,7 +330,12 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   html += `<h1 style="font-size:clamp(1.5em, 4vw, 2.2em);margin:0 0 0.3em;font-weight:700;letter-spacing:-0.02em">${escapeHtml(album.title)}</h1>`
   html += `<div style="color:var(--muted);margin-bottom:1em;font-size:0.95em">${t('art.by')} ${escapeHtml(album.artist || alias.name)}${album.year ? ` (${album.year})` : ''}</div>`
   if (album.collab) {
-    html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">with <a href="https://${escapeHtml(album.collab.from)}" style="color:var(--accent)">${escapeHtml(album.collab.from)}</a></div>`
+    // Collab attribution routes through the collection filter so the
+    // "with <artist>" link stays on the current tenant rather than
+    // jumping off to the collaborator's own site — matches the ask
+    // that everything a collection item touches renders locally.
+    const collabDomain = escapeHtml(album.collab.from || '')
+    html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">with <a href="/collection?artist=${encodeURIComponent(album.collab.from || '')}" style="color:var(--accent)">${collabDomain}</a></div>`
   }
 
   if (album.genre) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">${escapeHtml(album.genre)}</div>`
@@ -378,13 +466,30 @@ function renderGalleryImage(el, image, idx) {
   if (image.medium) meta.push(image.medium)
   if (image.year) meta.push(String(image.year))
   if (image.series) meta.push(image.series)
+  if (image.dimensions) meta.push(image.dimensions)
+  if (image.location) meta.push(image.location)
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
+
+  // Long-form description — fills the same space album.description holds on
+  // the music view; keeps the visual weight of a proper detail page.
+  if (image.description) {
+    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(image.description)}</div>`
+  }
+  if (image.awards) {
+    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(image.awards)}</div>`
+  }
 
   // buy + ref buttons
   if (image.mediaId !== undefined && image.mediaId !== null) {
     const priceWei = image.mediaPrice || '0'
     const isFree = Number(priceWei) === 0
     html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(image.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
+  }
+
+  // Outbound link — an artist can point at a print shop, exhibition catalog,
+  // or external gallery listing. Standard target=_blank + rel="noopener".
+  if (image.url && /^https?:\/\//i.test(image.url)) {
+    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(image.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.9em">view external</a></div>`
   }
 
   el.innerHTML = html
@@ -394,12 +499,31 @@ function renderGalleryImage(el, image, idx) {
 
 function renderFilmWork(el, work) {
   let html = ''
+
+  // Poster leads the composition when it exists — a film has a face.
+  if (work.poster) {
+    const posterUrl = work.poster.includes('/api/') ? work.poster : `/api/img?url=${encodeURIComponent(work.poster)}&w=800`
+    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(work.title || '')}" style="max-width:100%;max-height:400px;display:block" loading="lazy"></div>`
+  }
+
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(work.title)}</h1>`
   const meta = []
   if (work.role) meta.push(work.role)
   if (work.director) meta.push(`dir. ${work.director}`)
   if (work.year) meta.push(String(work.year))
+  if (work.runtime) meta.push(work.runtime)
+  if (work.venue) meta.push(work.venue)
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
+
+  if (work.description) {
+    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(work.description)}</div>`
+  }
+  if (work.awards) {
+    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(work.awards)}</div>`
+  }
+  if (work.cast) {
+    html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">cast: ${escapeHtml(work.cast)}</div>`
+  }
 
   // action buttons
   html += `<div style="display:flex;gap:1ch;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
@@ -413,6 +537,11 @@ function renderFilmWork(el, work) {
 
   if (work.video) {
     html += `<div style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" playsinline style="max-width:100%"></video></div>`
+  }
+
+  // Outbound link — IMDB, streaming, festival page, etc.
+  if (work.url && /^https?:\/\//i.test(work.url)) {
+    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(work.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.9em">watch external</a></div>`
   }
 
   el.innerHTML = html
@@ -477,14 +606,38 @@ function renderAudioItem(el, item, idx) {
 
 function renderWritingItem(el, item, idx) {
   let html = ''
+
+  // Cover leads if present — book jackets, essay illustrations, chapbook art.
+  if (item.cover) {
+    const coverUrl = item.cover.includes('/api/') ? item.cover : `/api/img?url=${encodeURIComponent(item.cover)}&w=600`
+    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title || '')}" style="max-width:100%;max-height:400px;display:block" loading="lazy"></div>`
+  }
+
   html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title)}</h1>`
   const meta = []
   if (item.publication) meta.push(item.publication)
+  if (item.publisher) meta.push(item.publisher)
   if (item.year) meta.push(String(item.year))
+  if (item.language) meta.push(`[${item.language}]`)
   if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
 
-  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;text-decoration:none;display:inline-block">read</a></div>`
-  if (item.excerpt) html += `<div style="margin-bottom:1.5em;color:var(--fg);line-height:1.6">${escapeHtml(item.excerpt)}</div>`
+  const meta2 = []
+  if (item.isbn) meta2.push(`ISBN ${item.isbn}`)
+  if (item.pages) meta2.push(`${item.pages} pages`)
+  if (item.form) meta2.push(item.form)
+  if (meta2.length) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">${escapeHtml(meta2.join(' -- '))}</div>`
+  if (item.awards) {
+    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(item.awards)}</div>`
+  }
+
+  // Description is the artist's blurb about the piece — different from the
+  // excerpt (an actual sample of prose). We render both when both exist.
+  if (item.description) {
+    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(item.description)}</div>`
+  }
+
+  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;text-decoration:none;display:inline-block">read</a></div>`
+  if (item.excerpt) html += `<div style="margin-bottom:1.5em;color:var(--fg);line-height:1.6;font-style:italic">${escapeHtml(item.excerpt)}</div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
