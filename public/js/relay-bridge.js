@@ -366,83 +366,90 @@ export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate
   throw new Error('bridge landed on Optimism but Base balance never updated — try again in a minute')
 }
 
-// Optimism → Ethereum L1 ETH bridge. Used by the cash-out sheet to
-// silently top up the ~0.003 ETH the user needs on mainnet to sign
-// `withdrawFromSP` when unstaking BOLD savings. Same shape as
-// bridgeEthOptimismToBase — kept as its own function so the caller path
-// stays parallel and the target-chain constants don't leak.
-export async function bridgeEthOptimismToMainnet(address, amountWei, onStatusUpdate) {
+// Any L2 → Ethereum L1 ETH bridge. Used by the cash-out sheet to silently
+// top up the ~0.003 ETH the user needs on mainnet to sign withdrawFromSP.
+// `fromChainId` is the source chain; `fromCurrency` is the ERC20 address
+// on that chain, or '0x0…' for native ETH. `amountWei` is the amount
+// specified in wei of the SOURCE currency (Relay reads decimals from the
+// token). Passing EXACT_OUTPUT so the caller can name the exact L1 ETH
+// they need and let Relay solve for the input.
+export async function bridgeToMainnet(fromChainId, fromCurrency, address, amountWei, onStatusUpdate) {
   await initRelay()
   const { getQuote } = await import('./vendor-relay.js')
 
   onStatusUpdate?.('getting a quote…')
   const quote = await getQuote({
-    chainId: 10, toChainId: 1,
-    currency: '0x0000000000000000000000000000000000000000',
+    chainId: fromChainId, toChainId: 1,
+    currency: fromCurrency,
     toCurrency: '0x0000000000000000000000000000000000000000',
     amount: amountWei.toString(),
     user: address, recipient: address,
-    tradeType: 'EXACT_INPUT',
+    tradeType: 'EXACT_OUTPUT',
   })
 
   const steps = quote.steps || []
   if (!steps.length || !steps[0]?.items?.length) throw new Error('no bridge steps in quote')
-  const txData = steps[0].items[0].data
-  if (!txData?.to) throw new Error('no tx data in quote')
+  // Some source currencies (USDC etc.) generate an approve step BEFORE the
+  // bridge tx — flatten every item across every step and sign them in order.
+  const txItems = steps.flatMap(s => (s?.items || []).map(i => i?.data).filter(Boolean))
+  if (!txItems.length) throw new Error('no tx data in quote')
 
-  const { createPublicClient, http, keccak256, optimism, mainnet } = await import('./vendor.js')
+  const { createPublicClient, http, keccak256, mainnet, arbitrum, optimism, base, polygon } = await import('./vendor.js')
+  const viemChains = { 1: mainnet, 42161: arbitrum, 10: optimism, 8453: base, 137: polygon }
+  const baseChain = viemChains[fromChainId]
+  if (!baseChain) throw new Error(`bridging from chainId ${fromChainId} not supported`)
 
   await window.ensureAuthorized?.()
   const embeddedAcct = window.getEmbeddedAccount?.()
   if (!embeddedAcct) throw new Error('wallet not available')
 
-  const opRpc = PUBLIC_RPCS[10]
-  const opChain = { ...optimism, rpcUrls: { ...optimism.rpcUrls, default: { http: [opRpc] } } }
-  const opPc = createPublicClient({ chain: opChain, transport: http(opRpc) })
-  const [nonce, block] = await Promise.all([
-    opPc.getTransactionCount({ address, blockTag: 'latest' }),
-    opPc.getBlock({ blockTag: 'latest' }),
-  ])
-  const baseFee = block.baseFeePerGas || 0n
-  const maxPriority = 3000000000n
-  const maxFee = baseFee * 2n + maxPriority
-  const gasEstimate = txData.gas ? BigInt(txData.gas) : await opPc.estimateGas({
-    account: embeddedAcct, to: txData.to, data: txData.data,
-    value: txData.value ? BigInt(txData.value) : 0n,
-  })
-  const txRequest = {
-    to: txData.to, data: txData.data,
-    value: txData.value ? BigInt(txData.value) : 0n,
-    nonce, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPriority,
-    gas: gasEstimate, chainId: 10, type: 'eip1559',
-  }
-  const balance = await opPc.getBalance({ address })
-  const maxCost = txRequest.value + gasEstimate * maxFee
-  if (balance < maxCost) throw new Error(`Optimism balance too low for the bridge (have ${balance} wei, need ${maxCost} wei)`)
+  const fromRpc = PUBLIC_RPCS[fromChainId]
+  const chainDef = { ...baseChain, rpcUrls: { ...baseChain.rpcUrls, default: { http: [fromRpc] } } }
+  const fromPc = createPublicClient({ chain: chainDef, transport: http(fromRpc) })
 
-  const serializedTx = await embeddedAcct.signTransaction(txRequest)
-  const expectedHash = keccak256(serializedTx)
-  let hash = await _broadcastRawTx(opRpc, serializedTx)
-  if (!hash) hash = expectedHash
+  let nonce = await fromPc.getTransactionCount({ address, blockTag: 'latest' })
 
-  await new Promise(r => setTimeout(r, 3000))
-  const found = await _checkTxExists(opRpc, hash)
-  if (!found) {
-    await _broadcastRawTx(opRpc, serializedTx)
+  let lastHash = null
+  for (const txData of txItems) {
+    if (!txData.to) throw new Error('no tx data in quote')
+    const block = await fromPc.getBlock({ blockTag: 'latest' })
+    const baseFee = block.baseFeePerGas || 0n
+    const maxPriority = 3000000000n
+    const maxFee = baseFee * 2n + maxPriority
+    const gasEstimate = txData.gas ? BigInt(txData.gas) : await fromPc.estimateGas({
+      account: embeddedAcct, to: txData.to, data: txData.data,
+      value: txData.value ? BigInt(txData.value) : 0n,
+    })
+    const txRequest = {
+      to: txData.to, data: txData.data,
+      value: txData.value ? BigInt(txData.value) : 0n,
+      nonce, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPriority,
+      gas: gasEstimate, chainId: fromChainId, type: 'eip1559',
+    }
+    const balance = await fromPc.getBalance({ address })
+    const maxCost = txRequest.value + gasEstimate * maxFee
+    if (balance < maxCost) throw new Error(`${baseChain.name} balance too low for the bridge (have ${balance} wei, need ${maxCost} wei)`)
+
+    const serializedTx = await embeddedAcct.signTransaction(txRequest)
+    const expectedHash = keccak256(serializedTx)
+    let hash = await _broadcastRawTx(fromRpc, serializedTx)
+    if (!hash) hash = expectedHash
     await new Promise(r => setTimeout(r, 3000))
+    const found = await _checkTxExists(fromRpc, hash)
+    if (!found) {
+      await _broadcastRawTx(fromRpc, serializedTx)
+      await new Promise(r => setTimeout(r, 3000))
+    }
+    const receipt = await Promise.race([
+      fromPc.waitForTransactionReceipt({ hash }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`bridge timeout on ${baseChain.name} after 5m`)), 5 * 60 * 1000)),
+    ])
+    if (receipt.status === 'reverted') throw new Error(`bridge tx reverted on ${baseChain.name}`)
+    lastHash = hash
+    nonce += 1
   }
-  onStatusUpdate?.('bridge submitted — waiting for confirmation…')
 
-  const receipt = await Promise.race([
-    opPc.waitForTransactionReceipt({ hash }),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('bridge timeout after 5m')), 5 * 60 * 1000)),
-  ])
-  if (receipt.status === 'reverted') throw new Error('bridge tx reverted on Optimism')
   onStatusUpdate?.('waiting for funds on Ethereum…')
-
-  // Poll L1 balance until it changes. Relay + gas costs mean the arriving
-  // amount is a bit less than `amountWei`; ANY increase is proof of arrival.
-  // L1 confirmation is slower than L2s, so we poll for up to ~5 minutes.
   const mainRpc = '/api/rpc/1'
   const mainPc = createPublicClient({ chain: mainnet, transport: http(mainRpc) })
   const before = await mainPc.getBalance({ address }).catch(() => 0n)
@@ -455,7 +462,7 @@ export async function bridgeEthOptimismToMainnet(address, amountWei, onStatusUpd
     }
     onStatusUpdate?.(`waiting for Ethereum… (${(i + 1) * 2}s)`)
   }
-  throw new Error('bridge landed on Optimism but Ethereum balance never updated — try again in a minute')
+  throw new Error(`bridge landed on ${baseChain.name} but Ethereum balance never updated — try again in a minute`)
 }
 
 // Build a viem walletClient configured for the source chain.

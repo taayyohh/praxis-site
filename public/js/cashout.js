@@ -668,6 +668,7 @@ async function initCashout() {
             liquid: selectedSource.boldLiquid || 0n,
             sps: selectedSource.boldSps || {},
             sourceSigner,
+            chainBalances,
             onStatus: (s) => { els.status.textContent = s },
           })
         } catch (e) {
@@ -1512,7 +1513,7 @@ async function _readMultiChainBalances(addr, ethPrices, cashCurrency) {
 // Passes `_doClaim=true` so any ETH yield accrued in the SP position
 // lands in the user's wallet at the same time — it's theirs, no
 // reason to leave it stranded.
-async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner, onStatus }) {
+async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner, chainBalances, onStatus }) {
   if (liquid >= sourceAmt) return  // enough liquid BOLD already
   const needed = sourceAmt - liquid
   const order = ['ETH', 'rETH', 'wstETH']
@@ -1538,10 +1539,11 @@ async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner
 
   // Top-up gas via Relay if the wallet's L1 ETH won't cover the unstake txs.
   // We don't sponsor mainnet gas — the ETH still comes from the user — but
-  // we silently bridge a small amount from Optimism ETH so they aren't stuck
-  // hunting for an exchange to fund the wallet. If the top-up fails or the
-  // wallet has no Optimism ETH either, we surface a plain-english error.
-  await _ensureL1GasForUnstakes({ addr, pc, withdraws, sourceSigner, onStatus })
+  // we silently bridge a small amount from a non-L1 asset the user already
+  // has (any chain, native or USDC). BOLD itself can't cover this: signing
+  // any L1 tx to swap BOLD → ETH also needs L1 gas first (bootstrapping
+  // problem), so the top-up sources from wherever else in the vault has funds.
+  await _ensureL1GasForUnstakes({ addr, pc, withdraws, chainBalances, onStatus })
 
   for (let i = 0; i < withdraws.length; i++) {
     const w = withdraws[i]
@@ -1555,45 +1557,75 @@ async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner
   }
 }
 
-// Bridge Optimism ETH → mainnet ETH when the wallet's L1 balance won't cover
-// gas for the withdrawFromSP transactions. We estimate each tx's gas at the
-// current L1 fee, sum them, add a 25% buffer, and bridge if we're short.
-async function _ensureL1GasForUnstakes({ addr, pc, withdraws, sourceSigner, onStatus }) {
-  try {
-    const [l1Balance, block] = await Promise.all([
-      pc.getBalance({ address: addr }),
-      pc.getBlock({ blockTag: 'latest' }),
-    ])
-    const baseFee = block.baseFeePerGas || 0n
-    const priority = 2_000_000_000n // 2 gwei
-    const gasPrice = baseFee + priority
-    // Estimate each unstake tx (falls back to a safe 200k default per tx).
-    let totalGas = 0n
-    for (const w of withdraws) {
-      let g = 200_000n
-      try {
-        g = await pc.estimateContractGas({
-          address: w.spAddr, abi: BOLD_SP_ABI, functionName: 'withdrawFromSP',
-          args: [w.amount, true], account: addr,
-        })
-      } catch {}
-      totalGas += g
-    }
-    const needed = (totalGas * gasPrice * 5n) / 4n // 25% headroom
-    if (l1Balance >= needed) return
-    const short = needed - l1Balance
-    // Bridge a hair more than the deficit so mempool fee wiggle doesn't strand us.
-    const bridgeAmt = (short * 6n) / 5n
-    onStatus?.('topping up mainnet gas for the unstake…')
-    const { bridgeEthOptimismToMainnet } = await import('./relay-bridge.js')
-    await bridgeEthOptimismToMainnet(addr, bridgeAmt, (s) => onStatus?.(`gas top-up · ${s}`))
-  } catch (e) {
-    const msg = String(e?.message || e || '')
-    if (/Optimism balance too low/i.test(msg)) {
-      throw new Error("your wallet doesn't have Optimism ETH to cover mainnet gas for the BOLD unstake — add funds to the vault first, then try again")
-    }
-    throw new Error(`couldn't top up mainnet gas — ${msg.slice(0, 140)}`)
+// Bridge from any non-L1 asset the user already has → mainnet ETH when the
+// wallet's L1 balance won't cover gas for the withdrawFromSP transactions.
+// Estimates each unstake tx at the current L1 fee, sums, adds a 25% buffer,
+// and if the wallet's L1 ETH is short bridges the deficit through Relay.
+//
+// Source-picking order, richest-first: Optimism ETH → Base ETH → Arbitrum
+// ETH → Optimism USDC → Base USDC → Arbitrum USDC → Polygon USDC. Native
+// ETH is preferred over USDC because there's no swap leg, only a bridge —
+// smaller Relay fee, faster settlement. The picked source must have enough
+// fiat value to cover the L1 gas plus roughly a 20% Relay headroom, or it's
+// skipped for the next candidate.
+async function _ensureL1GasForUnstakes({ addr, pc, withdraws, chainBalances, onStatus }) {
+  const [l1Balance, block] = await Promise.all([
+    pc.getBalance({ address: addr }),
+    pc.getBlock({ blockTag: 'latest' }),
+  ])
+  const baseFee = block.baseFeePerGas || 0n
+  const priority = 2_000_000_000n // 2 gwei
+  const gasPrice = baseFee + priority
+  let totalGas = 0n
+  for (const w of withdraws) {
+    let g = 200_000n
+    try {
+      g = await pc.estimateContractGas({
+        address: w.spAddr, abi: BOLD_SP_ABI, functionName: 'withdrawFromSP',
+        args: [w.amount, true], account: addr,
+      })
+    } catch {}
+    totalGas += g
   }
+  const needed = (totalGas * gasPrice * 5n) / 4n // 25% headroom
+  if (l1Balance >= needed) return
+  const short = needed - l1Balance
+  // Bridge a hair more than the deficit so mempool fee wiggle doesn't strand us.
+  const target = (short * 6n) / 5n
+
+  // Rank non-L1 sources the user actually has.
+  const shortEth = Number(short) / 1e18
+  const ETH_ZERO = '0x0000000000000000000000000000000000000000'
+  const usdcOn = (chainId) => SOURCE_CHAINS.find(c => c.chainId === chainId)?.usdc || null
+  const orderNative = [10, 8453, 42161]
+  const orderUsdc = [10, 8453, 42161, 137]
+  const candidates = []
+  for (const chainId of orderNative) {
+    const c = chainBalances.find(x => x.chainId === chainId)
+    if (c && c.ethWei > 0n) candidates.push({ chainId, currency: ETH_ZERO, symbol: 'ETH', chainName: c.name, fiat: c.ethFiat })
+  }
+  for (const chainId of orderUsdc) {
+    const c = chainBalances.find(x => x.chainId === chainId)
+    if (c && c.usdcUnits > 0n) candidates.push({ chainId, currency: usdcOn(chainId), symbol: 'USDC', chainName: c.name, fiat: c.usdcFiat })
+  }
+  if (!candidates.length) {
+    throw new Error("your wallet has no other-chain balance to cover mainnet gas — add funds to the vault (Optimism ETH or USDC is quickest), then try again")
+  }
+
+  const { bridgeToMainnet } = await import('./relay-bridge.js')
+  const errors = []
+  for (const pick of candidates) {
+    onStatus?.(`topping up ~${shortEth.toFixed(4)} ETH on Ethereum from your ${pick.symbol} on ${pick.chainName}…`)
+    try {
+      // bridgeToMainnet uses EXACT_OUTPUT so `target` is the L1 ETH we want,
+      // Relay solves for the input amount out of the picked source.
+      await bridgeToMainnet(pick.chainId, pick.currency, addr, target, (s) => onStatus?.(`gas top-up · ${s}`))
+      return
+    } catch (e) {
+      errors.push(`${pick.symbol} on ${pick.chainName}: ${String(e?.message || e).slice(0, 100)}`)
+    }
+  }
+  throw new Error(`couldn't top up mainnet gas from any source — ${errors[0] || 'unknown error'}`)
 }
 
 async function _readBoldPosition(pc, addr) {
