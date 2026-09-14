@@ -1535,6 +1535,14 @@ async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner
     chain: { ...mainnet, rpcUrls: { ...mainnet.rpcUrls, default: { http: [rpcUrlFor(1)] } } },
     transport: http(rpcUrlFor(1)),
   })
+
+  // Top-up gas via Relay if the wallet's L1 ETH won't cover the unstake txs.
+  // We don't sponsor mainnet gas — the ETH still comes from the user — but
+  // we silently bridge a small amount from Optimism ETH so they aren't stuck
+  // hunting for an exchange to fund the wallet. If the top-up fails or the
+  // wallet has no Optimism ETH either, we surface a plain-english error.
+  await _ensureL1GasForUnstakes({ addr, pc, withdraws, sourceSigner, onStatus })
+
   for (let i = 0; i < withdraws.length; i++) {
     const w = withdraws[i]
     const boldAmt = Number(w.amount) / 10 ** BOLD_DECIMALS
@@ -1544,6 +1552,47 @@ async function _unstakeBoldIfNeeded({ addr, sourceAmt, liquid, sps, sourceSigner
       args: [w.amount, true], account: sourceSigner.account,
     })
     await pc.waitForTransactionReceipt({ hash, timeout: 180_000 })
+  }
+}
+
+// Bridge Optimism ETH → mainnet ETH when the wallet's L1 balance won't cover
+// gas for the withdrawFromSP transactions. We estimate each tx's gas at the
+// current L1 fee, sum them, add a 25% buffer, and bridge if we're short.
+async function _ensureL1GasForUnstakes({ addr, pc, withdraws, sourceSigner, onStatus }) {
+  try {
+    const [l1Balance, block] = await Promise.all([
+      pc.getBalance({ address: addr }),
+      pc.getBlock({ blockTag: 'latest' }),
+    ])
+    const baseFee = block.baseFeePerGas || 0n
+    const priority = 2_000_000_000n // 2 gwei
+    const gasPrice = baseFee + priority
+    // Estimate each unstake tx (falls back to a safe 200k default per tx).
+    let totalGas = 0n
+    for (const w of withdraws) {
+      let g = 200_000n
+      try {
+        g = await pc.estimateContractGas({
+          address: w.spAddr, abi: BOLD_SP_ABI, functionName: 'withdrawFromSP',
+          args: [w.amount, true], account: addr,
+        })
+      } catch {}
+      totalGas += g
+    }
+    const needed = (totalGas * gasPrice * 5n) / 4n // 25% headroom
+    if (l1Balance >= needed) return
+    const short = needed - l1Balance
+    // Bridge a hair more than the deficit so mempool fee wiggle doesn't strand us.
+    const bridgeAmt = (short * 6n) / 5n
+    onStatus?.('topping up mainnet gas for the unstake…')
+    const { bridgeEthOptimismToMainnet } = await import('./relay-bridge.js')
+    await bridgeEthOptimismToMainnet(addr, bridgeAmt, (s) => onStatus?.(`gas top-up · ${s}`))
+  } catch (e) {
+    const msg = String(e?.message || e || '')
+    if (/Optimism balance too low/i.test(msg)) {
+      throw new Error("your wallet doesn't have Optimism ETH to cover mainnet gas for the BOLD unstake — add funds to the vault first, then try again")
+    }
+    throw new Error(`couldn't top up mainnet gas — ${msg.slice(0, 140)}`)
   }
 }
 
