@@ -9418,3 +9418,89 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   border-radius: 4px;
   font-size: 0.9em;
 }
+
+/* ============================================================
+   /art detail page — shared primitives
+   ------------------------------------------------------------
+   Extracted from six vanity renderers where these patterns were
+   repeated inline. Uniform title clamp, cover cap, description
+   rhythm, awards accent, and external-link chrome so every media
+   type reads with the same typographic voice. Numbers wear
+   `.art-num` for tabular figures — the philosophy's "first-class
+   numbers" rule applied everywhere prices, years, ISBNs, page
+   counts, runtimes, supply, and durations appear.
+   ============================================================ */
+.art-title {
+  font-size: clamp(1.5em, 4vw, 2em);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.35em;
+  line-height: 1.15;
+}
+.art-cover { margin-bottom: 1.5em; }
+.art-cover img {
+  max-width: 100%;
+  max-height: 400px;
+  display: block;
+  border-radius: 6px;
+}
+/* Gallery is an exception — the image IS the piece, no crop. */
+.art-cover.art-cover-full img { max-height: none; }
+.art-meta {
+  color: var(--muted);
+  margin-bottom: 1em;
+  font-variant-numeric: tabular-nums;
+}
+.art-meta-secondary {
+  color: var(--dim);
+  font-size: 0.85em;
+  margin-bottom: 0.75em;
+  font-variant-numeric: tabular-nums;
+}
+.art-description {
+  color: var(--fg);
+  font-size: 0.95em;
+  line-height: 1.6;
+  margin-bottom: 1.25em;
+  max-width: 62ch;
+}
+.art-excerpt {
+  color: var(--fg);
+  font-size: 0.95em;
+  line-height: 1.65;
+  font-style: italic;
+  margin-bottom: 1.25em;
+  max-width: 62ch;
+}
+.art-awards {
+  color: var(--green, var(--accent));
+  font-size: 0.85em;
+  margin-bottom: 0.75em;
+}
+.art-external {
+  color: var(--muted);
+  font-size: 0.9em;
+  text-decoration: none;
+}
+.art-external:hover { color: var(--fg); text-decoration: underline; }
+.art-num { font-variant-numeric: tabular-nums; }
+/* Every buy-button / price span across the app renders through
+   `data-fiat-primary` or `data-eth-wei`, so this single rule
+   gives every price a tabular figure without asking each renderer
+   to remember — principle 4 lands globally, not per-renderer. */
+[data-fiat-primary="true"], [data-eth-wei] { font-variant-numeric: tabular-nums; }
+/* Reserved async slots — PDF viewer and collectors list arrive
+   after the on-chain detail lands, so we hold their vertical
+   footprint from first paint to avoid principle-9 shifts. */
+.art-pdf-slot { min-height: 60vh; margin-bottom: 1.5em; }
+.art-collectors-slot { min-height: 3.2em; margin-top: 1.5em; }
+/* Music-album overflow menu — hover state via CSS instead of the
+   inline onmouseover handlers each row used to carry (self-XSS-
+   adjacent pattern, and it violated principle 3's "hierarchy
+   through typography, not boxes"). */
+.track-overflow-item { transition: background 0.1s; }
+.track-overflow-item:hover { background: var(--border); }
+/* On-chain media title + external artist attribution — same voice
+   as the vanity renderers so hopping between them is seamless. */
+.art-onchain-title { font-size: clamp(1.4em, 3.5vw, 1.8em); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.35em; }
+.art-onchain-supply { color: var(--dim); font-size: 0.85em; font-variant-numeric: tabular-nums; }

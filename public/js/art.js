@@ -367,16 +367,16 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
     html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
     if (queueData) {
-      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;transition:background 0.1s;border-radius:8px" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
     }
     if (firstListedTrack) {
-      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;transition:background 0.1s;border-radius:8px" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
     }
     html += `</div></div>`
   }
   if (album.links && Object.keys(album.links).length) {
     for (const [platform, url] of Object.entries(album.links)) {
-      if (url && /^https?:\/\//i.test(url)) html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.85em;padding:0.3em 1ch;border:1px solid var(--border);text-decoration:none">${escapeHtml(platform)}</a>`
+      if (url && /^https?:\/\//i.test(url)) html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="art-external">${escapeHtml(platform)}</a>`
     }
   }
   html += `</div>`
@@ -398,7 +398,7 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
       if (track.duration) {
         const m = Math.floor(track.duration / 60)
         const s = String(track.duration % 60).padStart(2, '0')
-        html += `<span style="color:var(--dim);font-size:0.85em">${m}:${s}</span>`
+        html += `<span class="art-num" style="color:var(--dim);font-size:0.85em">${m}:${s}</span>`
       }
       if (track.src) {
         html += `<button class="track-play-btn" data-track-src="${escapeHtml(track.src)}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0.2em 0.35ch;font-size:1.1em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-play"></i></button>`
@@ -458,26 +458,22 @@ function renderGalleryImage(el, image, idx) {
 
   if (image.src) {
     const fullUrl = image.src.includes('/api/') ? image.src : `/api/img?url=${encodeURIComponent(image.src)}&w=1200`
-    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(image.title || '')}" style="max-width:100%" loading="lazy"></div>`
+    // Gallery is the exception to the 400px cover cap — the image IS
+    // the piece, no crop. `.art-cover-full` disables the max-height.
+    html += `<div class="art-cover art-cover-full"><img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(image.title || '')}" loading="lazy"></div>`
   }
 
-  if (image.title) html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(image.title)}</h1>`
+  if (image.title) html += `<h1 class="art-title">${escapeHtml(image.title)}</h1>`
   const meta = []
   if (image.medium) meta.push(image.medium)
   if (image.year) meta.push(String(image.year))
   if (image.series) meta.push(image.series)
   if (image.dimensions) meta.push(image.dimensions)
   if (image.location) meta.push(image.location)
-  if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
+  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
 
-  // Long-form description — fills the same space album.description holds on
-  // the music view; keeps the visual weight of a proper detail page.
-  if (image.description) {
-    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(image.description)}</div>`
-  }
-  if (image.awards) {
-    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(image.awards)}</div>`
-  }
+  if (image.description) html += `<div class="art-description">${escapeHtml(image.description)}</div>`
+  if (image.awards) html += `<div class="art-awards">${escapeHtml(image.awards)}</div>`
 
   // buy + ref buttons
   if (image.mediaId !== undefined && image.mediaId !== null) {
@@ -486,10 +482,8 @@ function renderGalleryImage(el, image, idx) {
     html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(image.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
   }
 
-  // Outbound link — an artist can point at a print shop, exhibition catalog,
-  // or external gallery listing. Standard target=_blank + rel="noopener".
   if (image.url && /^https?:\/\//i.test(image.url)) {
-    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(image.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.9em">view external</a></div>`
+    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(image.url)}" target="_blank" rel="noopener noreferrer" class="art-external">view external</a></div>`
   }
 
   el.innerHTML = html
@@ -500,30 +494,23 @@ function renderGalleryImage(el, image, idx) {
 function renderFilmWork(el, work) {
   let html = ''
 
-  // Poster leads the composition when it exists — a film has a face.
   if (work.poster) {
     const posterUrl = work.poster.includes('/api/') ? work.poster : `/api/img?url=${encodeURIComponent(work.poster)}&w=800`
-    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(work.title || '')}" style="max-width:100%;max-height:400px;display:block" loading="lazy"></div>`
+    html += `<div class="art-cover"><img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(work.title || '')}" loading="lazy"></div>`
   }
 
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(work.title)}</h1>`
+  html += `<h1 class="art-title">${escapeHtml(work.title)}</h1>`
   const meta = []
   if (work.role) meta.push(work.role)
   if (work.director) meta.push(`dir. ${work.director}`)
   if (work.year) meta.push(String(work.year))
   if (work.runtime) meta.push(work.runtime)
   if (work.venue) meta.push(work.venue)
-  if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
+  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
 
-  if (work.description) {
-    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(work.description)}</div>`
-  }
-  if (work.awards) {
-    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(work.awards)}</div>`
-  }
-  if (work.cast) {
-    html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">cast: ${escapeHtml(work.cast)}</div>`
-  }
+  if (work.description) html += `<div class="art-description">${escapeHtml(work.description)}</div>`
+  if (work.awards) html += `<div class="art-awards">${escapeHtml(work.awards)}</div>`
+  if (work.cast) html += `<div class="art-meta-secondary">cast: ${escapeHtml(work.cast)}</div>`
 
   // action buttons
   html += `<div style="display:flex;gap:1ch;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
@@ -539,9 +526,8 @@ function renderFilmWork(el, work) {
     html += `<div style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" playsinline style="max-width:100%"></video></div>`
   }
 
-  // Outbound link — IMDB, streaming, festival page, etc.
   if (work.url && /^https?:\/\//i.test(work.url)) {
-    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(work.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:0.9em">watch external</a></div>`
+    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(work.url)}" target="_blank" rel="noopener noreferrer" class="art-external">watch external</a></div>`
   }
 
   el.innerHTML = html
@@ -551,12 +537,12 @@ function renderFilmWork(el, work) {
 
 function renderVideoItem(el, item) {
   let html = ''
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title)}</h1>`
+  html += `<h1 class="art-title">${escapeHtml(item.title)}</h1>`
   const meta = []
   if (item.year) meta.push(String(item.year))
   if (item.collaborators) meta.push(item.collaborators)
-  if (meta.length) html += `<div style="color:var(--muted);margin-bottom:0.5em">${escapeHtml(meta.join(' -- '))}</div>`
-  if (item.description) html += `<p style="margin-bottom:1em">${escapeHtml(item.description)}</p>`
+  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
+  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
 
   // buy + ref buttons (before video so it's visible without scrolling)
   if (item.mediaId !== undefined && item.mediaId !== null) {
@@ -565,7 +551,10 @@ function renderVideoItem(el, item) {
     html += `<div style="margin-bottom:1em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { art: item.poster || item.thumbnail || '', type: 'video' })}</div>`
   }
 
-  // video player — same lazy pattern as /video page with auto-generated thumbnail
+  // video player — same lazy pattern as /video page with auto-generated
+  // thumbnail. Reserve 16:9 on the poster wrapper so a non-16:9 poster
+  // doesn't shift the layout when mini-player.js swaps it for the real
+  // <video> element on click (principle 9).
   if (item.src) {
     let posterUrl = item.poster || item.thumbnail || ''
     if (!posterUrl) {
@@ -573,10 +562,15 @@ function renderVideoItem(el, item) {
       if (cidMatch) posterUrl = `/api/video-thumb?cid=${cidMatch[1]}&w=960`
     }
     html += `<div style="margin-bottom:1.5em">
-      <div class="video-lazy" data-src="${escapeHtml(item.src)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(item.title || '')}">
-        ${posterUrl ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy" style="width:100%;cursor:pointer">` : `<div style="background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;aspect-ratio:16/9"><span style="color:var(--muted)">play</span></div>`}
+      <div class="video-lazy" data-src="${escapeHtml(item.src)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(item.title || '')}" style="aspect-ratio:16/9;background:#111;overflow:hidden">
+        ${posterUrl ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:pointer">` : `<div style="display:flex;align-items:center;justify-content:center;cursor:pointer;width:100%;height:100%"><span style="color:var(--muted)">play</span></div>`}
       </div>
     </div>`
+  }
+
+  // Outbound link — external hosting (Vimeo, YouTube, festival page).
+  if (item.url && /^https?:\/\//i.test(item.url)) {
+    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">watch external</a></div>`
   }
 
   el.innerHTML = html
@@ -586,9 +580,12 @@ function renderVideoItem(el, item) {
 
 function renderAudioItem(el, item, idx) {
   let html = ''
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title || 'untitled')}</h1>`
-  if (item.description) html += `<p style="color:var(--fg);margin-bottom:1em">${escapeHtml(item.description)}</p>`
-  if (item.year) html += `<div style="color:var(--muted);margin-bottom:1em">${item.year}</div>`
+  html += `<h1 class="art-title">${escapeHtml(item.title || 'untitled')}</h1>`
+  const meta = []
+  if (item.year) meta.push(String(item.year))
+  if (item.artist || item.credit) meta.push(item.artist || item.credit)
+  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
+  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
   if (item.src) html += `<div style="margin-bottom:1.5em"><button class="track-play-btn" data-track-src="${escapeHtml(item.src)}" data-track-title="${escapeHtml(item.title || '')}" data-track-artist="${escapeHtml(item.artist || item.credit || '')}">play</button></div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
@@ -597,7 +594,7 @@ function renderAudioItem(el, item, idx) {
     html += `<div style="margin-bottom:1.5em;display:flex;gap:1ch;align-items:center"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { src: item.src || '', type: 'audio' })}</div>`
   }
 
-  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.9em">listen</a></div>`
+  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">listen external</a></div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
@@ -607,37 +604,33 @@ function renderAudioItem(el, item, idx) {
 function renderWritingItem(el, item, idx) {
   let html = ''
 
-  // Cover leads if present — book jackets, essay illustrations, chapbook art.
   if (item.cover) {
     const coverUrl = item.cover.includes('/api/') ? item.cover : `/api/img?url=${encodeURIComponent(item.cover)}&w=600`
-    html += `<div class="art-cover" style="margin-bottom:1.5em"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title || '')}" style="max-width:100%;max-height:400px;display:block" loading="lazy"></div>`
+    html += `<div class="art-cover"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title || '')}" loading="lazy"></div>`
   }
 
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(item.title)}</h1>`
+  html += `<h1 class="art-title">${escapeHtml(item.title)}</h1>`
   const meta = []
   if (item.publication) meta.push(item.publication)
   if (item.publisher) meta.push(item.publisher)
   if (item.year) meta.push(String(item.year))
   if (item.language) meta.push(`[${item.language}]`)
-  if (meta.length) html += `<div style="color:var(--muted);margin-bottom:1em">${escapeHtml(meta.join(' -- '))}</div>`
+  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
 
   const meta2 = []
   if (item.isbn) meta2.push(`ISBN ${item.isbn}`)
   if (item.pages) meta2.push(`${item.pages} pages`)
   if (item.form) meta2.push(item.form)
-  if (meta2.length) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">${escapeHtml(meta2.join(' -- '))}</div>`
-  if (item.awards) {
-    html += `<div style="color:var(--green,var(--accent));font-size:0.85em;margin-bottom:0.75em">${escapeHtml(item.awards)}</div>`
-  }
+  if (meta2.length) html += `<div class="art-meta-secondary">${escapeHtml(meta2.join(' -- '))}</div>`
+  if (item.awards) html += `<div class="art-awards">${escapeHtml(item.awards)}</div>`
 
-  // Description is the artist's blurb about the piece — different from the
-  // excerpt (an actual sample of prose). We render both when both exist.
-  if (item.description) {
-    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1.25em">${escapeHtml(item.description)}</div>`
-  }
+  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
 
-  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 1.5ch;text-decoration:none;display:inline-block">read</a></div>`
-  if (item.excerpt) html += `<div style="margin-bottom:1.5em;color:var(--fg);line-height:1.6;font-style:italic">${escapeHtml(item.excerpt)}</div>`
+  // Standardized external link chrome — plain muted text, matches
+  // gallery / film / video / audio. The old "read" pill was a
+  // one-off box that violated principle 3 across the renderer set.
+  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">read external</a></div>`
+  if (item.excerpt) html += `<div class="art-excerpt">${escapeHtml(item.excerpt)}</div>`
 
   if (item.mediaId !== undefined && item.mediaId !== null) {
     const priceWei = item.mediaPrice || '0'
@@ -741,15 +734,15 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   // cover art / media preview — with play overlay for audio
   const isAudioContent = contentType.startsWith('audio/') || contentType === 'application/ogg'
   if (coverUrl) {
-    html += `<div class="art-cover" style="margin-bottom:1.5em;position:relative;display:inline-block">
-      <img src="/api/img?url=${encodeURIComponent(coverUrl)}&w=600" alt="${escapeHtml(title)}" style="max-width:100%;max-height:400px;display:block" loading="lazy">
+    html += `<div class="art-cover" style="position:relative;display:inline-block">
+      <img src="/api/img?url=${encodeURIComponent(coverUrl)}&w=600" alt="${escapeHtml(title)}" loading="lazy">
       ${isAudioContent && mediaUrl ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artistDomain)}" style="width:56px;height:56px;font-size:20px"><i class="ph ph-play"></i></button>` : ''}
     </div>`
   }
 
   // title + artist + price
-  html += `<h1 style="font-size:1.4em;margin:0 0 0.25em">${escapeHtml(title)}</h1>`
-  html += `<div style="color:var(--muted);margin-bottom:0.75em">${t('art.by')} <a href="https://${escapeHtml(artistDomain)}" style="color:var(--muted)">${escapeHtml(artistDomain)}</a>${priceNum > 0 ? ` — <span data-eth-wei="${escapeHtml(price.toString())}" data-fiat-primary="true" style="color:var(--fg)"></span>` : ''}</div>`
+  html += `<h1 class="art-onchain-title">${escapeHtml(title)}</h1>`
+  html += `<div class="art-meta" style="margin-bottom:0.75em">${t('art.by')} <a href="https://${escapeHtml(artistDomain)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none">${escapeHtml(artistDomain)}</a>${priceNum > 0 ? ` — <span data-eth-wei="${escapeHtml(price.toString())}" data-fiat-primary="true" style="color:var(--fg)"></span>` : ''}</div>`
 
   // action row
   html += `<div style="display:flex;gap:0.6em;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
@@ -773,7 +766,10 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   // inline media player for PDF/video/image
   let pendingPdf = false
   if (mediaUrl && contentType === 'application/pdf') {
-    html += `<div id="art-pdf-embed" style="margin-bottom:1.5em"></div>`
+    // Reserve the PDF viewer's vertical space so the async
+    // `renderMedia` fill (setTimeout in the finally block below)
+    // doesn't push the collectors + supply blocks down after paint.
+    html += `<div id="art-pdf-embed" class="art-pdf-slot"></div>`
     pendingPdf = true
   } else if (mediaUrl && contentType.startsWith('video/')) {
     const cidMatch = mediaUrl.match(/ipfs-proxy\/([A-Za-z0-9]+)/)
@@ -809,10 +805,14 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
 
   // supply info
   const supplyStr = maxSupply > 0n ? `${totalMinted.toString()} / ${maxSupply.toString()}` : `${totalMinted.toString()}`
-  html += `<div style="color:var(--dim);font-size:0.85em">${supplyStr} collected</div>`
+  html += `<div class="art-onchain-supply">${supplyStr} collected</div>`
 
-  // collectors section — loaded async after initial render
-  html += `<div id="art-collectors" style="margin-top:1.5em"></div>`
+  // Collectors section — loaded async after initial render; the
+  // reserved slot holds ~one line of vertical space so its fill
+  // doesn't reflow the layout below (there is nothing below on
+  // this page today, but the reserved slot keeps principle 9
+  // honest as more sections get appended in the future).
+  html += `<div id="art-collectors" class="art-collectors-slot"></div>`
 
   contentEl.innerHTML = html
 
@@ -835,7 +835,7 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
         const names = buyers.map(addr => {
           const domain = domains[addr.toLowerCase()]
           return domain
-            ? `<a href="https://${escapeHtml(domain)}" style="color:var(--muted);text-decoration:none" target="_blank">${escapeHtml(domain)}</a>`
+            ? `<a href="https://${escapeHtml(domain)}" style="color:var(--muted);text-decoration:none" target="_blank" rel="noopener noreferrer">${escapeHtml(domain)}</a>`
             : `<span style="color:var(--dim)">${escapeHtml(addr.slice(0, 6) + '...' + addr.slice(-4))}</span>`
         })
         collectorsEl.innerHTML = `<div style="border-top:1px solid var(--border);padding-top:1em"><span style="color:var(--dim);font-size:0.8em;text-transform:uppercase;letter-spacing:0.05em">collectors</span><div style="margin-top:0.5em;color:var(--muted);font-size:0.85em;line-height:1.8">${names.join(' · ')}</div></div>`
