@@ -9504,3 +9504,91 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    as the vanity renderers so hopping between them is seamless. */
 .art-onchain-title { font-size: clamp(1.4em, 3.5vw, 1.8em); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.35em; }
 .art-onchain-supply { color: var(--dim); font-size: 0.85em; font-variant-numeric: tabular-nums; }
+
+/* --- Art detail — follow-up refactor (dispatch helper, ghost
+   download, on-tenant links, extracted wrappers). --- */
+
+/* Cover wrapper needs to be inline-block + position:relative for
+   the on-chain play-overlay button to anchor. Harmless on the
+   other renderers where nothing is anchored inside. */
+.art-cover { position: relative; display: inline-block; }
+.art-cover-full { display: block; }
+
+/* Tracklist rows earn separation through vertical rhythm, not a
+   per-row border. One rule at the top of the list marks its
+   start; whitespace between rows carries the read. Principle 3. */
+.art-tracklist { border-top: 1px solid var(--border); }
+.album-track {
+  display: flex;
+  align-items: center;
+  gap: 0.75ch;
+  padding: 0.55em 0;
+}
+
+/* Music album hero — cover-then-metadata columns that stack on
+   mobile. The inline <style> block the render function used to
+   emit now lives here. */
+.art-album-hero {
+  display: flex;
+  gap: 2em;
+  align-items: flex-start;
+  margin-bottom: 2em;
+  text-align: left;
+}
+.art-album-hero-cover { flex-shrink: 0; width: min(300px, 45%); }
+.art-album-hero-cover img { width: 100%; display: block; border-radius: 6px; }
+.art-album-hero-meta { flex: 1; min-width: 0; }
+@media (max-width: 600px) {
+  #art-page { margin-top: -2em; }
+  .art-album-hero { flex-direction: column; align-items: flex-start; gap: 1em; }
+  .art-album-hero-cover { width: 100%; }
+  .art-album-hero-cover img { width: 100%; display: block; }
+}
+
+/* Repeated buy+ref row wrapper — extracted from six renderers. */
+.art-action-row {
+  margin-bottom: 1.5em;
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Download / secondary action — subordinate to the primary buy so
+   the eye picks up buy first (principle 1). Reads as a muted
+   inline text link with icon, not a chunky pill. */
+.art-action-ghost {
+  background: transparent;
+  border: 0;
+  color: var(--dim);
+  font-size: 0.85em;
+  padding: 0.3em 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  cursor: pointer;
+  font-family: inherit;
+}
+.art-action-ghost:hover { color: var(--fg); }
+
+/* Base link chrome for art detail — muted, no underline, fg on
+   hover. Used by the on-chain artist attribution, collector row,
+   and any other in-tenant nav link inside the detail page. */
+.art-detail-link {
+  color: var(--muted);
+  text-decoration: none;
+}
+.art-detail-link:hover { color: var(--fg); }
+
+/* Compact buy variant for per-track album buys — smaller than
+   the primary album buy without becoming a second-class citizen. */
+.track-buy-btn-compact { font-size: 0.7em; }
+
+/* Video-lazy poster frame reserves the 16:9 up front so the swap
+   to <video> doesn't jerk (principle 9). */
+.art-video-lazy-frame {
+  aspect-ratio: 16 / 9;
+  background: #111;
+  overflow: hidden;
+}
