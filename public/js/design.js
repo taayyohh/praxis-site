@@ -373,6 +373,14 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>library — rights attestation checkbox</h3>
+          <label style="display:flex;gap:0.6ch;align-items:flex-start;color:var(--muted);font-size:0.85em;line-height:1.4;cursor:pointer;max-width:520px">
+            <input type="checkbox" style="margin-top:0.25em;flex-shrink:0">
+            <span>i have the right to share this — i created it, it's in the public domain, it's under a permissive license, or i have the author's permission. i understand that copyrighted material posted without authorization will be removed. <a href="/dmca" target="_blank" style="color:var(--dim)">policy</a></span>
+          </label>
+        </div>
+
+        <div class="design-block">
           <h3>ticket pass (mini) · full page at /ticket</h3>
           <article class="ticket-pass" style="max-width:340px">
             <header class="ticket-pass-head">

@@ -77,12 +77,32 @@ async function initLibrary() {
     </div>`
   }
 
+  // Fetch the takedown blocklist so removed items never render. Falls back
+  // to empty sets if the endpoint is unreachable — a failed fetch shouldn't
+  // block the page.
+  let takedownItems = new Set()
+  let takedownCids = new Set()
+  try {
+    const tres = await fetch('/api/library/takedowns')
+    if (tres.ok) {
+      const tdata = await tres.json()
+      takedownItems = new Set((tdata.items || []).map(String))
+      takedownCids = new Set(tdata.cids || [])
+    }
+  } catch {}
+  const isTakenDown = (item) => {
+    if (!item) return false
+    if (takedownItems.has(String(item.id))) return true
+    if (item.ipfsCid && takedownCids.has(item.ipfsCid)) return true
+    return false
+  }
+
   try {
     const libraryCacheKey = 'library:' + libraryAddress
     const cachedLibrary = getCached(libraryCacheKey)
 
     if (cachedLibrary) {
-      items.push(...cachedLibrary.items)
+      items.push(...cachedLibrary.items.filter(i => !isTakenDown(i)))
       libraryCursor = cachedLibrary.cursor
       libraryHasMore = cachedLibrary.hasMore
     } else {
@@ -96,7 +116,8 @@ async function initLibrary() {
         }
       }`)
 
-      items.push(...data.libraryItems.items)
+      const filteredItems = data.libraryItems.items.filter(i => !isTakenDown(i))
+      items.push(...filteredItems)
       libraryCursor = data.libraryItems.pageInfo?.endCursor
       libraryHasMore = data.libraryItems.pageInfo?.hasNextPage || false
 
@@ -364,7 +385,7 @@ async function initLibrary() {
               ${F.pageInfo}
             }
           }`)
-          const newItems = moreData.libraryItems?.items || []
+          const newItems = (moreData.libraryItems?.items || []).filter(i => !isTakenDown(i))
           items.push(...newItems)
           libraryCursor = moreData.libraryItems.pageInfo?.endCursor
           libraryHasMore = moreData.libraryItems.pageInfo?.hasNextPage || false
@@ -446,6 +467,10 @@ function renderAddForm(libraryAddress) {
           <p style="color:var(--dim);font-size:0.8em;margin-bottom:0.5em">or</p>
           <input type="text" id="lib-url" placeholder="https://..." class="project-input">
         </div>
+        <label style="display:flex;gap:0.6ch;align-items:flex-start;color:var(--muted);font-size:0.85em;line-height:1.4;cursor:pointer">
+          <input type="checkbox" id="lib-rights-ack" style="margin-top:0.25em;flex-shrink:0">
+          <span>i have the right to share this — i created it, it's in the public domain, it's under a permissive license, or i have the author's permission. i understand that copyrighted material posted without authorization will be removed. <a href="https://ourpraxis.network/dmca" target="_blank" style="color:var(--dim)">policy</a></span>
+        </label>
         <button class="buy-btn" id="lib-submit-btn">add to library</button>
       </div>
       <p id="lib-status" style="color:var(--muted);font-size:0.85em;margin-top:0.5em"></p>
@@ -565,9 +590,25 @@ function renderAddForm(libraryAddress) {
 
     if (!title) { statusEl.textContent = 'enter a title'; return }
     if (!file && !url) { statusEl.textContent = 'upload a file or enter a URL'; return }
+    const rightsAck = document.getElementById('lib-rights-ack')
+    if (!rightsAck?.checked) {
+      statusEl.textContent = 'confirm you have the right to share this before adding it'
+      return
+    }
 
     const addr = await ensureWallet()
     if (!addr) { statusEl.textContent = t('projects.connectWallet'); return }
+
+    // Check the repeat-infringer blocklist before doing any upload work.
+    try {
+      const bres = await fetch(`/api/library/blocked?wallet=${addr}`)
+      const bdata = await bres.json()
+      if (bdata?.blocked) {
+        statusEl.textContent = 'this wallet has been blocked from contributing to the library — see the copyright policy'
+        return
+      }
+    } catch {}
+
     // Activate embedded provider FIRST (sets window.praxisEthereum) so that
     // getWalletProvider() and ensureScroll() don't accidentally hijack
     // MetaMask/Brave when window.ethereum is locked by another wallet.
@@ -627,6 +668,36 @@ function renderAddForm(libraryAddress) {
         statusEl.textContent = `upload error: ${e.message || 'unknown'}`
         return
       }
+    }
+
+    // Rights attestation: wallet-signed warranty tied to this specific upload.
+    // Stored server-side in library-legal.db and referenced if a takedown lands.
+    statusEl.textContent = 'signing rights attestation...'
+    try {
+      const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const attestKey = ipfsCid || url
+      const attestMsg =
+        `praxis-library-attestation:v1\n` +
+        `wallet: ${addr}\n` +
+        `cid: ${ipfsCid || '(none)'}\n` +
+        `url: ${url || '(none)'}\n` +
+        `title: ${title}\n` +
+        `date: ${new Date().toISOString()}\n\n` +
+        `i confirm that i have the right to share the material identified above. it is either work i created, work in the public domain, work under a permissive license, or work i have the author's permission to share.`
+      const signature = await walletClient.signMessage({ account: addAccount, message: attestMsg })
+      const attRes = await fetch('/api/library/attest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: addr, cid: attestKey, title, signature, message: attestMsg, url }),
+      })
+      if (!attRes.ok) {
+        const err = await attRes.json().catch(() => ({}))
+        statusEl.textContent = `attestation failed: ${err.error || 'unknown'}`
+        return
+      }
+    } catch (e) {
+      statusEl.textContent = `attestation failed: ${e.message || 'signature rejected'}`
+      return
     }
 
     // add to on-chain registry
