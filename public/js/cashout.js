@@ -960,7 +960,17 @@ async function _findPendingCashout(addr, cashCurrency) {
 
   const items = [...byId.values()].map(({ depositId, sdk, server }) => {
     const platform = server?.platform || ''
-    const receiveFiat = Number(server?.amountFiat || 0)
+    // Prefer server-persisted fiat (authoritative — recorded at deposit
+    // time in the user's chosen currency), fall back to the SDK's
+    // totalAmount (USDC base units, approximately USD-pegged). Without
+    // this fallback a fresh deposit where the server row 401'd or the
+    // amountFiat column drifted to 0 would render every card as a
+    // generic "cash-out" with no partial-fill breakdown, no per-card
+    // amount, and no honest cancel copy. Matches the vault card fix.
+    const serverFiat = Number(server?.amountFiat || 0)
+    const totalBig = sdk?.totalAmount ? BigInt(sdk.totalAmount) : 0n
+    const sdkFiat = totalBig > 0n ? Number(totalBig) / 1e6 : 0
+    const receiveFiat = serverFiat > 0 ? serverFiat : sdkFiat
     const currency = server?.currency || cashCurrency
     const payee = platform ? _recallHandle(addr, platform) : ''
     return {
@@ -1036,11 +1046,17 @@ function _renderPendingCard(item) {
         <button type="button" class="cashout-pending-copy" data-copy="${_escape(item.depositId)}" title="copy deposit id"><i class="ph ph-copy"></i></button>
       </footer>
       <div class="cashout-pending-card-cancel" data-cancel-slot="${_escape(item.depositId)}">
-        <button type="button" class="cashout-link cashout-link-muted" data-cancel-start="${_escape(item.depositId)}">cancel · pull funds back to my wallet</button>
+        <button type="button" class="cashout-link cashout-link-muted" data-cancel-start="${_escape(item.depositId)}">
+          <span data-slot="cancel-start-label">cancel · pull the unfilled part back to my wallet</span>
+        </button>
         <div class="cashout-pending-card-cancel-confirm" data-cancel-confirm-row="${_escape(item.depositId)}" hidden>
-          <span class="cashout-pending-card-cancel-question">cancel this cash-out? a small gas fee on Base to withdraw.</span>
+          <span class="cashout-pending-card-cancel-question" data-slot="cancel-question">
+            pull the unfilled part back to your wallet? anything already sent stays with the buyers who paid. small gas fee on Base.
+          </span>
           <div class="cashout-pending-card-cancel-actions">
-            <button type="button" class="cashout-link cashout-link-danger" data-cancel-confirm="${_escape(item.depositId)}">yes, pull funds back</button>
+            <button type="button" class="cashout-link cashout-link-danger" data-cancel-confirm="${_escape(item.depositId)}">
+              <span data-slot="cancel-confirm-label">yes, pull unfilled back</span>
+            </button>
             <button type="button" class="cashout-link cashout-link-muted" data-cancel-abort="${_escape(item.depositId)}">keep going</button>
           </div>
         </div>
@@ -1210,6 +1226,31 @@ function _paintPendingCard(card, order, item) {
   card.classList.toggle('is-done', order.state === 'delivered')
   card.classList.toggle('is-returned', order.state === 'returned')
   card.classList.toggle('is-partial', !!copy.partial?.isPartial)
+
+  // Cancel copy learns the unfilled amount from the same partial-fill
+  // math so the button doesn't over-promise. At 97% delivered the
+  // start button reads "cancel · pull the unfilled $0.44 back", the
+  // confirm question names both the pull-back and the sent-and-stays
+  // portions, and the confirm button matches. When we don't know the
+  // remaining amount (no fiat data at all) we fall through to the
+  // generic copy the shell rendered at first paint.
+  const startLabel = card.querySelector('[data-slot="cancel-start-label"]')
+  const question = card.querySelector('[data-slot="cancel-question"]')
+  const confirmLabel = card.querySelector('[data-slot="cancel-confirm-label"]')
+  const partial = copy.partial
+  const remaining = partial?.remainingPretty || ''
+  const filled = partial?.filledPretty || ''
+  if (partial?.isPartial && remaining) {
+    if (startLabel) startLabel.textContent = `cancel · pull the unfilled ${remaining} back to my wallet`
+    if (question) question.textContent = `pull the unfilled ${remaining} back to your wallet? the ${filled || 'part already sent'} stays with the buyers who paid. small gas fee on Base.`
+    if (confirmLabel) confirmLabel.textContent = `yes, pull ${remaining} back`
+  } else if (partial && remaining) {
+    // Fully awaiting-buyer or fully unfilled — same phrasing but no
+    // "already sent" clause.
+    if (startLabel) startLabel.textContent = `cancel · pull ${remaining} back to my wallet`
+    if (question) question.textContent = `pull ${remaining} back to your wallet? small gas fee on Base.`
+    if (confirmLabel) confirmLabel.textContent = `yes, pull ${remaining} back`
+  }
 }
 
 async function _handleCancel(root, btn, p) {
