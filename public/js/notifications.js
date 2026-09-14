@@ -230,8 +230,70 @@ async function loadNotifications(myAddr) {
     }
   }
 
-  // Run all three supplementary checks in parallel (unclaimed funds, collab invites, project confirmations)
+  // Run all supplementary checks in parallel (unclaimed funds, collab
+  // invites, project confirmations, new posts from writers you follow).
   await Promise.all([
+    // New posts from artists the current user follows. Follow == subscribe:
+    // we don't XMTP-broadcast anything (see the rip-out in commit note),
+    // so instead we surface a lightweight, aggregatable "new_post"
+    // notification alongside the feed card. Same 24h aggregation window
+    // the follow/purchase types use, and the notification click routes
+    // straight to /post so the reader lands on the piece itself.
+    (async () => {
+      try {
+        // Who does the current user follow? Cursor-page up to 2000 (matches
+        // the follow-fanout cap elsewhere in the app). Then the most-recent
+        // batch of posts by those authors within the 24h aggregation window.
+        const dayCutoffSec = Math.floor((Date.now() - 86400000) / 1000)
+        const following = []
+        let cursor = null
+        for (let page = 0; page < 10; page++) {
+          const data = await query(
+            `query MyFollowing($me: String!${cursor ? ', $after: String' : ''}) {
+              follows(where: { follower: $me }, limit: 200, orderBy: "timestamp", orderDirection: "desc"${cursor ? ', after: $after' : ''}) {
+                items { followed timestamp }
+                pageInfo { endCursor hasNextPage }
+              }
+            }`,
+            cursor ? { me: myAddrLower, after: cursor } : { me: myAddrLower }
+          ).catch(() => null)
+          const items = data?.follows?.items || []
+          for (const f of items) following.push(f.followed.toLowerCase())
+          if (!data?.follows?.pageInfo?.hasNextPage) break
+          cursor = data.follows.pageInfo.endCursor
+          if (!cursor) break
+        }
+        if (following.length === 0) return
+        // Ponder can handle 200 IDs comfortably; trim tail if the follow
+        // graph exceeds that (rare on Praxis today).
+        const followedIds = following.slice(0, 200)
+        const posts = await query(
+          `query PostsByFollowed($ids: [String!]!, $ts: BigInt!) {
+            blogPosts(where: { author_in: $ids, refType: 0, timestamp_gt: $ts }, limit: 50, orderBy: "timestamp", orderDirection: "desc") {
+              items { id title author timestamp }
+            }
+          }`,
+          { ids: followedIds, ts: String(dayCutoffSec) }
+        ).catch(() => null)
+        const items = posts?.blogPosts?.items || []
+        if (items.length === 0) return
+        // Resolve the author domains in one batch (uses the shared LRU).
+        const authorAddrs = [...new Set(items.map(p => p.author.toLowerCase()))]
+        const authorDomains = await resolveAddresses(query, authorAddrs).catch(() => ({}))
+        for (const p of items) {
+          const authorAddr = p.author.toLowerCase()
+          const domain = resolveDomain(authorDomains, authorAddr) || `${authorAddr.slice(0, 6)}...${authorAddr.slice(-4)}`
+          const authorLink = `<a href="/network?artist=${authorAddr}" style="color:var(--accent)">${escapeHtml(domain)}</a>`
+          notifications.push({
+            type: 'new_post',
+            text: `${authorLink} posted <a href="/post?id=${encodeURIComponent(p.id)}" style="color:var(--accent)">${escapeHtml(p.title || 'a new post')}</a>`,
+            time: Number(p.timestamp) * 1000,
+            link: `/post?id=${p.id}`,
+            fromAddr: p.author, refId: p.id, _who: authorLink, _title: escapeHtml(p.title || 'a new post'),
+          })
+        }
+      } catch (e) { console.warn('notifications: new_post fetch failed', e?.message) }
+    })(),
     // Unclaimed funds — always check on-chain (not in Ponder notification table).
     // Cached 5 minutes to avoid hammering Scroll RPC on every 30s poll.
     (async () => {
@@ -507,6 +569,10 @@ function aggregateNotifications(items) {
     else if (n.type === 'funding' && n.refId != null) key = `funding:${n.refId}`
     else if (n.type === 'purchase' && n.refId != null && !n._ticketPurchase) key = `purchase:${n.refId}`
     else if (n.type === 'purchase' && n._ticketPurchase && n.refId != null) key = `ticket-purchased:${n.refId}`
+    // Group new-post notifications by author: three posts from the same
+    // writer within 24h read as one "posted 3 new pieces" line instead
+    // of three separate rows.
+    else if (n.type === 'new_post' && n.fromAddr) key = `new_post:${n.fromAddr.toLowerCase()}`
 
     if (!key) { continue }
 
