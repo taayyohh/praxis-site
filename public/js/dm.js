@@ -61,10 +61,12 @@ function injectPanel() {
       <div id="dm-connect-prompt" style="padding:1em;color:#666">connect wallet to message</div>
       <div id="dm-loading" style="padding:1em;display:none"><div class="praxis-loader"></div></div>
       <div id="dm-tabs" style="display:none;padding:0 1em;border-bottom:1px solid #1a1a1a">
-        <button class="dm-tab dm-tab-active" data-tab="dms">dms</button>
+        <button class="dm-tab dm-tab-active" data-tab="dms">direct</button>
+        <button class="dm-tab" data-tab="subs">subscriptions</button>
         <button class="dm-tab" data-tab="projects">projects</button>
       </div>
       <div id="dm-convo-list"></div>
+      <div id="dm-sub-list" style="display:none"></div>
       <div id="dm-project-list" style="display:none"></div>
       <div id="dm-new-section" style="display:none">
         <button id="dm-new-btn" class="buy-btn" style="width:100%;margin:0.5em 0">new message</button>
@@ -203,9 +205,11 @@ async function initClient() {
           tab.classList.add('dm-tab-active')
           const tabName = tab.dataset.tab
           document.getElementById('dm-convo-list').style.display = tabName === 'dms' ? 'block' : 'none'
+          document.getElementById('dm-sub-list').style.display = tabName === 'subs' ? 'block' : 'none'
           document.getElementById('dm-project-list').style.display = tabName === 'projects' ? 'block' : 'none'
           document.getElementById('dm-new-section').style.display = tabName === 'dms' ? 'block' : 'none'
           if (tabName === 'projects') loadProjectGroups()
+          if (tabName === 'subs') loadSubscriptions()
         })
       })
     }
@@ -259,6 +263,14 @@ async function initClient() {
       console.warn('praxis: dm.js Client.build returned no inboxId')
       return
     }
+    // Register the Praxis broadcast codec so the inbox recognizes
+    // typed post broadcasts. dm.js is the panel dispatched from
+    // every page, so this registration reaches readers even when
+    // they haven't opened /messages yet.
+    try {
+      const { BroadcastCodec } = await import('./xmtp-broadcast-codec.js')
+      client.registerCodec?.(new BroadcastCodec())
+    } catch {}
   } catch (e) {
     client = null
     console.warn('praxis: dm.js Client.build failed:', e?.message)
@@ -566,6 +578,99 @@ function showListView() {
   loadConversations()
 }
 
+// Load conversations whose latest message is a Praxis blog broadcast.
+// Renders as post-preview cards (hero + title + author + time) rather
+// than chat rows. Clicking opens the conversation, which the
+// renderMessages path renders as broadcast cards + a normal reply
+// input at the bottom.
+async function loadSubscriptions() {
+  const listEl = document.getElementById('dm-sub-list')
+  if (!client || !listEl) return
+  listEl.innerHTML = '<div class="praxis-loader"></div>'
+  try {
+    // Reuse conversations already loaded by loadConversations if
+    // recent — otherwise fetch fresh. We deliberately don't sync
+    // here (loadConversations already did) to avoid double-syncing.
+    let all = conversations
+    if (!all || all.length === 0) {
+      try { all = await client.conversations.list({ limit: BigInt(100) }) }
+      catch { all = await client.conversations.list() }
+    }
+    const CHUNK = 10
+    const items = []
+    for (let i = 0; i < all.length; i += CHUNK) {
+      const chunk = all.slice(i, i + CHUNK)
+      const results = await Promise.all(chunk.map(async (c) => {
+        const lastMsg = await c.lastMessage().catch(() => null)
+        let env = null
+        // Same detection sweep as messages.js — typed content type
+        // OR JSON body wearing the v1 marker.
+        try {
+          const ct = lastMsg?.contentType
+          if (ct?.authorityId === 'praxis.network' && ct?.typeId === 'broadcast' && typeof lastMsg.content === 'object' && lastMsg.content?.type === 'praxis:broadcast:v1') env = lastMsg.content
+          if (!env) {
+            const c2 = lastMsg?.content
+            if (c2 && typeof c2 === 'object' && c2.type === 'praxis:broadcast:v1') env = c2
+            else if (typeof c2 === 'string' && c2.includes('"praxis:broadcast:v1"')) {
+              const p = JSON.parse(c2); if (p?.type === 'praxis:broadcast:v1') env = p
+            }
+          }
+        } catch {}
+        if (!env) return null
+        let peerInboxId = null
+        try { peerInboxId = await c.peerInboxId() } catch {}
+        const time = lastMsg?.sentAtNs ? timeAgo(Number(lastMsg.sentAtNs) / 1e6) : ''
+        return { convo: c, envelope: env, peerInboxId, time }
+      }))
+      items.push(...results.filter(Boolean))
+    }
+    items.sort((a, b) => {
+      const ta = a.convo.createdAtNs || 0
+      const tb = b.convo.createdAtNs || 0
+      return tb - ta
+    })
+
+    if (items.length === 0) {
+      listEl.innerHTML = `<div style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no subscriptions yet — posts from writers you follow will land here</div>`
+      return
+    }
+    listEl.innerHTML = items.map((item, i) => {
+      const env = item.envelope
+      const heroRaw = env.hero || ''
+      const heroSrc = heroRaw
+        ? (heroRaw.startsWith('http') || heroRaw.startsWith('/api/')
+            ? `/api/img?url=${encodeURIComponent(heroRaw)}&w=192`
+            : `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + heroRaw)}&w=192`)
+        : ''
+      return `
+        <div class="dm-sub-card" data-idx="${i}">
+          <div class="dm-sub-hero">
+            ${heroSrc ? `<img src="${escapeHtml(heroSrc)}" alt="" loading="lazy">` : `<div class="dm-sub-hero-empty"><i class="ph ph-newspaper"></i></div>`}
+          </div>
+          <div class="dm-sub-body">
+            <div class="dm-sub-title">${escapeHtml(env.title || 'new post')}</div>
+            <div class="dm-sub-meta">
+              <span class="dm-sub-author">${escapeHtml(env.authorDomain || '')}</span>
+              <span class="dm-sub-time">${item.time}</span>
+            </div>
+          </div>
+        </div>
+      `
+    }).join('')
+    window._dmSubItems = items
+    listEl.querySelectorAll('.dm-sub-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.idx)
+        const item = window._dmSubItems[idx]
+        if (item) openConversation(item.convo, item.envelope.authorDomain || '')
+      })
+    })
+  } catch (e) {
+    console.warn('praxis: loadSubscriptions failed:', e?.message)
+    listEl.innerHTML = `<div style="color:var(--muted);padding:1em">could not load subscriptions</div>`
+  }
+}
+
 // --- Message rendering ---
 
 function extractText(m) {
@@ -632,6 +737,44 @@ function _renderPayCard(text, isMe) {
 }
 
 function _renderSingleMessageHtml(m) {
+  // Broadcast render — post-preview card instead of a chat bubble.
+  // Detected the same way messages.js detects it: typed content type
+  // wins, JSON body fallback covers the codec-not-registered case.
+  const _bCt = m?.contentType
+  const _bContent = m?.content
+  let _bEnv = null
+  if (_bCt?.authorityId === 'praxis.network' && _bCt?.typeId === 'broadcast' && typeof _bContent === 'object' && _bContent?.type === 'praxis:broadcast:v1') _bEnv = _bContent
+  if (!_bEnv) {
+    if (_bContent && typeof _bContent === 'object' && _bContent.type === 'praxis:broadcast:v1') _bEnv = _bContent
+    else if (typeof _bContent === 'string' && _bContent.includes('"praxis:broadcast:v1"')) {
+      try { const p = JSON.parse(_bContent); if (p?.type === 'praxis:broadcast:v1') _bEnv = p } catch {}
+    }
+  }
+  if (_bEnv) {
+    const isMe = m.senderInboxId === client?.inboxId
+    const time = m.sentAtNs ? new Date(Number(m.sentAtNs) / 1e6).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+    const heroRaw = _bEnv.hero || ''
+    const heroSrc = heroRaw
+      ? (heroRaw.startsWith('http') || heroRaw.startsWith('/api/')
+          ? `/api/img?url=${encodeURIComponent(heroRaw)}&w=800`
+          : `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + heroRaw)}&w=800`)
+      : ''
+    const href = _bEnv.postId
+      ? `/post?id=${encodeURIComponent(_bEnv.postId)}`
+      : (_bEnv.title ? `/post/${encodeURIComponent(_bEnv.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}` : '/')
+    return `<div class="dm-msg dm-msg-broadcast ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}">
+      <a class="dm-broadcast-card" href="${escapeHtml(href)}">
+        ${heroSrc ? `<div class="dm-broadcast-hero"><img src="${escapeHtml(heroSrc)}" alt="" loading="lazy"></div>` : ''}
+        <div class="dm-broadcast-body">
+          <div class="dm-broadcast-kicker">${escapeHtml(_bEnv.authorDomain || '')}</div>
+          <div class="dm-broadcast-title">${escapeHtml(_bEnv.title || 'new post')}</div>
+          ${_bEnv.excerpt ? `<div class="dm-broadcast-excerpt">${escapeHtml(_bEnv.excerpt)}</div>` : ''}
+          <div class="dm-broadcast-cta">Read post →</div>
+        </div>
+      </a>
+      <div class="dm-time">${time}</div>
+    </div>`
+  }
   const text = extractText(m)
   if (!text) return ''
   const isMe = m.senderInboxId === client?.inboxId

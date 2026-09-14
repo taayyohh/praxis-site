@@ -9592,3 +9592,364 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   background: #111;
   overflow: hidden;
 }
+
+/* ============================================================
+   Post page — author bio card + related posts
+   ------------------------------------------------------------
+   Sits below the post body and above the replies. Reads as "if
+   you liked this piece, here's who wrote it — follow them, tip
+   them, keep reading." Substack anchors the same moment with
+   its author byline card at the end of every post.
+   ============================================================ */
+.post-author-card {
+  display: flex;
+  gap: 1.2em;
+  align-items: flex-start;
+  padding: 1.5em 0;
+  margin: 2em 0 1em;
+  border-top: 1px solid var(--border);
+}
+.post-author-avatar-link {
+  flex-shrink: 0;
+  display: block;
+  text-decoration: none;
+}
+.post-author-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.post-author-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 1.8em;
+}
+.post-author-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+.post-author-name {
+  color: var(--fg);
+  font-size: 1.1em;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+}
+.post-author-name:hover { color: var(--accent); }
+.post-author-domain {
+  color: var(--dim);
+  font-size: 0.85em;
+}
+.post-author-bio {
+  color: var(--fg);
+  font-size: 0.95em;
+  line-height: 1.55;
+  max-width: 60ch;
+  margin: 0.35em 0 0;
+}
+.post-author-subscribe-hint {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-top: 0.35em;
+  font-style: italic;
+}
+.post-author-actions {
+  display: flex;
+  gap: 0.8ch;
+  margin-top: 0.75em;
+  flex-wrap: wrap;
+}
+.post-author-follow-btn,
+.post-author-tip-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 0.45em 1.2ch;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.post-author-follow-btn:hover,
+.post-author-tip-btn:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color: var(--fg);
+}
+.post-author-tip-btn { color: var(--green, var(--accent)); border-color: color-mix(in srgb, var(--green, var(--accent)) 30%, var(--border)); }
+.post-author-tip-btn:hover { color: var(--green, var(--accent)); border-color: var(--green, var(--accent)); }
+
+.post-related-posts {
+  margin: 2.5em 0 1em;
+  padding-top: 1.5em;
+  border-top: 1px solid var(--border);
+}
+.post-related-title {
+  color: var(--dim);
+  font-size: 0.9em;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  margin: 0 0 1em;
+}
+.post-related-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1em;
+}
+.post-related-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  padding: 0.8em 0.9em;
+  color: var(--fg);
+  text-decoration: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  transition: background 0.12s;
+}
+.post-related-card:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.post-related-card-title {
+  font-size: 0.95em;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--fg);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.post-related-card-date {
+  color: var(--dim);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   XMTP Broadcast — inbox tabs, subscription cards, message-view
+   broadcast cards. Shared voice with the rest of the messages
+   surface (typographic, minimal chrome) while distinguishing a
+   post-broadcast from a chat bubble at a glance.
+   ============================================================ */
+
+/* Full /messages page tab strip (Direct | Subscriptions). Renders
+   above the conversation list; active tab gets the accent underline. */
+.msg-tabs {
+  display: flex;
+  gap: 1.5em;
+  padding: 0.9em 1.25em 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.msg-tab {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.95em;
+  padding: 0.35em 0 0.65em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s;
+}
+.msg-tab:hover { color: var(--fg); }
+.msg-tab-active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.msg-tab-count {
+  color: var(--dim);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+.msg-tab-active .msg-tab-count { color: var(--muted); }
+
+/* Subscription card in the full /messages page — hero thumb, title,
+   author domain, relative time. No avatar-circle chrome; the hero
+   IS the visual anchor. */
+.msg-sub-card {
+  display: flex;
+  gap: 0.9em;
+  padding: 0.9em 1.25em;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.msg-sub-card:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.msg-sub-hero {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.msg-sub-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.msg-sub-hero-empty { color: var(--dim); font-size: 1.5em; }
+.msg-sub-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+.msg-sub-title {
+  color: var(--fg);
+  font-weight: 500;
+  font-size: 1em;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg-sub-title .msg-unread-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--red);
+  border-radius: 50%;
+  margin-right: 0.5ch;
+  vertical-align: middle;
+}
+.msg-sub-meta {
+  display: flex;
+  gap: 1ch;
+  align-items: baseline;
+  font-size: 0.85em;
+}
+.msg-sub-author { color: var(--dim); }
+.msg-sub-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Broadcast card inside the message stream — reader opened a
+   subscription conversation and each broadcast renders here as a
+   post-preview instead of a chat bubble. */
+.dm-msg-broadcast .msg-broadcast-card,
+.dm-msg-broadcast .dm-broadcast-card {
+  display: block;
+  max-width: 460px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.12s, transform 0.12s;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.dm-msg-broadcast .msg-broadcast-card:hover,
+.dm-msg-broadcast .dm-broadcast-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  transform: translateY(-1px);
+}
+.msg-broadcast-hero,
+.dm-broadcast-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  overflow: hidden;
+}
+.msg-broadcast-hero img,
+.dm-broadcast-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.msg-broadcast-body,
+.dm-broadcast-body {
+  padding: 0.9em 1em 0.85em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+.msg-broadcast-kicker,
+.dm-broadcast-kicker {
+  color: var(--dim);
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.msg-broadcast-title,
+.dm-broadcast-title {
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 1.05em;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+.msg-broadcast-excerpt,
+.dm-broadcast-excerpt {
+  color: var(--muted);
+  font-size: 0.9em;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg-broadcast-cta,
+.dm-broadcast-cta {
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: 500;
+  margin-top: 0.3em;
+}
+
+/* Compact broadcast card variant for the dm.js side panel — same
+   card, but the hero is a small square thumb next to the title. */
+#dm-panel .dm-sub-card {
+  display: flex;
+  gap: 0.75em;
+  padding: 0.75em 1em;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+  transition: background 0.12s;
+}
+#dm-panel .dm-sub-card:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+#dm-panel .dm-sub-hero {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#dm-panel .dm-sub-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#dm-panel .dm-sub-hero-empty { color: var(--dim); font-size: 1.25em; }
+#dm-panel .dm-sub-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25em; }
+#dm-panel .dm-sub-title {
+  font-size: 0.95em;
+  color: var(--fg);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#dm-panel .dm-sub-meta { display: flex; gap: 1ch; font-size: 0.8em; }
+#dm-panel .dm-sub-author { color: var(--dim); }
+#dm-panel .dm-sub-time { color: var(--muted); font-variant-numeric: tabular-nums; }

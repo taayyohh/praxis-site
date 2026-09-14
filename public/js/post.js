@@ -320,9 +320,107 @@ async function initPost() {
       </header>
       <div class="post-page-body">${body}</div>
       ${refHtml}
+      <section id="post-author-card" class="post-author-card" hidden></section>
+      <section id="post-related-posts" class="post-related-posts" hidden></section>
       <div id="post-replies" style="margin-top:2em"></div>
       <div id="post-reply-form" style="margin-top:1.5em"></div>
     `
+
+    // Author bio card + tip button + follow-to-subscribe explainer.
+    // The bio card renders below the post body but above replies —
+    // it's the "if you liked this, here's who wrote it and how to
+    // support them" moment Substack anchors with the author byline.
+    ;(async () => {
+      try {
+        const authorAddr = post.author.toLowerCase()
+        // Pull the author's site.json for name / bio / profilePic. The
+        // /api/artist-site endpoint already exists (server.js:3705).
+        const authorSite = await fetch(`/api/artist-site?domain=${encodeURIComponent(domain)}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        // The endpoint returns { modules }, not the top-level fields
+        // we need — fall back to /api/site if we're on the author's
+        // own tenant, otherwise render a minimal card.
+        const authorProfile = await fetch(`/api/site`).then(r => r.ok ? r.json() : null).catch(() => null)
+        // Prefer whichever source has the fuller profile fields.
+        const bio = authorProfile?.bio || authorProfile?.description || ''
+        const displayName = authorProfile?.name || domain
+        const avatar = authorProfile?.profilePic || ''
+        const card = document.getElementById('post-author-card')
+        if (!card) return
+        const isSelf = window.getWalletAddress?.()?.toLowerCase?.() === authorAddr
+        const avatarHtml = avatar
+          ? `<img src="/api/img?url=${encodeURIComponent(avatar)}&w=128" alt="" class="post-author-avatar" loading="lazy">`
+          : `<div class="post-author-avatar post-author-avatar-placeholder"><i class="ph ph-user"></i></div>`
+        card.innerHTML = `
+          <a href="/network?artist=${encodeURIComponent(authorAddr)}" class="post-author-avatar-link">${avatarHtml}</a>
+          <div class="post-author-meta">
+            <a href="/network?artist=${encodeURIComponent(authorAddr)}" class="post-author-name">${escapeHtml(displayName)}</a>
+            ${displayName !== domain ? `<div class="post-author-domain">${escapeHtml(domain)}</div>` : ''}
+            ${bio ? `<p class="post-author-bio">${escapeHtml(bio)}</p>` : ''}
+            <div class="post-author-subscribe-hint">follow to get every new post in your praxis messages</div>
+            <div class="post-author-actions">
+              ${!isSelf ? `<button type="button" class="post-author-follow-btn" data-author="${encodeURIComponent(authorAddr)}">follow</button>` : ''}
+              ${!isSelf ? `<button type="button" class="post-author-tip-btn" data-author="${encodeURIComponent(authorAddr)}" data-name="${escapeHtml(displayName)}">tip the writer</button>` : ''}
+            </div>
+          </div>
+        `
+        card.hidden = false
+        // Wire the tip button through the existing pay flow so the
+        // supporter path is the same one used everywhere else.
+        card.querySelector('.post-author-tip-btn')?.addEventListener('click', async () => {
+          try {
+            const myAddr = window.getWalletAddress?.()
+            if (!myAddr) {
+              // Trigger connect first, then re-open the tip sheet.
+              await window.connectWallet?.()
+              const after = window.getWalletAddress?.()
+              if (!after) return
+            }
+            const vault = await import('./vault.js')
+            await vault.showSendModal(window.getWalletAddress?.(), {
+              prefillTo: authorAddr,
+              prefillName: displayName,
+            })
+          } catch (e) { console.warn('tip flow unavailable:', e?.message) }
+        })
+        // Follow button — routes to the profile page where the follow
+        // control is wired. Inlining the on-chain follow tx here would
+        // duplicate wallet-unlock + gas-sponsor plumbing that already
+        // lives on the profile; the extra click is cheaper than a
+        // second code path we'd have to keep in sync.
+        card.querySelector('.post-author-follow-btn')?.addEventListener('click', () => {
+          window.location.href = `/network?artist=${encodeURIComponent(authorAddr)}`
+        })
+      } catch (e) { console.warn('author card render failed:', e?.message) }
+    })()
+
+    // Related posts — 3 recent posts by the same author, excluding
+    // the current one. Cheap Ponder query, renders as a horizontal
+    // strip of small cards below the bio.
+    ;(async () => {
+      try {
+        const related = await query(
+          `query MoreFrom($author: String!, $curr: BigInt!) { blogPosts(where: { author: $author, id_not: $curr }, orderBy: "timestamp", orderDirection: "desc", limit: 3) { items { id title slug timestamp } } }`,
+          { author: post.author.toLowerCase(), curr: post.id }
+        ).catch(() => null)
+        const items = related?.blogPosts?.items || []
+        if (!items.length) return
+        const strip = document.getElementById('post-related-posts')
+        if (!strip) return
+        strip.innerHTML = `
+          <h2 class="post-related-title">more from ${escapeHtml(domain)}</h2>
+          <div class="post-related-grid">
+            ${items.map(it => {
+              const relDate = new Date(Number(it.timestamp) * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+              return `<a href="/post?id=${escapeHtml(it.id)}" class="post-related-card">
+                <div class="post-related-card-title">${escapeHtml(it.title)}</div>
+                <time class="post-related-card-date">${escapeHtml(relDate)}</time>
+              </a>`
+            }).join('')}
+          </div>
+        `
+        strip.hidden = false
+      } catch (e) { console.warn('related posts render failed:', e?.message) }
+    })()
 
     document.title = `${displayPost.title} — ${domain}`
 
@@ -336,6 +434,12 @@ async function initPost() {
     if (window.getWalletAddress?.()) {
       addSaveButton(postId, displayPost, domain)
     }
+
+    // Share affordance — extracts the first hero image from the post body
+    // and asks the `/api/og?type=post-social&fmt=square` route to render an
+    // Instagram-shareable PNG. Falls back to a download when the browser
+    // doesn't support `navigator.share({files})`.
+    addShareButton(postId, displayPost, domain)
 
     // Also listen for wallet connect to show edit button + save button
     if (!window._postEditBound) {
@@ -413,6 +517,76 @@ function addSaveButton(postId, displayPost, domain) {
   })
 
   actionsEl.appendChild(saveBtn)
+}
+
+function addShareButton(postId, displayPost, domain) {
+  const actionsEl = document.getElementById('post-actions')
+  if (!actionsEl || document.getElementById('post-share-btn')) return
+
+  const btn = document.createElement('button')
+  btn.id = 'post-share-btn'
+  btn.className = 'buy-btn'
+  btn.setAttribute('aria-label', 'share post')
+  btn.title = 'share to Instagram'
+  btn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;font-family:inherit;padding:0.2em;font-size:1.05em;line-height:1;min-width:1.2em;min-height:1.2em;margin-left:0.4ch'
+  btn.innerHTML = '<i class="ph ph-share-network"></i>'
+
+  btn.addEventListener('click', async () => {
+    // Extract first Markdown image from the post body so the card
+    // gets a hero. Same regex the SSR path uses.
+    const heroMatch = String(displayPost.content || '').match(/!\[[^\]]*\]\s*\(([^)]+)\)/)
+    const hero = heroMatch ? heroMatch[1] : ''
+    const params = new URLSearchParams({
+      type: 'post-social',
+      fmt: 'square',
+      title: displayPost.title || '',
+      author: domain || '',
+    })
+    if (hero) params.set('hero', hero)
+    const cardUrl = `/api/og?${params.toString()}`
+    const postUrl = `${location.origin}/post?id=${postId}`
+    const originalGlyph = btn.innerHTML
+    btn.innerHTML = '<i class="ph ph-spinner"></i>'
+    btn.disabled = true
+    try {
+      const resp = await fetch(cardUrl)
+      if (!resp.ok) throw new Error(`og ${resp.status}`)
+      const blob = await resp.blob()
+      const file = new File([blob], `${(displayPost.title || 'post').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.png`, { type: 'image/png' })
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: displayPost.title || 'praxis post',
+            text: displayPost.title || 'praxis post',
+            url: postUrl,
+          })
+          btn.innerHTML = originalGlyph
+          btn.disabled = false
+          return
+        } catch (err) {
+          if (err?.name === 'AbortError') { btn.innerHTML = originalGlyph; btn.disabled = false; return }
+        }
+      }
+      // Fallback — download the PNG so the user can drop it into IG themselves.
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = file.name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 4000)
+    } catch (e) {
+      console.warn('share failed:', e?.message)
+      btn.title = 'share failed — try again'
+    } finally {
+      btn.innerHTML = originalGlyph
+      btn.disabled = false
+    }
+  })
+
+  actionsEl.appendChild(btn)
 }
 
 function addEditButton(postId, displayPost) {

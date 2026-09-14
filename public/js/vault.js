@@ -2230,7 +2230,11 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
   })
 }
 
-export async function showSendModal(fromAddress) {
+export async function showSendModal(fromAddress, opts = {}) {
+  // `opts` supports { prefillTo, prefillName } so callers like the
+  // post-page tip button can open the sheet with the recipient
+  // already filled in. If prefillTo isn't set the sheet behaves
+  // exactly as before.
   const existing = document.getElementById('send-modal-overlay')
   if (existing) { existing.remove(); return }
 
@@ -2274,7 +2278,7 @@ export async function showSendModal(fromAddress) {
       <section class="vault-save-doc-body">
         <div>
           <div class="vault-save-field-label">to</div>
-          <input id="send-to" type="text" placeholder="handle, ourpraxis.network domain, or 0x…" class="vault-save-to-input" autocomplete="off">
+          <input id="send-to" type="text" placeholder="handle, ourpraxis.network domain, or 0x…" class="vault-save-to-input" autocomplete="off" value="${opts.prefillTo ? escapeHtml(opts.prefillTo) : ''}">
           <div id="send-resolved" class="vault-save-rate">&nbsp;</div>
         </div>
 
@@ -2486,6 +2490,13 @@ export async function showSendModal(fromAddress) {
       }
     }, 400)
   })
+  // If the caller pre-filled the recipient (e.g. tip flow from the
+  // post page), fire an input event so the resolve loop runs and
+  // the shortened address / handle label appears immediately —
+  // no extra keystroke required.
+  if (opts.prefillTo) {
+    try { toInput.dispatchEvent(new Event('input')) } catch {}
+  }
 
   dialog.querySelector('#send-confirm').addEventListener('click', async () => {
     const status = dialog.querySelector('#send-status')

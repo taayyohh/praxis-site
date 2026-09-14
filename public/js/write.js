@@ -297,16 +297,79 @@ async function submitPost() {
     })
 
     statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
-    await publicClient.waitForTransactionReceipt({ hash })
+    const receipt = await publicClient.waitForTransactionReceipt({ hash })
 
     titleInput.value = ''
     bodyInput.value = ''
+    const _writerAddr = String(window.getWalletAddress() || '').toLowerCase()
+    const _publishedTitle = title
+    const _publishedContent = content
+    const _publishedIsAmend = isAmend
     _amendPostId = null
     try { localStorage.removeItem('praxis-blog-draft') } catch {}
     statusEl.textContent = t('compose.published')
 
-    // TODO: mention notifications handled server-side in Ponder indexer
-    // (scans post content for [@handle](url) patterns on Posted event)
+    // XMTP broadcast to followers — post-publish, non-blocking.
+    // Amendments (refType=5) skip the broadcast: subscribers already
+    // got the original notification and don't need a second ping for
+    // an edit. Only fires when the writer has an active XMTP client
+    // (i.e., they've visited /messages this session); otherwise the
+    // helper bails silently and in-app notifications from the Ponder
+    // Posted event still reach followers.
+    if (!_publishedIsAmend) {
+      ;(async () => {
+        try {
+          const { broadcastPost, buildBroadcastEnvelope } = await import('./broadcast-send.js')
+          // Extract the first image from the body as the hero. Same
+          // regex used elsewhere in the app (see post.js) for the
+          // `![…](…)` markdown pattern. Fall back to empty and let
+          // the receiver render sans-hero.
+          let hero = ''
+          const heroMatch = _publishedContent.match(/!\[[^\]]*\]\(([^)\s]+)/)
+          if (heroMatch) hero = heroMatch[1]
+          // Excerpt: strip markdown-ish markers for a plain-text preview.
+          const excerpt = _publishedContent
+            .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/[#*_`>]+/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 200)
+          // Derive postId from the Posted event log. If we can't (log
+          // shape drift), fall back to the tx hash — the client can
+          // still resolve the post by scanning recent posts.
+          let postId = ''
+          try {
+            const log = (receipt?.logs || []).find(l => (l.topics || []).length > 0)
+            if (log?.topics?.[1]) postId = String(BigInt(log.topics[1]))
+          } catch {}
+
+          const authorDomain = document.body.dataset.domain || document.body.dataset.owner || ''
+          const envelope = buildBroadcastEnvelope({
+            postId,
+            title: _publishedTitle,
+            hero,
+            excerpt,
+            publishedAt: new Date().toISOString(),
+            authorDomain,
+          })
+
+          const result = await broadcastPost({
+            writerAddr: _writerAddr,
+            envelope,
+            onProgress: ({ sent, total }) => {
+              if (!statusEl.isConnected) return
+              if (total > 0) statusEl.textContent = `notifying ${sent}/${total} reader${total === 1 ? '' : 's'}…`
+            },
+          })
+          if (statusEl.isConnected && result.total > 0) {
+            statusEl.textContent = `broadcast sent to ${result.sent} of ${result.total} readers`
+          }
+        } catch (e) {
+          console.warn('praxis: post-publish broadcast failed:', e?.message)
+        }
+      })()
+    }
 
     // Clear feed cache so reload fetches fresh data from Ponder
     try { sessionStorage.removeItem('praxis-feed-' + document.body.dataset.owner?.toLowerCase()) } catch {}

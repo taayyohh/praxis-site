@@ -86,10 +86,31 @@ export async function handleSsr(ctx) {
             )
 
             const ogTitle = `${displayPost.title} — ${site.name || authorDomain}`
-            const ogImage = `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorDomain)}`
+            // Pull the first Markdown image from the post body for the
+            // hero on the social card. Same regex the reader uses at
+            // public/js/post.js:676; matches ![alt](url) with optional
+            // whitespace between `]` and `(`.
+            const heroMatch = displayPost.content.match(/!\[[^\]]*\]\s*\(([^)]+)\)/)
+            const heroSrc = heroMatch ? heroMatch[1] : ''
+            const heroParam = heroSrc ? `&hero=${encodeURIComponent(heroSrc)}` : ''
+            const ogImage = heroSrc
+              ? `https://${site.domain}/api/og?type=post-social&fmt=wide&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorDomain)}${heroParam}`
+              : `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorDomain)}`
             const canonical = `https://${site.domain}/post?id=${postId}`
 
             html = injectOgTags(html, { title: ogTitle, description, image: ogImage, url: canonical })
+
+            // Instagram-shareable alternate images — square + portrait
+            // + story. The Praxis /post client picks one at Share time
+            // and drops the PNG into the OS share sheet.
+            const socialBase = `https://${site.domain}/api/og?type=post-social&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorDomain)}${heroParam}`
+            const igLinks = [
+              `<link rel="alternate" type="image/png" href="${socialBase}&fmt=square" title="Share to Instagram (square)">`,
+              `<link rel="alternate" type="image/png" href="${socialBase}&fmt=portrait" title="Share to Instagram (portrait)">`,
+              `<link rel="alternate" type="image/png" href="${socialBase}&fmt=story" title="Share to Instagram Stories">`,
+              `<meta property="og:image:alt" content="${esc(displayPost.title)} — ${esc(authorDomain)}">`,
+            ].join('\n')
+            html = html.replace('</head>', `${igLinks}\n</head>`)
 
             const escJson = s => esc(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
             const jsonLd = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"${escJson(displayPost.title)}","author":{"@type":"Person","name":"${escJson(authorDomain)}"},"datePublished":"${date.toISOString()}","description":"${escJson(description)}","url":"${canonical}"}</script>`
@@ -167,7 +188,13 @@ export async function handleSsr(ctx) {
             const description = plain.slice(0, 160)
             const currentSlug = slugify(displayPost.title)
             const ogTitle = `${displayPost.title} — ${site.name || site.handle}`
-            const ogImage = `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(site.name || site.handle)}`
+            const authorLabel = site.name || site.handle || ''
+            const heroMatch = content.match(/!\[[^\]]*\]\s*\(([^)]+)\)/)
+            const heroSrc = heroMatch ? heroMatch[1] : ''
+            const heroParam = heroSrc ? `&hero=${encodeURIComponent(heroSrc)}` : ''
+            const ogImage = heroSrc
+              ? `https://${site.domain}/api/og?type=post-social&fmt=wide&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorLabel)}${heroParam}`
+              : `https://${site.domain}/api/og?type=post&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorLabel)}`
             const canonical = `https://${site.domain}/post/${currentSlug}`
 
             const postHtmlFile = join(DIR, 'post', 'index.html')
@@ -175,6 +202,15 @@ export async function handleSsr(ctx) {
               let html = await getSsrTemplate(postHtmlFile)
               if (!html) { res.writeHead(500); res.end('template read error'); return true }
               html = injectOgTags(html, { title: ogTitle, description, image: ogImage, url: canonical })
+              const socialBase = `https://${site.domain}/api/og?type=post-social&title=${encodeURIComponent(displayPost.title)}&author=${encodeURIComponent(authorLabel)}${heroParam}`
+              const esc = escapeHtml
+              const igLinks = [
+                `<link rel="alternate" type="image/png" href="${socialBase}&fmt=square" title="Share to Instagram (square)">`,
+                `<link rel="alternate" type="image/png" href="${socialBase}&fmt=portrait" title="Share to Instagram (portrait)">`,
+                `<link rel="alternate" type="image/png" href="${socialBase}&fmt=story" title="Share to Instagram Stories">`,
+                `<meta property="og:image:alt" content="${esc(displayPost.title)} — ${esc(authorLabel)}">`,
+              ].join('\n')
+              html = html.replace('</head>', `${igLinks}\n</head>`)
               const buf = Buffer.from(html)
               compressedSend(req, res, buf, 'text/html', { 'Cache-Control': 'public, max-age=10, must-revalidate' })
               return true

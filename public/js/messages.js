@@ -232,6 +232,11 @@ const TYPING_SEND_INTERVAL_MS = 3000
 const TYPING_DISPLAY_MS = 5000
 let _msgItems = []
 let _msgDisplayCount = 0
+// Two-tab inbox — 'direct' (personal DMs and groups) vs 'subs'
+// (conversations whose latest message is a Praxis broadcast). The tab
+// strip is rendered by loadConversations; classification of an item as
+// broadcast happens by sniffing the last message's content type / body.
+let _msgActiveTab = 'direct'
 const INBOX_ADDR_MAX = 500
 let inboxToAddr = {}
 let _inboxToAddrOrder = []
@@ -951,6 +956,14 @@ async function startXmtp(address) {
             try {
               const { ReactionCodec } = await import('./vendor-xmtp-reaction.js')
               client.registerCodec?.(new ReactionCodec())
+              // Register the Praxis broadcast codec so blog-post
+              // broadcasts (praxis.network/broadcast) round-trip as
+              // typed envelopes on the leader client; followers +
+              // proxy clients still see the fallback string.
+              try {
+                const { BroadcastCodec } = await import('./xmtp-broadcast-codec.js')
+                client.registerCodec?.(new BroadcastCodec())
+              } catch {}
             } catch {}
             break // success
           } catch (retryErr) {
@@ -2159,7 +2172,33 @@ async function loadConversations() {
         if (preview.includes('[image:')) preview = preview.replace(/\[image:[^\]]*\]\([^)]+\)/g, 'sent an image').trim()
         if (preview.includes('[video:')) preview = preview.replace(/\[video:[^\]]*\]\([^)]+\)/g, 'sent a video').trim()
         if (preview.includes('[pdf:')) preview = preview.replace(/\[pdf:[^\]]*\]\([^)]+\)/g, 'sent a PDF').trim()
-        return { convo: c, peerDomain: displayName, preview, time, peerInboxId, isGroup, lastMsgTs, isUnread }
+        // Broadcast detection — look at the last-message content type
+        // AND the parsed envelope. Both paths so a client without the
+        // codec registered still routes the conversation to
+        // Subscriptions when the JSON body wears the v1 type marker.
+        let isBroadcast = false
+        let broadcastEnvelope = null
+        try {
+          const ct = lastMsg?.contentType
+          if (ct?.authorityId === 'praxis.network' && ct?.typeId === 'broadcast') {
+            isBroadcast = true
+            broadcastEnvelope = (typeof lastMsg.content === 'object' && lastMsg.content?.type === 'praxis:broadcast:v1')
+              ? lastMsg.content
+              : null
+          }
+          if (!isBroadcast) {
+            const c = lastMsg?.content
+            if (c && typeof c === 'object' && c.type === 'praxis:broadcast:v1') {
+              isBroadcast = true
+              broadcastEnvelope = c
+            } else if (typeof c === 'string' && c.includes('"praxis:broadcast:v1"')) {
+              const parsed = JSON.parse(c)
+              if (parsed?.type === 'praxis:broadcast:v1') { isBroadcast = true; broadcastEnvelope = parsed }
+            }
+          }
+        } catch {}
+        if (isBroadcast && broadcastEnvelope?.title) preview = `new post: ${broadcastEnvelope.title}`
+        return { convo: c, peerDomain: displayName, preview, time, peerInboxId, isGroup, lastMsgTs, isUnread, isBroadcast, broadcastEnvelope }
       }))
       items.push(...results.filter(Boolean))
     }
@@ -2275,17 +2314,71 @@ async function loadConversations() {
     filtered.sort((a, b) => _sortTs(b) - _sortTs(a))
     requests.sort((a, b) => _sortTs(b) - _sortTs(a))
 
+    // Split into Direct + Subscription buckets. Direct = personal DMs
+    // + groups (default XMTP text conversations). Subs = conversations
+    // whose latest message wears the praxis-broadcast content type.
+    // Requests stay in Direct — a request that turns out to be a
+    // broadcast is a Praxis-first-touch, we still want the reader to
+    // see the post rather than routing broadcasts through requests.
+    const directFiltered = filtered.filter(i => !i.isBroadcast)
+    const subsFiltered = filtered.filter(i => i.isBroadcast)
+    const activeSourceFiltered = _msgActiveTab === 'subs' ? subsFiltered : directFiltered
+
     // Limit initial display to CONVO_PAGE_SIZE
-    const displayItems = filtered.slice(0, CONVO_PAGE_SIZE)
-    const hasMore = filtered.length > CONVO_PAGE_SIZE
+    const displayItems = activeSourceFiltered.slice(0, CONVO_PAGE_SIZE)
+    const hasMore = activeSourceFiltered.length > CONVO_PAGE_SIZE
 
     const listEl = document.getElementById('messages-list')
     if (!listEl) { console.warn('praxis: messages-list element not found, cannot render'); return }
-    dbg(`praxis: rendering ${displayItems.length} conversations (${displayItems.filter(i => i.preview).length} with previews), ${requests.length} requests`)
+    dbg(`praxis: rendering ${displayItems.length} conversations (tab=${_msgActiveTab}), ${directFiltered.length} direct / ${subsFiltered.length} subs / ${requests.length} requests`)
 
-    let html = displayItems.length === 0
-      ? `<div id="messages-syncing" style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no conversations yet</div>`
-      : displayItems.map((item, i) => `
+    // Tab strip — Direct | Subscriptions. Counts shown to the right
+    // of each tab label so the reader can see at a glance whether a
+    // writer they follow has anything waiting for them.
+    let html = `
+      <div class="msg-tabs" role="tablist">
+        <button class="msg-tab${_msgActiveTab === 'direct' ? ' msg-tab-active' : ''}" data-msg-tab="direct" role="tab" aria-selected="${_msgActiveTab === 'direct'}">
+          <span class="msg-tab-label">direct</span>
+          <span class="msg-tab-count">${directFiltered.length}</span>
+        </button>
+        <button class="msg-tab${_msgActiveTab === 'subs' ? ' msg-tab-active' : ''}" data-msg-tab="subs" role="tab" aria-selected="${_msgActiveTab === 'subs'}">
+          <span class="msg-tab-label">subscriptions</span>
+          <span class="msg-tab-count">${subsFiltered.length}</span>
+        </button>
+      </div>
+    `
+
+    if (displayItems.length === 0) {
+      html += _msgActiveTab === 'subs'
+        ? `<div style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no subscriptions yet — posts from writers you follow will land here</div>`
+        : `<div id="messages-syncing" style="color:var(--muted);padding:2em 1em;text-align:center;font-size:0.9em">no conversations yet</div>`
+    } else if (_msgActiveTab === 'subs') {
+      html += displayItems.map((item, i) => {
+        const env = item.broadcastEnvelope || {}
+        const heroSrc = env.hero
+          ? (env.hero.startsWith('http') || env.hero.startsWith('/api/')
+              ? `/api/img?url=${encodeURIComponent(env.hero)}&w=192`
+              : `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + env.hero)}&w=192`)
+          : ''
+        return `
+          <div class="msg-sub-card" data-idx="${i}">
+            <div class="msg-sub-hero">
+              ${heroSrc
+                ? `<img src="${escapeHtml(heroSrc)}" alt="" loading="lazy">`
+                : `<div class="msg-sub-hero-empty"><i class="ph ph-newspaper"></i></div>`}
+            </div>
+            <div class="msg-sub-body">
+              <div class="msg-sub-title">${item.isUnread ? '<span class="msg-unread-dot"></span>' : ''}${escapeHtml(env.title || item.preview || 'new post')}</div>
+              <div class="msg-sub-meta">
+                <span class="msg-sub-author">${escapeHtml(env.authorDomain || item.peerDomain || '')}</span>
+                <span class="msg-sub-time">${item.time}</span>
+              </div>
+            </div>
+          </div>
+        `
+      }).join('') + (hasMore ? `<div id="messages-load-more" class="msg-convo-item" style="text-align:center;color:var(--muted);cursor:pointer">${t('messages.loadMore') || 'load more'}</div>` : '')
+    } else {
+      html += displayItems.map((item, i) => `
       <div class="msg-convo-item${item.isGroup ? ' msg-convo-group' : ''}" data-idx="${i}">
         ${_convoAvatar(item.peerDomain, item.isGroup, item.peerInboxId ? inboxToAddr[item.peerInboxId] : null)}
         <div class="msg-convo-body">
@@ -2295,9 +2388,14 @@ async function loadConversations() {
         </div>
       </div>
     `).join('') + (hasMore ? `<div id="messages-load-more" class="msg-convo-item" style="text-align:center;color:var(--muted);cursor:pointer">${t('messages.loadMore') || 'load more conversations'}</div>` : '')
+    }
 
-    // Requests section (non-mutual DMs, collapsed by default)
-    if (requests.length > 0) {
+    // Requests section (non-mutual DMs, collapsed by default). Only
+    // rendered under the Direct tab — a request that also happens to
+    // be a broadcast is not surfaced separately in Subs (broadcast
+    // implies the writer already reached out, which is stronger than
+    // a request signal).
+    if (_msgActiveTab === 'direct' && requests.length > 0) {
       html += `
         <div id="msg-requests-header" style="display:flex;align-items:center;gap:0.5em;padding:0.75em 1em;cursor:pointer;border-top:1px solid var(--border,#333);margin-top:0.5em;color:var(--muted);font-size:0.85em;user-select:none">
           <span id="msg-requests-arrow" style="transition:transform 0.2s;display:inline-block">&#9654;</span>
@@ -2320,9 +2418,44 @@ async function loadConversations() {
 
     listEl.innerHTML = html
 
-    // Store combined array: filtered first, then requests, matching data-idx values
-    _msgItems = [...filtered, ...requests]
+    // Store the tab-scoped items in the order data-idx points at.
+    // Direct tab: active-source (direct) then requests appended. Subs
+    // tab: broadcasts only. Load-more slices from the same array.
+    _msgItems = _msgActiveTab === 'subs'
+      ? [...subsFiltered]
+      : [...directFiltered, ...requests]
     _msgDisplayCount = CONVO_PAGE_SIZE
+
+    // Tab-switch wiring. Clicking a tab flips module state and
+    // re-runs loadConversations so the same pipeline (mutual-follow
+    // filter, request bucket, message-check cache) applies to both.
+    listEl.querySelectorAll('.msg-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', () => {
+        const which = tabBtn.dataset.msgTab
+        if (!which || which === _msgActiveTab) return
+        _msgActiveTab = which
+        // Re-render without a fresh sync — the items array in scope
+        // is still valid. Cheapest path is to call the function again;
+        // the second call is a cache hit.
+        loadConversations()
+      })
+    })
+
+    // Subscription card click — open the conversation like a direct
+    // item, but the openConversation path itself is the same. The
+    // renderer inside openConversation will detect broadcast content
+    // types and switch to post-preview cards.
+    listEl.querySelectorAll('.msg-sub-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.idx)
+        const item = _msgItems[idx]
+        if (item) {
+          try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
+          el.querySelector('.msg-unread-dot')?.remove()
+          openConversation(item.convo, item.peerDomain)
+        }
+      })
+    })
 
     // Requests section toggle
     const reqHeader = document.getElementById('msg-requests-header')
@@ -3018,6 +3151,51 @@ function renderMessages(messages) {
   el.innerHTML = messages.slice(-MSG_CAP).map(m => {
     // skip legacy reaction messages — they're shown as decorations on referenced messages
     if (reactionMsgIds.has(m.id)) return ''
+    // Broadcast: render a post-preview card in place of a bubble.
+    // Detected by content type (typed) OR JSON body (fallback path
+    // for clients that didn't register the codec). Falls through to
+    // normal text rendering when it isn't a broadcast.
+    const _bCt = m?.contentType
+    const _bContent = m?.content
+    let _bEnvelope = null
+    if (_bCt?.authorityId === 'praxis.network' && _bCt?.typeId === 'broadcast') {
+      if (_bContent && typeof _bContent === 'object' && _bContent.type === 'praxis:broadcast:v1') _bEnvelope = _bContent
+    }
+    if (!_bEnvelope) {
+      if (_bContent && typeof _bContent === 'object' && _bContent.type === 'praxis:broadcast:v1') _bEnvelope = _bContent
+      else if (typeof _bContent === 'string' && _bContent.includes('"praxis:broadcast:v1"')) {
+        try { const p = JSON.parse(_bContent); if (p?.type === 'praxis:broadcast:v1') _bEnvelope = p } catch {}
+      }
+    }
+    if (_bEnvelope) {
+      const isMe = m.senderInboxId === client?.inboxId
+      let time = ''
+      if (m.sentAtNs) {
+        const d = new Date(Number(m.sentAtNs) / 1e6)
+        time = d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      }
+      const heroRaw = _bEnvelope.hero || ''
+      const heroSrc = heroRaw
+        ? (heroRaw.startsWith('http') || heroRaw.startsWith('/api/')
+            ? `/api/img?url=${encodeURIComponent(heroRaw)}&w=800`
+            : `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + heroRaw)}&w=800`)
+        : ''
+      const href = _bEnvelope.postId
+        ? `/post?id=${encodeURIComponent(_bEnvelope.postId)}`
+        : (_bEnvelope.title ? `/post/${encodeURIComponent(_bEnvelope.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}` : '/')
+      return `<div class="dm-msg dm-msg-broadcast ${isMe ? 'dm-msg-mine' : 'dm-msg-theirs'}" data-msg-id="${escapeHtml(m.id || '')}">
+        <a class="msg-broadcast-card" href="${escapeHtml(href)}">
+          ${heroSrc ? `<div class="msg-broadcast-hero"><img src="${escapeHtml(heroSrc)}" alt="" loading="lazy"></div>` : ''}
+          <div class="msg-broadcast-body">
+            <div class="msg-broadcast-kicker">${escapeHtml(_bEnvelope.authorDomain || '')}</div>
+            <div class="msg-broadcast-title">${escapeHtml(_bEnvelope.title || 'new post')}</div>
+            ${_bEnvelope.excerpt ? `<div class="msg-broadcast-excerpt">${escapeHtml(_bEnvelope.excerpt)}</div>` : ''}
+            <div class="msg-broadcast-cta">Read post →</div>
+          </div>
+        </a>
+        <div class="dm-time">${time}</div>
+      </div>`
+    }
     const text = extractText(m)
     if (!text) return ''
     const isMe = m.senderInboxId === client?.inboxId
@@ -3352,6 +3530,7 @@ async function ensureFullClient() {
     }
     client = await sdk.Client.create(signer, { env: 'production', disableAutoRegister: true })
     try { const { ReactionCodec } = await import('./vendor-xmtp-reaction.js'); client.registerCodec?.(new ReactionCodec()) } catch {}
+    try { const { BroadcastCodec } = await import('./xmtp-broadcast-codec.js'); client.registerCodec?.(new BroadcastCodec()) } catch {}
     window._xmtpClient = client
     window._xmtpClientIsReadOnly = false
     dbg('praxis: upgraded to full XMTP client')
