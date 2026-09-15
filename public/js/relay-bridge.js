@@ -152,13 +152,46 @@ async function _checkTxExists(rpcUrl, hash) {
   } catch { return false }
 }
 
+// Quote through our authenticated /api/relay/quote proxy (server holds
+// the RELAY_API_KEY). Relay's /quote endpoint now returns 401 to
+// unauthenticated browser calls, so the SDK's standalone getQuote no
+// longer works from the client for us — this shim keeps the same
+// call-site shape while the auth lives server-side.
+// Relay's current /quote schema uses originChainId / destinationChainId /
+// originCurrency / destinationCurrency. Our call-sites (and the older
+// bundled SDK) still speak chainId / toChainId / currency / toCurrency, so
+// remap here — sending both keys is safe (Relay ignores unknown props).
+async function _relayQuote(params) {
+  const remapped = {
+    originChainId: params.originChainId ?? params.chainId,
+    destinationChainId: params.destinationChainId ?? params.toChainId,
+    originCurrency: params.originCurrency ?? params.currency,
+    destinationCurrency: params.destinationCurrency ?? params.toCurrency,
+    tradeType: params.tradeType,
+    amount: params.amount,
+    user: params.user,
+    recipient: params.recipient,
+    referrer: params.referrer || 'praxis',
+  }
+  const res = await fetch('/api/relay/quote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(remapped),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg = data?.error || data?.message || `relay quote HTTP ${res.status}`
+    throw new Error(msg)
+  }
+  return data
+}
+
 export async function bridgeToOptimism(fromChainId, address, amountWei, onStatusUpdate) {
-  const client = await initRelay()
-  const { getQuote } = await import('./vendor-relay.js')
+  await initRelay()
 
   onStatusUpdate?.('getting quote...')
 
-  const quote = await getQuote({
+  const quote = await _relayQuote({
     chainId: fromChainId,
     toChainId: OPTIMISM_CHAIN_ID,
     currency: '0x0000000000000000000000000000000000000000',
@@ -281,10 +314,9 @@ export async function bridgeToOptimism(fromChainId, address, amountWei, onStatus
 // existing bridge flow's error handling stays untouched.
 export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate) {
   await initRelay()
-  const { getQuote } = await import('./vendor-relay.js')
 
   onStatusUpdate?.('getting a quote…')
-  const quote = await getQuote({
+  const quote = await _relayQuote({
     chainId: 10, toChainId: 8453,
     currency: '0x0000000000000000000000000000000000000000',
     toCurrency: '0x0000000000000000000000000000000000000000',
@@ -375,10 +407,9 @@ export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate
 // they need and let Relay solve for the input.
 export async function bridgeToMainnet(fromChainId, fromCurrency, address, amountWei, onStatusUpdate) {
   await initRelay()
-  const { getQuote } = await import('./vendor-relay.js')
 
   onStatusUpdate?.('getting a quote…')
-  const quote = await getQuote({
+  const quote = await _relayQuote({
     chainId: fromChainId, toChainId: 1,
     currency: fromCurrency,
     toCurrency: '0x0000000000000000000000000000000000000000',
@@ -507,14 +538,14 @@ export async function _buildBridgeWalletClient(fromChainId) {
 // Bridge USDC on Base → ETH on Optimism (Relay handles swap + bridge in one tx)
 
 export async function bridgeUsdcToOptimismEth(address, amountUsdc, onStatusUpdate) {
-  const client = await initRelay()
-  const { getQuote, execute } = await import('./vendor-relay.js')
+  await initRelay()
+  const { execute } = await import('./vendor-relay.js')
 
   onStatusUpdate?.('getting swap + bridge quote...')
 
   // SDK uses the old field names (chainId/toChainId/currency/toCurrency).
   // originChainId/destinationChainId are silently dropped → API returns 400.
-  const quote = await getQuote({
+  const quote = await _relayQuote({
     chainId: 8453,
     toChainId: OPTIMISM_CHAIN_ID,
     currency: USDC_BASE,
