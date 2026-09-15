@@ -171,7 +171,10 @@ async function _relayQuote(params) {
     amount: params.amount,
     user: params.user,
     recipient: params.recipient,
-    referrer: params.referrer || 'praxis',
+    // Do NOT set referrer here — Relay's /quote treats it as an integrator
+    // identifier and 401s ("Please provide an api key") when the referrer is
+    // not a registered account. Our server proxy already authenticates via
+    // Authorization header, so we don't need to identify separately in body.
   }
   const res = await fetch('/api/relay/quote', {
     method: 'POST',

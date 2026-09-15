@@ -485,9 +485,19 @@ async function initCashout() {
 
   async function _refreshQuote() {
     const fiatAmt = _parseFiat(els.amountInput.value)
+    // Invalidate the previous estimate as soon as the amount changes — the
+    // button state must not read a stale value from an earlier keystroke.
+    // The in-flight estimate below overwrites it via quoteToken guarding.
+    latestEstimate = null
     _updateSubmitState()
     els.amountConversion.textContent = ''
-    if (!fiatAmt || fiatAmt <= 0 || !selectedPlatform) {
+    // Hide the "you'll get" quote whenever the amount doesn't correspond
+    // to a payable request (empty, zero, no platform, OR over available
+    // balance). Without the balance check, a $20 request against a $15.97
+    // balance still renders "you'll get $19.49" alongside the "only
+    // $15.97 available" button state — misleading.
+    const overBalance = fiatAmt > (selectedSource.amountFiat || 0)
+    if (!fiatAmt || fiatAmt <= 0 || !selectedPlatform || overBalance) {
       els.quote.hidden = true
       return
     }
@@ -526,6 +536,11 @@ async function initCashout() {
       else if (est.eta?.seconds != null) parts.push(`typically ~${Math.round(est.eta.seconds / 60)} min`)
       if (currencyMismatch) parts.push(`Peer doesn't quote in ${userCurrencyRaw} yet — showing ${cashCurrency}`)
       els.quoteEta.textContent = parts.join(' · ')
+      // Refresh the button after a fresh estimate lands. Otherwise the
+      // button copy stays frozen from the synchronous call above and can
+      // show "$3 minimum" for an old estimate while the new "you'll get"
+      // reflects a legit amount.
+      _updateSubmitState()
     } catch (e) {
       if (myToken !== quoteToken) return
       els.quoteAmount.textContent = '—'
@@ -557,7 +572,15 @@ async function initCashout() {
       els.submitBtn.disabled = true
       return
     }
-    els.submitBtn.textContent = `cash out ${_formatFiat(latestEstimate?.receiveAmount || 0, cashCurrency)}`
+    // Estimate still in flight after amount change — keep the button
+    // disabled (with a soft "checking rate…") rather than flashing a
+    // stale "cash out $0.00" until the fresh quote lands.
+    if (latestEstimate?.receiveAmount == null) {
+      els.submitBtn.textContent = 'checking rate…'
+      els.submitBtn.disabled = true
+      return
+    }
+    els.submitBtn.textContent = `cash out ${_formatFiat(latestEstimate.receiveAmount, cashCurrency)}`
     els.submitBtn.disabled = false
   }
 
