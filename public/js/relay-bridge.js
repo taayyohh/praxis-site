@@ -315,8 +315,68 @@ export async function bridgeToOptimism(fromChainId, address, amountWei, onStatus
 // approve + createDeposit gas. Mirror of bridgeToOptimism above but
 // with the chain pair swapped; kept as its own function so the
 // existing bridge flow's error handling stays untouched.
+// localStorage key that remembers an in-flight Optimism→Base gas bridge
+// per-wallet, so a retry after a poll-timeout resumes the same tx instead
+// of firing a second bridge (which would burn a second Relay fee for the
+// same delivery). Cleared on arrival or after the pending record expires.
+const PENDING_BASE_BRIDGE_KEY = (addr) => `praxis-pending-base-bridge:${addr.toLowerCase()}`
+const PENDING_BRIDGE_TTL_MS = 30 * 60 * 1000 // 30m — Relay op→base rarely takes anywhere near this long
+
+function _readPendingBaseBridge(addr) {
+  try {
+    const raw = localStorage.getItem(PENDING_BASE_BRIDGE_KEY(addr))
+    if (!raw) return null
+    const rec = JSON.parse(raw)
+    if (!rec?.hash || !rec?.ts) return null
+    if (Date.now() - rec.ts > PENDING_BRIDGE_TTL_MS) return null
+    return rec
+  } catch { return null }
+}
+function _writePendingBaseBridge(addr, hash, baseBaseline) {
+  try {
+    localStorage.setItem(PENDING_BASE_BRIDGE_KEY(addr), JSON.stringify({ hash, ts: Date.now(), baseBaseline: String(baseBaseline) }))
+  } catch {}
+}
+function _clearPendingBaseBridge(addr) {
+  try { localStorage.removeItem(PENDING_BASE_BRIDGE_KEY(addr)) } catch {}
+}
+
+async function _pollBaseArrival(basePc, address, baseline, onStatusUpdate) {
+  const POLLS = 120 // 120 × 2s = 4 min
+  for (let i = 0; i < POLLS; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+    const now = await basePc.getBalance({ address }).catch(() => 0n)
+    if (now > baseline) {
+      onStatusUpdate?.('gas ready on Base')
+      return now
+    }
+    onStatusUpdate?.(`waiting for Base… (${(i + 1) * 2}s)`)
+  }
+  return null
+}
+
 export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate) {
   await initRelay()
+
+  // If a previous attempt submitted a bridge tx that's still in flight,
+  // resume polling for THAT one instead of firing a second bridge. Two
+  // bridges for one delivery costs the user a second Relay fee for no
+  // benefit — and the ETH from the first one is already on its way.
+  const pending = _readPendingBaseBridge(address)
+  const { createPublicClient, http, keccak256, optimism, base } = await import('./vendor.js')
+  if (pending) {
+    onStatusUpdate?.('resuming your pending Base top-up…')
+    const basePc = createPublicClient({ chain: base, transport: http('/api/rpc/8453') })
+    const baseline = BigInt(pending.baseBaseline || '0')
+    const arrived = await _pollBaseArrival(basePc, address, baseline, onStatusUpdate)
+    if (arrived != null) {
+      _clearPendingBaseBridge(address)
+      return arrived
+    }
+    // Still not landed after another 4 min — surface the same in-flight
+    // message; the record stays so a further retry keeps polling it.
+    throw new Error("bridge is in flight to Base but hasn't landed yet — wait ~30s and click try again")
+  }
 
   onStatusUpdate?.('getting a quote…')
   const quote = await _relayQuote({
@@ -332,8 +392,6 @@ export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate
   if (!steps.length || !steps[0]?.items?.length) throw new Error('no bridge steps in quote')
   const txData = steps[0].items[0].data
   if (!txData?.to) throw new Error('no tx data in quote')
-
-  const { createPublicClient, http, keccak256, optimism, base } = await import('./vendor.js')
 
   await window.ensureAuthorized?.()
   const embeddedAcct = window.getEmbeddedAccount?.()
@@ -383,22 +441,22 @@ export async function bridgeEthOptimismToBase(address, amountWei, onStatusUpdate
   if (receipt.status === 'reverted') throw new Error('bridge tx reverted on Optimism')
   onStatusUpdate?.('waiting for funds on Base…')
 
-  // Poll Base balance until it changes. Bridge cost + fees mean the
-  // arriving amount is a little less than `amountWei`; ANY increase is
-  // proof of arrival.
-  const baseRpc = 'https://mainnet.base.org'
+  // Record the pending bridge BEFORE polling — if the user reloads or the
+  // poll times out, a retry resumes this same tx rather than firing a
+  // second bridge (which would burn a second Relay fee for the same
+  // delivery). Baseline is the pre-bridge Base balance so we can tell an
+  // increase from noise.
+  const baseRpc = '/api/rpc/8453'
   const basePc = createPublicClient({ chain: base, transport: http(baseRpc) })
   const before = await basePc.getBalance({ address }).catch(() => 0n)
-  for (let i = 0; i < 45; i++) {
-    await new Promise(r => setTimeout(r, 2000))
-    const now = await basePc.getBalance({ address }).catch(() => 0n)
-    if (now > before) {
-      onStatusUpdate?.('gas ready on Base')
-      return now
-    }
-    onStatusUpdate?.(`waiting for Base… (${(i + 1) * 2}s)`)
+  _writePendingBaseBridge(address, hash, before)
+
+  const arrived = await _pollBaseArrival(basePc, address, before, onStatusUpdate)
+  if (arrived != null) {
+    _clearPendingBaseBridge(address)
+    return arrived
   }
-  throw new Error('bridge landed on Optimism but Base balance never updated — try again in a minute')
+  throw new Error("bridge is in flight to Base but hasn't landed yet — wait ~30s and click try again")
 }
 
 // Any L2 → Ethereum L1 ETH bridge. Used by the cash-out sheet to silently
