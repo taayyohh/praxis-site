@@ -1001,6 +1001,13 @@ async function loadOrgSection() {
     const orgs = data.orgs || []
     const pendingInvites = (inviteData.invites || []).filter(i => i.status === 'pending')
     const esc = escapeHtml
+    const siteFlaggedAsOrg = siteData?.template === 'organization'
+    const siteDomain = (siteData?.domain || location.hostname || '').toLowerCase()
+    // If the current site is claimed as an org locally, prefer the on-chain
+    // record whose domain matches THIS site. That way settings inline the
+    // roster/invite UI for the right org even if the admin owns several.
+    const siteOrg = orgs.find(o => (o.domain || '').toLowerCase() === siteDomain)
+    const otherOrgs = orgs.filter(o => o !== siteOrg)
 
     let html = ''
 
@@ -1020,22 +1027,53 @@ async function loadOrgSection() {
       </div>`
     }
 
-    // Current orgs
-    if (orgs.length) {
-      html += `<div style="margin-bottom:1em">
-        ${orgs.map(o => `
+    // Case 1 — this site is flagged as an org locally but there is NO
+    // matching on-chain org for it. That happens when a contract redeploy
+    // wipes org state (PraxisOrganization has no migration function). Give
+    // the user a clear explanation + a "re-establish" flow that runs
+    // createOrg() again. We keep the "create separate organization" escape
+    // hatch so an admin can spin up a fresh org under a different name too.
+    if (siteFlaggedAsOrg && !siteOrg) {
+      html += `<div style="border:1px solid var(--border);padding:1em;margin-bottom:1em">
+        <p style="font-size:0.9em;color:var(--fg);margin:0 0 0.5em">this site is set up as an organization, but no on-chain record exists yet.</p>
+        <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.75em;line-height:1.5">this usually means a past contract redeploy cleared the previous org and its members. re-establish the organization on-chain to invite members again — you'll need to re-invite each artist.</p>
+        <button id="s-org-reestablish" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">re-establish organization</button>
+      </div>`
+    }
+
+    // Case 2 — the site IS an org and we found the matching on-chain record.
+    // Render inline: name/admin/member list + admin actions if this wallet
+    // is the admin. Avoids a hidden trip to /org?id=X to invite members.
+    if (siteOrg) {
+      const isAdminHere = siteOrg.admin?.toLowerCase() === addr.toLowerCase()
+      html += await _renderInlineOrgAdmin(siteOrg, isAdminHere, esc)
+    }
+
+    // Case 3 — other orgs the wallet belongs to that aren't this site.
+    if (otherOrgs.length) {
+      html += `<div style="margin-bottom:1em;margin-top:${(siteOrg || siteFlaggedAsOrg) ? '1.5em' : '0'}">
+        <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.5em;text-transform:uppercase;letter-spacing:0.05em">other organizations</p>
+        ${otherOrgs.map(o => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border)">
             <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.95em">${esc(o.name)}</a>
             ${o.admin?.toLowerCase() === addr.toLowerCase() ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>' : '<span style="font-size:0.7em;color:var(--dim)">member</span>'}
           </div>
         `).join('')}
-      </div>
-      <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">create another organization</button>`
-    } else {
+      </div>`
+    }
+
+    // Case 4 — nothing on-chain, nothing flagged locally. Offer conversion.
+    if (!siteOrg && !siteFlaggedAsOrg && !otherOrgs.length) {
       html += `
         <p style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">you are not a member of any organization</p>
         <button id="s-org-convert" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">convert this site to an organization</button>
         <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-left:0.5em;border-color:var(--dim);color:var(--dim)">create separate organization</button>`
+    } else if (!siteOrg && !siteFlaggedAsOrg && otherOrgs.length) {
+      // Wallet belongs to some orgs but the current site isn't one — offer conversion of THIS site too.
+      html += `<button id="s-org-convert" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0.75em">convert this site to an organization</button>
+      <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-left:0.5em;margin-top:0.75em;border-color:var(--dim);color:var(--dim)">create another organization</button>`
+    } else if (siteOrg && !otherOrgs.length) {
+      html += `<button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:1em;border-color:var(--dim);color:var(--dim)">create another organization</button>`
     }
 
     orgContent.innerHTML = html
@@ -1050,6 +1088,11 @@ async function loadOrgSection() {
 
     document.getElementById('s-org-convert')?.addEventListener('click', showConvertToOrgModal)
     document.getElementById('s-org-create')?.addEventListener('click', showCreateOrgModal)
+    // "re-establish" runs the same createOrg flow as convert (site.json
+    // already has template: 'organization' so no template swap needed).
+    document.getElementById('s-org-reestablish')?.addEventListener('click', showConvertToOrgModal)
+
+    if (siteOrg) _wireInlineOrgAdmin(siteOrg, addr)
   } catch {
     orgContent.innerHTML = '<p style="color:var(--dim);font-size:0.85em">failed to load organizations</p>'
   }
@@ -1082,6 +1125,103 @@ async function handleOrgInvite(btn, fnName, orgId) {
   }
 }
 
+// Inline org admin card for settings — deliberately compact. Full roster,
+// remove-member, and dissolve stay at /org?id=X to avoid duplicating that
+// UX here. Fetches full org detail (members + metadata) via /api/org/:id
+// so we can show a real count and offer a quick invite-by-domain/wallet.
+async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
+  const orgId = String(siteOrg.id)
+  let detail = null
+  try {
+    const r = await fetch(`/api/org/${encodeURIComponent(orgId)}`)
+    detail = await r.json()
+  } catch {}
+  const members = detail?.members || []
+  const memberCount = members.length
+  const roleTag = isAdmin
+    ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
+    : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
+
+  const inviteBlock = isAdmin ? `
+    <div style="margin-top:1em">
+      <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">invite an artist</p>
+      <div style="display:flex;gap:0.5em">
+        <input type="text" id="s-org-invite-input" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" autocomplete="off" style="flex:1;box-sizing:border-box;font-size:0.85em">
+        <button id="s-org-invite-btn" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;white-space:nowrap">invite</button>
+      </div>
+      <p id="s-org-invite-status" style="font-size:0.8em;color:var(--muted);min-height:1em;margin:0.4em 0 0"></p>
+      <p style="font-size:0.75em;color:var(--dim);margin:0.3em 0 0;line-height:1.5">the artist has to accept from their own site's settings before they show up as a member.</p>
+    </div>
+  ` : ''
+
+  return `<div style="border:1px solid var(--border);padding:1em;margin-bottom:1em">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em;margin-bottom:0.4em">
+      <a href="/org?id=${esc(orgId)}" style="color:var(--accent);text-decoration:none;font-size:1em;font-weight:500">${esc(siteOrg.name)}</a>
+      ${roleTag}
+    </div>
+    <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.5em">${memberCount} member${memberCount === 1 ? '' : 's'}${isAdmin ? ' · you are the admin' : ''}</p>
+    <a href="/org?id=${esc(orgId)}" style="color:var(--muted);font-size:0.85em">manage organization →</a>
+    ${inviteBlock}
+  </div>`
+}
+
+function _wireInlineOrgAdmin(siteOrg, myAddr) {
+  const btn = document.getElementById('s-org-invite-btn')
+  const input = document.getElementById('s-org-invite-input')
+  const statusEl = document.getElementById('s-org-invite-status')
+  if (!btn || !input) return
+  const orgId = String(siteOrg.id)
+
+  const invite = async () => {
+    const raw = input.value.trim()
+    if (!raw) { statusEl.textContent = 'enter a domain or wallet'; return }
+    let targetWallet = null
+    if (/^0x[0-9a-fA-F]{40}$/.test(raw)) {
+      targetWallet = raw
+    } else {
+      statusEl.style.color = ''
+      statusEl.textContent = 'resolving…'
+      try {
+        const r = await fetch(`/api/network/search?q=${encodeURIComponent(raw)}&limit=5`)
+        const data = await r.json()
+        const items = data.results || data.items || data || []
+        const match = items.find(a =>
+          (a.domain || a.name || '').toLowerCase() === raw.toLowerCase() ||
+          (a.handle || '').toLowerCase() === raw.toLowerCase().replace(/\.[a-z]+$/, '')
+        ) || items[0]
+        if (!match?.id) { statusEl.style.color = '#ef4444'; statusEl.textContent = `couldn't find "${raw}"`; return }
+        targetWallet = match.id
+      } catch { statusEl.style.color = '#ef4444'; statusEl.textContent = 'lookup failed'; return }
+    }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(targetWallet)) { statusEl.style.color = '#ef4444'; statusEl.textContent = 'invalid wallet'; return }
+    try {
+      statusEl.style.color = ''
+      statusEl.textContent = 'confirm in wallet…'
+      if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; return }
+      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+      const { getPublicClient } = await import('./utils.js')
+      const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+      const hash = await wc.writeContract({
+        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
+        args: [BigInt(orgId), targetWallet], account: myAddr,
+      })
+      statusEl.textContent = 'sending invite…'
+      const pc = await getPublicClient()
+      await pc.waitForTransactionReceipt({ hash })
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.textContent = 'invite sent — they must accept it from their own settings'
+      input.value = ''
+    } catch (e) {
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 100)}`
+    }
+  }
+
+  btn.addEventListener('click', invite)
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') invite() })
+}
+
 async function showConvertToOrgModal() {
   const overlay = document.createElement('div')
   overlay.className = 'praxis-modal-overlay'
@@ -1089,18 +1229,26 @@ async function showConvertToOrgModal() {
   const dialog = document.createElement('div')
   dialog.className = 'praxis-modal-dialog'
   dialog.style.maxWidth = '440px'
-  const handle = window._siteData?.handle || location.hostname.split('.')[0]
-  const domain = window._siteData?.domain || location.hostname
+  const handle = window._siteData?.handle || siteData?.handle || location.hostname.split('.')[0]
+  const domain = window._siteData?.domain || siteData?.domain || location.hostname
+  // Re-establish case: site is already flagged as an org locally but no
+  // matching on-chain record exists. Different copy so the user knows this
+  // is a recovery, not a fresh conversion.
+  const isReestablish = siteData?.template === 'organization'
+  const heading = isReestablish ? 're-establish organization' : 'convert to organization'
+  const explainer = isReestablish
+    ? `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will create a new on-chain organization for <strong style="color:var(--fg)">${escapeHtml(domain)}</strong>. any previous members will need to be re-invited from here.</p>`
+    : `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${escapeHtml(domain)}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>`
   dialog.innerHTML = `
-    <h3 style="margin:0 0 0.5em;font-size:1em">convert to organization</h3>
-    <p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${escapeHtml(domain)}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>
+    <h3 style="margin:0 0 0.5em;font-size:1em">${heading}</h3>
+    ${explainer}
     <div style="margin-bottom:0.8em">
       <label style="font-size:0.8em;color:var(--muted)">organization name</label>
       <input type="text" id="org-convert-name" class="project-input" value="${escapeHtml(handle)}" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
     </div>
     <div id="org-convert-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin-bottom:0.6em"></div>
     <div style="display:flex;gap:0.5em">
-      <button id="org-convert-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">convert</button>
+      <button id="org-convert-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">${isReestablish ? 're-establish' : 'convert'}</button>
       <button id="org-convert-cancel" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em;border-color:var(--dim);color:var(--dim)">cancel</button>
     </div>
   `
@@ -1142,7 +1290,7 @@ async function showConvertToOrgModal() {
         throw new Error(uploadData.error || 'upload failed')
       }
 
-      statusEl.textContent = 'confirm transaction in wallet...'
+      statusEl.textContent = 'confirm create-org tx…'
       if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; return }
       const { getWalletClient, getPublicClient } = await import('./utils.js')
       const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
@@ -1156,18 +1304,52 @@ async function showConvertToOrgModal() {
         account: window.getEmbeddedAccount?.() || addr,
       })
 
-      statusEl.textContent = 'waiting for confirmation...'
+      statusEl.textContent = 'waiting for create-org confirmation…'
       const pc = await getPublicClient()
-      await pc.waitForTransactionReceipt({ hash })
+      const receipt = await pc.waitForTransactionReceipt({ hash })
 
-      statusEl.textContent = 'updating site template...'
+      // Extract orgId from the OrgCreated event so we can immediately
+      // link the domain. Without this the org has no domain on-chain,
+      // and settings can't detect that THIS site is the one that org
+      // corresponds to (matching is by domain).
+      //
+      // OrgCreated(uint256 indexed orgId, address indexed admin, string, string)
+      // topic0 = keccak of the signature (constant); topic1 = orgId as uint256.
+      const ORG_CREATED_TOPIC = '0xd78a3321fe7d2b183580459478e5563faf4fb5fae376030d1c606eebccd87918'
+      let orgId = null
+      for (const log of receipt.logs || []) {
+        if (log.address?.toLowerCase() !== ORG_ADDRESS.toLowerCase()) continue
+        if (!log.topics?.length) continue
+        if (String(log.topics[0]).toLowerCase() !== ORG_CREATED_TOPIC) continue
+        try { orgId = BigInt(log.topics[1]); break } catch {}
+      }
+
+      if (orgId != null) {
+        statusEl.textContent = 'linking domain to organization…'
+        try {
+          const linkHash = await wc.writeContract({
+            address: ORG_ADDRESS,
+            abi: ORG_ABI,
+            functionName: 'updateDomain',
+            args: [orgId, domain],
+            account: window.getEmbeddedAccount?.() || addr,
+          })
+          await pc.waitForTransactionReceipt({ hash: linkHash })
+        } catch (e) {
+          // Non-fatal — the org is created, domain just isn't linked yet.
+          // Surface a soft warning; the user can retry via re-establish.
+          console.warn('updateDomain failed', e)
+        }
+      }
+
+      statusEl.textContent = 'updating site template…'
       const siteRes = await fetch('/api/site')
       const siteData = await siteRes.json()
       siteData.template = 'organization'
       await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
 
       statusEl.style.color = 'var(--green,#4a4)'
-      statusEl.textContent = 'converted to organization!'
+      statusEl.textContent = isReestablish ? 'organization re-established!' : 'converted to organization!'
       setTimeout(() => { overlay.remove(); loadOrgSection(); location.reload() }, 1500)
     } catch (e) {
       statusEl.style.color = '#ef4444'

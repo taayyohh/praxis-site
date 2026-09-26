@@ -381,6 +381,26 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>inline organization admin card · settings /notifications</h3>
+          <div style="border:1px solid var(--border);padding:1em;max-width:520px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em;margin-bottom:0.4em">
+              <a style="color:var(--accent);text-decoration:none;font-size:1em;font-weight:500">lucid.haus</a>
+              <span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>
+            </div>
+            <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.5em">3 members · you are the admin</p>
+            <a style="color:var(--muted);font-size:0.85em">manage organization →</a>
+            <div style="margin-top:1em">
+              <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">invite an artist</p>
+              <div style="display:flex;gap:0.5em">
+                <input type="text" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" style="flex:1;box-sizing:border-box;font-size:0.85em">
+                <button class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;white-space:nowrap">invite</button>
+              </div>
+              <p style="font-size:0.75em;color:var(--dim);margin:0.5em 0 0;line-height:1.5">the artist has to accept from their own site's settings before they show up as a member.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>ticket pass (mini) · full page at /ticket</h3>
           <article class="ticket-pass" style="max-width:340px">
             <header class="ticket-pass-head">
