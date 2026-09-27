@@ -260,6 +260,19 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
     attachFilterHandlers(contentEl)
     attachViewToggle(contentEl)
 
+    // Owner-only: attach a "publish to organization" affordance to each
+    // work card. Renders inline in the card's action row, opens a small
+    // panel with a checkbox per org the artist belongs to.
+    if (isOwner) {
+      import('./org-tagging.js').then(({ attachOrgTagger }) => {
+        contentEl.querySelectorAll('.works-card[data-media-id]').forEach(card => {
+          const mediaId = card.dataset.mediaId
+          if (!mediaId) return
+          attachOrgTagger(card, { mediaId, artist: artistAddr })
+        })
+      }).catch(() => {})
+    }
+
     // Scroll to album if URL hash targets one (e.g. #album-<mcid>)
     if (location.hash) {
       const target = document.getElementById(location.hash.slice(1))
@@ -722,6 +735,7 @@ function attachLoadMore(container, artistAddr) {
       if (newListings.length > 0) {
         const grid = container.querySelector('#works-grid')
         if (grid) {
+          const beforeCount = grid.children.length
           grid.insertAdjacentHTML('beforeend', renderListings(newListings))
           attachBuyHandlers(grid)
           // apply current filter to new items
@@ -729,6 +743,18 @@ function attachLoadMore(container, artistAddr) {
             grid.querySelectorAll('.works-card').forEach(item => {
               item.style.display = item.dataset.type === _activeFilter ? '' : 'none'
             })
+          }
+          // Owner tagging on the newly-added cards.
+          const isOwner = window.getWalletAddress?.()?.toLowerCase() === artistAddr.toLowerCase()
+          if (isOwner) {
+            import('./org-tagging.js').then(({ attachOrgTagger }) => {
+              const cards = Array.from(grid.children).slice(beforeCount)
+              cards.forEach(card => {
+                if (!card.classList?.contains('works-card')) return
+                const mediaId = card.dataset.mediaId
+                if (mediaId) attachOrgTagger(card, { mediaId, artist: artistAddr })
+              })
+            }).catch(() => {})
           }
         }
       }

@@ -1,5 +1,5 @@
 // Organization profile page — distinct layouts per org type
-import { escapeHtml, registerPage, resolveAddresses, getPublicClient, ipfsUrl, getProfilePic, getArtistName } from './utils.js'
+import { escapeHtml, registerPage, resolveAddresses, getPublicClient, getProfilePic, getArtistName } from './utils.js'
 import { renderMediaCard } from './feed-cards.js'
 import { query } from './ponder.js'
 import { ORG_ADDRESS, ORG_ABI } from './contracts.js'
@@ -289,24 +289,32 @@ async function loadCatalog(orgId, orgType) {
     const items = data.items || []
 
     if (!items.length && !_catalogCursor) {
-      catalogEl.innerHTML = '<p style="color:var(--dim);font-size:0.85em">no works yet</p>'
+      catalogEl.innerHTML = '<p style="color:var(--dim);font-size:0.85em">no works have been published to this organization yet — members can publish work from their own works page.</p>'
       return
     }
 
-    // First load: render featured item
-    if (!_catalogCursor && items.length && featured) {
-      featured.innerHTML = renderFeatured(items[0], orgType)
-      wireBuyButtons(featured)
-    }
+    // No more "featured" slot — the per-type featured render had custom
+    // <img> fallbacks that broke on PDFs (broken image tile above the
+    // grid). Every item goes into the universal catalog grid so a work's
+    // card looks the same regardless of position.
+    if (featured) featured.innerHTML = ''
 
-    const html = renderCatalog(_catalogCursor ? items : items.slice(1), orgType)
+    // Server signals `tagged: false` when it fell back to "all member
+    // listings" because zero works are explicitly tagged to this org yet.
+    // Surface a small hint above the grid so viewers understand the
+    // catalog will tighten once members publish work here.
+    const fallbackHint = (!_catalogCursor && data.tagged === false)
+      ? `<p style="color:var(--dim);font-size:0.8em;margin:0 0 1em;padding:0.6em 0.8em;border:1px dashed var(--border)">no works have been published to this organization yet. showing every listing by every member until they do — members can publish work from their own works page.</p>`
+      : ''
+    const html = fallbackHint + renderCatalog(items, orgType)
     if (_catalogCursor) {
       catalogEl.insertAdjacentHTML('beforeend', html)
     } else {
       catalogEl.innerHTML = html
     }
 
-    wireBuyButtons(catalogEl)
+    // renderMediaCard's buy buttons are wired globally by feed-cards.js,
+    // no local wireBuyButtons call needed anymore.
 
     // Infinite scroll
     if (data.pageInfo?.hasNextPage) {
@@ -328,118 +336,11 @@ async function loadCatalog(orgId, orgType) {
   }
 }
 
-function wireBuyButtons(el) {
-  el.querySelectorAll('.org-buy-btn:not([data-wired])').forEach(btn => {
-    btn.dataset.wired = '1'
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation()
-      const mediaId = btn.dataset.mediaId
-      const price = btn.dataset.price
-      try {
-        btn.textContent = 'confirm...'
-        btn.disabled = true
-        const { purchaseMedia } = await import('./media.js')
-        await purchaseMedia(mediaId, price)
-        btn.textContent = 'collected'
-        btn.style.borderColor = 'var(--green,#4a4)'
-        btn.style.color = 'var(--green,#4a4)'
-      } catch (e) {
-        btn.disabled = false
-        btn.textContent = e.code === 4001 ? formatPrice(price) : 'failed'
-        setTimeout(() => { btn.textContent = formatPrice(price) }, 2000)
-      }
-    })
-  })
-}
-
-function formatPrice(wei) {
-  const bi = BigInt(wei)
-  if (bi === 0n) return 'free'
-  const whole = bi / 10n**18n
-  const frac = bi % 10n**18n
-  const eth = Number(whole) + Number(frac) / 1e18
-  if (eth < 0.001) return `${(eth * 1e6).toFixed(0)}μΞ`
-  if (eth < 1) return `${eth.toFixed(4)}Ξ`
-  return `${eth.toFixed(2)}Ξ`
-}
-
-function buyBtn(item) {
-  const price = BigInt(item.price || 0)
-  if (price <= 0n) return ''
-  return `<button class="buy-btn org-buy-btn" data-media-id="${item.id}" data-price="${item.price}" style="font-size:0.8em;padding:0.3em 1ch">${formatPrice(item.price)}</button>`
-}
-
-function artistLink(item) {
-  const name = escapeHtml(item.artistDomain || `${(item.artist || '').slice(0, 8)}...`)
-  const href = item.artistDomain ? `https://${escapeHtml(item.artistDomain)}` : '#'
-  return `<a href="${href}" class="artist" style="color:var(--dim);text-decoration:none">${name}</a>`
-}
-
-function itemImg(item, w) {
-  const cid = item.metadataCid || item.ipfsCid
-  if (!cid) return ''
-  return `/api/img?url=${encodeURIComponent(ipfsUrl(cid))}&w=${w}`
-}
-
-// --- Featured renderers ---
-
-function renderFeatured(item, orgType) {
-  if (!item) return ''
-  const title = escapeHtml(item.title || 'untitled')
-  const img = itemImg(item, 400)
-  const artist = artistLink(item)
-
-  if (orgType === 'label') {
-    const isAudio = (item.contentType || '').includes('audio')
-    return `<div class="org-featured-label">
-      ${img ? `<img src="${escapeHtml(img)}" alt="${title}" loading="lazy">` : '<div style="width:200px;height:200px;background:var(--surface);border:1px solid var(--border);flex-shrink:0"></div>'}
-      <div class="info">
-        <div class="title">${title}</div>
-        <div style="margin-bottom:0.8em">${artist}</div>
-        ${isAudio ? `<button class="track-play-btn" data-track-src="${escapeHtml(ipfsUrl(item.ipfsCid))}" data-track-title="${title}" data-track-artist="${escapeHtml(item.artistDomain || '')}" style="padding:0.5em 1.5ch;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-family:inherit;font-size:0.85em">▶ play</button>` : ''}
-        <span style="margin-left:0.5em">${buyBtn(item)}</span>
-      </div>
-    </div>`
-  }
-
-  if (orgType === 'gallery') {
-    return `<div class="org-featured-gallery">
-      ${img ? `<img src="${itemImg(item, 1200)}" alt="${title}" loading="lazy">` : ''}
-      <div class="caption">${title} — ${artist} ${buyBtn(item)}</div>
-    </div>`
-  }
-
-  if (orgType === 'company') {
-    const isVideo = (item.contentType || '').includes('video')
-    if (isVideo && item.ipfsCid) {
-      return `<div class="org-featured-company">
-        <video src="${escapeHtml(ipfsUrl(item.ipfsCid))}" preload="none" playsinline controls poster="${img ? escapeHtml(img) : ''}"></video>
-        <div class="overlay"><div class="title">${title}</div><div class="artist">${escapeHtml(item.artistDomain || '')}</div></div>
-      </div>`
-    }
-    return `<div class="org-featured-company" style="display:flex;align-items:center;justify-content:center">
-      ${img ? `<img src="${escapeHtml(itemImg(item, 1100))}" alt="${title}" style="width:100%;height:100%;object-fit:cover">` : ''}
-      <div class="overlay"><div class="title">${title}</div><div class="artist">${escapeHtml(item.artistDomain || '')}</div></div>
-    </div>`
-  }
-
-  if (orgType === 'publisher') {
-    return `<div class="org-featured-pub">
-      ${img ? `<div class="cover"><img src="${escapeHtml(img)}" alt="${title}" loading="lazy"></div>` : ''}
-      <div class="info">
-        <div class="title">${title}</div>
-        <div style="margin:0.3em 0 0.8em">${artist}</div>
-        ${buyBtn(item)}
-      </div>
-    </div>`
-  }
-
-  // collective — simple card
-  return img ? `<div style="margin-bottom:0.5em">
-    <img src="${escapeHtml(itemImg(item, 1000))}" alt="${title}" style="width:100%;max-height:400px;object-fit:cover;display:block;border:1px solid var(--border)" loading="lazy">
-    <div style="padding:0.5em 0;font-size:0.9em">${title} — ${artist} ${buyBtn(item)}</div>
-  </div>` : ''
-}
+// Featured slot + local buy button + itemImg / artistLink / formatPrice
+// helpers were removed alongside the per-type catalog renderers. Every
+// work now flows through renderMediaCard, whose buy buttons are wired
+// globally by feed-cards.js — one source of truth for how a work reads
+// and behaves.
 
 // --- Catalog renderers per type ---
 

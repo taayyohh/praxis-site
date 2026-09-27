@@ -1401,6 +1401,11 @@ async function showUnlockPrompt(opts = {}) {
       // On dismiss the container is removed and the hidden children are
       // shown again — the caller's confirm UI is fully intact with all
       // its listeners still bound.
+      // Fade caller's children out before hiding, then fade the unlock in.
+      // The wrapper's initial `is-entering` state has opacity 0; a
+      // requestAnimationFrame flip removes it so CSS transitions the wrapper
+      // to opacity 1 in a single 220ms curve. Feels like the caller's UI
+      // gracefully hands off to the security prompt instead of snapping.
       inlineHiddenChildren = []
       for (const child of Array.from(inlineTarget.children)) {
         if (child.style.display !== 'none') {
@@ -1409,10 +1414,18 @@ async function showUnlockPrompt(opts = {}) {
         }
       }
       inlineWrapper = document.createElement('div')
-      inlineWrapper.className = 'praxis-inline-unlock'
+      inlineWrapper.className = 'praxis-inline-unlock is-entering'
       inlineWrapper.setAttribute('data-praxis-unlock', 'inline')
       inlineWrapper.innerHTML = bodyHtml
       inlineTarget.appendChild(inlineWrapper)
+      // Two rAFs so the browser has committed the initial `is-entering`
+      // (opacity 0) frame before we remove it — otherwise the transition
+      // never fires because the from-state was never painted.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          inlineWrapper?.classList.remove('is-entering')
+        })
+      })
       host = inlineWrapper
     } else {
       overlay = document.createElement('div')
@@ -1455,11 +1468,30 @@ async function showUnlockPrompt(opts = {}) {
         overlay.classList.add('is-closing')
         setTimeout(() => { overlay.remove(); then?.() }, 180)
       } else {
-        if (inlineWrapper && inlineWrapper.parentNode) inlineWrapper.parentNode.removeChild(inlineWrapper)
-        if (inlineHiddenChildren) {
-          for (const [child, prevDisplay] of inlineHiddenChildren) child.style.display = prevDisplay
+        // Fade the unlock UI out first (matches the 220ms enter curve),
+        // then swap the caller's children back and let them fade in. The
+        // caller's confirm buttons don't pop back — they resolve into view.
+        if (inlineWrapper) {
+          inlineWrapper.classList.add('is-leaving')
+          setTimeout(() => {
+            if (inlineWrapper && inlineWrapper.parentNode) inlineWrapper.parentNode.removeChild(inlineWrapper)
+            if (inlineHiddenChildren) {
+              for (const [child, prevDisplay] of inlineHiddenChildren) {
+                child.style.display = prevDisplay
+                child.classList.add('praxis-inline-unlock-return')
+              }
+              // Drop the return class after the fade so it doesn't stick
+              // on nodes that later swap for other reasons.
+              setTimeout(() => {
+                if (!inlineHiddenChildren) return
+                for (const [child] of inlineHiddenChildren) child.classList.remove('praxis-inline-unlock-return')
+              }, 240)
+            }
+            then?.()
+          }, 200)
+        } else {
+          then?.()
         }
-        then?.()
       }
     }
 

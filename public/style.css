@@ -6426,6 +6426,35 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .praxis-modal-dialog .buy-btn:disabled,
 .praxis-modal-dialog .buy-btn.btn-disabled { color: var(--dim, #666); }
 
+/* Inline unlock (embedded-wallet.js `showUnlockPrompt({ target })`).
+   The wrapper replaces the caller's children while the security prompt
+   runs, then hands back on dismiss. Smooth crossfade in both directions:
+   - `.is-entering` and `.is-leaving` gate the from/to states so the
+     transition fires only on state change, not the initial mount.
+   - `.praxis-inline-unlock-return` fades the caller's own children back
+     in after the wrapper leaves. */
+.praxis-inline-unlock {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 220ms ease-out, transform 220ms ease-out;
+}
+.praxis-inline-unlock.is-entering {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.praxis-inline-unlock.is-leaving {
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 180ms ease-in, transform 180ms ease-in;
+}
+.praxis-inline-unlock-return {
+  animation: praxis-inline-unlock-fade-in 220ms ease-out both;
+}
+@keyframes praxis-inline-unlock-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* --- Branded signing modal (wallet unlock, etc.) ---
    Compact iOS-style sheet: Praxis mark up top, big title, generous
    input, primary/secondary button pair. Rounded, animated,

@@ -254,6 +254,12 @@ export const ORG_ABI = [
   { name: 'isInvited', type: 'function', inputs: [{ name: '', type: 'uint256' }, { name: '', type: 'address' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
   { name: 'orgCount', type: 'function', inputs: [], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
   { name: 'getOrgsByMember', type: 'function', inputs: [{ name: 'wallet', type: 'address' }], outputs: [{ name: '', type: 'uint256[]' }], stateMutability: 'view' },
+  // Work tagging — artists publish specific media items to an org (opt-in per work)
+  { name: 'tagWork', type: 'function', inputs: [{ name: 'orgId', type: 'uint256' }, { name: 'mediaContract', type: 'address' }, { name: 'mediaId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'untagWork', type: 'function', inputs: [{ name: 'orgId', type: 'uint256' }, { name: 'mediaContract', type: 'address' }, { name: 'mediaId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'isWorkTagged', type: 'function', inputs: [{ name: '', type: 'uint256' }, { name: '', type: 'address' }, { name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
+  { type: 'event', name: 'WorkTagged', inputs: [{ name: 'orgId', type: 'uint256', indexed: true }, { name: 'mediaContract', type: 'address', indexed: true }, { name: 'mediaId', type: 'uint256', indexed: true }, { name: 'artist', type: 'address', indexed: false }], anonymous: false },
+  { type: 'event', name: 'WorkUntagged', inputs: [{ name: 'orgId', type: 'uint256', indexed: true }, { name: 'mediaContract', type: 'address', indexed: true }, { name: 'mediaId', type: 'uint256', indexed: true }, { name: 'artist', type: 'address', indexed: false }], anonymous: false },
 ]
 
 export const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'

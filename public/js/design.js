@@ -381,6 +381,34 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>works card · publish to organization affordance (owner-only)</h3>
+          <div style="border:1px solid var(--border);padding:1em;max-width:520px;position:relative">
+            <div style="display:flex;gap:1em;align-items:flex-start">
+              <div style="width:96px;height:96px;background:var(--surface);border:1px solid var(--border);flex-shrink:0"></div>
+              <div style="flex:1">
+                <div style="color:var(--fg);font-weight:600;margin-bottom:0.3em">Tunnel Vision</div>
+                <div style="color:var(--muted);font-size:0.85em;margin-bottom:0.6em">$1.35 · 3 minted</div>
+                <div style="display:flex;gap:0.4em;align-items:center;position:relative">
+                  <button class="feed-card-btn green" style="font-size:0.8em;padding:0.3em 1ch">buy</button>
+                  <button style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">in 1 org</button>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:1em;background:var(--bg,#0a0a0a);border:1px solid var(--border);padding:0.5em 0.6em;max-width:280px">
+              <p style="font-size:0.7em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">publish to organization</p>
+              <label style="display:flex;align-items:center;gap:0.5em;padding:0.3em 0;font-size:0.85em;color:var(--fg)">
+                <input type="checkbox" checked>
+                <span>lucidhaus</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:0.5em;padding:0.3em 0;font-size:0.85em;color:var(--fg)">
+                <input type="checkbox">
+                <span>whatifwe pictures</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>inline organization admin card · settings /notifications</h3>
           <div style="border:1px solid var(--border);padding:1em;max-width:520px">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em;margin-bottom:0.4em">
