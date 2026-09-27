@@ -6417,6 +6417,14 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   width: 95%;
 }
 .praxis-modal-dialog h3 { color: var(--accent, #fff); }
+/* .praxis-modal-dialog sets `color: var(--fg)` on itself so body text
+   reads as light. That same rule was overriding .buy-btn's `color:
+   var(--bg)` (same specificity, later in source), turning the solid
+   button's text light-on-light — invisible. Restore contrast inside
+   any modal, while preserving the dim disabled state. */
+.praxis-modal-dialog .buy-btn { color: var(--bg, #0a0a0a); }
+.praxis-modal-dialog .buy-btn:disabled,
+.praxis-modal-dialog .buy-btn.btn-disabled { color: var(--dim, #666); }
 
 /* --- Branded signing modal (wallet unlock, etc.) ---
    Compact iOS-style sheet: Praxis mark up top, big title, generous

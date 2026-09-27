@@ -94,9 +94,12 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
   dialog.querySelector('#org-modal-cancel')?.addEventListener('click', () => overlay.remove())
 
-  // Async enrichment: pull org detail + metadata for a friendlier heading
-  // and a real profile pic if one is set. Failures are silent — the
-  // fallback rendering already reads correctly.
+  // Async enrichment: pull org detail for a friendlier heading and a
+  // real profile pic. The org's own metadata JSON may or may not carry
+  // a profilePic (it depends on whether the org was created via a flow
+  // that uploaded one), so if it doesn't, fall back to the ADMIN'S
+  // profile picture — that's what viewers already recognize as the org.
+  // Failures are silent; the fallback ⊕ mark already reads correctly.
   ;(async () => {
     try {
       const res = await fetch(`/api/org/${encodeURIComponent(orgId)}`)
@@ -109,7 +112,20 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
         if (titleEl) titleEl.textContent = realName
         if (nameEl) nameEl.textContent = realName
       }
-      const pic = org?.metadata?.profilePic || org?.metadata?.image || org?.metadata?.icon
+      let pic = org?.metadata?.profilePic || org?.metadata?.image || org?.metadata?.icon
+      if (!pic && org?.admin) {
+        // Fall back to the admin's registered profile picture.
+        try {
+          const rres = await fetch('/api/artists/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ addresses: [String(org.admin)] }),
+          })
+          const rdata = await rres.json()
+          const adminLower = String(org.admin).toLowerCase()
+          pic = rdata?.profilePics?.[adminLower] || rdata?.profilePics?.[org.admin] || null
+        } catch {}
+      }
       if (pic) {
         const avatarEl = dialog.querySelector('#org-modal-avatar')
         const safe = /^(https?:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)/i.test(String(pic)) ? String(pic) : ''
@@ -125,11 +141,23 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
     const statusEl = dialog.querySelector('#org-modal-status')
     const confirmBtn = dialog.querySelector('#org-modal-confirm')
     const cancelBtn = dialog.querySelector('#org-modal-cancel')
+    // .buy-btn:disabled drops color to var(--dim) at 0.4 opacity, which
+    // makes the original label ("join organization") vanish against the
+    // still-light background. Swap in an explicit progress label at each
+    // step so the button always reads clearly, then restore on error.
+    const originalLabel = primaryLabel
     try {
       confirmBtn.disabled = true
       cancelBtn.disabled = true
-      statusEl.textContent = isAccept ? 'confirm in wallet…' : 'confirm in wallet…'
-      if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; confirmBtn.disabled = false; cancelBtn.disabled = false; return }
+      confirmBtn.textContent = isAccept ? 'joining…' : 'declining…'
+      statusEl.textContent = 'confirm in wallet…'
+      if (!await window.ensureOptimism?.()) {
+        statusEl.textContent = 'wallet not connected'
+        confirmBtn.disabled = false
+        cancelBtn.disabled = false
+        confirmBtn.textContent = originalLabel
+        return
+      }
       const { createWalletClient, custom, optimism } = await import('./vendor.js')
       const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
       const addr = window.getWalletAddress?.()
@@ -139,9 +167,11 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
         functionName: isAccept ? 'acceptInvite' : 'declineInvite',
         args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
       })
-      statusEl.textContent = isAccept ? 'joining…' : 'declining…'
+      confirmBtn.textContent = isAccept ? 'joining…' : 'declining…'
+      statusEl.textContent = 'waiting for confirmation…'
       const pc = await getPublicClient()
       await pc.waitForTransactionReceipt({ hash })
+      confirmBtn.textContent = isAccept ? 'joined!' : 'declined'
       statusEl.style.color = 'var(--green,#4a4)'
       statusEl.textContent = isAccept ? 'joined!' : 'declined'
       onComplete?.()
@@ -151,6 +181,7 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
       statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 120)}`
       confirmBtn.disabled = false
       cancelBtn.disabled = false
+      confirmBtn.textContent = originalLabel
     }
   })
 }
@@ -796,10 +827,10 @@ function renderNotificationsPage(contentEl, notifications) {
     } else if (n.type === 'collaboration' && n._collabId) {
       action = `<span style="display:flex;gap:0.3ch"><button class="buy-btn notif-collab-btn" data-collab-id="${escapeHtml(n._collabId)}" data-action="accepted" style="font-size:0.75em;padding:0.2em 0.8ch">accept</button><button class="notif-collab-btn" data-collab-id="${escapeHtml(n._collabId)}" data-action="dismissed" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">dismiss</button></span>`
     } else if (n.type === 'org-invite' && n._orgId) {
-      // Both chips share the same subtle outline styling — clicking either
-      // just opens the confirmation modal, so they're a visual pair rather
-      // than a primary + secondary action.
-      action = `<span style="display:inline-flex;gap:0.3ch;align-items:center"><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer">accept</button><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer">decline</button></span>`
+      // Accept is the primary action (solid buy-btn), decline is the
+      // secondary (outlined). Both open the confirmation modal — hierarchy
+      // is about affordance, not commitment.
+      action = `<span style="display:inline-flex;gap:0.3ch;align-items:center"><button class="buy-btn notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.75em;padding:0.2em 0.9ch">accept</button><button class="notif-org-invite-btn notif-org-invite-btn-outline" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer;transition:color 0.15s,border-color 0.15s">decline</button></span>`
     } else if (n.type === 'confirm') {
       action = `<a href="${n.link}" style="color:var(--accent);font-size:0.8em;white-space:nowrap;font-weight:bold">confirm</a>`
     } else if (n.link) {
@@ -932,7 +963,7 @@ function renderPanel(notifications) {
         const row = document.createElement('div')
         row.className = `notif-item${unread}`
         row.style.cssText = 'display:flex;align-items:center;gap:0.5ch;justify-content:space-between'
-        row.innerHTML = `<span><span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span></span><span style="display:inline-flex;gap:0.3ch;flex-shrink:0;align-items:center"><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.7em;padding:0.15em 0.8ch;cursor:pointer">accept</button><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.8ch;cursor:pointer">decline</button></span>`
+        row.innerHTML = `<span><span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span></span><span style="display:inline-flex;gap:0.3ch;flex-shrink:0;align-items:center"><button class="buy-btn panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.7em;padding:0.15em 0.8ch">accept</button><button class="panel-org-btn panel-org-btn-outline" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.8ch;cursor:pointer;transition:color 0.15s,border-color 0.15s">decline</button></span>`
         notifPanel.appendChild(row)
       } else {
         const item = document.createElement('a')

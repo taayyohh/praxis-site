@@ -1139,7 +1139,13 @@ async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
     detail = await r.json()
   } catch {}
   const members = detail?.members || []
-  const memberCount = members.length
+  // The admin is auto-added to _members on createOrg, but they're already
+  // shown as "admin" — counting them again as a member reads as double.
+  // Subtract them so "you are the admin" doesn't come with "2 members"
+  // when the admin is actually the only wallet on the org.
+  const adminAddr = String(siteOrg.admin || '').toLowerCase()
+  const otherMembers = members.filter(m => String(m.wallet || m).toLowerCase() !== adminAddr)
+  const memberCount = otherMembers.length
   const roleTag = isAdmin
     ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
     : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
@@ -1207,9 +1213,11 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
       items = data?.data?.orgInvites?.items || []
     } catch {}
     if (!items.length) { pendingWrap.style.display = 'none'; pendingList.innerHTML = ''; return }
-    // Resolve wallet → domain so we can show a friendly label instead of
-    // a raw 0x address. /api/artists/resolve is a batch endpoint.
+    // Resolve wallet → domain + profile pic so pending rows read as
+    // "milesxb.bio [avatar] revoke" instead of a raw 0x address.
+    // /api/artists/resolve responds with { addresses: {...}, profilePics: {...} }.
     let domainMap = {}
+    let picMap = {}
     try {
       const r = await fetch('/api/artists/resolve', {
         method: 'POST',
@@ -1217,7 +1225,8 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
         body: JSON.stringify({ addresses: items.map(i => String(i.wallet)) }),
       })
       const data = await r.json()
-      domainMap = data?.domains || data || {}
+      domainMap = data?.addresses || {}
+      picMap = data?.profilePics || {}
     } catch {}
     pendingWrap.style.display = 'block'
     const esc = escapeHtml
@@ -1225,9 +1234,17 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
       const w = String(i.wallet).toLowerCase()
       const domain = domainMap[w] || domainMap[String(i.wallet)] || ''
       const label = domain || `${w.slice(0, 6)}…${w.slice(-4)}`
-      return `<div class="s-org-pending-row" style="display:flex;justify-content:space-between;align-items:center;padding:0.4em 0;border-bottom:1px solid var(--border)" data-wallet="${esc(w)}">
-        <span style="font-size:0.9em;color:var(--fg)">${esc(label)}</span>
-        <button class="s-org-revoke-btn" data-wallet="${esc(w)}" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">revoke</button>
+      const picRaw = picMap[w] || picMap[String(i.wallet)] || ''
+      const picSafe = /^(https?:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)/i.test(String(picRaw)) ? String(picRaw) : ''
+      const avatar = picSafe
+        ? `<img src="${esc(picSafe)}" alt="" style="width:22px;height:22px;object-fit:cover;border:1px solid var(--border);flex-shrink:0">`
+        : `<span style="width:22px;height:22px;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:0.7em;color:var(--dim);flex-shrink:0">${esc(label[0] || '·').toUpperCase()}</span>`
+      return `<div class="s-org-pending-row" style="display:flex;justify-content:space-between;align-items:center;gap:0.6em;padding:0.4em 0;border-bottom:1px solid var(--border)" data-wallet="${esc(w)}">
+        <span style="display:flex;align-items:center;gap:0.6em;min-width:0">
+          ${avatar}
+          <span style="font-size:0.9em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span>
+        </span>
+        <button class="s-org-revoke-btn" data-wallet="${esc(w)}" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;flex-shrink:0">revoke</button>
       </div>`
     }).join('')
     pendingList.querySelectorAll('.s-org-revoke-btn').forEach(b => {
