@@ -12,6 +12,32 @@ import { ORG_ADDRESS, ORG_ABI, getMediaAddress } from './contracts.js'
 const _memberOrgsCache = new Map()   // artistLower -> [{ id, name }]
 const _tagStateCache = new Map()     // `${mediaId}` -> Set of orgIds
 
+// The tagWork/untagWork functions live in the PraxisOrganization contract
+// version that ships with the #93 redeploy. Until that redeploy, the
+// currently-deployed contract has no such functions and a tag transaction
+// would revert on submit — worse UX than not showing the affordance at all.
+// Probe once at first use by calling isWorkTagged as a view; if the ABI
+// isn't there yet the call rejects and we treat tagging as unavailable.
+let _tagWorkAvailability = null // Promise<boolean>
+function _checkTagWorkAvailable() {
+  if (_tagWorkAvailability) return _tagWorkAvailability
+  _tagWorkAvailability = (async () => {
+    try {
+      const pc = await getPublicClient()
+      await pc.readContract({
+        address: ORG_ADDRESS,
+        abi: ORG_ABI,
+        functionName: 'isWorkTagged',
+        args: [0n, '0x0000000000000000000000000000000000000000', 0n],
+      })
+      return true
+    } catch {
+      return false
+    }
+  })()
+  return _tagWorkAvailability
+}
+
 async function _fetchMemberOrgs(artist) {
   const key = artist.toLowerCase()
   if (_memberOrgsCache.has(key)) return _memberOrgsCache.get(key)
@@ -73,6 +99,13 @@ export function invalidateMemberCache(addr) {
 export async function attachOrgTagger(cardEl, media) {
   if (!cardEl || cardEl.dataset.orgTaggerBound === '1') return
   cardEl.dataset.orgTaggerBound = '1'
+
+  // Guard against showing an affordance the deployed contract can't fulfill:
+  // tagWork/untagWork only exist after the #93 redeploy. Until then the
+  // artist would click, sign, and get a revert. Hide the button entirely
+  // rather than surface that failure.
+  const available = await _checkTagWorkAvailable()
+  if (!available) return
 
   const artistAddr = String(media.artist || '').toLowerCase()
   const [orgs, tagged] = await Promise.all([
