@@ -1035,8 +1035,8 @@ async function loadOrgSection() {
     // hatch so an admin can spin up a fresh org under a different name too.
     if (siteFlaggedAsOrg && !siteOrg) {
       html += `<div style="border:1px solid var(--border);padding:1em;margin-bottom:1em">
-        <p style="font-size:0.9em;color:var(--fg);margin:0 0 0.5em">this site is set up as an organization, but no on-chain record exists yet.</p>
-        <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.75em;line-height:1.5">this usually means a past contract redeploy cleared the previous org and its members. re-establish the organization on-chain to invite members again — you'll need to re-invite each artist.</p>
+        <p style="font-size:0.9em;color:var(--fg);margin:0 0 0.5em">this site is set up as an organization, but no record exists on Ethereum yet.</p>
+        <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.75em;line-height:1.5">this usually means a past contract redeploy cleared the previous org and its members. re-establish the organization on Ethereum to invite members again — you'll need to re-invite each artist.</p>
         <button id="s-org-reestablish" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">re-establish organization</button>
       </div>`
     }
@@ -1128,7 +1128,9 @@ async function handleOrgInvite(btn, fnName, orgId) {
 // Inline org admin card for settings — deliberately compact. Full roster,
 // remove-member, and dissolve stay at /org?id=X to avoid duplicating that
 // UX here. Fetches full org detail (members + metadata) via /api/org/:id
-// so we can show a real count and offer a quick invite-by-domain/wallet.
+// so we can show a real count and offer a quick invite-by-domain/wallet
+// with typeahead + a pending-invite list (with revoke) so an admin can
+// see and manage outgoing invites without leaving settings.
 async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
   const orgId = String(siteOrg.id)
   let detail = null
@@ -1142,11 +1144,22 @@ async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
     ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
     : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
 
+  // The invite input has a relative wrapper so the absolute suggestion
+  // dropdown anchors to it (matches the /org page's invite affordance).
+  // A separate `s-org-pending-list` panel is populated once
+  // _wireInlineOrgAdmin fetches the outgoing pending invites for this org.
   const inviteBlock = isAdmin ? `
+    <div id="s-org-pending" style="margin-top:1em;display:none">
+      <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">pending invites</p>
+      <div id="s-org-pending-list"></div>
+    </div>
     <div style="margin-top:1em">
       <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">invite an artist</p>
-      <div style="display:flex;gap:0.5em">
-        <input type="text" id="s-org-invite-input" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" autocomplete="off" style="flex:1;box-sizing:border-box;font-size:0.85em">
+      <div style="display:flex;gap:0.5em;align-items:flex-start">
+        <div style="position:relative;flex:1">
+          <input type="text" id="s-org-invite-input" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" autocomplete="off" style="width:100%;box-sizing:border-box;font-size:0.85em">
+          <div id="s-org-invite-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg,#0a0a0a);border:1px solid var(--border);border-top:none;max-height:200px;overflow-y:auto;z-index:10"></div>
+        </div>
         <button id="s-org-invite-btn" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;white-space:nowrap">invite</button>
       </div>
       <p id="s-org-invite-status" style="font-size:0.8em;color:var(--muted);min-height:1em;margin:0.4em 0 0"></p>
@@ -1169,32 +1182,167 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
   const btn = document.getElementById('s-org-invite-btn')
   const input = document.getElementById('s-org-invite-input')
   const statusEl = document.getElementById('s-org-invite-status')
+  const suggest = document.getElementById('s-org-invite-suggest')
   if (!btn || !input) return
   const orgId = String(siteOrg.id)
 
+  // ── Outgoing pending invites for THIS org ─────────────────────────────
+  // Renders once at wire time, and again after every successful invite /
+  // revoke so the admin sees the live state without a page reload.
+  async function refreshPending() {
+    const pendingWrap = document.getElementById('s-org-pending')
+    const pendingList = document.getElementById('s-org-pending-list')
+    if (!pendingWrap || !pendingList) return
+    let items = []
+    try {
+      // orgInvites is exposed through the /api/feed whitelist. Ask for the
+      // pending rows for this org (admin scope; the endpoint is read-only).
+      const gql = `query ($id: BigInt!) { orgInvites(where: { orgId: $id, status: "pending" }, orderBy: "invitedAt", orderDirection: "desc", limit: 100) { items { id wallet invitedAt } } }`
+      const res = await fetch(`/api/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: gql, variables: { id: orgId } }),
+      })
+      const data = await res.json()
+      items = data?.data?.orgInvites?.items || []
+    } catch {}
+    if (!items.length) { pendingWrap.style.display = 'none'; pendingList.innerHTML = ''; return }
+    // Resolve wallet → domain so we can show a friendly label instead of
+    // a raw 0x address. /api/artists/resolve is a batch endpoint.
+    let domainMap = {}
+    try {
+      const r = await fetch('/api/artists/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: items.map(i => String(i.wallet)) }),
+      })
+      const data = await r.json()
+      domainMap = data?.domains || data || {}
+    } catch {}
+    pendingWrap.style.display = 'block'
+    const esc = escapeHtml
+    pendingList.innerHTML = items.map(i => {
+      const w = String(i.wallet).toLowerCase()
+      const domain = domainMap[w] || domainMap[String(i.wallet)] || ''
+      const label = domain || `${w.slice(0, 6)}…${w.slice(-4)}`
+      return `<div class="s-org-pending-row" style="display:flex;justify-content:space-between;align-items:center;padding:0.4em 0;border-bottom:1px solid var(--border)" data-wallet="${esc(w)}">
+        <span style="font-size:0.9em;color:var(--fg)">${esc(label)}</span>
+        <button class="s-org-revoke-btn" data-wallet="${esc(w)}" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">revoke</button>
+      </div>`
+    }).join('')
+    pendingList.querySelectorAll('.s-org-revoke-btn').forEach(b => {
+      b.addEventListener('click', () => revokeInvite(b))
+    })
+  }
+
+  async function revokeInvite(revBtn) {
+    const target = revBtn.dataset.wallet
+    if (!/^0x[0-9a-fA-F]{40}$/.test(target)) return
+    const originalLabel = revBtn.textContent
+    try {
+      revBtn.disabled = true
+      revBtn.textContent = 'revoking…'
+      if (!await window.ensureOptimism?.()) { revBtn.textContent = originalLabel; revBtn.disabled = false; return }
+      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+      const { getPublicClient } = await import('./utils.js')
+      const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+      const hash = await wc.writeContract({
+        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'revokeInvite',
+        args: [BigInt(orgId), target], account: myAddr,
+      })
+      const pc = await getPublicClient()
+      await pc.waitForTransactionReceipt({ hash })
+      refreshPending()
+    } catch (e) {
+      revBtn.disabled = false
+      revBtn.textContent = originalLabel
+      if (e.code !== 4001) console.warn('revokeInvite error', e)
+    }
+  }
+
+  // ── Typeahead ─────────────────────────────────────────────────────────
+  // Matches the /org page's invite UX: debounced /api/network/search →
+  // clickable rows; clicking picks the row's wallet without further
+  // lookup at submit time. Empty / short / 0x inputs skip the search.
+  let _debounce = null
+  let _selectedWallet = null
+  const closeSuggest = () => { if (suggest) suggest.style.display = 'none' }
+
+  input.addEventListener('input', () => {
+    _selectedWallet = null
+    clearTimeout(_debounce)
+    const q = input.value.trim()
+    if (!suggest) return
+    if (q.length < 2 || q.startsWith('0x')) { closeSuggest(); return }
+    _debounce = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/network/search?q=${encodeURIComponent(q)}&limit=6`)
+        const data = await r.json()
+        const items = (data.results || data.items || data || []).filter(a =>
+          a.id?.toLowerCase() !== String(myAddr).toLowerCase()
+        )
+        if (!items.length) { closeSuggest(); return }
+        const esc = escapeHtml
+        suggest.innerHTML = items.map(a => {
+          const domain = esc(a.domain || a.name || '')
+          const short = a.id ? `${a.id.slice(0, 6)}…${a.id.slice(-4)}` : ''
+          return `<div class="s-org-suggest-item" data-wallet="${esc(a.id || '')}" data-domain="${domain}" style="padding:0.5em 0.8em;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:0.85em;border-bottom:1px solid var(--border)">
+            <span style="color:var(--fg)">${domain}</span>
+            <span style="color:var(--dim);font-size:0.8em">${esc(short)}</span>
+          </div>`
+        }).join('')
+        suggest.style.display = 'block'
+        suggest.querySelectorAll('.s-org-suggest-item').forEach(row => {
+          row.addEventListener('mousedown', (e) => {
+            // mousedown so the input's blur (below) doesn't hide the
+            // dropdown before the click lands.
+            e.preventDefault()
+            input.value = row.dataset.domain
+            _selectedWallet = row.dataset.wallet
+            closeSuggest()
+          })
+          row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)' })
+          row.addEventListener('mouseleave', () => { row.style.background = '' })
+        })
+      } catch { closeSuggest() }
+    }, 250)
+  })
+  input.addEventListener('blur', () => setTimeout(closeSuggest, 150))
+  document.addEventListener('click', (e) => {
+    if (suggest && !suggest.contains(e.target) && e.target !== input) closeSuggest()
+  })
+
+  // ── Invite ────────────────────────────────────────────────────────────
   const invite = async () => {
+    closeSuggest()
     const raw = input.value.trim()
     if (!raw) { statusEl.textContent = 'enter a domain or wallet'; return }
-    let targetWallet = null
-    if (/^0x[0-9a-fA-F]{40}$/.test(raw)) {
-      targetWallet = raw
-    } else {
-      statusEl.style.color = ''
-      statusEl.textContent = 'resolving…'
-      try {
-        const r = await fetch(`/api/network/search?q=${encodeURIComponent(raw)}&limit=5`)
-        const data = await r.json()
-        const items = data.results || data.items || data || []
-        const match = items.find(a =>
-          (a.domain || a.name || '').toLowerCase() === raw.toLowerCase() ||
-          (a.handle || '').toLowerCase() === raw.toLowerCase().replace(/\.[a-z]+$/, '')
-        ) || items[0]
-        if (!match?.id) { statusEl.style.color = '#ef4444'; statusEl.textContent = `couldn't find "${raw}"`; return }
-        targetWallet = match.id
-      } catch { statusEl.style.color = '#ef4444'; statusEl.textContent = 'lookup failed'; return }
+    let targetWallet = _selectedWallet || null
+    if (!targetWallet) {
+      if (/^0x[0-9a-fA-F]{40}$/.test(raw)) {
+        targetWallet = raw
+      } else {
+        statusEl.style.color = ''
+        statusEl.textContent = 'resolving…'
+        try {
+          const r = await fetch(`/api/network/search?q=${encodeURIComponent(raw)}&limit=5`)
+          const data = await r.json()
+          const items = data.results || data.items || data || []
+          const match = items.find(a =>
+            (a.domain || a.name || '').toLowerCase() === raw.toLowerCase() ||
+            (a.handle || '').toLowerCase() === raw.toLowerCase().replace(/\.[a-z]+$/, '')
+          ) || items[0]
+          if (!match?.id) { statusEl.style.color = '#ef4444'; statusEl.textContent = `couldn't find "${raw}"`; return }
+          targetWallet = match.id
+        } catch { statusEl.style.color = '#ef4444'; statusEl.textContent = 'lookup failed'; return }
+      }
     }
     if (!/^0x[0-9a-fA-F]{40}$/.test(targetWallet)) { statusEl.style.color = '#ef4444'; statusEl.textContent = 'invalid wallet'; return }
+    const originalBtn = btn.textContent
     try {
+      btn.disabled = true
+      btn.textContent = 'inviting…'
       statusEl.style.color = ''
       statusEl.textContent = 'confirm in wallet…'
       if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; return }
@@ -1212,14 +1360,21 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
       statusEl.style.color = 'var(--green,#4a4)'
       statusEl.textContent = 'invite sent — they must accept it from their own settings'
       input.value = ''
+      _selectedWallet = null
+      refreshPending()
     } catch (e) {
       statusEl.style.color = '#ef4444'
       statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 100)}`
+    } finally {
+      btn.disabled = false
+      btn.textContent = originalBtn
     }
   }
 
   btn.addEventListener('click', invite)
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') invite() })
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); invite() } })
+
+  refreshPending()
 }
 
 async function showConvertToOrgModal() {
@@ -1237,7 +1392,7 @@ async function showConvertToOrgModal() {
   const isReestablish = siteData?.template === 'organization'
   const heading = isReestablish ? 're-establish organization' : 'convert to organization'
   const explainer = isReestablish
-    ? `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will create a new on-chain organization for <strong style="color:var(--fg)">${escapeHtml(domain)}</strong>. any previous members will need to be re-invited from here.</p>`
+    ? `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will create a new organization on Ethereum for <strong style="color:var(--fg)">${escapeHtml(domain)}</strong>. any previous members will need to be re-invited from here.</p>`
     : `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${escapeHtml(domain)}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>`
   dialog.innerHTML = `
     <h3 style="margin:0 0 0.5em;font-size:1em">${heading}</h3>
@@ -1261,8 +1416,18 @@ async function showConvertToOrgModal() {
   dialog.querySelector('#org-convert-submit')?.addEventListener('click', async () => {
     const nameInput = dialog.querySelector('#org-convert-name')
     const statusEl = dialog.querySelector('#org-convert-status')
+    const submitBtn = dialog.querySelector('#org-convert-submit')
+    const cancelBtn = dialog.querySelector('#org-convert-cancel')
     const name = nameInput?.value?.trim()
     if (!name) { statusEl.textContent = 'name is required'; return }
+
+    // Disable both buttons and give the submit an explicit "in-progress"
+    // label. Without this the button read blank while the flow ran, since
+    // its original label was set once at render time and nothing kept it
+    // consistent through the async steps.
+    submitBtn.disabled = true
+    if (cancelBtn) cancelBtn.disabled = true
+    submitBtn.textContent = isReestablish ? 're-establishing…' : 'converting…'
 
     try {
       statusEl.textContent = 'uploading metadata...'
@@ -1354,6 +1519,9 @@ async function showConvertToOrgModal() {
     } catch (e) {
       statusEl.style.color = '#ef4444'
       statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 80)}`
+      submitBtn.disabled = false
+      if (cancelBtn) cancelBtn.disabled = false
+      submitBtn.textContent = isReestablish ? 're-establish' : 'convert'
     }
   })
 }

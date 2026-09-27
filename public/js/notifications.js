@@ -50,6 +50,111 @@ function whoLink(addr, domainMap) {
   return `<a href="${href}" style="color:var(--accent)">${name}</a>`
 }
 
+// Confirmation modal shown when a viewer taps accept / decline on an
+// org invite notification. Fetches org detail (name + admin + optional
+// metadata profile pic) so the modal feels like it's about the SPECIFIC
+// org, not a generic "confirm?" prompt. Runs acceptInvite / declineInvite
+// on the user's OK. onComplete fires after the tx confirms so the caller
+// can clean up the notification row.
+async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10020'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '440px'
+
+  // Fetch org detail in parallel with rendering the shell so the modal
+  // opens instantly. The header/subheader swap in when the fetch lands.
+  const isAccept = action === 'accept'
+  const heading = isAccept ? 'join this organization?' : 'decline this invite?'
+  const primaryLabel = isAccept ? 'join organization' : 'decline invite'
+  const explainer = isAccept
+    ? `joining <strong id="org-modal-name">${escapeHtml(orgName)}</strong> adds it to your profile as an organization you're part of. the admin can invite or remove members at any time — you can leave whenever you want. this signs one small transaction on Ethereum.`
+    : `declining removes the invite from your notifications. the admin can invite you again later if you change your mind. this signs one small transaction on Ethereum.`
+
+  dialog.innerHTML = `
+    <div style="display:flex;gap:0.9em;align-items:center;margin-bottom:0.9em">
+      <div id="org-modal-avatar" style="width:44px;height:44px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg-2,#111);color:var(--muted);font-size:1.4em">⊕</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.75em;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.15em">${escapeHtml(isAccept ? 'invitation to join' : 'decline invitation')}</div>
+        <div id="org-modal-title" style="font-size:1em;color:var(--fg);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(orgName)}</div>
+      </div>
+    </div>
+    <h3 style="margin:0 0 0.5em;font-size:1em">${heading}</h3>
+    <p style="font-size:0.85em;color:var(--muted);margin:0 0 1em;line-height:1.55">${explainer}</p>
+    <p id="org-modal-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin:0 0 0.6em"></p>
+    <div style="display:flex;gap:0.5em">
+      <button id="org-modal-confirm" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.55em">${primaryLabel}</button>
+      <button id="org-modal-cancel" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.55em;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#org-modal-cancel')?.addEventListener('click', () => overlay.remove())
+
+  // Async enrichment: pull org detail + metadata for a friendlier heading
+  // and a real profile pic if one is set. Failures are silent — the
+  // fallback rendering already reads correctly.
+  ;(async () => {
+    try {
+      const res = await fetch(`/api/org/${encodeURIComponent(orgId)}`)
+      if (!res.ok) return
+      const org = await res.json()
+      const realName = org?.name
+      if (realName) {
+        const titleEl = dialog.querySelector('#org-modal-title')
+        const nameEl = dialog.querySelector('#org-modal-name')
+        if (titleEl) titleEl.textContent = realName
+        if (nameEl) nameEl.textContent = realName
+      }
+      const pic = org?.metadata?.profilePic || org?.metadata?.image || org?.metadata?.icon
+      if (pic) {
+        const avatarEl = dialog.querySelector('#org-modal-avatar')
+        const safe = /^(https?:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)/i.test(String(pic)) ? String(pic) : ''
+        if (avatarEl && safe) {
+          avatarEl.innerHTML = `<img src="${escapeHtml(safe)}" style="width:100%;height:100%;object-fit:cover" alt="">`
+          avatarEl.style.padding = '0'
+        }
+      }
+    } catch {}
+  })()
+
+  dialog.querySelector('#org-modal-confirm')?.addEventListener('click', async () => {
+    const statusEl = dialog.querySelector('#org-modal-status')
+    const confirmBtn = dialog.querySelector('#org-modal-confirm')
+    const cancelBtn = dialog.querySelector('#org-modal-cancel')
+    try {
+      confirmBtn.disabled = true
+      cancelBtn.disabled = true
+      statusEl.textContent = isAccept ? 'confirm in wallet…' : 'confirm in wallet…'
+      if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; confirmBtn.disabled = false; cancelBtn.disabled = false; return }
+      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+      const addr = window.getWalletAddress?.()
+      const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const hash = await wc.writeContract({
+        address: ORG_ADDRESS, abi: ORG_ABI,
+        functionName: isAccept ? 'acceptInvite' : 'declineInvite',
+        args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
+      })
+      statusEl.textContent = isAccept ? 'joining…' : 'declining…'
+      const pc = await getPublicClient()
+      await pc.waitForTransactionReceipt({ hash })
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.textContent = isAccept ? 'joined!' : 'declined'
+      onComplete?.()
+      setTimeout(() => overlay.remove(), 800)
+    } catch (e) {
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 120)}`
+      confirmBtn.disabled = false
+      cancelBtn.disabled = false
+    }
+  })
+}
+
 function getLastSeen() {
   try {
     const local = parseInt(localStorage.getItem(LAST_SEEN_KEY) || '0', 10)
@@ -691,7 +796,10 @@ function renderNotificationsPage(contentEl, notifications) {
     } else if (n.type === 'collaboration' && n._collabId) {
       action = `<span style="display:flex;gap:0.3ch"><button class="buy-btn notif-collab-btn" data-collab-id="${escapeHtml(n._collabId)}" data-action="accepted" style="font-size:0.75em;padding:0.2em 0.8ch">accept</button><button class="notif-collab-btn" data-collab-id="${escapeHtml(n._collabId)}" data-action="dismissed" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">dismiss</button></span>`
     } else if (n.type === 'org-invite' && n._orgId) {
-      action = `<span style="display:flex;gap:0.3ch"><button class="buy-btn notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.75em;padding:0.2em 0.8ch">accept</button><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">decline</button></span>`
+      // Both chips share the same subtle outline styling — clicking either
+      // just opens the confirmation modal, so they're a visual pair rather
+      // than a primary + secondary action.
+      action = `<span style="display:inline-flex;gap:0.3ch;align-items:center"><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer">accept</button><button class="notif-org-invite-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer">decline</button></span>`
     } else if (n.type === 'confirm') {
       action = `<a href="${n.link}" style="color:var(--accent);font-size:0.8em;white-space:nowrap;font-weight:bold">confirm</a>`
     } else if (n.link) {
@@ -776,38 +884,24 @@ function renderNotificationsPage(contentEl, notifications) {
     })
   })
 
-  // org invite accept/decline buttons
+  // Org invite accept/decline buttons — open a confirmation modal that
+  // shows the org's branding and explains what joining means, so people
+  // don't fire an on-chain tx from a single tap on a notification row.
   contentEl.querySelectorAll('.notif-org-invite-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const orgId = btn.dataset.orgId
       const action = btn.dataset.action
-      const origText = btn.textContent
-      const sibling = btn.parentElement?.querySelector(`.notif-org-invite-btn:not([data-action="${action}"])`)
-      btn.textContent = action === 'accept' ? 'accepting...' : 'declining...'
-      btn.disabled = true
-      if (sibling) sibling.disabled = true
-      try {
-        if (!await window.ensureOptimism?.()) throw new Error('wallet not connected')
-        const { createWalletClient, custom, optimism } = await import('./vendor.js')
-        const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
-        const addr = window.getWalletAddress?.()
-        const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-        const hash = await wc.writeContract({
-          address: ORG_ADDRESS, abi: ORG_ABI,
-          functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
-          args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
-        })
-        const pc = await getPublicClient()
-        await pc.waitForTransactionReceipt({ hash })
-        const row = btn.closest('.notif-page-row')
-        if (row) row.remove()
-        try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
-      } catch (e) {
-        btn.textContent = e.code === 4001 ? 'cancelled' : (e.message || 'error')
-        btn.disabled = false
-        if (sibling) sibling.disabled = false
-        setTimeout(() => { btn.textContent = origText }, 2000)
-      }
+      // Pull the readable org name straight from the notification row's text
+      // so the modal doesn't have to re-fetch it before opening.
+      const orgLabel = (btn.closest('.notif-page-row')?.querySelector('.notif-text strong')?.textContent) || `org #${orgId}`
+      _showOrgInviteConfirm({
+        orgId, orgName: orgLabel, action,
+        onComplete: () => {
+          const row = btn.closest('.notif-page-row')
+          if (row) row.remove()
+          try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
+        },
+      })
     })
   })
 
@@ -838,7 +932,7 @@ function renderPanel(notifications) {
         const row = document.createElement('div')
         row.className = `notif-item${unread}`
         row.style.cssText = 'display:flex;align-items:center;gap:0.5ch;justify-content:space-between'
-        row.innerHTML = `<span><span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span></span><span style="display:flex;gap:0.3ch;flex-shrink:0"><button class="buy-btn panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="font-size:0.7em;padding:0.15em 0.6ch">accept</button><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.6ch;cursor:pointer">decline</button></span>`
+        row.innerHTML = `<span><span class="notif-icon" style="color:var(--muted);font-family:monospace;margin-right:0.5ch;width:1.5ch;display:inline-block;text-align:center">${icon}</span><span class="notif-text">${n.text}</span></span><span style="display:inline-flex;gap:0.3ch;flex-shrink:0;align-items:center"><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="accept" style="background:none;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.7em;padding:0.15em 0.8ch;cursor:pointer">accept</button><button class="panel-org-btn" data-org-id="${escapeHtml(n._orgId)}" data-action="decline" style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.7em;padding:0.15em 0.8ch;cursor:pointer">decline</button></span>`
         notifPanel.appendChild(row)
       } else {
         const item = document.createElement('a')
@@ -848,38 +942,23 @@ function renderPanel(notifications) {
         notifPanel.appendChild(item)
       }
     }
-    // Wire org invite buttons in panel
+    // Wire org invite buttons in panel — route through the same
+    // confirmation modal as the feed row, so a stray tap on the small
+    // panel target doesn't sign an on-chain tx.
     notifPanel.querySelectorAll('.panel-org-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation()
         const orgId = btn.dataset.orgId
         const action = btn.dataset.action
-        const origText = btn.textContent
-        const sibling = btn.parentElement?.querySelector(`.panel-org-btn:not([data-action="${action}"])`)
-        btn.textContent = '...'
-        btn.disabled = true
-        if (sibling) sibling.disabled = true
-        try {
-          if (!await window.ensureOptimism?.()) throw new Error('wallet not connected')
-          const { createWalletClient, custom, optimism } = await import('./vendor.js')
-          const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
-          const addr = window.getWalletAddress?.()
-          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-          const hash = await wc.writeContract({
-            address: ORG_ADDRESS, abi: ORG_ABI,
-            functionName: action === 'accept' ? 'acceptInvite' : 'declineInvite',
-            args: [BigInt(orgId)], account: window.getEmbeddedAccount?.() || addr,
-          })
-          const pc = await getPublicClient()
-          await pc.waitForTransactionReceipt({ hash })
-          btn.closest('.notif-item')?.remove()
-          try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
-        } catch (e) {
-          btn.textContent = e.code === 4001 ? 'x' : '!'
-          btn.disabled = false
-          if (sibling) sibling.disabled = false
-          setTimeout(() => { btn.textContent = origText }, 2000)
-        }
+        const orgLabel = (btn.closest('.notif-item, .notif-row')?.querySelector('.notif-text strong')?.textContent) || `org #${orgId}`
+        _showOrgInviteConfirm({
+          orgId, orgName: orgLabel, action,
+          onComplete: () => {
+            btn.closest('.notif-item')?.remove()
+            btn.closest('.notif-row')?.remove()
+            try { sessionStorage.removeItem(NOTIF_CACHE_KEY) } catch {}
+          },
+        })
       })
     })
   }

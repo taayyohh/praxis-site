@@ -390,12 +390,42 @@ async function initDesign() {
             <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.5em">3 members · you are the admin</p>
             <a style="color:var(--muted);font-size:0.85em">manage organization →</a>
             <div style="margin-top:1em">
+              <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">pending invites</p>
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4em 0;border-bottom:1px solid var(--border)">
+                  <span style="font-size:0.9em;color:var(--fg)">milesxb.bio</span>
+                  <button style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer">revoke</button>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:1em">
               <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.4em;text-transform:uppercase;letter-spacing:0.05em">invite an artist</p>
-              <div style="display:flex;gap:0.5em">
-                <input type="text" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" style="flex:1;box-sizing:border-box;font-size:0.85em">
+              <div style="display:flex;gap:0.5em;align-items:flex-start">
+                <div style="position:relative;flex:1">
+                  <input type="text" class="project-input" placeholder="domain (e.g. milesxb.bio) or 0x wallet" style="width:100%;box-sizing:border-box;font-size:0.85em">
+                </div>
                 <button class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;white-space:nowrap">invite</button>
               </div>
-              <p style="font-size:0.75em;color:var(--dim);margin:0.5em 0 0;line-height:1.5">the artist has to accept from their own site's settings before they show up as a member.</p>
+              <p style="font-size:0.75em;color:var(--dim);margin:0.5em 0 0;line-height:1.5">the artist has to accept from their own site's settings before they show up as a member. typeahead pulls matching domains as they type.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>org invite confirmation modal · notifications tap → this modal, not straight to a signature</h3>
+          <div style="border:1px solid var(--border);padding:1.2em;max-width:440px">
+            <div style="display:flex;gap:0.9em;align-items:center;margin-bottom:0.9em">
+              <div style="width:44px;height:44px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg-2,#111);color:var(--muted);font-size:1.4em">⊕</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.75em;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.15em">invitation to join</div>
+                <div style="font-size:1em;color:var(--fg);font-weight:500">lucidhaus</div>
+              </div>
+            </div>
+            <h3 style="margin:0 0 0.5em;font-size:1em">join this organization?</h3>
+            <p style="font-size:0.85em;color:var(--muted);margin:0 0 1em;line-height:1.55">joining <strong>lucidhaus</strong> adds it to your profile as an organization you're part of. the admin can invite or remove members at any time — you can leave whenever you want. this signs one small transaction on Ethereum.</p>
+            <div style="display:flex;gap:0.5em">
+              <button class="buy-btn" style="flex:1;font-size:0.85em;padding:0.55em">join organization</button>
+              <button class="buy-btn" style="flex:1;font-size:0.85em;padding:0.55em;border-color:var(--dim);color:var(--dim)">cancel</button>
             </div>
           </div>
         </div>
