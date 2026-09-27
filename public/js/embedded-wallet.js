@@ -450,7 +450,9 @@ function confirmTransaction(to, value) {
     const purchase = window._pendingPurchase
     const overlay = document.createElement('div')
     overlay.className = 'praxis-modal-overlay vault-save-overlay'
-    overlay.style.zIndex = '10002'
+    // Transaction preview is a security prompt — must be topmost above
+    // any caller modal (org invite confirm, funding sheet, etc.).
+    overlay.style.zIndex = '20000'
 
     // Resolve fiat display
     let fiatStr = ''
@@ -668,7 +670,9 @@ function confirmSignature(kind, preview) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
     overlay.className = 'praxis-modal-overlay vault-save-overlay'
-    overlay.style.zIndex = '10002'
+    // Signature preview is a security prompt — must be topmost above any
+    // caller modal so the user always sees what they're signing.
+    overlay.style.zIndex = '20000'
     const safePreview = String(preview || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const intent = _describeSignatureIntent(kind, preview)
@@ -1359,7 +1363,13 @@ async function showUnlockPrompt() {
     const overlay = document.createElement('div')
     overlay.id = 'wallet-unlock-overlay'
     overlay.className = 'praxis-modal-overlay'
-    overlay.style.zIndex = '10010'
+    // Unlock is a security prompt — it must always stack ABOVE any other
+    // modal that triggered the wallet call (org invite confirm, convert
+    // modal, funding sheet, etc.). Was 10010, which sat beneath the org
+    // invite confirm at 10020. Bump well above the app's other overlays
+    // so no caller can accidentally hide the password prompt behind
+    // itself.
+    overlay.style.zIndex = '20000'
 
     const dialog = document.createElement('div')
     dialog.className = 'praxis-modal-dialog praxis-modal-unlock'
