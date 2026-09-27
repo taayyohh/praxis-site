@@ -150,6 +150,23 @@ async function _showOrgInviteConfirm({ orgId, orgName, action, onComplete }) {
       confirmBtn.disabled = true
       cancelBtn.disabled = true
       confirmBtn.textContent = isAccept ? 'joining…' : 'declining…'
+      // Inline unlock: if the embedded wallet is locked, render the
+      // unlock UI inside THIS dialog instead of stacking a separate
+      // modal above. ensureAuthorized hides our existing children,
+      // paints the unlock UI, then restores our children after the
+      // user unlocks — buttons, listeners, and text nodes are the
+      // same DOM nodes we bound to above. No re-query needed.
+      const inlineUnlockNeeded = window.hasEmbeddedWallet?.() && window.isWalletUnlocked && !window.isWalletUnlocked()
+      if (inlineUnlockNeeded) {
+        statusEl.textContent = ''
+        const unlocked = await window.ensureAuthorized?.({ target: dialog })
+        if (!unlocked) {
+          confirmBtn.disabled = false
+          cancelBtn.disabled = false
+          confirmBtn.textContent = originalLabel
+          return
+        }
+      }
       statusEl.textContent = 'confirm in wallet…'
       if (!await window.ensureOptimism?.()) {
         statusEl.textContent = 'wallet not connected'

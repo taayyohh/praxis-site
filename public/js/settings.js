@@ -1053,12 +1053,23 @@ async function loadOrgSection() {
     if (otherOrgs.length) {
       html += `<div style="margin-bottom:1em;margin-top:${(siteOrg || siteFlaggedAsOrg) ? '1.5em' : '0'}">
         <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.5em;text-transform:uppercase;letter-spacing:0.05em">other organizations</p>
-        ${otherOrgs.map(o => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border)">
-            <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.95em">${esc(o.name)}</a>
-            ${o.admin?.toLowerCase() === addr.toLowerCase() ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>' : '<span style="font-size:0.7em;color:var(--dim)">member</span>'}
-          </div>
-        `).join('')}
+        ${otherOrgs.map(o => {
+          const isAdminHere = o.admin?.toLowerCase() === addr.toLowerCase()
+          const roleTag = isAdminHere
+            ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
+            : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
+          // Each row gets an explicit "manage →" / "view →" affordance so
+          // it's obvious how to act on the org — a bare hyperlinked name
+          // hid the action behind the org's own label.
+          const actionLabel = isAdminHere ? 'manage →' : 'view →'
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);gap:0.75em">
+            <a href="/org?id=${esc(String(o.id))}" style="color:var(--fg);text-decoration:none;font-size:0.95em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</a>
+            <span style="display:flex;align-items:center;gap:0.75em;flex-shrink:0">
+              ${roleTag}
+              <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.85em">${actionLabel}</a>
+            </span>
+          </div>`
+        }).join('')}
       </div>`
     }
 
@@ -1447,6 +1458,21 @@ async function showConvertToOrgModal() {
     submitBtn.textContent = isReestablish ? 're-establishing…' : 'converting…'
 
     try {
+      // Inline unlock: if the embedded wallet is locked, render unlock
+      // inside THIS dialog first. The unlock hides our children, paints
+      // the unlock UI, then restores our children — DOM refs (submitBtn,
+      // statusEl, cancelBtn) still point at the SAME nodes after unlock.
+      const inlineUnlockNeeded = window.hasEmbeddedWallet?.() && window.isWalletUnlocked && !window.isWalletUnlocked()
+      if (inlineUnlockNeeded) {
+        const unlocked = await window.ensureAuthorized?.({ target: dialog })
+        if (!unlocked) {
+          submitBtn.disabled = false
+          if (cancelBtn) cancelBtn.disabled = false
+          submitBtn.textContent = isReestablish ? 're-establish' : 'convert'
+          statusEl.textContent = ''
+          return
+        }
+      }
       statusEl.textContent = 'uploading metadata...'
       const metadata = JSON.stringify({ name, convertedFrom: handle })
       const blob = new Blob([metadata], { type: 'application/json' })

@@ -1642,12 +1642,21 @@ window.ensureScroll = ensureOptimism
 
 // Ensure embedded wallet is unlocked before signing transactions.
 // If locked (after page refresh), prompt unlock and activate provider.
-async function ensureAuthorized() {
+//
+// opts is a bag forwarded to showUnlockPrompt. The only current option is
+// `target`: a DOM node inside a caller's modal where the unlock UI should
+// render inline, instead of stacking a standalone overlay above the
+// caller. Callers that already have a modal open (org invite confirm,
+// convert-to-org, etc.) pass their dialog body; other callers omit it and
+// get the historic spawn-overlay behavior. The unlock function itself
+// snapshots + restores the target's innerHTML.
+async function ensureAuthorized(opts) {
+  const unlockOpts = opts && typeof opts === 'object' ? opts : undefined
   // If embedded wallet provider is active AND session is alive, return address
   if (getWalletProvider()?.isPraxis) {
     if (window.isWalletUnlocked?.()) return window.getWalletAddress()
     // Provider exists but session expired — prompt unlock
-    const address = await window.showUnlockPrompt?.()
+    const address = await window.showUnlockPrompt?.(unlockOpts)
     if (address) return address
   }
 
@@ -1658,7 +1667,7 @@ async function ensureAuthorized() {
     // After restore, check if provider is now active AND unlocked
     if (getWalletProvider()?.isPraxis && window.isWalletUnlocked?.()) return window.getWalletAddress()
     if (window.hasEmbeddedWallet?.()) {
-      const address = await window.showUnlockPrompt?.()
+      const address = await window.showUnlockPrompt?.(unlockOpts)
       if (address) return address
     }
   }

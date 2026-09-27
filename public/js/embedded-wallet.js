@@ -450,9 +450,7 @@ function confirmTransaction(to, value) {
     const purchase = window._pendingPurchase
     const overlay = document.createElement('div')
     overlay.className = 'praxis-modal-overlay vault-save-overlay'
-    // Transaction preview is a security prompt — must be topmost above
-    // any caller modal (org invite confirm, funding sheet, etc.).
-    overlay.style.zIndex = '20000'
+    overlay.style.zIndex = '10002'
 
     // Resolve fiat display
     let fiatStr = ''
@@ -670,9 +668,7 @@ function confirmSignature(kind, preview) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
     overlay.className = 'praxis-modal-overlay vault-save-overlay'
-    // Signature preview is a security prompt — must be topmost above any
-    // caller modal so the user always sees what they're signing.
-    overlay.style.zIndex = '20000'
+    overlay.style.zIndex = '10002'
     const safePreview = String(preview || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const intent = _describeSignatureIntent(kind, preview)
@@ -1307,7 +1303,16 @@ function showRecoveryPhraseUI(mnemonic, address, onComplete) {
 
 // --- UI: Unlock prompt ---
 
-async function showUnlockPrompt() {
+async function showUnlockPrompt(opts = {}) {
+  // opts.target — a DOM node to render the unlock UI into inline,
+  // instead of spawning a standalone praxis-modal-overlay above the
+  // caller. When present, the caller's existing modal stays visible
+  // and the unlock content replaces its body until the flow resolves;
+  // the caller's original innerHTML is restored on unlock, cancel,
+  // switch-account, or error. Fast paths (trust window, biometric)
+  // never touch `target` because they don't need to render anything.
+  const inlineTarget = opts && opts.target instanceof HTMLElement ? opts.target : null
+
   // Trusted-window fast path: if the user unlocked recently in this
   // same tab (sessionStorage), a hard refresh of /vault, /journal,
   // /messages within the window silently re-unlocks with no biometric
@@ -1360,23 +1365,15 @@ async function showUnlockPrompt() {
 
   return new Promise((resolve) => {
     const useBiometric = !!(biometricCredId && bioPassword)
-    const overlay = document.createElement('div')
-    overlay.id = 'wallet-unlock-overlay'
-    overlay.className = 'praxis-modal-overlay'
-    // Unlock is a security prompt — it must always stack ABOVE any other
-    // modal that triggered the wallet call (org invite confirm, convert
-    // modal, funding sheet, etc.). Was 10010, which sat beneath the org
-    // invite confirm at 10020. Bump well above the app's other overlays
-    // so no caller can accidentally hide the password prompt behind
-    // itself.
-    overlay.style.zIndex = '20000'
-
-    const dialog = document.createElement('div')
-    dialog.className = 'praxis-modal-dialog praxis-modal-unlock'
     // Show which account is being unlocked
     const _storedAddr = localStorage.getItem(ADDR_KEY) || ''
     const _addrShort = _storedAddr ? `${_storedAddr.slice(0, 6)}...${_storedAddr.slice(-4)}` : ''
-    dialog.innerHTML = `
+
+    // The inner unlock UI is identical in both modes — only the
+    // container (standalone overlay vs. caller's dialog body) differs.
+    // Namespaced ids ('praxis-unlock-*') let two nested unlock flows
+    // coexist without clobbering each other's DOM lookups.
+    const bodyHtml = `
       <svg class="praxis-unlock-mark" viewBox="0 0 200 200" fill="none" aria-hidden="true">
         <defs><mask id="unlock-bridge-m"><rect width="200" height="200" fill="white"/><rect x="96" y="30" width="8" height="55" fill="black"/><rect x="96" y="115" width="8" height="55" fill="black"/></mask></defs>
         <circle cx="100" cy="100" r="70" fill="currentColor" mask="url(#unlock-bridge-m)"/>
@@ -1391,10 +1388,47 @@ async function showUnlockPrompt() {
       </div>
       <button id="unlock-switch-btn" class="praxis-unlock-switch">use a different account</button>
     `
-    overlay.appendChild(dialog)
-    document.body.appendChild(overlay)
 
-    // Resolve address to domain name in background
+    let overlay = null
+    let host // element that contains the unlock UI, used for querySelector scoping
+    let inlineHiddenChildren = null // inline mode only: elements we temporarily hid
+    let inlineWrapper = null // inline mode only: the injected unlock container
+
+    if (inlineTarget) {
+      // Inline mode: instead of replacing innerHTML (which would drop
+      // the caller's event listeners and DOM references), we hide the
+      // caller's existing children and append a fresh unlock container.
+      // On dismiss the container is removed and the hidden children are
+      // shown again — the caller's confirm UI is fully intact with all
+      // its listeners still bound.
+      inlineHiddenChildren = []
+      for (const child of Array.from(inlineTarget.children)) {
+        if (child.style.display !== 'none') {
+          inlineHiddenChildren.push([child, child.style.display || ''])
+          child.style.display = 'none'
+        }
+      }
+      inlineWrapper = document.createElement('div')
+      inlineWrapper.className = 'praxis-inline-unlock'
+      inlineWrapper.setAttribute('data-praxis-unlock', 'inline')
+      inlineWrapper.innerHTML = bodyHtml
+      inlineTarget.appendChild(inlineWrapper)
+      host = inlineWrapper
+    } else {
+      overlay = document.createElement('div')
+      overlay.id = 'wallet-unlock-overlay'
+      overlay.className = 'praxis-modal-overlay'
+      overlay.style.zIndex = '10010'
+      const dialog = document.createElement('div')
+      dialog.className = 'praxis-modal-dialog praxis-modal-unlock'
+      dialog.innerHTML = bodyHtml
+      overlay.appendChild(dialog)
+      document.body.appendChild(overlay)
+      host = dialog
+    }
+
+    // Resolve address to domain name in background — safe in both modes
+    // because we scope the label lookup through `host`.
     if (_storedAddr && /^0x[0-9a-fA-F]{40}$/.test(_storedAddr)) {
       fetch('/ponder', {
         method: 'POST',
@@ -1403,21 +1437,30 @@ async function showUnlockPrompt() {
       }).then(r => r.json()).then(d => {
         const domain = d?.data?.artists?.items?.[0]?.domain
         if (domain) {
-          const label = document.getElementById('unlock-account-label')
+          const label = host.querySelector('#unlock-account-label')
           if (label) label.textContent = `account: ${domain}`
         }
       }).catch(() => {})
     }
 
-    const passwordInput = document.getElementById('unlock-password')
-    const errorEl = document.getElementById('unlock-error')
+    const passwordInput = host.querySelector('#unlock-password')
+    const errorEl = host.querySelector('#unlock-error')
 
-    // Animate the overlay out then remove — matches iOS system-
-    // sheet dismissal. The CSS class flips the enter animation to
-    // its reverse; we call remove() after it plays.
+    // dismiss() — animate the overlay out (spawn mode), or remove the
+    // injected wrapper and unhide the caller's children (inline mode).
+    // Inline restores instantly; the caller's confirm buttons, listeners,
+    // and DOM refs are the same nodes they were before unlock started.
     function dismiss(then) {
-      overlay.classList.add('is-closing')
-      setTimeout(() => { overlay.remove(); then?.() }, 180)
+      if (overlay) {
+        overlay.classList.add('is-closing')
+        setTimeout(() => { overlay.remove(); then?.() }, 180)
+      } else {
+        if (inlineWrapper && inlineWrapper.parentNode) inlineWrapper.parentNode.removeChild(inlineWrapper)
+        if (inlineHiddenChildren) {
+          for (const [child, prevDisplay] of inlineHiddenChildren) child.style.display = prevDisplay
+        }
+        then?.()
+      }
     }
 
     function showError(msg) {
@@ -1450,7 +1493,7 @@ async function showUnlockPrompt() {
       }
     }
 
-    document.getElementById('unlock-submit-btn').addEventListener('click', doUnlock)
+    host.querySelector('#unlock-submit-btn').addEventListener('click', doUnlock)
     passwordInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doUnlock()
     })
@@ -1460,10 +1503,10 @@ async function showUnlockPrompt() {
       passwordInput.removeAttribute('aria-invalid')
       errorEl.textContent = ''
     })
-    document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
+    host.querySelector('#unlock-cancel-btn').addEventListener('click', () => {
       dismiss(() => resolve(null))
     })
-    document.getElementById('unlock-switch-btn').addEventListener('click', async () => {
+    host.querySelector('#unlock-switch-btn').addEventListener('click', async () => {
       // Clear current wallet from local storage so user can sign in with a different account
       try { localStorage.removeItem(STORAGE_KEY) } catch {}
       try { localStorage.removeItem(ADDR_KEY) } catch {}
@@ -1480,7 +1523,9 @@ async function showUnlockPrompt() {
         resolve(addr)
       })
     })
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(() => resolve(null)) })
+    if (overlay) {
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(() => resolve(null)) })
+    }
 
     passwordInput.focus()
   })

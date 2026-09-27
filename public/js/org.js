@@ -1,5 +1,6 @@
 // Organization profile page — distinct layouts per org type
 import { escapeHtml, registerPage, resolveAddresses, getPublicClient, ipfsUrl, getProfilePic, getArtistName } from './utils.js'
+import { renderMediaCard } from './feed-cards.js'
 import { query } from './ponder.js'
 import { ORG_ADDRESS, ORG_ABI } from './contracts.js'
 
@@ -444,97 +445,36 @@ function renderFeatured(item, orgType) {
 
 function renderCatalog(items, orgType) {
   if (!items.length) return ''
-  if (orgType === 'label') return renderLabelCatalog(items)
-  if (orgType === 'gallery') return renderGalleryCatalog(items)
-  if (orgType === 'company') return renderCompanyCatalog(items)
-  if (orgType === 'publisher') return renderPublisherCatalog(items)
-  return renderCollectiveCatalog(items)
+  // Universal card path — every org type renders its catalog through
+  // renderMediaCard (the same card the feed and collection pages use).
+  // Two wins for free:
+  //   1. PDF / audio-without-cover items no longer render a broken <img>
+  //      (renderMediaCard shows a PDF row card / a play button, not a
+  //      failing image).
+  //   2. Prices display via priceLabelHtml → data-fiat-primary, which
+  //      fiat.js paints in the user's currency instead of raw µΞ.
+  // The per-type grid wrapper stays so orgs still get their layout
+  // rhythm (masonry for galleries, poster grid for companies, etc.).
+  const gridClass = orgType === 'label' ? 'org-label-grid'
+    : orgType === 'gallery' ? 'org-gallery-masonry'
+    : orgType === 'company' ? 'org-poster-grid'
+    : orgType === 'publisher' ? 'org-pub-list'
+    : 'org-coll-grid'
+  const resolve = addr => addr
+  const cards = items.map(item => {
+    // renderMediaCard's shape uses `mediaId`; the catalog endpoint
+    // hands back `id`. Everything else (artist, title, contentType,
+    // ipfsCid, metadataCid, price, artistDomain, artistName, artistPic)
+    // is already enriched server-side by /api/org/:id/catalog.
+    const artLink = item.artistDomain ? `https://${item.artistDomain}/art?media=${encodeURIComponent(item.id)}` : `/art?media=${encodeURIComponent(item.id)}`
+    return renderMediaCard({ ...item, mediaId: item.id, artLink, external: !!item.artistDomain }, resolve)
+  }).filter(Boolean).join('')
+  return `<div class="${gridClass}">${cards}</div>`
 }
 
-function renderLabelCatalog(items) {
-  return `<div class="org-label-grid">${items.map(item => {
-    const img = itemImg(item, 320)
-    const title = escapeHtml(item.title || 'untitled')
-    const isAudio = (item.contentType || '').includes('audio')
-    return `<div class="org-label-card">
-      <div style="position:relative">
-        ${img ? `<img src="${escapeHtml(img)}" alt="${title}" loading="lazy">` : `<div style="width:100%;aspect-ratio:1;background:var(--surface);border:1px solid var(--border)"></div>`}
-        ${isAudio ? `<button class="track-play-btn" data-track-src="${escapeHtml(ipfsUrl(item.ipfsCid))}" data-track-title="${title}" data-track-artist="${escapeHtml(item.artistDomain || '')}" style="position:absolute;bottom:6px;right:6px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.8em">▶</button>` : ''}
-      </div>
-      <div class="meta">
-        <div class="title">${title}</div>
-        ${artistLink(item)}
-        ${BigInt(item.price || 0) > 0n ? `<div style="margin-top:0.3em">${buyBtn(item)}</div>` : ''}
-      </div>
-    </div>`
-  }).join('')}</div>`
-}
-
-function renderGalleryCatalog(items) {
-  return `<div class="org-gallery-masonry">${items.map(item => {
-    const img = itemImg(item, 600)
-    if (!img) return ''
-    const title = escapeHtml(item.title || 'untitled')
-    return `<div class="org-gallery-item">
-      <img src="${escapeHtml(img)}" alt="${title}" loading="lazy">
-      <div class="overlay">
-        <div>
-          <div class="title">${title}</div>
-          <div class="artist">${escapeHtml(item.artistDomain || '')}</div>
-        </div>
-        ${BigInt(item.price || 0) > 0n ? `<div>${buyBtn(item)}</div>` : ''}
-      </div>
-    </div>`
-  }).join('')}</div>`
-}
-
-function renderCompanyCatalog(items) {
-  return `<div class="org-poster-grid">${items.map(item => {
-    const img = itemImg(item, 280)
-    const title = escapeHtml(item.title || 'untitled')
-    return `<div class="org-poster-card">
-      ${img ? `<img class="poster" src="${escapeHtml(img)}" alt="${title}" loading="lazy">` : `<div class="poster-placeholder">${escapeHtml(item.contentType || '—')}</div>`}
-      <div class="meta">
-        <div class="title">${title}</div>
-        ${artistLink(item)}
-        ${BigInt(item.price || 0) > 0n ? `<div style="margin-top:0.3em">${buyBtn(item)}</div>` : ''}
-      </div>
-    </div>`
-  }).join('')}</div>`
-}
-
-function renderPublisherCatalog(items) {
-  return `<div class="org-pub-list">${items.map(item => {
-    const img = itemImg(item, 240)
-    const title = escapeHtml(item.title || 'untitled')
-    return `<div class="org-pub-item">
-      ${img ? `<div class="cover"><img src="${escapeHtml(img)}" alt="${title}" loading="lazy"></div>` : ''}
-      <div class="info">
-        <div class="title">${title}</div>
-        ${artistLink(item)}
-        ${BigInt(item.price || 0) > 0n ? `<div style="margin-top:0.6em">${buyBtn(item)}</div>` : ''}
-      </div>
-    </div>`
-  }).join('')}</div>`
-}
-
-function renderCollectiveCatalog(items) {
-  return `<div class="org-coll-grid">${items.map(item => {
-    const img = itemImg(item, 400)
-    const isAudio = (item.contentType || '').includes('audio')
-    const title = escapeHtml(item.title || 'untitled')
-    const typeLabel = (item.contentType || 'other').replace('/', ' ')
-    return `<div class="org-coll-card">
-      ${img ? `<img class="media" src="${escapeHtml(img)}" alt="${title}" loading="lazy">` : isAudio ? `<div class="media" style="display:flex;align-items:center;justify-content:center;background:var(--surface)"><button class="track-play-btn" data-track-src="${escapeHtml(ipfsUrl(item.ipfsCid))}" data-track-title="${title}" data-track-artist="${escapeHtml(item.artistDomain || '')}" style="width:48px;height:48px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-size:1.2em">▶</button></div>` : `<div class="media" style="background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:0.8em">${escapeHtml(typeLabel)}</div>`}
-      <div class="body">
-        <span class="type-badge">${escapeHtml(typeLabel)}</span>
-        <div class="title">${title}</div>
-        ${artistLink(item)}
-        ${BigInt(item.price || 0) > 0n ? `<div style="margin-top:0.4em">${buyBtn(item)}</div>` : ''}
-      </div>
-    </div>`
-  }).join('')}</div>`
-}
+// Per-type catalog helpers were replaced by the universal renderMediaCard
+// path in renderCatalog above. Removed to avoid two sources of truth for
+// how a work renders — every card now goes through the same code path.
 
 // --- Roster ---
 
