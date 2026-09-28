@@ -1058,15 +1058,22 @@ async function loadOrgSection() {
           const roleTag = isAdminHere
             ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
             : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
-          // Each row gets an explicit "manage →" / "view →" affordance so
-          // it's obvious how to act on the org — a bare hyperlinked name
-          // hid the action behind the org's own label.
-          const actionLabel = isAdminHere ? 'manage →' : 'view →'
+          // When admin + on-chain org has no domain yet → surface the
+          // "attach a site" affordance right here. Skips createOrg
+          // entirely — one row on the ledger, one site to sign in to.
+          const hasSite = !!(o.domain && o.domain.trim())
+          const attachBtn = (isAdminHere && !hasSite)
+            ? `<button class="buy-btn org-attach-site" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" style="font-size:0.75em;padding:0.2em 1ch">attach a site</button>`
+            : ''
+          const actionLabel = hasSite
+            ? `<a href="https://${esc(o.domain)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:0.85em">${esc(o.domain)} →</a>`
+            : `<a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.85em">${isAdminHere ? 'manage' : 'view'} →</a>`
           return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0;border-bottom:1px solid var(--border);gap:0.75em">
             <a href="/org?id=${esc(String(o.id))}" style="color:var(--fg);text-decoration:none;font-size:0.95em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</a>
             <span style="display:flex;align-items:center;gap:0.75em;flex-shrink:0">
               ${roleTag}
-              <a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.85em">${actionLabel}</a>
+              ${attachBtn}
+              ${actionLabel}
             </span>
           </div>`
         }).join('')}
@@ -1099,6 +1106,12 @@ async function loadOrgSection() {
 
     document.getElementById('s-org-convert')?.addEventListener('click', showConvertToOrgModal)
     document.getElementById('s-org-create')?.addEventListener('click', showCreateOrgModal)
+    orgContent.querySelectorAll('.org-attach-site').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const org = orgs.find(o => String(o.id) === btn.dataset.orgId)
+        if (org) showAttachOrgSiteModal(org)
+      })
+    })
     // "re-establish" runs the same createOrg flow as convert (site.json
     // already has template: 'organization' so no template swap needed).
     document.getElementById('s-org-reestablish')?.addEventListener('click', showConvertToOrgModal)
@@ -1834,6 +1847,236 @@ async function showCreateOrgModal() {
 
       statusEl.style.color = 'var(--green,#4a4)'
       statusEl.innerHTML = `organization created — <a href="https://${escapeHtml(domain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(domain)}</a>`
+      setTimeout(() => { overlay.remove(); if (typeof loadOrgSection === 'function') loadOrgSection() }, 3000)
+    } catch (e) {
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 100)}`
+      submitBtn.disabled = false
+    }
+  })
+}
+
+// Attach a site to an org you already admin. This is the path for
+// existing on-chain orgs (like whatifwe pictures, org #1 after the
+// migration) — skips createOrg + metadata upload, just:
+//   1. optional Praxis.updateDomain if the on-chain domain is empty or
+//      differs from the one being attached
+//   2. wallet-sign praxis-org-attach
+//   3. POST /orchestrator/org-site/attach or /register
+// One row on the ledger, one site. No double entry.
+async function showAttachOrgSiteModal(org) {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10010'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '520px'
+
+  const ORG_TYPES = [
+    { key: 'collective', label: 'collective', desc: 'shared practice, flat structure' },
+    { key: 'label', label: 'label', desc: 'roster + catalog / releases' },
+    { key: 'gallery', label: 'gallery', desc: 'exhibitions + represented artists' },
+    { key: 'company', label: 'company', desc: 'productions + cast/crew (theatre, dance, film)' },
+    { key: 'publisher', label: 'publisher', desc: 'publications + authors' },
+  ]
+
+  const currentOnChainDomain = String(org.domain || '').trim().toLowerCase()
+
+  dialog.innerHTML = `
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">attach a site to <span style="color:var(--accent)">${escapeHtml(org.name)}</span></h3>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">This uses the existing on-chain organization (org #${escapeHtml(String(org.id))}) — no new record. Sign in with the same wallet on the attached domain to admin it.</p>
+
+    <label style="font-size:0.8em;color:var(--muted)">type</label>
+    <div id="oa-type-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;margin:0.4em 0 0.75em">
+      ${ORG_TYPES.map(t => `
+        <div class="template-card${t.key === 'collective' ? ' active' : ''}" data-org-type="${t.key}" style="padding:0.5em 0.75em;cursor:pointer">
+          <span class="template-card-name" style="font-size:0.85em">${t.label}</span>
+          <span class="template-card-desc" style="font-size:0.7em">${escapeHtml(t.desc)}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <label style="font-size:0.8em;color:var(--muted)">domain</label>
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0.4em 0 0.5em">
+      <button type="button" class="oa-domain-tab active" data-tab="byo" style="background:none;border:0;color:var(--fg);font:inherit;font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid var(--accent);margin-bottom:-1px;cursor:pointer">use a domain I own</button>
+      <button type="button" class="oa-domain-tab" data-tab="buy" style="background:none;border:0;color:var(--muted);font:inherit;font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer">buy a new one</button>
+    </div>
+    <section id="oa-domain-byo">
+      <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">Point an A record for your domain at <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">5.161.199.120</code>, then paste it.</p>
+      <input type="text" id="oa-byo-domain" class="project-input" placeholder="whatifwe.nyc" value="${escapeHtml(currentOnChainDomain)}" style="width:100%;box-sizing:border-box">
+      ${currentOnChainDomain ? `<p style="color:var(--dim);font-size:0.7em;margin:0.25em 0 0">on-chain record already points here — no extra tx needed.</p>` : ''}
+    </section>
+    <section id="oa-domain-buy" hidden>
+      <div style="display:flex;gap:0.5em">
+        <input type="text" id="oa-buy-handle" class="project-input" placeholder="whatifwe" style="flex:1">
+        <button type="button" class="buy-btn" id="oa-buy-search" style="font-size:0.85em;padding:0.25em 1ch">search</button>
+      </div>
+      <div id="oa-buy-results" style="margin-top:0.5em;max-height:180px;overflow-y:auto"></div>
+      <div id="oa-buy-contact" hidden style="margin-top:0.75em;padding-top:0.75em;border-top:1px dashed var(--border)"></div>
+    </section>
+
+    <p id="oa-status" style="color:var(--muted);font-size:0.8em;min-height:1.2em;margin:0.75em 0 0.5em"></p>
+    <div style="display:flex;gap:0.5em;margin-top:0.5em">
+      <button id="oa-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">attach site</button>
+      <button id="oa-cancel" class="buy-btn" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#oa-cancel')?.addEventListener('click', () => overlay.remove())
+
+  let orgType = 'collective'
+  let domainMode = 'byo'
+  let selectedDomain = null
+  let selectedPriceEth = 0
+  const statusEl = dialog.querySelector('#oa-status')
+
+  dialog.querySelectorAll('#oa-type-cards .template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      dialog.querySelectorAll('#oa-type-cards .template-card').forEach(c => c.classList.remove('active'))
+      card.classList.add('active')
+      orgType = card.dataset.orgType
+    })
+  })
+  dialog.querySelectorAll('.oa-domain-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      dialog.querySelectorAll('.oa-domain-tab').forEach(t => {
+        t.classList.toggle('active', t === tab)
+        t.style.color = t === tab ? 'var(--fg)' : 'var(--muted)'
+        t.style.borderBottomColor = t === tab ? 'var(--accent)' : 'transparent'
+      })
+      domainMode = tab.dataset.tab
+      dialog.querySelector('#oa-domain-byo').hidden = domainMode !== 'byo'
+      dialog.querySelector('#oa-domain-buy').hidden = domainMode !== 'buy'
+    })
+  })
+
+  dialog.querySelector('#oa-buy-search')?.addEventListener('click', async () => {
+    const handle = dialog.querySelector('#oa-buy-handle').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    if (!handle) { statusEl.textContent = 'enter a handle'; return }
+    statusEl.textContent = 'searching…'
+    const resultsEl = dialog.querySelector('#oa-buy-results')
+    resultsEl.innerHTML = ''
+    try {
+      const res = await fetch(`/orchestrator/domains/search?handle=${encodeURIComponent(handle)}`)
+      const data = await res.json()
+      const domains = (data.domains || []).filter(d => d.available && !d.premium && !d.tooExpensive)
+      if (!domains.length) { statusEl.textContent = 'no available domains'; return }
+      statusEl.textContent = 'pick one below.'
+      resultsEl.innerHTML = domains.map(d => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4em 0.75ch;border:1px solid var(--border);border-radius:6px;margin-bottom:0.3em">
+          <span><span style="color:var(--accent)">${escapeHtml(d.domain)}</span>
+            ${d.priceUsd ? `<span style="color:var(--dim);font-size:0.8em;margin-left:1ch">$${Number(d.priceUsd).toFixed(2)} / 2yr</span>` : ''}</span>
+          <button class="buy-btn oa-domain-pick" data-domain="${escapeHtml(d.domain)}" data-price-eth="${d.priceEth || '0'}" style="font-size:0.75em;padding:0.2em 1ch">pick</button>
+        </div>
+      `).join('')
+      resultsEl.querySelectorAll('.oa-domain-pick').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedDomain = btn.dataset.domain
+          selectedPriceEth = parseFloat(btn.dataset.priceEth || '0')
+          resultsEl.querySelectorAll('.oa-domain-pick').forEach(b => { b.textContent = 'pick'; b.style.borderColor = '' })
+          btn.textContent = 'picked'
+          btn.style.borderColor = 'var(--accent)'
+          const contactEl = dialog.querySelector('#oa-buy-contact')
+          contactEl.hidden = false
+          contactEl.innerHTML = `
+            <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">ICANN needs contact info for <span style="color:var(--accent)">${escapeHtml(selectedDomain)}</span>.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4em">
+              <input class="project-input" id="oac-first" placeholder="first name">
+              <input class="project-input" id="oac-last" placeholder="last name">
+              <input class="project-input" id="oac-email" placeholder="email" style="grid-column:1/-1">
+              <input class="project-input" id="oac-address" placeholder="address" style="grid-column:1/-1">
+              <input class="project-input" id="oac-city" placeholder="city">
+              <input class="project-input" id="oac-state" placeholder="state">
+              <input class="project-input" id="oac-zip" placeholder="zip">
+              <input class="project-input" id="oac-country" placeholder="country" value="US">
+            </div>
+          `
+        })
+      })
+    } catch (e) { statusEl.textContent = `search failed: ${(e.message || '').slice(0, 80)}` }
+  })
+
+  dialog.querySelector('#oa-submit')?.addEventListener('click', async () => {
+    statusEl.style.color = 'var(--muted)'
+    const submitBtn = dialog.querySelector('#oa-submit')
+    let domain = null
+    let contactInfo = null
+    if (domainMode === 'byo') {
+      domain = dialog.querySelector('#oa-byo-domain').value.trim().toLowerCase()
+      if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) { statusEl.textContent = 'enter a valid domain'; return }
+    } else {
+      domain = selectedDomain
+      if (!domain) { statusEl.textContent = 'pick a domain from the search results'; return }
+      contactInfo = {
+        firstName: dialog.querySelector('#oac-first').value.trim(),
+        lastName: dialog.querySelector('#oac-last').value.trim(),
+        email: dialog.querySelector('#oac-email').value.trim(),
+        address: dialog.querySelector('#oac-address').value.trim(),
+        city: dialog.querySelector('#oac-city').value.trim(),
+        state: dialog.querySelector('#oac-state').value.trim(),
+        zip: dialog.querySelector('#oac-zip').value.trim(),
+        country: dialog.querySelector('#oac-country').value.trim() || 'US',
+      }
+      if (!contactInfo.firstName || !contactInfo.lastName || !contactInfo.email) {
+        statusEl.textContent = 'first/last/email required for NameSilo'
+        return
+      }
+    }
+    submitBtn.disabled = true
+
+    try {
+      const { ensureWallet, getWalletClient, getPublicClient, getWalletProvider } = await import('./utils.js')
+      const { ORG_ADDRESS, ORG_ABI, TREASURY_ADMIN_ADDR } = await import('./contracts.js')
+      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const addr = await ensureWallet()
+      if (!addr) throw new Error('wallet required')
+      if (addr.toLowerCase() !== org.admin.toLowerCase()) {
+        throw new Error('only the org admin can attach a site')
+      }
+      const account = window.getEmbeddedAccount?.() || addr
+      const wc = await getWalletClient()
+      const pc = await getPublicClient()
+
+      // Only call updateDomain if the on-chain domain doesn't already
+      // match. Skips an extra signature + tx when the record is already
+      // pointed at this domain (common on migrated orgs).
+      if (currentOnChainDomain !== domain) {
+        statusEl.textContent = 'linking domain on Ethereum…'
+        const linkHash = await wc.writeContract({ address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'updateDomain', args: [BigInt(org.id), domain], account })
+        await pc.waitForTransactionReceipt({ hash: linkHash })
+      }
+
+      statusEl.textContent = 'sign attach…'
+      const message = `praxis-org-attach:${Number(org.id)}:${domain}:${Date.now()}`
+      const dwc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const signature = await dwc.signMessage({ account, message })
+
+      let endpoint = '/orchestrator/org-site/attach'
+      const payload = { orgId: Number(org.id), domain, wallet: addr, name: org.name, bio: org.bio || '', orgType, signature, message }
+      if (domainMode === 'buy') {
+        statusEl.textContent = `confirm ${selectedPriceEth.toFixed(4)} ETH payment…`
+        const priceWei = parseEther(Math.max(0.003, selectedPriceEth).toFixed(6))
+        const txHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: priceWei, account })
+        statusEl.textContent = `payment sent (${txHash.slice(0, 10)}…) — waiting…`
+        await pc.waitForTransactionReceipt({ hash: txHash })
+        endpoint = '/orchestrator/org-site/register'
+        payload.contactInfo = contactInfo
+        payload.txHash = txHash
+      }
+
+      statusEl.textContent = 'provisioning site…'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.innerHTML = `attached — <a href="https://${escapeHtml(domain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(domain)}</a>`
       setTimeout(() => { overlay.remove(); if (typeof loadOrgSection === 'function') loadOrgSection() }, 3000)
     } catch (e) {
       statusEl.style.color = '#ef4444'
