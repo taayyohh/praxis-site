@@ -145,6 +145,21 @@ export const MEDIA_ABI = [
     { name: 'splits', type: 'uint256[]' },
   ]}], outputs: [{ name: 'ids', type: 'uint256[]' }], stateMutability: 'nonpayable' },
   { name: 'purchaseBatch', type: 'function', inputs: [{ name: 'mediaIds', type: 'uint256[]' }], outputs: [], stateMutability: 'payable' },
+  // 0xSplits V2 integration — every new listing has an immutable PullSplit
+  // that receives 100% of the purchase ETH. Collaborators call the split's
+  // distribute() to move funds into the Splits Warehouse, then withdraw.
+  { name: 'mediaSplit', type: 'function', inputs: [{ name: 'mediaId', type: 'uint256' }], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  { name: 'SPLIT_FACTORY', type: 'function', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  // Extended Listed event now carries the split address as its 7th field.
+  { type: 'event', name: 'Listed', inputs: [
+    { name: 'mediaId', type: 'uint256', indexed: true },
+    { name: 'artist', type: 'address', indexed: true },
+    { name: 'title', type: 'string', indexed: false },
+    { name: 'ipfsCid', type: 'string', indexed: false },
+    { name: 'price', type: 'uint256', indexed: false },
+    { name: 'maxSupply', type: 'uint256', indexed: false },
+    { name: 'split', type: 'address', indexed: false },
+  ] },
 ]
 
 // PraxisInvites v2 — orchestrator-signed useInvite, Merkle migration claim
@@ -230,7 +245,7 @@ export const ARTIST_SPONSOR_ABI = [
 ]
 
 // PraxisOrganization — orgs, members, management
-export const ORG_ADDRESS = '0x83014c114a6aF4C79227186025c2656CD245D340'
+export const ORG_ADDRESS = '0xbd3013c6064b08f0a88d30dfc35bec5a05fe1e83'
 export const ORG_ABI = [
   // Lifecycle
   { name: 'createOrg', type: 'function', inputs: [{ name: 'name', type: 'string' }, { name: 'metadataCid', type: 'string' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'nonpayable' },
@@ -260,6 +275,18 @@ export const ORG_ABI = [
   { name: 'isWorkTagged', type: 'function', inputs: [{ name: '', type: 'uint256' }, { name: '', type: 'address' }, { name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
   { type: 'event', name: 'WorkTagged', inputs: [{ name: 'orgId', type: 'uint256', indexed: true }, { name: 'mediaContract', type: 'address', indexed: true }, { name: 'mediaId', type: 'uint256', indexed: true }, { name: 'artist', type: 'address', indexed: false }], anonymous: false },
   { type: 'event', name: 'WorkUntagged', inputs: [{ name: 'orgId', type: 'uint256', indexed: true }, { name: 'mediaContract', type: 'address', indexed: true }, { name: 'mediaId', type: 'uint256', indexed: true }, { name: 'artist', type: 'address', indexed: false }], anonymous: false },
+  // 0xSplits V2 treasury — each org can point at (or deploy) a PullSplit
+  // that receives revenue and donations directed at the organization.
+  { name: 'treasury', type: 'function', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  { name: 'setTreasury', type: 'function', inputs: [{ name: 'orgId', type: 'uint256' }, { name: 'newTreasury', type: 'address' }], outputs: [], stateMutability: 'nonpayable' },
+  { name: 'createTreasury', type: 'function', inputs: [
+    { name: 'orgId', type: 'uint256' },
+    { name: 'recipients', type: 'address[]' },
+    { name: 'allocations', type: 'uint256[]' },
+    { name: 'owner', type: 'address' },
+  ], outputs: [{ name: 'split', type: 'address' }], stateMutability: 'nonpayable' },
+  { name: 'SPLIT_FACTORY', type: 'function', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  { type: 'event', name: 'TreasurySet', inputs: [{ name: 'orgId', type: 'uint256', indexed: true }, { name: 'treasury', type: 'address', indexed: true }], anonymous: false },
 ]
 
 export const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
