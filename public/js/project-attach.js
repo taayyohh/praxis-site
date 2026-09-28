@@ -163,14 +163,17 @@ export async function openProjectAttachModal(projectId, project, opts = {}) {
   const buyContact = overlay.querySelector('#pa-buy-contact')
 
   async function signAttach(domain) {
-    const msg = `praxis-project-attach:${projectId}:${domain}:${Date.now()}`
+    // Domain must be normalized (lowercased) so the strict field
+    // compare on the orchestrator matches — the site is served
+    // case-insensitively anyway.
+    const msg = `praxis-project-attach:${projectId}:${String(domain).toLowerCase()}:${Date.now()}`
     const account = await window.authorizedSigner?.(addr)
     const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
     const signature = await walletClient.signMessage({ account, message: msg })
     return { signature, message: msg }
   }
 
-  // Persist poster (+ optional blurb) into project_metadata so the wide
+  // Persist poster into project_metadata so the wide
   // card on any other portfolio picks it up. The tenant's own funding
   // hero reads posterCid from site.json, which the orchestrator writes
   // during provisioning — that's separate from this call.
@@ -500,7 +503,7 @@ export async function detachProjectSite(projectId, project) {
     const attached = meta?.project?.domain || meta?.domain || null
     if (!attached) { alert('no site attached to this project'); return }
 
-    const msg = `praxis-project-attach:${projectId}:${attached}:${Date.now()}`
+    const msg = `praxis-project-detach:${projectId}:${String(attached).toLowerCase()}:${Date.now()}`
     const account = await window.authorizedSigner?.(addr)
     const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
     const signature = await walletClient.signMessage({ account, message: msg })
