@@ -1569,28 +1569,75 @@ async function showConvertToOrgModal() {
   })
 }
 
+// Create a separate organization AND spin up its own site (name +
+// type + domain). Sequence:
+//   1. upload org metadata to IPFS
+//   2. Praxis.createOrg(name, metadataCid) — signer becomes admin
+//   3. extract orgId from the OrgCreated event
+//   4. Praxis.updateDomain(orgId, domain) — links the domain on-chain
+//   5. wallet-sign praxis-org-attach:<orgId>:<domain>:<ts>
+//   6. POST /orchestrator/org-site/attach → deployOrgMultiTenant
+// The signing wallet ends up as both the on-chain admin AND the tenant
+// site's owner. Non-admin viewers can't touch the site because the
+// wallet is written into site.json.wallet.
 async function showCreateOrgModal() {
-  const esc = escapeHtml
   const overlay = document.createElement('div')
   overlay.className = 'praxis-modal-overlay'
   overlay.style.zIndex = '10010'
   const dialog = document.createElement('div')
   dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '440px'
+  dialog.style.maxWidth = '520px'
+
+  const ORG_TYPES = [
+    { key: 'collective', label: 'collective', desc: 'shared practice, flat structure' },
+    { key: 'label', label: 'label', desc: 'roster + catalog / releases' },
+    { key: 'gallery', label: 'gallery', desc: 'exhibitions + represented artists' },
+    { key: 'company', label: 'company', desc: 'productions + cast/crew (theatre, dance, film)' },
+    { key: 'publisher', label: 'publisher', desc: 'publications + authors' },
+  ]
+
   dialog.innerHTML = `
-    <h3 style="margin:0 0 0.8em;font-size:1em">create organization</h3>
-    <div style="margin-bottom:0.8em">
-      <label style="font-size:0.8em;color:var(--muted)">name</label>
-      <input type="text" id="org-create-name" class="project-input" placeholder="e.g. my label, my theatre co." maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">create organization</h3>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">Sign the on-chain create + link the domain in one flow. The site provisions on our infrastructure and comes back at the domain you attach.</p>
+
+    <label style="font-size:0.8em;color:var(--muted)">name</label>
+    <input type="text" id="org-create-name" class="project-input" placeholder="e.g. whatifwe pictures" maxlength="80" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
+
+    <label style="font-size:0.8em;color:var(--muted)">description</label>
+    <textarea id="org-create-desc" class="project-input" rows="2" placeholder="what is this organization about?" maxlength="500" style="width:100%;box-sizing:border-box;resize:vertical;margin:0.25em 0 0.75em"></textarea>
+
+    <label style="font-size:0.8em;color:var(--muted)">type</label>
+    <div id="org-type-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;margin:0.4em 0 0.75em">
+      ${ORG_TYPES.map(t => `
+        <div class="template-card${t.key === 'collective' ? ' active' : ''}" data-org-type="${t.key}" style="padding:0.5em 0.75em;cursor:pointer">
+          <span class="template-card-name" style="font-size:0.85em">${t.label}</span>
+          <span class="template-card-desc" style="font-size:0.7em">${escapeHtml(t.desc)}</span>
+        </div>
+      `).join('')}
     </div>
-    <div style="margin-bottom:0.8em">
-      <label style="font-size:0.8em;color:var(--muted)">description</label>
-      <textarea id="org-create-desc" class="project-input" rows="3" placeholder="what is this organization about?" maxlength="500" style="width:100%;box-sizing:border-box;resize:vertical;margin-top:0.25em"></textarea>
+
+    <label style="font-size:0.8em;color:var(--muted)">domain</label>
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0.4em 0 0.5em">
+      <button type="button" class="org-domain-tab active" data-tab="byo" style="background:none;border:0;color:var(--fg);font:inherit;font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid var(--accent);margin-bottom:-1px;cursor:pointer">use a domain I own</button>
+      <button type="button" class="org-domain-tab" data-tab="buy" style="background:none;border:0;color:var(--muted);font:inherit;font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer">buy a new one</button>
     </div>
-    <div id="org-create-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin-bottom:0.6em"></div>
-    <div style="display:flex;gap:0.5em">
-      <button id="org-create-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">create</button>
-      <button id="org-create-cancel" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em;border-color:var(--dim);color:var(--dim)">cancel</button>
+    <section id="org-domain-byo">
+      <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">Point an A record for your domain at <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">5.161.199.120</code>, then paste it.</p>
+      <input type="text" id="org-byo-domain" class="project-input" placeholder="whatifwe.nyc" style="width:100%;box-sizing:border-box">
+    </section>
+    <section id="org-domain-buy" hidden>
+      <div style="display:flex;gap:0.5em">
+        <input type="text" id="org-buy-handle" class="project-input" placeholder="whatifwe" style="flex:1">
+        <button type="button" class="buy-btn" id="org-buy-search" style="font-size:0.85em;padding:0.25em 1ch">search</button>
+      </div>
+      <div id="org-buy-results" style="margin-top:0.5em;max-height:180px;overflow-y:auto"></div>
+      <div id="org-buy-contact" hidden style="margin-top:0.75em;padding-top:0.75em;border-top:1px dashed var(--border)"></div>
+    </section>
+
+    <p id="org-create-status" style="color:var(--muted);font-size:0.8em;min-height:1.2em;margin:0.75em 0 0.5em"></p>
+    <div style="display:flex;gap:0.5em;margin-top:0.5em">
+      <button id="org-create-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">create + attach</button>
+      <button id="org-create-cancel" class="buy-btn" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
     </div>
   `
   overlay.appendChild(dialog)
@@ -1599,66 +1646,199 @@ async function showCreateOrgModal() {
   dialog.querySelector('#org-create-cancel')?.addEventListener('click', () => overlay.remove())
   dialog.querySelector('#org-create-name')?.focus()
 
-  dialog.querySelector('#org-create-submit')?.addEventListener('click', async () => {
-    const nameInput = dialog.querySelector('#org-create-name')
-    const descInput = dialog.querySelector('#org-create-desc')
-    const statusEl = dialog.querySelector('#org-create-status')
-    const name = nameInput?.value?.trim()
-    const desc = descInput?.value?.trim() || ''
+  // Local state — orgType default, domain tab, and NameSilo picks.
+  let orgType = 'collective'
+  let domainMode = 'byo'
+  let selectedDomain = null
+  let selectedPriceEth = 0
+  const statusEl = dialog.querySelector('#org-create-status')
 
+  dialog.querySelectorAll('#org-type-cards .template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      dialog.querySelectorAll('#org-type-cards .template-card').forEach(c => c.classList.remove('active'))
+      card.classList.add('active')
+      orgType = card.dataset.orgType
+    })
+  })
+  dialog.querySelectorAll('.org-domain-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      dialog.querySelectorAll('.org-domain-tab').forEach(t => {
+        t.classList.toggle('active', t === tab)
+        t.style.color = t === tab ? 'var(--fg)' : 'var(--muted)'
+        t.style.borderBottomColor = t === tab ? 'var(--accent)' : 'transparent'
+      })
+      domainMode = tab.dataset.tab
+      dialog.querySelector('#org-domain-byo').hidden = domainMode !== 'byo'
+      dialog.querySelector('#org-domain-buy').hidden = domainMode !== 'buy'
+    })
+  })
+
+  // NameSilo search — reuses /orchestrator/domains/search from artist flow.
+  dialog.querySelector('#org-buy-search')?.addEventListener('click', async () => {
+    const handle = dialog.querySelector('#org-buy-handle').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    if (!handle) { statusEl.textContent = 'enter a handle'; return }
+    statusEl.textContent = 'searching…'
+    const resultsEl = dialog.querySelector('#org-buy-results')
+    resultsEl.innerHTML = ''
+    try {
+      const res = await fetch(`/orchestrator/domains/search?handle=${encodeURIComponent(handle)}`)
+      const data = await res.json()
+      const domains = (data.domains || []).filter(d => d.available && !d.premium && !d.tooExpensive)
+      if (!domains.length) { statusEl.textContent = 'no available domains'; return }
+      statusEl.textContent = 'pick one below.'
+      resultsEl.innerHTML = domains.map(d => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4em 0.75ch;border:1px solid var(--border);border-radius:6px;margin-bottom:0.3em">
+          <span><span style="color:var(--accent)">${escapeHtml(d.domain)}</span>
+            ${d.priceUsd ? `<span style="color:var(--dim);font-size:0.8em;margin-left:1ch">$${Number(d.priceUsd).toFixed(2)} / 2yr</span>` : ''}</span>
+          <button class="buy-btn org-domain-pick" data-domain="${escapeHtml(d.domain)}" data-price-eth="${d.priceEth || '0'}" style="font-size:0.75em;padding:0.2em 1ch">pick</button>
+        </div>
+      `).join('')
+      resultsEl.querySelectorAll('.org-domain-pick').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedDomain = btn.dataset.domain
+          selectedPriceEth = parseFloat(btn.dataset.priceEth || '0')
+          resultsEl.querySelectorAll('.org-domain-pick').forEach(b => { b.textContent = 'pick'; b.style.borderColor = '' })
+          btn.textContent = 'picked'
+          btn.style.borderColor = 'var(--accent)'
+          // Contact form (ICANN requirement).
+          const contactEl = dialog.querySelector('#org-buy-contact')
+          contactEl.hidden = false
+          contactEl.innerHTML = `
+            <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">ICANN needs contact info for <span style="color:var(--accent)">${escapeHtml(selectedDomain)}</span>.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4em">
+              <input class="project-input" id="oc-first" placeholder="first name">
+              <input class="project-input" id="oc-last" placeholder="last name">
+              <input class="project-input" id="oc-email" placeholder="email" style="grid-column:1/-1">
+              <input class="project-input" id="oc-address" placeholder="address" style="grid-column:1/-1">
+              <input class="project-input" id="oc-city" placeholder="city">
+              <input class="project-input" id="oc-state" placeholder="state">
+              <input class="project-input" id="oc-zip" placeholder="zip">
+              <input class="project-input" id="oc-country" placeholder="country" value="US">
+            </div>
+          `
+        })
+      })
+    } catch (e) { statusEl.textContent = `search failed: ${(e.message || '').slice(0, 80)}` }
+  })
+
+  dialog.querySelector('#org-create-submit')?.addEventListener('click', async () => {
+    statusEl.style.color = 'var(--muted)'
+    const submitBtn = dialog.querySelector('#org-create-submit')
+    const name = dialog.querySelector('#org-create-name').value.trim()
+    const desc = dialog.querySelector('#org-create-desc').value.trim()
     if (!name) { statusEl.textContent = 'name is required'; return }
 
+    // Resolve chosen domain up-front.
+    let domain = null
+    let contactInfo = null
+    if (domainMode === 'byo') {
+      domain = dialog.querySelector('#org-byo-domain').value.trim().toLowerCase()
+      if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) { statusEl.textContent = 'enter a valid domain'; return }
+    } else {
+      domain = selectedDomain
+      if (!domain) { statusEl.textContent = 'pick a domain from the search results'; return }
+      contactInfo = {
+        firstName: dialog.querySelector('#oc-first').value.trim(),
+        lastName: dialog.querySelector('#oc-last').value.trim(),
+        email: dialog.querySelector('#oc-email').value.trim(),
+        address: dialog.querySelector('#oc-address').value.trim(),
+        city: dialog.querySelector('#oc-city').value.trim(),
+        state: dialog.querySelector('#oc-state').value.trim(),
+        zip: dialog.querySelector('#oc-zip').value.trim(),
+        country: dialog.querySelector('#oc-country').value.trim() || 'US',
+      }
+      if (!contactInfo.firstName || !contactInfo.lastName || !contactInfo.email) {
+        statusEl.textContent = 'first/last/email required for NameSilo'
+        return
+      }
+    }
+    submitBtn.disabled = true
+
     try {
-      statusEl.textContent = 'uploading metadata to IPFS...'
-      const metadata = JSON.stringify({ name, bio: desc })
-      const blob = new Blob([metadata], { type: 'application/json' })
+      // 1. Metadata → IPFS.
+      statusEl.textContent = 'uploading org metadata…'
       const token = await getSettingsToken()
-      if (!token) { statusEl.textContent = 'auth required'; return }
-
-      const uploadData = await uploadToIpfs('org-metadata.json', await blob.arrayBuffer(), token)
-
-      let metadataCid = ''
-      if (uploadData.cid) {
-        metadataCid = uploadData.cid
-      } else if (uploadData.jobId) {
-        statusEl.textContent = 'waiting for IPFS upload...'
+      if (!token) throw new Error('wallet auth required')
+      const metaBlob = new Blob([JSON.stringify({ name, bio: desc, type: orgType })], { type: 'application/json' })
+      const uploadData = await uploadToIpfs('org-metadata.json', await metaBlob.arrayBuffer(), token)
+      let metadataCid = uploadData.cid || ''
+      if (!metadataCid && uploadData.jobId) {
         for (let i = 0; i < 60; i++) {
           await new Promise(r => setTimeout(r, 2000))
-          const sres = await fetch(`/api/ipfs/status/${uploadData.jobId}`)
-          const sdata = await sres.json()
-          if (sdata.status === 'done' && sdata.cid) { metadataCid = sdata.cid; break }
-          if (sdata.status === 'error') throw new Error(sdata.error || 'upload failed')
+          const sres = await fetch(`/api/ipfs/status/${uploadData.jobId}`).then(r => r.json())
+          if (sres.status === 'done' && sres.cid) { metadataCid = sres.cid; break }
+          if (sres.status === 'error') throw new Error(sres.error || 'upload failed')
         }
-        if (!metadataCid) throw new Error('IPFS upload timed out')
-      } else {
-        throw new Error(uploadData.error || 'IPFS upload failed')
+      }
+      if (!metadataCid) throw new Error('org metadata upload timed out')
+
+      // 2. createOrg on Ethereum.
+      const { ensureWallet, getWalletClient, getPublicClient, getWalletProvider } = await import('./utils.js')
+      const { ORG_ADDRESS, ORG_ABI, TREASURY_ADMIN_ADDR } = await import('./contracts.js')
+      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const addr = await ensureWallet()
+      if (!addr) throw new Error('wallet required')
+      const account = window.getEmbeddedAccount?.() || addr
+      const wc = await getWalletClient()
+      const pc = await getPublicClient()
+
+      statusEl.textContent = 'confirm createOrg…'
+      const createHash = await wc.writeContract({ address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'createOrg', args: [name, metadataCid], account })
+      statusEl.textContent = 'waiting for confirmation…'
+      const createReceipt = await pc.waitForTransactionReceipt({ hash: createHash })
+
+      // 3. Extract orgId from OrgCreated(uint256 indexed orgId, ...)
+      const ORG_CREATED_TOPIC = '0xd78a3321fe7d2b183580459478e5563faf4fb5fae376030d1c606eebccd87918'
+      let orgId = null
+      for (const log of createReceipt.logs || []) {
+        if (log.address?.toLowerCase() !== ORG_ADDRESS.toLowerCase()) continue
+        if (String(log.topics?.[0]).toLowerCase() !== ORG_CREATED_TOPIC) continue
+        try { orgId = BigInt(log.topics[1]); break } catch {}
+      }
+      if (orgId == null) throw new Error('could not read orgId from receipt')
+      const orgIdNum = Number(orgId)
+
+      // 4. Link the domain on-chain (updateDomain).
+      statusEl.textContent = 'linking domain to org…'
+      const linkHash = await wc.writeContract({ address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'updateDomain', args: [orgId, domain], account })
+      await pc.waitForTransactionReceipt({ hash: linkHash })
+
+      // 5. Sign attach + POST to orchestrator.
+      const message = `praxis-org-attach:${orgIdNum}:${domain}:${Date.now()}`
+      statusEl.textContent = 'sign attach…'
+      const dwc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+      const signature = await dwc.signMessage({ account, message })
+
+      let endpoint = '/orchestrator/org-site/attach'
+      const payload = { orgId: orgIdNum, domain, wallet: addr, name, bio: desc, orgType, signature, message }
+      if (domainMode === 'buy') {
+        // Pay NameSilo cost to the treasury admin EOA, then hit register.
+        statusEl.textContent = `confirm ${selectedPriceEth.toFixed(4)} ETH payment…`
+        const priceWei = parseEther(Math.max(0.003, selectedPriceEth).toFixed(6))
+        const txHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: priceWei, account })
+        statusEl.textContent = `payment sent (${txHash.slice(0, 10)}…) — waiting…`
+        await pc.waitForTransactionReceipt({ hash: txHash })
+        endpoint = '/orchestrator/org-site/register'
+        payload.contactInfo = contactInfo
+        payload.txHash = txHash
       }
 
-      statusEl.textContent = 'confirm transaction in wallet...'
-      const { ensureWallet, getWalletClient, getPublicClient } = await import('./utils.js')
-      const addr = await ensureWallet()
-      if (!addr) { statusEl.textContent = 'wallet required'; return }
-
-      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
-      const wc = await getWalletClient()
-      const hash = await wc.writeContract({
-        address: ORG_ADDRESS,
-        abi: ORG_ABI,
-        functionName: 'createOrg',
-        args: [name, metadataCid],
-        account: window.getEmbeddedAccount?.() || addr,
+      statusEl.textContent = 'provisioning site…'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
-
-      statusEl.textContent = 'waiting for confirmation...'
-      const pc = await getPublicClient()
-      await pc.waitForTransactionReceipt({ hash })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
 
       statusEl.style.color = 'var(--green,#4a4)'
-      statusEl.textContent = 'organization created!'
-      setTimeout(() => { overlay.remove(); loadOrgSection() }, 1500)
+      statusEl.innerHTML = `organization created — <a href="https://${escapeHtml(domain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(domain)}</a>`
+      setTimeout(() => { overlay.remove(); if (typeof loadOrgSection === 'function') loadOrgSection() }, 3000)
     } catch (e) {
       statusEl.style.color = '#ef4444'
-      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 80)}`
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 100)}`
+      submitBtn.disabled = false
     }
   })
 }

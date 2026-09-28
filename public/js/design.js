@@ -463,6 +463,35 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>create organization + attach domain modal</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">From the artist site's manage → orgs section, "create organization" now runs the full sequence: upload metadata, on-chain createOrg (signer becomes admin), extract orgId from the event, on-chain updateDomain, wallet-sign <code>praxis-org-attach:&lt;orgId&gt;:&lt;domain&gt;:&lt;ts&gt;</code>, POST /orchestrator/org-site/attach. Provisioner writes /data/artists/&lt;domain-slug&gt;/site.json with template: 'organization' + orgType + orgId + wallet. Site resolves at the attached domain after ~30s cert + Traefik regen.</p>
+          <div class="praxis-modal-dialog" style="position:static;box-shadow:0 8px 30px rgba(0,0,0,0.3);max-width:520px;margin:0">
+            <h3 style="margin:0 0 0.5em;font-size:1.05em">create organization</h3>
+            <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">Sign the on-chain create + link the domain in one flow. The site provisions on our infrastructure.</p>
+            <label style="font-size:0.8em;color:var(--muted)">name</label>
+            <input type="text" class="project-input" placeholder="e.g. whatifwe pictures" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
+            <label style="font-size:0.8em;color:var(--muted)">type</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;margin:0.4em 0 0.75em">
+              <div class="template-card" style="padding:0.5em 0.75em"><span class="template-card-name" style="font-size:0.85em">collective</span><span class="template-card-desc" style="font-size:0.7em">shared practice</span></div>
+              <div class="template-card" style="padding:0.5em 0.75em"><span class="template-card-name" style="font-size:0.85em">label</span><span class="template-card-desc" style="font-size:0.7em">roster + catalog</span></div>
+              <div class="template-card" style="padding:0.5em 0.75em"><span class="template-card-name" style="font-size:0.85em">gallery</span><span class="template-card-desc" style="font-size:0.7em">exhibitions</span></div>
+              <div class="template-card active" style="padding:0.5em 0.75em"><span class="template-card-name" style="font-size:0.85em">company</span><span class="template-card-desc" style="font-size:0.7em">productions, cast/crew</span></div>
+            </div>
+            <label style="font-size:0.8em;color:var(--muted)">domain</label>
+            <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0.4em 0 0.5em">
+              <span style="color:var(--fg);font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid var(--accent);margin-bottom:-1px">use a domain I own</span>
+              <span style="color:var(--muted);font-size:0.85em;padding:0.4em 1ch">buy a new one</span>
+            </div>
+            <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">Point A record at <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">5.161.199.120</code>, then paste.</p>
+            <input type="text" class="project-input" placeholder="whatifwe.nyc" style="width:100%;box-sizing:border-box">
+            <div style="display:flex;gap:0.5em;margin-top:1em">
+              <button class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">create + attach</button>
+              <button class="buy-btn" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>attach a domain modal · project site provisioning</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">Opens from /project/:id when the proposer clicks "attach a domain". Two-tab modal — BYO (point A record then paste) or Buy (NameSilo search + contact form). Proposer wallet-signs the shape <code>praxis-project-attach:&lt;projectId&gt;:&lt;domain&gt;:&lt;ts&gt;</code>; orchestrator verifies against Praxis.getProjectProposer, provisions the tenant, inserts the project_site row.</p>
           <div class="project-attach-modal" style="max-width:520px;margin:0;position:static;transform:none;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
