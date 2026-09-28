@@ -355,6 +355,147 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>project summary card · portfolio strip below identity divider</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">Wide card that renders on any tenant whose wallet is proposer or collaborator on the project. 1 or 2 per row. Poster hero + status pill · title · proposer domain + collaborators strip + deadline · blurb · funding progress. Card links to attached tenant domain if set, else /project?id=X.</p>
+          <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:1.25em;max-width:820px">
+            <a href="#" class="project-summary-card" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 2%, transparent);transition:border-color 0.15s, transform 0.15s">
+              <div class="project-summary-poster" style="aspect-ratio:16 / 9;background:color-mix(in srgb, var(--fg) 4%, var(--bg));position:relative;overflow:hidden">
+                <span style="position:absolute;top:0.75em;left:0.75em;display:inline-flex;align-items:center;gap:0.4ch;background:rgba(0,0,0,0.55);color:#fff;font-size:0.7em;padding:0.25em 0.75ch;border-radius:99px"><i class="ph ph-clock" style="font-size:1em;color:#c0c0c0"></i>proposed</span>
+              </div>
+              <div style="padding:1.25em 1.5em 1.5em;display:flex;flex-direction:column;gap:0.6em">
+                <h3 style="margin:0;font-size:1.15em;line-height:1.3;color:var(--fg);font-weight:600">A Reading of Coriolanus</h3>
+                <div style="font-size:0.8em;color:var(--muted);display:flex;align-items:center;gap:0.4ch;flex-wrap:wrap">
+                  <span>by <span style="color:var(--accent)">milesxb.bio</span></span>
+                  <span style="color:var(--dim);margin-left:0.75ch">· 14 days left</span>
+                </div>
+                <p style="margin:0.2em 0 0;color:var(--dim);font-size:0.85em;line-height:1.55">A one-night reading of Coriolanus at a black-box space in Bushwick. Actors compensated, seats donation-only, recording archived.</p>
+                <div style="margin-top:0.4em">
+                  <div style="display:flex;justify-content:space-between;font-size:0.75em;color:var(--dim);margin-bottom:0.35em"><span>$720 raised</span><span>36% of $2,000</span></div>
+                  <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:36%"></div></div>
+                </div>
+              </div>
+            </a>
+            <a href="#" class="project-summary-card" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 2%, transparent);transition:border-color 0.15s, transform 0.15s">
+              <div class="project-summary-poster" style="aspect-ratio:16 / 9;background:linear-gradient(120deg, #7c3aed, #db2777);position:relative;overflow:hidden">
+                <span style="position:absolute;top:0.75em;left:0.75em;display:inline-flex;align-items:center;gap:0.4ch;background:rgba(0,0,0,0.55);color:#fff;font-size:0.7em;padding:0.25em 0.75ch;border-radius:99px"><i class="ph ph-check-circle" style="font-size:1em;color:#4ade80"></i>funded</span>
+              </div>
+              <div style="padding:1.25em 1.5em 1.5em;display:flex;flex-direction:column;gap:0.6em">
+                <h3 style="margin:0;font-size:1.15em;line-height:1.3;color:var(--fg);font-weight:600">that guy · a short film</h3>
+                <div style="font-size:0.8em;color:var(--muted);display:flex;align-items:center;gap:0.4ch;flex-wrap:wrap">
+                  <span>by <span style="color:var(--accent)">milesxb.bio</span></span>
+                  <span style="display:inline-flex;align-items:center;margin-left:0.75ch;padding-left:6px">
+                    <span style="display:inline-flex;width:22px;height:22px;border-radius:50%;border:1px solid var(--bg);margin-left:-6px;background:var(--bg-2,#111);color:var(--muted);align-items:center;justify-content:center;font-size:0.7em">W</span>
+                    <span style="display:inline-flex;width:22px;height:22px;border-radius:50%;border:1px solid var(--bg);margin-left:-6px;background:var(--bg-2,#111);color:var(--muted);align-items:center;justify-content:center;font-size:0.7em">T</span>
+                    <span style="margin-left:0.5ch;font-size:0.7em;color:var(--dim)">+2</span>
+                  </span>
+                </div>
+                <p style="margin:0.2em 0 0;color:var(--dim);font-size:0.85em;line-height:1.55">Short film about a returning veteran learning to be still. In collab with whatifwe pictures. Currently in pre-production; page hosts crew credits, trailer, screening dates.</p>
+                <div style="margin-top:0.4em">
+                  <div style="display:flex;justify-content:space-between;font-size:0.75em;color:var(--dim);margin-bottom:0.35em"><span>$12,400 raised</span><span>103% of $12,000</span></div>
+                  <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:100%"></div></div>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>project card · owner view with hide affordance</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">Same wide card, but with the small "hide from my portfolio" button surfaced. Rendered only when <code>#portfolio-projects</code> carries the <code>.is-owner</code> class — set client-side after wallet connect matches <code>body.dataset.owner</code>. Click asks for confirmation, wallet-signs <code>praxis-portfolio-hide:&lt;wallet&gt;:&lt;projectId&gt;:hide:&lt;ts&gt;</code>, POSTs to <code>/api/portfolio-hide</code>, then fades the card out. Undo lives in settings → hidden projects.</p>
+          <div id="portfolio-projects" class="is-populated is-owner" style="margin:0">
+            <div class="portfolio-projects-grid" style="max-width:820px">
+              <a href="#" class="project-summary-card" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 2%, transparent)">
+                <div class="project-summary-poster" style="aspect-ratio:16 / 9;background:linear-gradient(120deg, #7c3aed, #db2777);position:relative;overflow:hidden">
+                  <span style="position:absolute;top:0.75em;left:0.75em;display:inline-flex;align-items:center;gap:0.4ch;background:rgba(0,0,0,0.55);color:#fff;font-size:0.7em;padding:0.25em 0.75ch;border-radius:99px"><i class="ph ph-check-circle" style="font-size:1em;color:#4ade80"></i>funded</span>
+                  <button type="button" class="project-summary-hide-btn" style="opacity:1" aria-label="hide from my portfolio"><i class="ph ph-eye-slash"></i></button>
+                </div>
+                <div style="padding:1.25em 1.5em 1.5em;display:flex;flex-direction:column;gap:0.6em">
+                  <h3 style="margin:0;font-size:1.15em;line-height:1.3;color:var(--fg);font-weight:600">that guy · a short film</h3>
+                  <div style="font-size:0.8em;color:var(--muted)"><span>by <span style="color:var(--accent)">milesxb.bio</span></span></div>
+                  <p style="margin:0.2em 0 0;color:var(--dim);font-size:0.85em;line-height:1.55">Owner sees the small eye-slash top-right of the poster — one click asks to hide.</p>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>funding widget · project template hero</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">The one baked-in module for project sites (template: 'project'). Renders as a full-bleed hero on the project's own domain (e.g. thatguythefilm.com). Server-side shell + client hydration pulls live state from Praxis.sol at load. Progress bar → tier list → fund CTA. Same on-chain state as the wide project card, sized up.</p>
+          <div class="project-funding-widget" style="max-width:640px;margin:0">
+            <div class="funding-hero" style="background-image:linear-gradient(120deg, #7c3aed, #db2777);aspect-ratio:16/9;position:relative;color:#fff;background-size:cover;background-position:center">
+              <div class="funding-hero-fade" style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 45%, rgba(0,0,0,0.72) 100%)"></div>
+              <div class="funding-hero-body" style="position:absolute;left:0;right:0;bottom:0;padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:0.4rem">
+                <div class="funding-status-pill" style="align-self:flex-start;font-size:0.72em;text-transform:uppercase;letter-spacing:0.12em;padding:0.2em 0.7em;border:1px solid #4ade80;color:#4ade80;border-radius:99px">funded</div>
+                <h2 class="funding-title" style="font-size:1.6em;margin:0;font-weight:600;line-height:1.15;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.4)">that guy · a short film</h2>
+                <p class="funding-blurb" style="margin:0;font-size:0.95em;color:rgba(255,255,255,0.85);text-shadow:0 1px 2px rgba(0,0,0,0.4)">Short film about a returning veteran learning to be still. In collab with whatifwe pictures.</p>
+              </div>
+            </div>
+            <div class="funding-progress-wrap" style="padding:1.25rem 1.5rem 0.75rem">
+              <div class="funding-numbers" style="display:flex;align-items:baseline;gap:0.4ch;font-variant-numeric:tabular-nums;margin-bottom:0.6rem">
+                <span class="funding-raised" style="font-size:1.35em;color:var(--fg);font-weight:700">$12,400</span>
+                <span class="funding-of" style="color:var(--dim);font-size:0.9em">of</span>
+                <span class="funding-goal" style="color:var(--muted);font-size:0.9em">$12,000</span>
+                <span class="funding-pct" style="margin-left:auto;color:var(--accent);font-weight:700;font-size:1.1em">103%</span>
+              </div>
+              <div class="funding-bar" style="height:6px;background:color-mix(in srgb, var(--fg) 8%, transparent);border-radius:3px;overflow:hidden;margin-bottom:0.6rem"><div class="funding-bar-fill" style="width:100%;background:var(--accent);height:100%"></div></div>
+              <div class="funding-meta" style="font-size:0.85em;color:var(--muted);display:flex;gap:0.6ch;align-items:center">
+                <span>47 backers</span><span style="color:var(--dim)">·</span><span>funding closed</span>
+              </div>
+            </div>
+            <div class="funding-tiers" style="display:flex;flex-direction:column;gap:0.5rem;padding:0.5rem 1.5rem 1rem">
+              <div style="display:grid;grid-template-columns:1fr auto auto;gap:0.75ch;align-items:center;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:0.95em">
+                <span style="font-weight:500">crew credit</span>
+                <span style="color:var(--accent);font-weight:600">$50</span>
+                <span style="color:var(--dim);font-size:0.8em">32/50 left</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr auto auto;gap:0.75ch;align-items:center;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:0.95em">
+                <span style="font-weight:500">named producer</span>
+                <span style="color:var(--accent);font-weight:600">$500</span>
+                <span style="color:var(--dim);font-size:0.8em">3/5 left</span>
+              </div>
+            </div>
+            <div class="funding-cta-row" style="display:flex;gap:1rem;align-items:center;padding:0.75rem 1.5rem 1.25rem">
+              <button type="button" class="buy-btn funding-cta-btn" style="flex:1;padding:0.85rem 1.5rem;font-size:1em">choose a tier</button>
+              <a class="funding-detail-link" href="#" style="color:var(--muted);text-decoration:none;font-size:0.85em">view full detail →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>attach a domain modal · project site provisioning</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">Opens from /project/:id when the proposer clicks "attach a domain". Two-tab modal — BYO (point A record then paste) or Buy (NameSilo search + contact form). Proposer wallet-signs the shape <code>praxis-project-attach:&lt;projectId&gt;:&lt;domain&gt;:&lt;ts&gt;</code>; orchestrator verifies against Praxis.getProjectProposer, provisions the tenant, inserts the project_site row.</p>
+          <div class="project-attach-modal" style="max-width:520px;margin:0;position:static;transform:none;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
+            <h2 class="project-attach-title" style="margin:0 0 0.5em">attach a domain to <span style="color:var(--accent)">that guy · a short film</span></h2>
+            <p class="project-attach-lede" style="margin:0 0 1.25em">The domain becomes this project's home — funding widget as hero, optional modules stack below, wallet-signed edits by the proposer. Nothing changes on Ethereum.</p>
+            <div class="project-attach-tabs">
+              <button class="project-attach-tab active">use a domain I own</button>
+              <button class="project-attach-tab">buy a new domain</button>
+            </div>
+            <p class="project-attach-help">Point an A record for your domain at <code>5.161.199.120</code>, wait a minute for DNS to propagate, then paste the domain below.</p>
+            <div class="project-attach-form">
+              <input type="text" class="project-input" placeholder="thatguythefilm.com" style="min-width:0">
+              <button class="buy-btn">attach</button>
+            </div>
+            <p class="project-attach-status" style="color:var(--muted);font-size:0.85em">will verify DNS + provision on submit.</p>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>project template · minimal chrome</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">A project site's shell (template: 'project'). Subtle top bar with domain + praxis menu, no dock, no sidebar. Footer credits Praxis and links back to the on-chain project detail page. The funding widget is the entire homepage hero; modules stack below.</p>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg);max-width:640px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);gap:1rem">
+              <span style="color:var(--fg);font-size:0.85em;opacity:0.7">thatguythefilm.com</span>
+              <span style="color:var(--muted);font-size:0.85em">⊙</span>
+            </div>
+            <div style="padding:1.25rem 1.5rem;color:var(--muted);font-size:0.85em;text-align:center">funding widget here (hero)</div>
+            <div style="padding:0 1.5rem 1.5rem;color:var(--dim);font-size:0.75em;text-align:center;border-top:1px dashed var(--border);padding-top:1rem;margin-top:0.5rem">optional modules — trailer, gallery, credits, journal…</div>
+            <div style="text-align:center;padding:1rem;color:var(--dim);font-size:0.8em;border-top:1px solid var(--border)">a praxis project · project detail →</div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>library item</h3>
           <div class="library-item" style="cursor:pointer;max-width:520px">
             <div class="library-item-header">

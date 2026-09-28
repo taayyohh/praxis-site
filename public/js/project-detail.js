@@ -663,6 +663,31 @@ async function initProjectDetail() {
       </div>
       `}
 
+      ${isProposer && !isEvent ? (() => {
+        const attached = p.domain || null
+        const posterCid = data?.offchainMetadata?.posterCid || ''
+        return `<div class="pd-glass pd-project-site">
+          <div class="pd-section-title"><i class="ph ph-globe" style="margin-right:0.3ch"></i> project site</div>
+          ${attached
+            ? `<div class="pd-project-site-row">
+                <div class="pd-project-site-domain">
+                  <a href="https://${esc(attached)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">${esc(attached)}</a>
+                  <span style="color:var(--dim);font-size:0.8em;margin-left:0.5ch">funding widget + optional modules</span>
+                </div>
+                <div style="display:flex;gap:0.5ch">
+                  <button class="buy-btn pd-project-poster" style="font-size:0.85em">${posterCid ? 'change poster' : 'add poster'}</button>
+                  <button class="buy-btn pd-project-detach" style="font-size:0.85em">detach</button>
+                </div>
+              </div>`
+            : `<div class="pd-project-site-row">
+                <p style="color:var(--muted);font-size:0.9em;margin:0">
+                  Give this project its own domain — funding widget as hero, whatever modules you want below.
+                </p>
+                <button class="buy-btn pd-project-attach">attach a domain</button>
+              </div>`}
+        </div>`
+      })() : ''}
+
       ${tiersHtml ? `<div class="pd-glass" style="padding:0;overflow:hidden">
         <div style="padding:1em 1.25em 0"><div class="pd-section-title"><i class="ph ph-${isEvent ? 'ticket' : 'stack'}" style="margin-right:0.3ch"></i> ${isEvent ? 'tickets' : 'tiers'}</div></div>
         ${tiersHtml}
@@ -924,6 +949,26 @@ async function initProjectDetail() {
           qty: Number(qty),
         })
       })
+    })
+
+    // ── PROJECT SITE (attach a domain) ──
+    contentEl.querySelector('.pd-project-attach')?.addEventListener('click', async () => {
+      try {
+        const mod = await import('/js/project-attach.js')
+        await mod.openProjectAttachModal(projectId, p)
+      } catch (e) { console.warn('project-attach failed:', e) }
+    })
+    contentEl.querySelector('.pd-project-detach')?.addEventListener('click', async () => {
+      try {
+        const mod = await import('/js/project-attach.js')
+        await mod.detachProjectSite(projectId, p)
+      } catch (e) { console.warn('project-detach failed:', e) }
+    })
+    contentEl.querySelector('.pd-project-poster')?.addEventListener('click', async () => {
+      try {
+        const mod = await import('/js/project-attach.js')
+        await mod.openPosterEditor(projectId, p, { posterCid: data?.offchainMetadata?.posterCid || '' })
+      } catch (e) { console.warn('project-poster failed:', e) }
     })
 
     // revenue actions

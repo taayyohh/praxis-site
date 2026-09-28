@@ -463,6 +463,95 @@ export function renderProjectCard(p, resolve, opts = {}) {
   `
 }
 
+// Wide project card for the portfolio "projects" strip that sits directly
+// below the identity divider on any tenant whose wallet is proposer or
+// collaborator. Different shape from renderProjectCard (which is the feed
+// event card): wider, hero-poster-forward, includes a collaborators
+// avatar strip and links to the project's attached domain if set. The
+// grid renders 1 or 2 of these per row depending on viewport.
+//
+// Data shape: the payload returned by /api/projects/by-wallet/:address —
+// includes on-chain project fields plus `collaborators: [{ artist, split }]`,
+// `domain: string | null` (attached tenant domain), `offchainMetadata: {
+// posterCid, blurb, ... } | null`, and `domainMap` (address → domain).
+export function renderProjectSummary(p, resolve, opts = {}) {
+  const proposerLower = String(p.proposer).toLowerCase()
+  const domain = resolve ? resolve(p.proposer) : (p.domainMap?.[proposerLower] || proposerLower.slice(0, 8) + '…')
+  const statusLabels = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
+  const statusColors = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
+  const statusIcons = ['ph-clock', 'ph-check-circle', 'ph-handshake', 'ph-spinner', 'ph-star', 'ph-x-circle', 'ph-warning']
+  const goal = BigInt(p.fundingGoal || 0)
+  const funded = BigInt(p.totalFunded || 0)
+  const pct = goal > 0n ? Number((funded * 10000n) / goal) / 100 : 0
+
+  // Poster: prefer off-chain override (project_metadata.posterCid → allows
+  // updating the poster mid-run without a contract write), fall back to
+  // the on-chain metadataCid (immutable brief), else nothing.
+  const posterCid = p.offchainMetadata?.posterCid || p.posterCid || p.imageCid || p.metadataCid || ''
+  const posterImg = posterCid
+    ? `<img src="/api/img?url=/api/ipfs-proxy/${encodeURIComponent(posterCid)}&w=1000" alt="" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;display:block">`
+    : ''
+
+  // Deadline line: days-left while funding is open, no line after that.
+  let deadlineStr = ''
+  const status = Number(p.status || 0)
+  if (status === 0 && p.deadline && Number(p.deadline) > 0) {
+    const deadlineMs = Number(p.deadline) * 1000
+    const daysLeft = Math.ceil((deadlineMs - Date.now()) / 86400000)
+    if (daysLeft > 0) deadlineStr = `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`
+  }
+
+  // Collaborators strip — avatars for up to N collaborators (excluding the
+  // proposer, who's already shown in the header) + a "+N more" chip when
+  // there are extras. Avatars pull from /api/artists/resolve's profilePics
+  // if the caller passed picMap, else fall back to the initial-in-circle.
+  const collabs = (p.collaborators || [])
+    .map(c => String(c.artist).toLowerCase())
+    .filter(a => a !== proposerLower)
+  const shownCollabs = collabs.slice(0, 4)
+  const extraCollabs = Math.max(0, collabs.length - shownCollabs.length)
+  const collabAvatars = shownCollabs.map(addr => {
+    const pic = p.picMap?.[addr]
+    const dom = p.domainMap?.[addr] || `${addr.slice(0, 6)}…`
+    const initial = (dom[0] || '·').toUpperCase()
+    const safe = pic && /^(https?:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)/i.test(String(pic)) ? String(pic) : ''
+    return safe
+      ? `<span title="${esc(dom)}" style="display:inline-block;width:22px;height:22px;border-radius:50%;overflow:hidden;border:1px solid var(--bg);margin-left:-6px;background:var(--bg-2,#111)"><img src="${esc(safe)}" alt="" style="width:100%;height:100%;object-fit:cover"></span>`
+      : `<span title="${esc(dom)}" style="display:inline-flex;width:22px;height:22px;border-radius:50%;border:1px solid var(--bg);margin-left:-6px;background:var(--bg-2,#111);color:var(--muted);align-items:center;justify-content:center;font-size:0.7em">${esc(initial)}</span>`
+  }).join('')
+  const collabStrip = shownCollabs.length
+    ? `<span style="display:inline-flex;align-items:center;margin-left:0.75ch;padding-left:6px">${collabAvatars}${extraCollabs > 0 ? `<span style="margin-left:0.5ch;font-size:0.7em;color:var(--dim)">+${extraCollabs}</span>` : ''}</span>`
+    : ''
+
+  // Card link target — attached tenant domain if the proposer wired one,
+  // else the internal /project/:id detail page.
+  const href = p.domain ? `https://${p.domain}` : `/project?id=${esc(p.id)}`
+  const linkTarget = p.domain ? ' target="_blank" rel="noopener"' : ''
+
+  const blurb = p.offchainMetadata?.blurb || p.description || ''
+
+  return `
+    <a href="${href}"${linkTarget} class="project-summary-card" data-project-id="${esc(p.id)}" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 2%, transparent);transition:border-color 0.15s, transform 0.15s">
+      <div class="project-summary-poster" style="aspect-ratio:16 / 9;background:color-mix(in srgb, var(--fg) 4%, var(--bg));position:relative;overflow:hidden">
+        ${posterImg}
+        <span style="position:absolute;top:0.75em;left:0.75em;display:inline-flex;align-items:center;gap:0.4ch;background:rgba(0,0,0,0.55);color:#fff;font-size:0.7em;padding:0.25em 0.75ch;border-radius:99px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><i class="ph ${statusIcons[status] || statusIcons[0]}" style="font-size:1em;color:${statusColors[status] || statusColors[0]}"></i>${statusLabels[status] || 'proposed'}</span>
+        <button type="button" class="project-summary-hide-btn" data-project-id="${esc(p.id)}" aria-label="hide from my portfolio" title="hide from my portfolio"><i class="ph ph-eye-slash"></i></button>
+      </div>
+      <div style="padding:1.25em 1.5em 1.5em;display:flex;flex-direction:column;gap:0.6em">
+        <h3 style="margin:0;font-size:1.15em;line-height:1.3;color:var(--fg);font-weight:600">${esc(p.title || 'untitled project')}</h3>
+        <div style="font-size:0.8em;color:var(--muted);display:flex;align-items:center;gap:0.4ch;flex-wrap:wrap">
+          <span>by <span style="color:var(--accent)">${esc(domain)}</span></span>${collabStrip}${deadlineStr ? `<span style="color:var(--dim);margin-left:0.75ch">· ${esc(deadlineStr)}</span>` : ''}
+        </div>
+        ${blurb ? `<p style="margin:0.2em 0 0;color:var(--dim);font-size:0.85em;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(String(blurb).slice(0, 220))}</p>` : ''}
+        ${goal > 0n ? `<div style="margin-top:0.4em">
+          <div style="display:flex;justify-content:space-between;font-size:0.75em;color:var(--dim);margin-bottom:0.35em"><span><span data-eth-wei="${esc(String(funded))}" data-fiat-primary="true"></span> raised</span><span>${pct.toFixed(0)}% of <span data-eth-wei="${esc(String(goal))}" data-fiat-primary="true"></span></span></div>
+          <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:${Math.min(pct, 100).toFixed(1)}%"></div></div>
+        </div>` : ''}
+      </div>
+    </a>
+  `
+}
+
 export function renderFundedCard(d, resolve, opts = {}) {
   const funder = resolve(d.funder)
   const linkTarget = opts.external ? ' target="_blank"' : ''

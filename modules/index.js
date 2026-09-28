@@ -10,6 +10,7 @@ import technology from './technology.js'
 import education from './education.js'
 import video from './video.js'
 import demos from './demos.js'
+import funding from './funding.js'
 
 export const MODULE_REGISTRY = {
   music,
@@ -22,6 +23,7 @@ export const MODULE_REGISTRY = {
   technology,
   education,
   demos,
+  funding,
 }
 
 // legacy type mapping — old site.json keys → module types

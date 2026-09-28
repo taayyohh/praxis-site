@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="{{themeBg}}">
+  <title>{{title}}</title>
+  <meta name="description" content="{{description}}">
+  <meta property="og:title" content="{{ogTitle}}">
+  <meta property="og:description" content="{{description}}">
+  <meta property="og:url" content="https://{{domain}}{{canonicalPath}}">
+  <meta property="og:image" content="{{ogImage}}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{name}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ogTitle}}">
+  <meta name="twitter:description" content="{{description}}">
+  <meta name="twitter:image" content="{{ogImage}}">
+  <link rel="canonical" href="https://{{domain}}{{canonicalPath}}">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://ourpraxis.network" crossorigin>
+  <link rel="dns-prefetch" href="https://ourpraxis.network">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/template-style.css">
+  <link rel="stylesheet" href="/phosphor.css">
+  <link rel="modulepreload" href="/js/vendor.js">
+  <style>:root { --bg: {{themeBg}}; --fg: {{themeFg}}; --accent: {{themeAccent}}; --muted: {{themeMuted}}; --dim: {{themeDim}}; --surface: color-mix(in srgb, {{themeFg}} 4%, transparent); --border: color-mix(in srgb, {{themeFg}} 10%, transparent); --border-hover: color-mix(in srgb, {{themeFg}} 18%, transparent); --green: {{themeGreen}}; --font: {{themeFont}}; }</style>
+  <script>
+  (function(){var l=localStorage.getItem('praxis-lang')||navigator.language?.slice(0,2)||'en';document.documentElement.lang=l;if(['ar','fa','ur'].includes(l))document.documentElement.dir='rtl'})()
+  </script>
+  {{noindex}}
+  {{jsonLd}}
+  <meta name="stripe-pk" content="pk_live_51PKwQcEHrz6OfbzifTK5ekkSbb1py7R91k0LBlYh7skdpmkzPKA3bu5wYTGjho5C3tsf1Elv8eNHBrmTXnedbSPt00Glg5Srec">
+</head>
+<body class="project-site" data-owner="{{wallet}}" data-name="{{name}}" data-blog="{{blogRegistry}}" data-media="{{mediaRegistry}}" data-registry="{{registry}}" data-supporter="{{supporter}}" data-project-id="{{projectId}}">
+
+  <header id="project-top-bar">
+    <a href="/" class="project-identity">{{domain}}</a>
+    <div id="praxis-menu-trigger" class="project-menu-trigger">
+      <button id="praxis-menu-btn" aria-label="Menu"><svg class="praxis-mark" viewBox="0 0 24 24" fill="none"><defs><mask id="pm"><rect width="24" height="24" fill="white"/><rect x="11.2" y="3" width="1.6" height="6.5" fill="black"/><rect x="11.2" y="14.5" width="1.6" height="6.5" fill="black"/></mask></defs><circle cx="12" cy="12" r="9" fill="currentColor" mask="url(#pm)"/></svg></button>
+    </div>
+    <div id="praxis-menu-dropdown" class="praxis-dropdown-hidden">
+      <span id="top-bar-wallet-top"></span>
+      <div class="praxis-menu-section">
+        <div class="praxis-menu-section-label">praxis</div>
+        <a href="https://ourpraxis.network" data-i18n="nav.home">home</a>
+        <a href="/network" data-i18n="nav.network">network</a>
+        <a href="/projects" data-i18n="nav.projects">projects</a>
+      </div>
+      <span id="top-bar-wallet"></span>
+    </div>
+  </header>
+
+  <main class="project-main">
+    {{content}}
+  </main>
+
+  <footer class="project-footer">
+    <a href="https://ourpraxis.network" class="praxis-badge">a praxis project</a>
+    <span class="project-footer-sep">·</span>
+    <a href="/project?id={{projectId}}" class="project-detail-link">project detail →</a>
+  </footer>
+
+  <script>
+    (function(){
+      var pmBtn = document.getElementById('praxis-menu-btn')
+      var pmTrigger = document.getElementById('praxis-menu-trigger')
+      var pmDrop = document.getElementById('praxis-menu-dropdown')
+      if (!pmBtn || !pmDrop || !pmTrigger) return
+      pmTrigger.addEventListener('click', function(e) {
+        e.stopPropagation()
+        var open = !pmDrop.classList.contains('praxis-dropdown-hidden')
+        if (open) { pmDrop.classList.add('praxis-dropdown-hidden'); pmTrigger.classList.remove('menu-open') }
+        else { pmDrop.classList.remove('praxis-dropdown-hidden'); pmTrigger.classList.add('menu-open') }
+      })
+      document.addEventListener('click', function(e) {
+        if (!pmTrigger.contains(e.target) && !pmDrop.contains(e.target)) {
+          pmDrop.classList.add('praxis-dropdown-hidden')
+          pmTrigger.classList.remove('menu-open')
+        }
+      })
+    })()
+  </script>
+
+  <script type="module" src="/js/i18n.js"></script>
+  <script type="module" src="/js/player.js"></script>
+  <script type="module" src="/js/mini-player.js"></script>
+  <script type="module" src="/js/spa.js"></script>
+  <script type="module" src="/js/wallet.js"></script>
+  <script type="module" src="/js/lazy.js"></script>
+  <script type="module" src="/js/media.js"></script>
+  <script type="module" src="/js/funding-widget.js"></script>
+  <script type="module" src="/js/fiat.js"></script>
+  <script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
+</body>
+</html>

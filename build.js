@@ -352,6 +352,7 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
     themeBorder: palette.border.color,
     themeGreen: palette.green.color,
     themeFont: site.theme?.font || "-apple-system, 'Helvetica Neue', Arial, sans-serif",
+    projectId: site.projectId != null ? String(site.projectId) : '',
   })
 }
 
@@ -494,6 +495,21 @@ ${myArtistsSection}
   <p id="supporter-collection-status" style="color:var(--muted)"><span class="praxis-loader"></span></p>
   <div id="masonry-grid" class="masonry-grid"></div>
 </div>`
+} else if (templateName === 'project') {
+  // Project sites — the funding widget is the hero. It renders a
+  // client-hydrated shell that reads live state from Praxis.sol at
+  // load time. Other modules (music, gallery, writing, credits, video)
+  // render exactly like on artist sites, driven by site.json.modules[].
+  const projectId = site.projectId != null ? String(site.projectId) : ''
+  const posterCid = site.projectMetadata?.posterCid || ''
+  const fundingWidget = projectId
+    ? MODULE_REGISTRY.funding.renderSection({ projectId, posterCid })
+    : ''
+  indexContent = fill(indexTpl, {
+    fundingWidget,
+    highlights: buildHighlights(),
+    cv: buildCV(),
+  })
 } else {
   indexContent = fill(indexTpl, {
     name: escapeForHtml(site.name),
@@ -1008,7 +1024,7 @@ console.log(`built ${getEnabledModules().length} modules + network pages (templa
 // site.json data at serve time instead of needing a per-artist build.
 
 if (process.env.BUILD_TEMPLATES_ONLY === '1') {
-  const TEMPLATE_TYPES = ['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker', 'organization']
+  const TEMPLATE_TYPES = ['default', 'musician', 'visual', 'writer', 'performer', 'filmmaker', 'organization', 'project']
   const shellsDir = join(distDir, 'templates')
   mkdirSync(shellsDir, { recursive: true })
 

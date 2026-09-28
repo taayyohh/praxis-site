@@ -1,0 +1,230 @@
+/* Project template — minimal chrome, funding widget as hero.
+   Loaded in addition to /style.css. */
+
+body.project-site {
+  padding-bottom: 4rem;
+}
+
+#project-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+}
+#project-top-bar .project-identity {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+#project-top-bar .project-identity:hover { opacity: 1; }
+#project-top-bar .project-menu-trigger {
+  cursor: pointer;
+  color: var(--muted);
+}
+#project-top-bar .praxis-mark { width: 22px; height: 22px; }
+#praxis-menu-btn { background: none; border: none; color: inherit; cursor: pointer; padding: 0; }
+
+.project-main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* --- Funding widget --- */
+
+.project-funding-widget {
+  margin: 2rem 0 3rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.funding-hero {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background-color: color-mix(in srgb, var(--fg) 6%, transparent);
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+}
+.funding-hero-fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(0,0,0,0.72) 100%);
+}
+.funding-hero-body {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 1.25rem 1.5rem;
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.funding-status-pill {
+  align-self: flex-start;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.2em 0.7em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+.funding-title {
+  font-size: 1.6em;
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.15;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.funding-blurb {
+  margin: 0;
+  font-size: 0.95em;
+  color: rgba(255,255,255,0.85);
+  max-width: 40em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.funding-progress-wrap {
+  padding: 1.25rem 1.5rem 0.75rem;
+}
+.funding-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4ch;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 0.6rem;
+}
+.funding-raised {
+  font-size: 1.35em;
+  color: var(--fg);
+  font-weight: 700;
+}
+.funding-of { color: var(--dim); font-size: 0.9em; }
+.funding-goal { color: var(--muted); font-size: 0.9em; }
+.funding-pct { margin-left: auto; color: var(--accent); font-weight: 700; font-size: 1.1em; }
+
+.funding-bar {
+  height: 6px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+}
+.funding-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.funding-meta {
+  font-size: 0.85em;
+  color: var(--muted);
+  display: flex; gap: 0.6ch; align-items: center;
+}
+.funding-meta-dot { color: var(--dim); }
+
+.funding-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 1.5rem 1rem;
+}
+.funding-tier-btn {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75ch;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 0.95em;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.funding-tier-btn:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+.funding-tier-btn .tier-name { font-weight: 500; }
+.funding-tier-btn .tier-price {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.funding-tier-btn .tier-remaining {
+  color: var(--dim);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+
+.funding-cta-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 1.5rem 1.25rem;
+}
+.funding-cta-btn {
+  flex: 1;
+  padding: 0.85rem 1.5rem;
+  font-size: 1em;
+}
+.funding-detail-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85em;
+}
+.funding-detail-link:hover { color: var(--fg); }
+.funding-action-status {
+  padding: 0 1.5rem 1rem;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+/* --- Modules stack --- */
+
+#project-modules,
+#project-cv {
+  margin: 2.5rem 0;
+}
+#project-modules .highlights-section {
+  margin-bottom: 2.5rem;
+}
+
+/* --- Footer --- */
+
+.project-footer {
+  text-align: center;
+  margin-top: 3rem;
+  padding: 1.5rem;
+  color: var(--dim);
+  font-size: 0.85em;
+  display: flex;
+  gap: 1ch;
+  justify-content: center;
+  align-items: center;
+}
+.project-footer a { color: var(--muted); text-decoration: none; }
+.project-footer a:hover { color: var(--fg); }
+.project-footer-sep { color: var(--dim); }
+
+/* --- Mobile --- */
+
+@media (max-width: 640px) {
+  #project-top-bar { padding: 0.75rem 1rem; }
+  .project-main { padding: 0 1rem; }
+  .funding-title { font-size: 1.3em; }
+  .funding-hero-body { padding: 1rem 1.15rem; }
+  .funding-progress-wrap, .funding-tiers, .funding-cta-row { padding-left: 1.15rem; padding-right: 1.15rem; }
+  .funding-cta-row { flex-direction: column; align-items: stretch; }
+  .funding-detail-link { text-align: center; }
+}

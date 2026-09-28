@@ -1756,6 +1756,74 @@ function renderBlogCollectionsSection() {
   return html
 }
 
+// Hydrate the "hidden projects" panel with the wallet's current hides.
+// Renders one row per hidden project id with a "show" button that
+// wallet-signs an unhide message and POSTs to /api/portfolio-hide.
+async function wireHiddenProjectsHandlers(el) {
+  const section = el.querySelector('#hidden-projects-section')
+  const listEl = el.querySelector('#hidden-projects-list')
+  if (!section || !listEl) return
+  const wallet = String(siteData.wallet || '').toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(wallet)) return
+
+  try {
+    const res = await fetch(`/api/portfolio-hide/${wallet}`)
+    if (!res.ok) return
+    const data = await res.json()
+    const hidden = data?.hidden || []
+    if (!hidden.length) return
+    section.style.display = ''
+    listEl.innerHTML = hidden.map(h => `
+      <div class="hidden-project-row" data-project-id="${escapeHtml(String(h.projectId))}" style="display:flex;justify-content:space-between;align-items:center;padding:0.5em 0.75ch;border:1px solid var(--border);border-radius:6px;margin-bottom:0.4em">
+        <span style="color:var(--fg);font-size:0.9em">
+          <a href="/project?id=${escapeHtml(String(h.projectId))}" style="color:var(--fg);text-decoration:none">project #${escapeHtml(String(h.projectId))}</a>
+          <span style="color:var(--dim);font-size:0.8em;margin-left:0.75ch">hidden ${_relativeTime(h.hiddenAt)}</span>
+        </span>
+        <button type="button" class="buy-btn hidden-project-show" data-project-id="${escapeHtml(String(h.projectId))}" style="font-size:0.8em;padding:0.2em 1ch">show</button>
+      </div>
+    `).join('')
+
+    listEl.querySelectorAll('.hidden-project-show').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const projectId = Number(btn.dataset.projectId)
+        btn.disabled = true
+        btn.textContent = 'signing…'
+        try {
+          const { createWalletClient, custom, optimism } = await import('/js/vendor.js')
+          const { getWalletProvider, requireUser } = await import('/js/utils.js')
+          const addr = await requireUser('show this project')
+          if (!addr) { btn.disabled = false; btn.textContent = 'show'; return }
+          const message = `praxis-portfolio-hide:${addr.toLowerCase()}:${projectId}:show:${Date.now()}`
+          const account = await window.authorizedSigner?.(addr)
+          const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+          const signature = await walletClient.signMessage({ account, message })
+          const res = await fetch('/api/portfolio-hide', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet: addr, projectId, action: 'show', signature, message }),
+          })
+          const data = await res.json()
+          if (data.error) throw new Error(data.error)
+          btn.closest('.hidden-project-row')?.remove()
+          if (!listEl.children.length) section.style.display = 'none'
+        } catch (e) {
+          btn.disabled = false
+          btn.textContent = 'show'
+          alert(`could not show: ${e?.message || 'unknown error'}`)
+        }
+      })
+    })
+  } catch (e) { console.warn('hidden-projects load failed:', e?.message) }
+}
+
+function _relativeTime(unixSec) {
+  const diff = Date.now() / 1000 - Number(unixSec || 0)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
 function wireBlogCollectionsHandlers(el) {
   if (!siteData.blogCollections) siteData.blogCollections = []
   if (!siteData.blogPostCollections) siteData.blogPostCollections = {}
@@ -1928,11 +1996,21 @@ function renderModulesTab(el) {
   // --- Blog collections section ---
   html += renderBlogCollectionsSection()
 
+  // --- Hidden projects section ---
+  // Owner-only surface to un-hide project cards previously removed from
+  // the portfolio strip. Container hydrates async in wireHiddenProjectsHandlers.
+  html += `<div id="hidden-projects-section" style="margin-top:2em;padding-top:1.5em;border-top:1px solid var(--border);display:none">
+    <label class="settings-label">hidden projects</label>
+    <div style="color:var(--dim);font-size:0.8em;margin-bottom:1em">projects you removed from your portfolio strip. bring one back with "show".</div>
+    <div id="hidden-projects-list"></div>
+  </div>`
+
   html += '</div>'
   el.innerHTML = html
 
   // Wire blog collections handlers
   wireBlogCollectionsHandlers(el)
+  wireHiddenProjectsHandlers(el)
 
   // toggle handlers — checkbox enables/disables the module (doesn't remove it)
   el.querySelectorAll('.module-toggle').forEach(cb => {

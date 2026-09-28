@@ -2830,6 +2830,65 @@ details[open] .propose-settings-chevron {
 
 /* highlights */
 
+/* Portfolio projects strip — sits directly below the identity divider.
+   Empty (display:none via :not(.is-populated)) until projects.js finishes
+   fetching /api/projects/by-wallet/:address and paints cards. Wide cards
+   at 1 or 2 per row depending on viewport; hover lifts each card slightly
+   to signal interactivity. */
+#portfolio-projects:not(.is-populated) { display: none; }
+#portfolio-projects.is-populated {
+  margin: 0 0 2.5em;
+}
+.portfolio-projects-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25em;
+}
+@media (min-width: 900px) {
+  .portfolio-projects-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.project-summary-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  transform: translateY(-2px);
+}
+.project-summary-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Hide button — only visible when #portfolio-projects.is-owner is set.
+   Positioned top-right on the poster, fades in on card hover to stay
+   quiet during the normal audience read. */
+.project-summary-hide-btn {
+  position: absolute;
+  top: 0.6em;
+  right: 0.6em;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 1em;
+  padding: 0;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+#portfolio-projects.is-owner .project-summary-hide-btn { display: inline-flex; }
+#portfolio-projects.is-owner .project-summary-card:hover .project-summary-hide-btn,
+#portfolio-projects.is-owner .project-summary-hide-btn:focus-visible { opacity: 1; }
+.project-summary-hide-btn:hover { background: rgba(0, 0, 0, 0.75); }
+.project-summary-hide-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .highlights-section {
   margin-bottom: 2.5em;
 }
@@ -9767,5 +9826,139 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   color: var(--dim);
   font-size: 0.8em;
   font-variant-numeric: tabular-nums;
+}
+
+
+
+/* --- Project site attach modal + inline panel --- */
+
+.pd-project-site-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  flex-wrap: wrap;
+}
+.pd-project-site-domain { min-width: 0; }
+.pd-project-site-domain a { font-weight: 600; }
+
+.project-attach-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.project-attach-overlay.is-open { opacity: 1; }
+
+.project-attach-modal {
+  position: relative;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem 1.75rem;
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: translateY(6px);
+  transition: transform 0.18s ease;
+}
+.project-attach-overlay.is-open .project-attach-modal { transform: translateY(0); }
+
+.project-attach-close {
+  position: absolute; top: 0.75rem; right: 1rem;
+  background: none; border: 0; color: var(--muted);
+  font-size: 1.5em; line-height: 1; cursor: pointer;
+}
+.project-attach-close:hover { color: var(--fg); }
+
+.project-attach-title { margin: 0 0 0.5em; font-size: 1.15em; font-weight: 600; line-height: 1.3; }
+.project-attach-lede { color: var(--muted); font-size: 0.9em; margin: 0 0 1.25em; line-height: 1.55; max-width: 46em; }
+
+.project-attach-poster {
+  margin-bottom: 1.25em;
+}
+.project-attach-poster-preview {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  margin-bottom: 0.5em;
+}
+.project-attach-poster-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.project-attach-poster-controls { display: flex; align-items: center; gap: 0.75ch; }
+.project-attach-poster-btn { font-size: 0.85em; padding: 0.35em 1ch; display: inline-flex; align-items: center; gap: 0.4ch; cursor: pointer; }
+.project-attach-poster-clear {
+  background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.8em; cursor: pointer;
+  padding: 0.35em 0.5ch;
+}
+.project-attach-poster-clear:hover { color: #ef4444; }
+.project-attach-poster-hint { color: var(--dim); font-size: 0.75em; margin: 0.4em 0 0; }
+
+.project-attach-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.25em; }
+.project-attach-tab {
+  background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: 0.9em;
+  padding: 0.6em 1em;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.project-attach-tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+
+.project-attach-panel {}
+
+.project-attach-help { color: var(--muted); font-size: 0.85em; line-height: 1.55; margin: 0 0 1em; }
+.project-attach-help code {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: 0.15em 0.5ch;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--fg);
+}
+
+.project-attach-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 0.75em;
+}
+.project-attach-search-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 0.75em;
+}
+
+.project-attach-status { color: var(--muted); font-size: 0.85em; min-height: 1.3em; margin: 0; line-height: 1.55; }
+.project-attach-status.is-error { color: #ef4444; }
+
+.project-attach-results { display: flex; flex-direction: column; gap: 0.5em; margin-top: 0.75em; }
+.project-attach-domain-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 1em;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.project-attach-domain-row .buy-btn { font-size: 0.85em; padding: 0.3em 1ch; }
+
+.project-attach-contact { margin-top: 1em; padding-top: 1em; border-top: 1px dashed var(--border); }
+.project-attach-contact-lede { color: var(--muted); font-size: 0.85em; margin: 0 0 0.75em; }
+.project-attach-contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5em;
+}
+
+@media (max-width: 600px) {
+  .project-attach-modal { padding: 1.25rem 1.15rem; }
+  .project-attach-contact-grid { grid-template-columns: 1fr; }
 }
 
