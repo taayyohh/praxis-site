@@ -521,23 +521,38 @@ function showDock() {
     if (dot) dot.style.display = ''
   }
   // dock-chat is now an <a> link to /messages. On org tenants it
-  // starts hidden and reveals only if the connected wallet is a Safe
-  // signer — that's when /messages routes into the org's shared
-  // inbox via EIP-1271. Any other viewer stays without the icon.
+  // starts hidden and reveals only when the connected wallet is
+  // authorized to speak AS the org — two shapes:
+  //   1. EOA org (like lucid.haus, run from an embedded wallet the
+  //      admin unlocks with password): the connected wallet IS the
+  //      org wallet. Standard XMTP with that identity.
+  //   2. Safe org (like whatifwe.nyc): the connected wallet is a Safe
+  //      owner. XMTP identity is the Safe, signer is the owner via
+  //      EIP-1271 (safe-xmtp-signer.js).
+  // Any other viewer (a fan browsing the org's page) stays without
+  // the icon — they don't get to send DMs as the org.
   if (isOrgSite) {
     const chatEl = document.getElementById('dock-chat')
     const siteOwner = document.body?.dataset?.owner || ''
     const viewer = window.getWalletAddress?.() || ''
     if (chatEl && siteOwner && viewer && /^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
-      import('./safe-org.js').then(async ({ isSafeAddress, isSafeSigner }) => {
-        try {
-          const [isSafe, ownerIsSigner] = await Promise.all([
-            isSafeAddress(siteOwner),
-            isSafeSigner(siteOwner, viewer),
-          ])
-          if (isSafe && ownerIsSigner) chatEl.style.display = ''
-        } catch {}
-      })
+      // EOA org path: viewer signed in as the org itself. Reveal
+      // right away; no Safe check needed.
+      if (viewer.toLowerCase() === siteOwner.toLowerCase()) {
+        chatEl.style.display = ''
+      } else {
+        // Safe org path: probe Safe.isOwner(viewer). Async — leaves
+        // the icon hidden until the check confirms.
+        import('./safe-org.js').then(async ({ isSafeAddress, isSafeSigner }) => {
+          try {
+            const [isSafe, ownerIsSigner] = await Promise.all([
+              isSafeAddress(siteOwner),
+              isSafeSigner(siteOwner, viewer),
+            ])
+            if (isSafe && ownerIsSigner) chatEl.style.display = ''
+          } catch {}
+        })
+      }
     }
   }
   document.getElementById('dock-portfolio')?.addEventListener('click', () => {
