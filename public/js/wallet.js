@@ -262,27 +262,42 @@ async function showAddress(address) {
 
     if (dropdown) dropdown.classList.add('menu-logged-in')
 
-    // Header row: greeting + balance + address. When the current wallet
-    // owns this site, we greet with the site's name (from data-name). For
-    // audience sessions on someone else's site, we greet with the short
-    // wallet address so it's still personal without a lookup call.
+    // Header row: greeting + balance + address. The greeting always
+    // identifies the *visitor* — the person holding the browser — not
+    // the site. On an artist's own site we already know the visitor's
+    // name (it's the site name); everywhere else we resolve it async.
+    //
+    // Org tenants (data-org-id set) get a subtitle beneath the greeting
+    // — "owner of whatifwe pictures" — so a signer knows the site they
+    // control is not their personal identity. This resolves an earlier
+    // confusion where the greeting read "Hi, whatifwe pictures" because
+    // the code used the site name as the visitor name whenever the
+    // viewer was an owner. That reads as "I am the org", which is
+    // wrong — Miles is himself, signing on behalf of the org.
     if (walletTop) {
       const siteName = document.body.dataset.name || ''
+      const isOrgSite = !!document.body.dataset.orgId
       const shortAddr = `${address.slice(0,6)}...${address.slice(-4)}`
-      // On my own site, use the baked-in site name (data-name). On someone
-      // else's site, we still want to greet ME by my registered name — not
-      // by the address — so we kick off an async resolve and swap it in
-      // once it lands.
-      const initialGreetingName = isOwnerView && siteName ? siteName : shortAddr
+      // On a personal artist tenant where the visitor owns the site,
+      // greet them with the baked-in site name. Everywhere else (org
+      // tenants included) start with the short address and let the
+      // async resolver replace it with the visitor's real name.
+      const initialGreetingName = (isOwnerView && !isOrgSite && siteName) ? siteName : shortAddr
       const initialPfp = getProfilePic(address)
       const initial = escapeHtml((initialGreetingName || address).slice(0, 1).toUpperCase())
       const initialAvatarHtml = initialPfp
         ? `<img class="wallet-greeting-avatar" src="${escapeHtml(initialPfp)}" alt="">`
         : `<span class="wallet-greeting-avatar wallet-greeting-avatar--fallback">${initial}</span>`
+      const roleLine = (isOrgSite && isOwnerView && siteName)
+        ? `<div class="wallet-greeting-role" style="font-size:0.75em;color:var(--dim);margin-top:0.15em">owner of ${escapeHtml(siteName)}</div>`
+        : ''
       walletTop.innerHTML = `
         <div class="wallet-greeting">
           <span id="wallet-greeting-avatar-slot">${initialAvatarHtml}</span>
-          <span class="wallet-greeting-name"><span data-i18n="wallet.greeting">${escapeHtml(_greetingWord())}</span>, <span id="wallet-greeting-name-slot">${escapeHtml(initialGreetingName)}</span></span>
+          <div class="wallet-greeting-text">
+            <span class="wallet-greeting-name"><span data-i18n="wallet.greeting">${escapeHtml(_greetingWord())}</span>, <span id="wallet-greeting-name-slot">${escapeHtml(initialGreetingName)}</span></span>
+            ${roleLine}
+          </div>
         </div>
         <div class="wallet-top-row">
           <span class="wallet-menu-balance" id="top-balance">${shortAddr}</span>
@@ -297,11 +312,11 @@ async function showAddress(address) {
         } catch {}
       })
 
-      // Resolve MY name + profile pic even when I'm on someone else's site.
-      // On the owner's own tenant we already have the answer baked in; on
-      // any other site we hit the resolver and swap in the answer as soon
-      // as it lands.
-      if (!isOwnerView) {
+      // Resolve MY name + profile pic when the initial guess is the
+      // short address (either I'm visiting someone else's site, or the
+      // current tenant is an org whose site name isn't my name).
+      const needsAsyncResolve = !isOwnerView || isOrgSite
+      if (needsAsyncResolve) {
         _resolveMyIdentity(address).then(({ name, pic }) => {
           const nameSlot = walletTop.querySelector('#wallet-greeting-name-slot')
           const avatarSlot = walletTop.querySelector('#wallet-greeting-avatar-slot')
@@ -426,15 +441,36 @@ function showDock() {
     })
   }
 
-  dock.innerHTML = `
-    <div class="dock-tools">
+  // Org tenants only get org-scoped affordances. Collection, messages,
+  // journal, and write are personal to the visitor — none of them
+  // author or read anything on the org's behalf, so surfacing them on
+  // an org tenant just leaks the visitor's personal life onto the
+  // org's site. The visitor still reaches those from their own tenant.
+  // (Org blog / posts via Safe.execTx into BlogRegistry is queued as
+  // a separate task.)
+  //
+  // Org signer's dock: portfolio (public site) + treasury (Safe
+  // balance / claim / send) + manage (settings) + sections toggle.
+  // Treasury opens the manage panel focused on the org's shared-
+  // account section; the panel + the modal live in settings.js.
+  const isOrgSite = !!document.body.dataset.orgId
+  const dockTools = isOrgSite
+    ? `
+      <button class="dock-btn" id="dock-portfolio" title="${t('dock.portfolio')}"><i class="ph ${document.body.classList.contains('feed-mode') ? 'ph-pulse' : 'ph-squares-four'}"></i></button>
+      <button class="dock-btn" id="dock-org-treasury" title="treasury"><i class="ph ph-bank"></i></button>
+      <button class="dock-btn" id="dock-org-manage" title="manage"><i class="ph ph-gear"></i></button>
+      <button class="dock-btn" id="dock-sections-toggle" title="sections"><i class="ph ph-dots-three"></i></button>
+    `
+    : `
       <button class="dock-btn" id="dock-portfolio" title="${t('dock.portfolio')}"><i class="ph ${document.body.classList.contains('feed-mode') ? 'ph-pulse' : 'ph-squares-four'}"></i></button>
       <a href="/collection" class="dock-btn" title="${t('dock.collection')}"><i class="ph ph-cards-three"></i></a>
       <button class="dock-btn" id="dock-write" title="${t('dock.write')}"><i class="ph ph-pencil-simple"></i></button>
       <a href="/messages" class="dock-btn" id="dock-chat" title="${t('dock.messages')}" style="position:relative"><i class="ph ph-chat-circle"></i><span id="dock-msg-dot" class="dock-msg-dot" style="display:none"></span></a>
       <a href="/journal" class="dock-btn" title="${t('dock.journal')}"><i class="ph ph-file-dashed"></i></a>
       <button class="dock-btn" id="dock-sections-toggle" title="sections"><i class="ph ph-dots-three"></i></button>
-    </div>
+    `
+  dock.innerHTML = `
+    <div class="dock-tools">${dockTools}</div>
     ${sectionLinks ? `<div class="dock-sections">${sectionLinks}</div>` : ''}
   `
   document.body.appendChild(dock)
@@ -453,6 +489,21 @@ function showDock() {
 
   document.getElementById('dock-write')?.addEventListener('click', () => {
     window.location.href = '/write'
+  })
+  // Org-only dock buttons. Both open the manage panel; the treasury
+  // one dispatches a second event settings.js listens for to scroll
+  // straight to the shared-account section instead of the general
+  // manage view.
+  document.getElementById('dock-org-manage')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('open-settings'))
+  })
+  document.getElementById('dock-org-treasury')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('open-settings'))
+    // A short delay so the panel is in the DOM before we try to scroll;
+    // settings.js exposes an 'open-settings-section' event that focuses
+    // a named section. Falls back to a plain manage panel open when
+    // that event isn't wired.
+    setTimeout(() => window.dispatchEvent(new CustomEvent('open-settings-section', { detail: { section: 'orgs' } })), 120)
   })
   // restore unread dot from session (persists across pages)
   if (sessionStorage.getItem('praxis-unread-msgs')) {

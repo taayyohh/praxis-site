@@ -200,23 +200,6 @@ body.project-site {
   margin-bottom: 2.5rem;
 }
 
-/* --- Footer --- */
-
-.project-footer {
-  text-align: center;
-  margin-top: 3rem;
-  padding: 1.5rem;
-  color: var(--dim);
-  font-size: 0.85em;
-  display: flex;
-  gap: 1ch;
-  justify-content: center;
-  align-items: center;
-}
-.project-footer a { color: var(--muted); text-decoration: none; }
-.project-footer a:hover { color: var(--fg); }
-.project-footer-sep { color: var(--dim); }
-
 /* --- Mobile --- */
 
 @media (max-width: 640px) {

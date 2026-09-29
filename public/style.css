@@ -681,34 +681,6 @@ hr {
   margin: 3em 0;
 }
 
-footer {
-  margin-top: 4em;
-  padding-top: 2em;
-  color: var(--muted);
-}
-
-footer a {
-  color: var(--muted);
-}
-
-.praxis-badge {
-  display: inline-block;
-  padding: 0.2em 0.8em;
-  border: 1px solid var(--border);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.7em;
-  color: var(--dim);
-  text-decoration: none;
-  letter-spacing: 0.05em;
-  margin-top: 0.75em;
-}
-
-.praxis-badge:hover {
-  color: var(--fg);
-  border-color: var(--border-hover);
-  text-decoration: none;
-}
-
 .header-row {
   display: flex;
   align-items: flex-start;
@@ -3528,9 +3500,7 @@ body:has(.collection-container) {
 }
 
 .feed-mode .portfolio-nav,
-.feed-mode-pending .portfolio-nav,
-.feed-mode footer,
-.feed-mode-pending footer {
+.feed-mode-pending .portfolio-nav {
   display: none !important;
 }
 

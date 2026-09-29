@@ -408,18 +408,43 @@ window.addEventListener('DOMContentLoaded', () => {
 })
 window.addEventListener('open-settings', openSettings)
 
+// Treasury dock button dispatches this after 'open-settings' — scroll
+// straight to the shared-account section under identity → orgs.
+window.addEventListener('open-settings-section', (e) => {
+  const which = e?.detail?.section
+  const targetId = which === 'orgs' ? 's-org-content' : null
+  if (!targetId) return
+  // Retry a few times because the panel + its content render
+  // asynchronously after openSettings resolves.
+  let tries = 0
+  const tick = () => {
+    tries += 1
+    const el = document.getElementById(targetId)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    if (tries < 20) setTimeout(tick, 100)
+  }
+  tick()
+})
+
 async function openSettings() {
   if (_settingsAnimating) return
   document.getElementById('settings-panel')?.remove()
 
-  // gate: only the site owner may access settings
+  // gate: only the site owner may access settings. Route through
+  // isSiteOwner so Safe signers on an org tenant pass — a bare
+  // string compare would only recognize the Safe address itself,
+  // which nobody can actually connect a wallet as.
   const connectedAddr = window.getWalletAddress?.()
   const ownerAddr = document.body.dataset.owner
   if (!connectedAddr) {
     _showSettingsGate(t('settings.connectWallet') || 'Connect wallet to access settings')
     return
   }
-  if (!ownerAddr || connectedAddr.toLowerCase() !== ownerAddr.toLowerCase()) {
+  const { isSiteOwner } = await import('./utils.js')
+  if (!ownerAddr || !(await isSiteOwner(connectedAddr, ownerAddr))) {
     _showSettingsGate(t('settings.ownerOnly') || 'Settings are only available to the site owner')
     return
   }
@@ -1289,7 +1314,7 @@ async function _renderOrgSafePanel(siteOrg) {
 // so re-renders don't double-bind. Runs after loadOrgSection injects the
 // panel via _renderInlineOrgAdmin.
 function _wireOrgSafePanel(siteOrg) {
-  const container = document.getElementById('org-content')
+  const container = document.getElementById('s-org-content')
   if (!container) return
   const buttons = container.querySelectorAll('[data-org-safe-action]')
   buttons.forEach(btn => {
