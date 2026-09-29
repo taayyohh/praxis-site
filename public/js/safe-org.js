@@ -166,6 +166,59 @@ export async function execSafeTx({ safeAddress, target, callData, value = 0n, op
   return hash
 }
 
+// --- Spend-side helpers ---
+//
+// Once an org's Safe is admining it, purchases + credential sales land at
+// the Safe address. Safe signers need a way to *move* those funds — claim
+// pending balances, transfer ETH, call withdraw() on PraxisMedia — all
+// routed through Safe.execTransaction so the org keeps its Safe as
+// msg.sender.
+
+// Send raw ETH from the Safe to `to`. Uses execSafeTx with empty callData
+// + `value` set; Safe delivers the wei via msg.sender.call{value}("") in
+// its execute path.
+export async function safeSendEth({ safeAddress, to, ethAmount }) {
+  return execSafeTx({
+    safeAddress,
+    target: to,
+    callData: '0x',
+    value: parseEther(String(ethAmount)),
+  })
+}
+
+// Claim from a contract whose withdraw()/claim() reads msg.sender.
+// PraxisMedia.withdraw() and Praxis.claimFunds() both use this shape, so
+// the Safe becomes the recipient because it's msg.sender inside the inner
+// call.
+export async function safeClaimFrom({ safeAddress, target, functionName = 'withdraw' }) {
+  const abi = [{ name: functionName, type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' }]
+  const { encodeFunctionData } = await import('./vendor.js')
+  const callData = encodeFunctionData({ abi, functionName, args: [] })
+  return execSafeTx({ safeAddress, target, callData })
+}
+
+// Read the Safe's ETH balance on Optimism. Small helper so the org-funds
+// panel doesn't have to re-import getPublicClient.
+export async function getSafeBalance(safeAddress) {
+  const pc = await getPublicClient()
+  return await pc.getBalance({ address: safeAddress })
+}
+
+// Read a Safe's pending withdrawal on any contract exposing a
+// pendingWithdrawals(address) mapping — both Praxis and PraxisMedia
+// follow that shape. Returns 0n on error.
+export async function getSafePendingWithdrawal(safeAddress, contractAddr) {
+  if (!safeAddress || !contractAddr) return 0n
+  const pc = await getPublicClient()
+  const abi = [{
+    name: 'pendingWithdrawals', type: 'function', stateMutability: 'view',
+    inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'uint256' }],
+  }]
+  try {
+    return await pc.readContract({ address: contractAddr, abi, functionName: 'pendingWithdrawals', args: [safeAddress] })
+  } catch { return 0n }
+}
+
 // Fund a freshly-deployed Safe with ETH from the connected wallet.
 // Needed so the Safe can pay gas for its own first execTransaction
 // (e.g. Praxis.acceptInvite). 0.001 ETH covers a handful of Optimism

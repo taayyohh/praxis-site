@@ -1128,7 +1128,10 @@ async function loadOrgSection() {
       }))
     })
 
-    if (siteOrg) _wireInlineOrgAdmin(siteOrg, addr)
+    if (siteOrg) {
+      _wireInlineOrgAdmin(siteOrg, addr)
+      _wireOrgSafePanel(siteOrg)
+    }
   } catch {
     orgContent.innerHTML = '<p style="color:var(--dim);font-size:0.85em">failed to load organizations</p>'
   }
@@ -1209,6 +1212,14 @@ async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
     </div>
   ` : ''
 
+  // Shared-account panel. When the org's admin is a Safe (contract
+  // address) the org has its own on-Ethereum identity — purchases and
+  // credential sales pay into the Safe, not into any personal wallet.
+  // Show current balance + affordances for the viewer to claim + send
+  // from the Safe, gated by isOwner() on the Safe itself so
+  // non-signers only see the balance.
+  const safePanel = await _renderOrgSafePanel(siteOrg).catch(() => '')
+
   return `<div style="border:1px solid var(--border);padding:1em;margin-bottom:1em">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em;margin-bottom:0.4em">
       <a href="/org?id=${esc(orgId)}" style="color:var(--accent);text-decoration:none;font-size:1em;font-weight:500">${esc(siteOrg.name)}</a>
@@ -1216,8 +1227,179 @@ async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
     </div>
     <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.5em">${memberCount} member${memberCount === 1 ? '' : 's'}${isAdmin ? ' · you are the admin' : ''}</p>
     <a href="/org?id=${esc(orgId)}" style="color:var(--muted);font-size:0.85em">manage organization →</a>
+    ${safePanel}
     ${inviteBlock}
   </div>`
+}
+
+// Render the shared-account (Safe) funds panel for `siteOrg`. Only
+// appears when siteOrg.admin is a Safe (contract with code) — a plain
+// EOA-admined org doesn't need it. Signers see claim + send buttons;
+// non-signers see only the balance. Returns '' if the panel shouldn't
+// render (EOA admin, wallet not connected, read errors).
+async function _renderOrgSafePanel(siteOrg) {
+  const admin = String(siteOrg?.admin || '').trim()
+  if (!/^0x[0-9a-fA-F]{40}$/.test(admin)) return ''
+  const viewer = window.getWalletAddress?.()
+  if (!viewer) return ''
+  try {
+    const [{ isSafeAddress, isSafeSigner, getSafeBalance, getSafePendingWithdrawal }, { PRAXIS_ADDR, getMediaAddress }, { getEthPrices, formatPriceFiatPrimary }] = await Promise.all([
+      import('./safe-org.js'),
+      import('./contracts.js'),
+      import('./fiat.js'),
+    ])
+    if (!await isSafeAddress(admin)) return ''
+    const [amSigner, safeBal, pendingPraxis, pendingMedia, prices] = await Promise.all([
+      isSafeSigner(admin, viewer),
+      getSafeBalance(admin),
+      getSafePendingWithdrawal(admin, PRAXIS_ADDR),
+      getMediaAddress() ? getSafePendingWithdrawal(admin, getMediaAddress()) : Promise.resolve(0n),
+      getEthPrices().catch(() => null),
+    ])
+    const totalPending = (pendingPraxis || 0n) + (pendingMedia || 0n)
+    const bal = formatPriceFiatPrimary(safeBal, prices)
+    const claimRow = totalPending > 0n
+      ? `<div style="margin-top:0.6em;display:flex;justify-content:space-between;align-items:baseline;gap:0.5em">
+          <span style="font-size:0.8em;color:var(--muted)">pending earnings</span>
+          <span style="font-size:0.85em">${formatPriceFiatPrimary(totalPending, prices)}</span>
+        </div>`
+      : ''
+    const actionRow = amSigner ? `
+      <div style="margin-top:0.7em;display:flex;gap:0.5em;flex-wrap:wrap">
+        ${totalPending > 0n ? `<button class="buy-btn" data-org-safe-action="claim" data-safe="${admin}" style="font-size:0.8em;padding:0.3em 1ch">claim earnings</button>` : ''}
+        ${safeBal > 0n ? `<button class="buy-btn" data-org-safe-action="send" data-safe="${admin}" style="font-size:0.8em;padding:0.3em 1ch;border-color:var(--dim);color:var(--dim)">send</button>` : ''}
+      </div>
+      <p data-org-safe-status style="font-size:0.75em;color:var(--muted);min-height:1em;margin:0.4em 0 0"></p>
+    ` : `<p style="font-size:0.75em;color:var(--dim);margin:0.5em 0 0">only signers can move funds from this account</p>`
+    return `
+      <div style="margin-top:1em;padding-top:0.75em;border-top:1px dashed var(--border)">
+        <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.5em;text-transform:uppercase;letter-spacing:0.05em">shared account</p>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em">
+          <span style="font-size:0.85em;color:var(--fg)">balance</span>
+          <span style="font-size:0.95em">${bal}</span>
+        </div>
+        ${claimRow}
+        ${actionRow}
+      </div>
+    `
+  } catch { return '' }
+}
+
+// Wire the shared-account panel actions once markup is in DOM. Idempotent
+// so re-renders don't double-bind. Runs after loadOrgSection injects the
+// panel via _renderInlineOrgAdmin.
+function _wireOrgSafePanel(siteOrg) {
+  const container = document.getElementById('org-content')
+  if (!container) return
+  const buttons = container.querySelectorAll('[data-org-safe-action]')
+  buttons.forEach(btn => {
+    if (btn.dataset.wired === '1') return
+    btn.dataset.wired = '1'
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.orgSafeAction
+      const safeAddress = btn.dataset.safe
+      const statusEl = container.querySelector('[data-org-safe-status]')
+      if (!safeAddress) return
+      if (action === 'claim') {
+        await _handleOrgSafeClaim(safeAddress, statusEl, btn)
+      } else if (action === 'send') {
+        await _showOrgSafeSendModal(safeAddress)
+      }
+    })
+  })
+}
+
+async function _handleOrgSafeClaim(safeAddress, statusEl, btn) {
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color || 'var(--muted)'; statusEl.textContent = msg } }
+  btn.disabled = true
+  try {
+    const [{ safeClaimFrom, getSafePendingWithdrawal }, { PRAXIS_ADDR, getMediaAddress }] = await Promise.all([
+      import('./safe-org.js'),
+      import('./contracts.js'),
+    ])
+    const mediaAddr = getMediaAddress()
+    const [praxisPending, mediaPending] = await Promise.all([
+      getSafePendingWithdrawal(safeAddress, PRAXIS_ADDR),
+      mediaAddr ? getSafePendingWithdrawal(safeAddress, mediaAddr) : Promise.resolve(0n),
+    ])
+    if (praxisPending > 0n) {
+      setStatus('claiming from Praxis…')
+      await safeClaimFrom({ safeAddress, target: PRAXIS_ADDR, functionName: 'claimFunds' })
+    }
+    if (mediaPending > 0n && mediaAddr) {
+      setStatus('claiming from media sales…')
+      await safeClaimFrom({ safeAddress, target: mediaAddr, functionName: 'withdraw' })
+    }
+    setStatus('done', 'var(--green)')
+    setTimeout(() => loadOrgSection(), 1200)
+  } catch (e) {
+    setStatus(e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'claim failed').slice(0, 120), 'var(--dim)')
+    btn.disabled = false
+  }
+}
+
+async function _showOrgSafeSendModal(safeAddress) {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10015'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '440px'
+
+  let bal = 0n
+  let prices = null
+  try {
+    const [{ getSafeBalance }, { getEthPrices }] = await Promise.all([
+      import('./safe-org.js'),
+      import('./fiat.js'),
+    ])
+    ;[bal, prices] = await Promise.all([getSafeBalance(safeAddress), getEthPrices().catch(() => null)])
+  } catch {}
+  const balEth = Number(bal) / 1e18
+
+  dialog.innerHTML = `
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">send from shared account</h3>
+    <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em;line-height:1.5">Move ETH out of the org's account. You'll confirm from your personal wallet — the org's account moves the funds because you're a signer.</p>
+    <label style="font-size:0.75em;color:var(--muted)">to</label>
+    <input id="org-safe-send-to" type="text" placeholder="0x…" class="project-input" style="width:100%;box-sizing:border-box;margin:0.2em 0 0.75em">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5em;margin-bottom:0.2em">
+      <label style="font-size:0.75em;color:var(--muted)">amount (ETH)</label>
+      <span style="font-size:0.75em;color:var(--dim)">available: ${balEth.toFixed(6)} ETH</span>
+    </div>
+    <input id="org-safe-send-amt" type="text" inputmode="decimal" placeholder="0.001" class="project-input" style="width:100%;box-sizing:border-box;margin:0.2em 0 0.75em">
+    <p id="org-safe-send-status" style="color:var(--muted);font-size:0.8em;min-height:1em;margin:0.5em 0"></p>
+    <div style="display:flex;gap:0.5em">
+      <button class="buy-btn" id="org-safe-send-submit" style="flex:1;font-size:0.85em;padding:0.5em">send</button>
+      <button class="buy-btn" id="org-safe-send-cancel" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#org-safe-send-cancel').addEventListener('click', () => overlay.remove())
+
+  const statusEl = dialog.querySelector('#org-safe-send-status')
+  dialog.querySelector('#org-safe-send-submit').addEventListener('click', async () => {
+    const to = dialog.querySelector('#org-safe-send-to').value.trim()
+    const amt = dialog.querySelector('#org-safe-send-amt').value.trim()
+    if (!/^0x[0-9a-fA-F]{40}$/.test(to)) { statusEl.textContent = 'enter a valid 0x address'; return }
+    const amtNum = parseFloat(amt)
+    if (!(amtNum > 0)) { statusEl.textContent = 'enter an amount'; return }
+    if (amtNum > balEth) { statusEl.textContent = `only ${balEth.toFixed(6)} ETH available`; return }
+    dialog.querySelector('#org-safe-send-submit').disabled = true
+    statusEl.style.color = 'var(--muted)'; statusEl.textContent = 'confirm in wallet…'
+    try {
+      const { safeSendEth } = await import('./safe-org.js')
+      const hash = await safeSendEth({ safeAddress, to, ethAmount: amt })
+      statusEl.style.color = 'var(--green)'
+      statusEl.textContent = `sent ✓ ${hash.slice(0, 10)}…`
+      setTimeout(() => { overlay.remove(); loadOrgSection() }, 1500)
+    } catch (e) {
+      statusEl.style.color = 'var(--dim)'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'send failed').slice(0, 120)
+      dialog.querySelector('#org-safe-send-submit').disabled = false
+    }
+  })
 }
 
 function _wireInlineOrgAdmin(siteOrg, myAddr) {
