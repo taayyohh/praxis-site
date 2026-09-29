@@ -1819,19 +1819,40 @@ async function showCreateOrgModal() {
       // signer. Safe becomes the org admin from msg.sender of
       // createOrg — no post-hoc transferAdmin needed.
       const { ensureWallet, getWalletClient, getPublicClient, getWalletProvider } = await import('./utils.js')
-      const { ORG_ADDRESS, ORG_ABI, TREASURY_ADMIN_ADDR } = await import('./contracts.js')
+      const { ORG_ADDRESS, ORG_ABI, TREASURY_ADMIN_ADDR, getRegistryAddress } = await import('./contracts.js')
       const { createWalletClient, custom, optimism, encodeFunctionData } = await import('./vendor.js')
-      const { deployOrgSafe, fundSafeForBoot, execSafeTx } = await import('./safe-org.js')
+      const { deployOrgSafe, fundSafeForBoot, execSafeTx, safeRegisterAsSupporter, safeSupporterHandle } = await import('./safe-org.js')
       const addr = await ensureWallet()
       if (!addr) throw new Error('wallet required')
       const account = window.getEmbeddedAccount?.() || addr
       const wc = await getWalletClient()
       const pc = await getPublicClient()
+      const registryAddress = getRegistryAddress()
+      if (!registryAddress) throw new Error('registry unavailable — reload')
 
       statusEl.textContent = 'setting up the org account…'
       const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
+      // Three Safe txs coming: registerSupporter + createOrg +
+      // updateDomain. 0.003 keeps a comfortable margin at current
+      // Optimism gas prices.
       statusEl.textContent = 'funding it (small gas float)…'
-      await fundSafeForBoot(safeAddress, '0.002') // two txs coming: createOrg + updateDomain
+      await fundSafeForBoot(safeAddress, '0.003')
+
+      // 2b. Register Safe as a supporter so it passes REGISTRY.isUser
+      // — createOrg reverts with NotUser without this.
+      statusEl.textContent = 'preparing the org account…'
+      const supHandle = safeSupporterHandle(name, String(Date.now()).slice(-4))
+      try {
+        await safeRegisterAsSupporter({ safeAddress, registryAddress, handle: supHandle })
+      } catch (e) {
+        const msg = e?.shortMessage || e?.message || ''
+        if (/handle taken|already registered/i.test(msg)) {
+          const retryHandle = safeSupporterHandle(name, String(Date.now()).slice(-4) + Math.random().toString(36).slice(2, 4))
+          await safeRegisterAsSupporter({ safeAddress, registryAddress, handle: retryHandle })
+        } else {
+          throw e
+        }
+      }
 
       // 3. Safe.execTx(createOrg) — Safe becomes admin.
       statusEl.textContent = 'registering the org…'
@@ -2275,7 +2296,7 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
     dialog.querySelector('#upgrade-submit').disabled = true
 
     try {
-      const [{ deployOrgSafe, fundSafeForBoot, execSafeTx }, { ensureWallet, getWalletClient, getPublicClient }, { ORG_ADDRESS, ORG_ABI }, { createWalletClient, custom, optimism, encodeFunctionData }] = await Promise.all([
+      const [{ deployOrgSafe, fundSafeForBoot, execSafeTx, safeRegisterAsSupporter, safeSupporterHandle }, { ensureWallet, getWalletClient, getPublicClient }, { ORG_ADDRESS, ORG_ABI, getRegistryAddress }, { createWalletClient, custom, optimism, encodeFunctionData }] = await Promise.all([
         import('./safe-org.js'),
         import('./utils.js'),
         import('./contracts.js'),
@@ -2287,19 +2308,41 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
       const account = window.getEmbeddedAccount?.() || addr
       const wc = await getWalletClient()
       const pc = await getPublicClient()
+      const registryAddress = getRegistryAddress()
+      if (!registryAddress) throw new Error('registry address unavailable — reload the page')
 
       // 1. Deploy Safe with current admin as 1-of-1 signer.
       markStep(1, 'active'); statusEl.textContent = 'setting up shared account (confirm in wallet)…'
       const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
       markStep(1, 'done'); statusEl.textContent = `shared account created`
 
-      // 2. Fund Safe with a bit of ETH so it can pay gas.
+      // 2. Fund Safe with a bit of ETH — Safe pays gas for its own
+      //    txs from here on (registerSupporter + acceptInvite + one
+      //    more if we add anything). Bumped to 0.0015 so all three fit
+      //    at current Optimism gas prices.
       markStep(2, 'active'); statusEl.textContent = 'funding it (small gas float)…'
-      await fundSafeForBoot(safeAddress, '0.001')
+      await fundSafeForBoot(safeAddress, '0.0015')
       markStep(2, 'done')
 
-      // 3. Admin invites Safe as member.
+      // 3. Register the Safe as a supporter on ArtistRegistry so it
+      //    passes REGISTRY.isUser(safe) — otherwise inviteMember +
+      //    createOrg both revert with NotUser. Then the admin invites
+      //    the Safe as a member.
       markStep(3, 'active'); statusEl.textContent = 'adding it as a member…'
+      const supporterHandle = safeSupporterHandle(orgName, String(orgId))
+      try {
+        await safeRegisterAsSupporter({ safeAddress, registryAddress, handle: supporterHandle })
+      } catch (e) {
+        // If the handle collides or the Safe is already a supporter,
+        // retry once with a random suffix. Anything else re-throws.
+        const msg = e?.shortMessage || e?.message || ''
+        if (/handle taken|already registered/i.test(msg)) {
+          const retryHandle = safeSupporterHandle(orgName, String(orgId) + Math.random().toString(36).slice(2, 5))
+          await safeRegisterAsSupporter({ safeAddress, registryAddress, handle: retryHandle })
+        } else if (!/already registered/i.test(msg)) {
+          throw e
+        }
+      }
       const inviteHash = await wc.writeContract({
         address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
         args: [BigInt(orgId), safeAddress], account,

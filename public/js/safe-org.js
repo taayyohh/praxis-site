@@ -186,6 +186,42 @@ export async function safeSendEth({ safeAddress, to, ethAmount }) {
   })
 }
 
+// Register a Safe as a supporter on ArtistRegistry so it passes
+// REGISTRY.isUser(safe) — required before PraxisOrganization will let it
+// createOrg (as msg.sender) or be inviteMember'd (as invitee). Handle is
+// validated by the contract (3-32 chars, lowercase a-z0-9 and hyphens,
+// no leading/trailing hyphen); caller is responsible for sanitizing.
+//
+// The Safe pays gas from its own balance — fundSafeForBoot must have
+// been called first with enough for two txs (register + one org call).
+export async function safeRegisterAsSupporter({ safeAddress, registryAddress, handle }) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(safeAddress)) throw new Error('bad safeAddress')
+  if (!/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) throw new Error('bad registryAddress')
+  const { encodeFunctionData } = await import('./vendor.js')
+  const abi = [{ name: 'registerSupporter', type: 'function', inputs: [{ name: 'handle', type: 'string' }], outputs: [], stateMutability: 'nonpayable' }]
+  const callData = encodeFunctionData({ abi, functionName: 'registerSupporter', args: [handle] })
+  return execSafeTx({ safeAddress, target: registryAddress, callData })
+}
+
+// Sanitize a name into a handle that passes ArtistRegistry._validateHandle
+// (3-32 chars, lowercase a-z0-9 and hyphens, no leading/trailing hyphen).
+// Appends a suffix (typically an orgId or short random tag) so two orgs
+// with the same display name land distinct handles.
+export function safeSupporterHandle(name, suffix = '') {
+  const sanitized = String(name || 'org')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || 'org'
+  const suf = String(suffix).replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 6)
+  const combined = suf ? `${sanitized}-${suf}` : sanitized
+  // Enforce the 3-32 char + hyphen-boundary contract rules; the trim
+  // above already covers the character class.
+  const clamped = combined.slice(0, 32).replace(/^-+|-+$/g, '')
+  return clamped.length >= 3 ? clamped : `${clamped}xyz`.slice(0, 32)
+}
+
 // Claim from a contract whose withdraw()/claim() reads msg.sender.
 // PraxisMedia.withdraw() and Praxis.claimFunds() both use this shape, so
 // the Safe becomes the recipient because it's msg.sender inside the inner
