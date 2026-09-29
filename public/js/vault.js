@@ -144,6 +144,13 @@ const STABILITY_POOL_ABI = [
 ]
 
 let _vaultBound = false
+// On org tenants where the viewer is a Safe signer, initVault swaps
+// its "addr" from the viewer's wallet to the Safe address so every
+// downstream fetch reads the org's numbers. _orgVaultAddr is set to
+// the Safe when that swap happens, so click handlers (send, claim,
+// etc.) know to route through Safe.execTx instead of a direct
+// walletClient call. Empty on personal-vault mode.
+let _orgVaultAddr = ''
 let _allHistory = []
 
 // Privacy toggle: hide fiat/crypto amounts behind a blur so
@@ -457,11 +464,39 @@ async function initVault() {
     window.addEventListener('wallet-balance-changed', initVault)
   }
 
-  const addr = window.getWalletAddress?.()
-  if (!addr) {
+  const viewer = window.getWalletAddress?.()
+  if (!viewer) {
     contentEl.innerHTML = `<p style="color:var(--muted)">connect wallet to view vault</p>`
     return
   }
+
+  // On an org tenant where the viewer is a Safe signer, /vault is the
+  // ORG's vault, not the viewer's personal vault. Swap addr from the
+  // viewer's EOA to the Safe address so every downstream fetch
+  // (balance, pending withdrawals, earnings) reads the org's numbers.
+  // On artist tenants (no data-org-id) or when the viewer isn't a
+  // signer, keep the personal-vault behaviour.
+  let addr = viewer
+  let orgSafeAddr = ''
+  const isOrgSite = !!document.body?.dataset?.orgId
+  if (isOrgSite) {
+    const siteOwner = String(document.body?.dataset?.owner || '')
+    if (/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
+      try {
+        const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
+        if (await isSafeAddress(siteOwner) && await isSafeSigner(siteOwner, viewer)) {
+          addr = siteOwner
+          orgSafeAddr = siteOwner
+        }
+      } catch {}
+    }
+  }
+  _orgVaultAddr = orgSafeAddr // module-scoped so click handlers see it
+
+  // Tag body so CSS can hide personal-only affordances (save-to-BOLD
+  // and cashout) that don't yet know how to route through Safe.execTx.
+  // Toggle so navigating back to a personal vault clears the mode.
+  document.body.classList.toggle('org-vault-mode', !!orgSafeAddr)
 
   contentEl.innerHTML = `<span class="praxis-loader"></span>`
 
@@ -512,6 +547,10 @@ async function initVault() {
       renderVault(contentEl, { ethBalance, chainBalances, boldBalance, spDeposits, unclaimed, earned, contributed, addr, mediaAddr, ticketUnclaimed, ethPrices, yieldData })
       // In-flight cashout banner: reads server + Peer, non-blocking.
       _renderInFlightCashouts(contentEl, addr).catch(() => {})
+      // Org mode: append the co-owners strip so signers can see and
+      // manage who controls this shared account without leaving the
+      // page. Non-blocking; failures just skip the strip.
+      if (_orgVaultAddr) _appendOrgCoOwners(contentEl, _orgVaultAddr, viewer).catch(() => {})
     } catch (e) {
       // Isolate render failures from the load pipeline so a bad shape in
       // one section can't hide the whole vault. Log + fall through to a
@@ -1516,8 +1555,25 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
       try {
         const pc = await getPublicClient()
         const claimAccount = await window.authorizedSigner?.(addr)
-          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-        if (btn.dataset.source === 'media') {
+        const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        // Org vault mode: the pending withdrawals belong to the Safe
+        // (msg.sender inside PraxisMedia.withdraw and Praxis.claimFunds
+        // is checked against balance owners). Route through
+        // Safe.execTx so the Safe is msg.sender and the ETH lands at
+        // the Safe. Tickets flow (withdrawTicketEarnings) has its
+        // own Safe-aware path.
+        if (_orgVaultAddr) {
+          const { safeClaimFrom } = await import('./safe-org.js')
+          if (btn.dataset.source === 'media') {
+            const hash = await safeClaimFrom({ safeAddress: _orgVaultAddr, target: mediaAddr, functionName: 'withdraw' })
+            if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
+          } else if (btn.dataset.source === 'tickets') {
+            await withdrawTicketEarnings()
+          } else {
+            const hash = await safeClaimFrom({ safeAddress: _orgVaultAddr, target: PRAXIS_ADDR, functionName: 'claimFunds' })
+            if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
+          }
+        } else if (btn.dataset.source === 'media') {
           const hash = await wc.writeContract({ address: mediaAddr, abi: MEDIA_ABI, functionName: 'withdraw', args: [], account: claimAccount })
           if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
           await pc.waitForTransactionReceipt({ hash })
@@ -2542,12 +2598,35 @@ export async function showSendModal(fromAddress, opts = {}) {
       const { http, mainnet, arbitrum, base, polygon } = await import('./vendor.js')
       const chainMap = { 1: mainnet, 10: optimism, 137: polygon, 8453: base, 42161: arbitrum }
       const chainDef = chainMap[source.chainId] || optimism
-      const wc = createWalletClient({ chain: chainDef, account: embeddedAcct, transport: http(rpcUrlFor(source.chainId)) })
-      await wc.sendTransaction({
-        to: toAddr,
-        value: parseEther(ethAmount.toFixed(18).replace(/0+$/, '').replace(/\.$/, '.0')),
-        account: embeddedAcct,
-      })
+
+      // Org vault mode: the "from" address is the Safe, funds are its
+      // ETH balance on Optimism. Route the send through Safe.execTx so
+      // the Safe is msg.sender (funds actually move from the Safe, not
+      // from the signer's personal wallet). Safe lives only on
+      // Optimism today — if the user picked another chain we surface
+      // that clearly rather than silently sending from the wrong
+      // account.
+      if (_orgVaultAddr && String(_orgVaultAddr).toLowerCase() === String(fromAddress).toLowerCase()) {
+        if (source.chainId !== OPTIMISM_CHAIN_ID) {
+          status.style.color = 'var(--dim)'
+          status.textContent = 'shared accounts can only send from Optimism today'
+          btn.disabled = false; btn.textContent = 'send'
+          return
+        }
+        const { safeSendEth } = await import('./safe-org.js')
+        await safeSendEth({
+          safeAddress: _orgVaultAddr,
+          to: toAddr,
+          ethAmount: ethAmount.toFixed(18).replace(/0+$/, '').replace(/\.$/, '.0'),
+        })
+      } else {
+        const wc = createWalletClient({ chain: chainDef, account: embeddedAcct, transport: http(rpcUrlFor(source.chainId)) })
+        await wc.sendTransaction({
+          to: toAddr,
+          value: parseEther(ethAmount.toFixed(18).replace(/0+$/, '').replace(/\.$/, '.0')),
+          account: embeddedAcct,
+        })
+      }
 
       status.style.color = 'var(--green)'
       status.textContent = 'sent!'
@@ -2566,4 +2645,106 @@ export async function showSendModal(fromAddress, opts = {}) {
 function _currencySymbol(code) {
   try { return (0).toLocaleString(undefined, { style: 'currency', currency: code, minimumFractionDigits: 0 }).replace(/[\d\s.,]/g, '') || '$' }
   catch { return '$' }
+}
+
+// --- Org vault co-owners strip ---
+// Appended below the personal-vault sections when initVault runs in
+// org mode. Reads owners + threshold live from the Safe and lets the
+// viewer add or remove co-owners and change the threshold. Each write
+// wraps through Safe.execTransaction targeting the Safe itself.
+async function _appendOrgCoOwners(container, safeAddress, viewer) {
+  if (!container) return
+  const { getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
+  const [owners, threshold] = await Promise.all([getSafeOwners(safeAddress), getSafeThreshold(safeAddress)])
+  const doc = container.querySelector('.vault-doc') || container
+  const section = document.createElement('section')
+  section.className = 'vault-co-owners'
+  section.style.cssText = 'margin-top:2em;padding-top:1em;border-top:1px solid var(--border)'
+  const maxT = owners.length
+  const rows = owners.map(o => {
+    const isMe = String(o).toLowerCase() === String(viewer).toLowerCase()
+    const short = `${o.slice(0, 6)}…${o.slice(-4)}`
+    const canRemove = owners.length > 1
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5em;padding:0.4em 0;border-bottom:1px solid color-mix(in srgb, var(--fg) 5%, transparent)">
+      <span style="font-family:'SF Mono',monospace;font-size:0.85em;color:var(--fg)">${escapeHtml(short)}</span>
+      <span style="display:flex;align-items:center;gap:0.75ch">
+        ${isMe ? '<span style="font-size:0.7em;color:var(--dim)">you</span>' : ''}
+        ${canRemove ? `<button class="buy-btn" data-vault-signer-action="remove" data-signer="${escapeHtml(o)}" style="font-size:0.7em;padding:0.15em 0.9ch;border-color:var(--dim);color:var(--dim)">remove</button>` : ''}
+      </span>
+    </div>`
+  }).join('')
+  const threshInput = maxT > 1
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5em;margin-top:0.75em">
+        <label style="font-size:0.85em;color:var(--muted)">signatures required</label>
+        <span style="display:flex;align-items:center;gap:0.5ch">
+          <input type="number" id="vault-threshold" min="1" max="${maxT}" value="${threshold}" style="width:4ch;font-size:0.9em;padding:0.15em 0.4ch;background:transparent;border:1px solid var(--border);color:var(--fg);text-align:center">
+          <span style="font-size:0.85em;color:var(--dim)">of ${maxT}</span>
+          <button class="buy-btn" data-vault-signer-action="threshold" style="font-size:0.75em;padding:0.15em 0.9ch">save</button>
+        </span>
+      </div>`
+    : `<p style="font-size:0.8em;color:var(--dim);margin:0.75em 0 0">any single signature moves funds. add a co-owner to require more signatures.</p>`
+  section.innerHTML = `
+    <h3 style="font-size:0.85em;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin:0 0 0.75em">co-owners</h3>
+    ${rows}
+    ${threshInput}
+    <div style="margin-top:1em">
+      <label style="font-size:0.8em;color:var(--muted);display:block;margin-bottom:0.3em">add co-owner</label>
+      <div style="display:flex;gap:0.5ch">
+        <input type="text" id="vault-add-signer" class="project-input" placeholder="0x…" style="flex:1;font-size:0.9em;font-family:'SF Mono',monospace" autocomplete="off">
+        <button class="buy-btn" data-vault-signer-action="add" style="font-size:0.8em;padding:0.3em 1ch">add</button>
+      </div>
+    </div>
+    <p id="vault-signer-status" style="font-size:0.8em;color:var(--muted);min-height:1em;margin:0.75em 0 0"></p>
+    <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.6">changes take effect after your wallet confirms. on a Safe requiring more than one signature, other co-owners will need to co-sign before the change goes live.</p>
+  `
+  doc.appendChild(section)
+
+  section.querySelectorAll('[data-vault-signer-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.vaultSignerAction
+      const statusEl = section.querySelector('#vault-signer-status')
+      const setStatus = (m, c) => { statusEl.style.color = c || 'var(--muted)'; statusEl.textContent = m }
+      btn.disabled = true
+      try {
+        const { safeAddSigner, safeRemoveSigner, safeChangeThreshold, getSafeOwners: rf, getSafeThreshold: gt } = await import('./safe-org.js')
+        if (action === 'add') {
+          const input = section.querySelector('#vault-add-signer')
+          const val = String(input?.value || '').trim()
+          if (!/^0x[0-9a-fA-F]{40}$/.test(val)) { setStatus('enter a valid 0x address', 'var(--dim)'); btn.disabled = false; return }
+          const existing = await rf(safeAddress)
+          if (existing.some(o => o.toLowerCase() === val.toLowerCase())) { setStatus('already a co-owner', 'var(--dim)'); btn.disabled = false; return }
+          const t = await gt(safeAddress)
+          setStatus('confirm in wallet…')
+          await safeAddSigner({ safeAddress, newSigner: val, threshold: t })
+          setStatus('added ✓', 'var(--green)')
+          setTimeout(initVault, 1500)
+        } else if (action === 'remove') {
+          const signer = btn.dataset.signer
+          if (!confirm(`Remove ${signer.slice(0, 6)}… as a co-owner? They will lose access to this shared account.`)) { btn.disabled = false; return }
+          const [existing, t] = await Promise.all([rf(safeAddress), gt(safeAddress)])
+          const newCount = existing.length - 1
+          const newT = Math.min(t, Math.max(1, newCount))
+          setStatus('confirm in wallet…')
+          await safeRemoveSigner({ safeAddress, signerToRemove: signer, threshold: newT })
+          setStatus('removed ✓', 'var(--green)')
+          setTimeout(initVault, 1500)
+        } else if (action === 'threshold') {
+          const input = section.querySelector('#vault-threshold')
+          const v = Number(input?.value || 0)
+          const existing = await rf(safeAddress)
+          if (!Number.isInteger(v) || v < 1 || v > existing.length) { setStatus(`must be between 1 and ${existing.length}`, 'var(--dim)'); btn.disabled = false; return }
+          const t = await gt(safeAddress)
+          if (v === t) { setStatus('no change', 'var(--dim)'); btn.disabled = false; return }
+          setStatus('confirm in wallet…')
+          await safeChangeThreshold({ safeAddress, threshold: v })
+          setStatus('threshold updated ✓', 'var(--green)')
+          setTimeout(initVault, 1500)
+        }
+      } catch (e) {
+        const msg = e?.code === 4001 ? 'cancelled' : (e?.shortMessage || e?.message || 'failed').slice(0, 140)
+        setStatus(msg, 'var(--dim)')
+        btn.disabled = false
+      }
+    })
+  })
 }

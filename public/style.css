@@ -115,6 +115,24 @@ input[type="number"] {
   color: var(--fg);
 }
 
+/* Org vault mode — /vault renders the org's Safe balance instead of
+   the viewer's personal wallet. Save-to-BOLD and cash-out are still
+   personal-wallet paths (bridge + swap sequences that assume
+   msg.sender=user); hide them here until they're wired through
+   Safe.execTx. Send + receive + claim work as-is because the
+   handlers already know about _orgVaultAddr. Add-funds still makes
+   sense — donations to the Safe are welcome from any wallet. */
+body.org-vault-mode #vault-save-btn,
+body.org-vault-mode #vault-cashout-btn,
+body.org-vault-mode .vault-savings-section {
+  display: none !important;
+}
+body.org-vault-mode .vault-lead-label::after {
+  content: ' · shared account';
+  color: var(--dim);
+  font-size: 0.9em;
+}
+
 /* CMS-uploaded site logo — replaces the domain text in the top-left
    when set. Clamped so any oversized upload still fits the header
    band. object-fit contain preserves aspect ratio; display:block

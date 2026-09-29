@@ -499,12 +499,11 @@ function showDock() {
     window.dispatchEvent(new CustomEvent('open-settings'))
   })
   document.getElementById('dock-org-treasury')?.addEventListener('click', () => {
-    window.dispatchEvent(new CustomEvent('open-settings'))
-    // A short delay so the panel is in the DOM before we try to scroll;
-    // settings.js exposes an 'open-settings-section' event that focuses
-    // a named section. Falls back to a plain manage panel open when
-    // that event isn't wired.
-    setTimeout(() => window.dispatchEvent(new CustomEvent('open-settings-section', { detail: { section: 'orgs' } })), 120)
+    // /vault detects the org tenant and swaps its addr from the
+    // connected wallet to the Safe address, so the same page renders
+    // as the shared account's vault (balance, send, receive, claim,
+    // co-owners) instead of the signer's personal money view.
+    window.location.href = '/vault'
   })
   // restore unread dot from session (persists across pages)
   if (sessionStorage.getItem('praxis-unread-msgs')) {
