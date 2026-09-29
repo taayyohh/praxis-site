@@ -567,6 +567,7 @@ img.wallet-greeting-avatar { padding: 0; }
 }
 .assoc-orgs-hero {
   justify-content: flex-end;
+  width: 100%;
   margin-top: 1em;
 }
 .assoc-org-chip {

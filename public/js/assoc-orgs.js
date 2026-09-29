@@ -15,10 +15,12 @@ async function initAssocOrgs() {
   if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return
 
   // Anchor inside the hero <header>. Every template's index.html
-  // starts with <header> containing the profile pic + name, so this
-  // is the reliable slot across default/musician/writer/visual/
-  // performer/filmmaker/organization.
-  const heroHeader = document.querySelector('header')
+  // starts with a plain <header> containing the profile pic + name;
+  // the layout wraps it inside a `<header id="top-bar">` navigation
+  // strip. Selecting <header> without qualification picks the top-bar
+  // (first in DOM) and drops the chips in the wrong place — bit us
+  // once already. Explicitly exclude the top bars.
+  const heroHeader = document.querySelector('header:not(#top-bar):not(#project-top-bar)')
   if (!heroHeader) return
 
   let orgs = []
