@@ -120,10 +120,10 @@ export async function attachOrgTagger(cardEl, media) {
   const trigger = document.createElement('button')
   trigger.className = 'org-tag-trigger'
   trigger.type = 'button'
-  trigger.style.cssText = 'background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px'
+  trigger.style.cssText = 'background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer;border-radius:2px;white-space:nowrap'
   const _labelFor = () => {
     const activeCount = orgs.filter(o => tagged.has(String(o.id))).length
-    return activeCount > 0 ? `in ${activeCount} org${activeCount === 1 ? '' : 's'}` : 'publish to org'
+    return activeCount > 0 ? `in ${activeCount} org${activeCount === 1 ? '' : 's'}` : 'publish'
   }
   trigger.textContent = _labelFor()
   actions.appendChild(trigger)
@@ -150,10 +150,14 @@ export async function attachOrgTagger(cardEl, media) {
     for (const o of orgs) {
       const isTagged = tagged.has(String(o.id))
       const row = document.createElement('label')
-      row.style.cssText = 'display:flex;align-items:center;gap:0.5em;padding:0.3em 0;cursor:pointer;font-size:0.85em;color:var(--fg)'
+      row.className = 'publish-toggle-row'
       row.innerHTML = `
-        <input type="checkbox" ${isTagged ? 'checked' : ''} data-org-id="${escapeHtml(String(o.id))}" style="cursor:pointer">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(o.name)}</span>
+        <span class="publish-toggle-name">${escapeHtml(o.name)}</span>
+        <span class="publish-toggle-state">${isTagged ? 'published' : 'not published'}</span>
+        <span class="publish-toggle-switch">
+          <input type="checkbox" ${isTagged ? 'checked' : ''} data-org-id="${escapeHtml(String(o.id))}">
+          <span class="publish-toggle-track"></span>
+        </span>
       `
       list.appendChild(row)
     }
@@ -220,6 +224,10 @@ function _wireCheckboxes(panel, media, orgs, tagged, trigger, labelFn) {
         if (wantTagged) tagged.add(orgId); else tagged.delete(orgId)
         _tagStateCache.set(String(media.mediaId), tagged)
         trigger.textContent = labelFn()
+        // Update the row's state label so the reader sees the new
+        // status inline without waiting for the panel to re-render.
+        const stateLbl = box.closest('.publish-toggle-row')?.querySelector('.publish-toggle-state')
+        if (stateLbl) stateLbl.textContent = wantTagged ? 'published' : 'not published'
         statusEl.style.color = 'var(--green,#4a4)'
         statusEl.textContent = wantTagged ? `published to ${label}` : `removed from ${label}`
       } catch (err) {

@@ -3798,26 +3798,31 @@ body:has(.owner-dock) .portfolio-nav {
   }
 }
 
-/* compact header in feed mode — small name, hide bio */
+/* feed mode: just the feed, no page header/hero/team/catalog. Miles
+   flagged that lucid.haus + artist tenants in feed mode were still
+   showing the profile hero (name + team + catalog) above the
+   activity cards. Everything content-side that isn't the feed gets
+   hidden here so the feed reads as a stream in its own right, not
+   as an appendix to the profile. */
 .feed-mode header:not(#top-bar),
-.feed-mode-pending header:not(#top-bar) {
-  margin-bottom: 0 !important;
-}
-
-.feed-mode header:not(#top-bar) h1,
-.feed-mode-pending header:not(#top-bar) h1 {
-  font-size: 1.3em !important;
-  margin-bottom: 0.25em !important;
-}
-
-.feed-mode header:not(#top-bar) .bio,
-.feed-mode header:not(#top-bar) .artist-bio,
-.feed-mode-pending header:not(#top-bar) .bio,
-.feed-mode-pending header:not(#top-bar) .artist-bio {
+.feed-mode-pending header:not(#top-bar),
+.feed-mode #org-roster,
+.feed-mode-pending #org-roster,
+.feed-mode #portfolio-projects,
+.feed-mode-pending #portfolio-projects,
+.feed-mode #org-home-catalog,
+.feed-mode-pending #org-home-catalog,
+.feed-mode #org-catalog-toggle,
+.feed-mode-pending #org-catalog-toggle,
+.feed-mode #org-home-sentinel,
+.feed-mode-pending #org-home-sentinel {
   display: none !important;
 }
-.feed-mode .header-pic,
-.feed-mode-pending .header-pic {
+/* Also hide the wrapper div the catalog widget builds around its
+   heading + toggle — media.js creates a bare div holding those; no
+   id but consistently sits after #org-roster on org index pages. */
+.feed-mode .roster-title:not(#org-roster *),
+.feed-mode-pending .roster-title:not(#org-roster *) {
   display: none !important;
 }
 
@@ -10088,6 +10093,96 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .publish-to-org-domain:hover { color: var(--accent); }
 .publish-to-org-status { color: var(--muted); font-size: 0.8em; margin: 0.5em 0 0; }
+
+/* --- Toggle-switch style for publish rows (media detail + card popup)
+   Miles: "shouldn't just be a check box, but also what does the
+   published state look like? maybe it's a toggle switch?" — replaced
+   the checkbox with an iOS-style switch and added an explicit
+   "published" / "not published" label so the state reads at a glance
+   without having to interpret a box.
+*/
+.publish-toggle-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 1ch;
+  cursor: pointer;
+  padding: 0.5em 0.5ch;
+  border-radius: 4px;
+}
+.publish-toggle-row:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.publish-toggle-name {
+  color: var(--fg);
+  font-size: 0.9em;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-toggle-main { min-width: 0; display: flex; flex-direction: column; gap: 0.1em; }
+.publish-toggle-sub {
+  color: var(--muted);
+  font-size: 0.72em;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-toggle-sub:hover { color: var(--accent); }
+.publish-toggle-state {
+  color: var(--dim);
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.publish-toggle-row:has(input:checked) .publish-toggle-state {
+  color: var(--green, #4ade80);
+}
+.publish-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.publish-toggle-switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+  z-index: 2;
+}
+.publish-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+.publish-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--fg);
+  border-radius: 50%;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease;
+}
+.publish-toggle-switch input:checked ~ .publish-toggle-track {
+  background: var(--green, #4ade80);
+}
+.publish-toggle-switch input:checked ~ .publish-toggle-track::after {
+  transform: translateX(14px);
+  background: #0a0a0a;
+}
+.publish-toggle-switch input:disabled ~ .publish-toggle-track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* --- Project site attach modal + inline panel --- */
 

@@ -22,7 +22,7 @@ export async function listMedia(title, ipfsCid, metadataCid, price, maxSupply, c
   if (!await window.ensureOptimism?.()) return
 
   const currentAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
 
   const pc = await getPublicClient()
 
@@ -80,7 +80,7 @@ export async function purchaseMedia(mediaId, price) {
   if (!addr) throw new Error(t('status.connectWallet'))
 
   const purchaseAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address,
     abi: MEDIA_ABI,
@@ -110,7 +110,7 @@ export async function listBatchMedia(entries) {
   if (!await window.ensureOptimism?.()) return
 
   const currentAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const pc = await getPublicClient()
 
   if (!currentAccount || !currentAccount.startsWith('0x')) throw new Error('wallet not connected')
@@ -182,7 +182,7 @@ export async function purchaseBatchMedia(mediaIds, totalPrice) {
   if (!addr) throw new Error(t('status.connectWallet'))
 
   const purchaseAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const pc = await getPublicClient()
 
   if (mediaIds.length <= BATCH_MAX) {
@@ -316,7 +316,7 @@ export async function setMediaPrice(mediaId, priceEth) {
   if (!addr) throw new Error('connect wallet')
   if (!await window.ensureOptimism?.()) return
   const priceAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address, abi: MEDIA_ABI, functionName: 'setPrice',
     args: [BigInt(mediaId), parseEther(String(priceEth))],
@@ -341,7 +341,7 @@ export async function delistMedia(mediaId) {
   })
   const totalMinted = media[6] || 0n
   const account = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const fn = totalMinted > 0n ? 'setMaxSupply' : 'setPrice'
   const args = totalMinted > 0n
     ? [BigInt(mediaId), BigInt(totalMinted)]
@@ -366,7 +366,7 @@ export async function tagWorkToOrg(orgId, mediaContract, mediaId) {
   if (!await window.ensureOptimism?.()) return
   const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
   const account = await window.authorizedSigner?.(addr)
-  const wc = getWalletClient()
+  const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: ORG_ADDRESS,
     abi: ORG_ABI,
@@ -385,7 +385,7 @@ export async function untagWorkFromOrg(orgId, mediaContract, mediaId) {
   if (!await window.ensureOptimism?.()) return
   const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
   const account = await window.authorizedSigner?.(addr)
-  const wc = getWalletClient()
+  const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: ORG_ADDRESS,
     abi: ORG_ABI,
@@ -458,11 +458,17 @@ export async function renderPublishToOrgPanel(container, { mediaContract, mediaI
       <div class="publish-to-org-list">
         ${orgs.map(o => {
           const on = tagged.has(String(o.id))
-          const domainLink = o.domain ? `<a href="https://${escapeHtml(o.domain)}" target="_blank" rel="noopener" class="publish-to-org-domain">${escapeHtml(o.domain)}</a>` : ''
-          return `<label class="publish-to-org-row" data-org-id="${escapeHtml(String(o.id))}">
-            <input type="checkbox" class="publish-to-org-toggle" ${on ? 'checked' : ''} data-org-id="${escapeHtml(String(o.id))}" data-tagged="${on}">
-            <span class="publish-to-org-name">${escapeHtml(o.name)}</span>
-            ${domainLink}
+          const domainSub = o.domain ? `<a href="https://${escapeHtml(o.domain)}" target="_blank" rel="noopener" class="publish-toggle-sub">${escapeHtml(o.domain)}</a>` : ''
+          return `<label class="publish-toggle-row publish-toggle-row--stacked" data-org-id="${escapeHtml(String(o.id))}">
+            <span class="publish-toggle-main">
+              <span class="publish-toggle-name">${escapeHtml(o.name)}</span>
+              ${domainSub}
+            </span>
+            <span class="publish-toggle-state">${on ? 'published' : 'not published'}</span>
+            <span class="publish-toggle-switch">
+              <input type="checkbox" class="publish-to-org-toggle" ${on ? 'checked' : ''} data-org-id="${escapeHtml(String(o.id))}" data-tagged="${on}">
+              <span class="publish-toggle-track"></span>
+            </span>
           </label>`
         }).join('')}
       </div>
@@ -484,6 +490,10 @@ export async function renderPublishToOrgPanel(container, { mediaContract, mediaI
         if (wantTag) await tagWorkToOrg(orgId, mediaContract, mediaId)
         else await untagWorkFromOrg(orgId, mediaContract, mediaId)
         cb.dataset.tagged = String(wantTag)
+        // Update the row's state label so the reader sees the new
+        // status without having to re-read the toggle position.
+        const stateLbl = cb.closest('.publish-toggle-row')?.querySelector('.publish-toggle-state')
+        if (stateLbl) stateLbl.textContent = wantTag ? 'published' : 'not published'
         statusEl.textContent = wantTag ? 'published ✓' : 'unpublished ✓'
         statusEl.style.color = 'var(--accent)'
       } catch (err) {
@@ -507,7 +517,7 @@ export async function withdrawEarnings() {
   if (!await window.ensureOptimism?.()) return
 
   const withdrawAccount = await window.authorizedSigner?.(addr)
-          const wc = getWalletClient()
+          const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address,
     abi: MEDIA_ABI,
