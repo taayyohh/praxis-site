@@ -439,13 +439,20 @@ async function openSettings() {
   // which nobody can actually connect a wallet as.
   const connectedAddr = window.getWalletAddress?.()
   const ownerAddr = document.body.dataset.owner
+  // t() returns the raw key when no translation is loaded, so a plain
+  // `t(...) || fallback` never picks the fallback. Detect the key-echo
+  // case explicitly.
+  const _msg = (key, fallback) => {
+    const s = t(key)
+    return (s && s !== key) ? s : fallback
+  }
   if (!connectedAddr) {
-    _showSettingsGate(t('settings.connectWallet') || 'Connect wallet to access settings')
+    _showSettingsGate(_msg('settings.connectWallet', 'Connect wallet to access settings'))
     return
   }
   const { isSiteOwner } = await import('./utils.js')
   if (!ownerAddr || !(await isSiteOwner(connectedAddr, ownerAddr))) {
-    _showSettingsGate(t('settings.ownerOnly') || 'Settings are only available to the site owner')
+    _showSettingsGate(_msg('settings.ownerOnly', 'Settings are only available to the site owner'))
     return
   }
 
