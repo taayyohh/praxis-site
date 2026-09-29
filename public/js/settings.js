@@ -629,6 +629,19 @@ function renderIdentityTab(el) {
         </div>
       </div>
       <div class="settings-field">
+        <label class="settings-label">site logo</label>
+        <div style="display:flex;align-items:center;gap:1em">
+          <div id="s-logo-preview" style="width:120px;height:36px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg2,#1a1a1a);padding:0.2em 0.5ch;flex-shrink:0">
+            ${siteData.logo ? `<img src="${esc(siteData.logo)}" style="max-height:100%;max-width:100%;object-fit:contain">` : `<span style="font-size:0.7em;color:var(--dim)">${esc(siteData.domain || 'domain')}</span>`}
+          </div>
+          <div style="display:flex;gap:0.5em;flex-wrap:wrap">
+            <button type="button" id="s-logo-upload" class="btn-small" style="font-size:0.8em">upload</button>
+            ${siteData.logo ? `<button type="button" id="s-logo-remove" class="btn-small" style="font-size:0.8em;opacity:0.6">remove</button>` : ''}
+          </div>
+        </div>
+        <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.5">replaces your domain name in the top-left of every page. wide horizontal images work best (transparent PNG or SVG). auto-shrunk to fit — max 28px tall, 200px wide.</p>
+      </div>
+      <div class="settings-field">
         <label class="settings-label">short bio</label>
         <textarea id="s-short-bio" class="project-input" rows="2" maxlength="140" style="resize:vertical" placeholder="one or two sentences">${esc(siteData.shortBio)}</textarea>
         <div style="display:flex;justify-content:space-between;gap:1ch;margin-top:0.25em">
@@ -999,6 +1012,32 @@ function renderIdentityTab(el) {
     })
   }
 
+  // Site logo upload — wide horizontal wordmark that replaces the plain
+  // domain text in every page's top-left. Downsized to 400px wide so
+  // the 200px display slot has 2x for retina without wasting bandwidth.
+  // Aspect ratio preserved; SVG files pass through untouched by
+  // resizeImageFile.
+  const logoBtn = document.getElementById('s-logo-upload')
+  if (logoBtn) {
+    logoBtn.addEventListener('click', () => uploadFile(logoBtn, (url) => {
+      siteData.logo = url
+      const preview = document.getElementById('s-logo-preview')
+      if (preview) preview.innerHTML = `<img src="${escapeHtml(url)}" style="max-height:100%;max-width:100%;object-fit:contain">`
+      saveSettings()
+      renderIdentityTab(el)
+    }, 'image/*', { transformFile: (f) => resizeImageFile(f, 400, 0.9) }))
+  }
+  const logoRemoveBtn = document.getElementById('s-logo-remove')
+  if (logoRemoveBtn) {
+    logoRemoveBtn.addEventListener('click', () => {
+      delete siteData.logo
+      const preview = document.getElementById('s-logo-preview')
+      if (preview) preview.innerHTML = `<span style="font-size:0.7em;color:var(--dim)">${escapeHtml(siteData.domain || 'domain')}</span>`
+      logoRemoveBtn.remove()
+      saveSettings()
+    })
+  }
+
   // short bio character counter
   const shortBioEl = document.getElementById('s-short-bio')
   const shortBioCount = document.getElementById('s-short-bio-count')
@@ -1281,12 +1320,15 @@ async function _renderOrgSafePanel(siteOrg) {
       import('./fiat.js'),
     ])
     if (!await isSafeAddress(admin)) return ''
-    const [amSigner, safeBal, pendingPraxis, pendingMedia, prices] = await Promise.all([
+    const { getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
+    const [amSigner, safeBal, pendingPraxis, pendingMedia, prices, owners, threshold] = await Promise.all([
       isSafeSigner(admin, viewer),
       getSafeBalance(admin),
       getSafePendingWithdrawal(admin, PRAXIS_ADDR),
       getMediaAddress() ? getSafePendingWithdrawal(admin, getMediaAddress()) : Promise.resolve(0n),
       getEthPrices().catch(() => null),
+      getSafeOwners(admin),
+      getSafeThreshold(admin),
     ])
     const totalPending = (pendingPraxis || 0n) + (pendingMedia || 0n)
     const bal = formatPriceFiatPrimary(safeBal, prices)
@@ -1303,6 +1345,13 @@ async function _renderOrgSafePanel(siteOrg) {
       </div>
       <p data-org-safe-status style="font-size:0.75em;color:var(--muted);min-height:1em;margin:0.4em 0 0"></p>
     ` : `<p style="font-size:0.75em;color:var(--dim);margin:0.5em 0 0">only signers can move funds from this account</p>`
+    // Signer list + threshold controls. Every signer sees the roster
+    // (so it's transparent who has spending authority); only signers
+    // can add/remove others or change the threshold. On a 1-of-1 Safe
+    // the "co-owners" section reads as "you are the sole owner" until
+    // a second signer is added.
+    const signersPanel = amSigner ? _renderSignersPanel({ owners, threshold, viewer, admin }) : ''
+
     return `
       <div style="margin-top:1em;padding-top:0.75em;border-top:1px dashed var(--border)">
         <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.5em;text-transform:uppercase;letter-spacing:0.05em">shared account</p>
@@ -1312,9 +1361,62 @@ async function _renderOrgSafePanel(siteOrg) {
         </div>
         ${claimRow}
         ${actionRow}
+        ${signersPanel}
       </div>
     `
   } catch { return '' }
+}
+
+// Co-owners + threshold sub-panel. Rendered under the shared-account
+// panel when the viewer is a Safe signer. Shows current owners with
+// remove buttons (except self on a 1-of-1 — you can't lock yourself
+// out), the threshold ("N of M"), and an "add co-owner" form.
+function _renderSignersPanel({ owners, threshold, viewer, admin }) {
+  const esc = escapeHtml
+  const rows = (owners || []).map(o => {
+    const isMe = String(o).toLowerCase() === String(viewer).toLowerCase()
+    const short = `${o.slice(0, 6)}…${o.slice(-4)}`
+    const canRemove = owners.length > 1 && !(isMe && owners.length === 1)
+    const removeBtn = canRemove
+      ? `<button class="buy-btn" data-org-signer-action="remove" data-signer="${esc(o)}" data-safe="${esc(admin)}" style="font-size:0.7em;padding:0.15em 0.9ch;border-color:var(--dim);color:var(--dim)">remove</button>`
+      : ''
+    const meTag = isMe ? '<span style="font-size:0.7em;color:var(--dim)">you</span>' : ''
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5em;padding:0.35em 0;border-bottom:1px solid color-mix(in srgb, var(--fg) 5%, transparent)">
+      <span style="font-family:'SF Mono',monospace;font-size:0.8em;color:var(--fg)">${esc(short)}</span>
+      <span style="display:flex;align-items:center;gap:0.75ch">${meTag}${removeBtn}</span>
+    </div>`
+  }).join('')
+
+  // Threshold slider bounds: 1 to owner count. Disabled if only one
+  // owner (only meaningful value is 1).
+  const maxThresh = owners.length
+  const threshLine = maxThresh > 1
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5em;margin-top:0.75em">
+        <label style="font-size:0.8em;color:var(--muted)">signatures required</label>
+        <span style="display:flex;align-items:center;gap:0.5ch">
+          <input type="number" id="s-org-threshold" data-safe="${esc(admin)}" min="1" max="${maxThresh}" value="${threshold}" style="width:4ch;font-size:0.85em;padding:0.15em 0.4ch;background:transparent;border:1px solid var(--border);color:var(--fg);text-align:center">
+          <span style="font-size:0.8em;color:var(--dim)">of ${maxThresh}</span>
+          <button class="buy-btn" data-org-signer-action="threshold" data-safe="${esc(admin)}" style="font-size:0.7em;padding:0.15em 0.9ch">save</button>
+        </span>
+      </div>`
+    : `<p style="font-size:0.75em;color:var(--dim);margin:0.6em 0 0">any single signature moves funds. add a co-owner to require more.</p>`
+
+  return `
+    <div style="margin-top:1em;padding-top:0.75em;border-top:1px dashed var(--border)">
+      <p style="font-size:0.75em;color:var(--muted);margin:0 0 0.5em;text-transform:uppercase;letter-spacing:0.05em">co-owners</p>
+      ${rows}
+      ${threshLine}
+      <div style="margin-top:0.75em">
+        <label style="font-size:0.75em;color:var(--muted);display:block;margin-bottom:0.25em">add co-owner</label>
+        <div style="display:flex;gap:0.5ch;align-items:center">
+          <input type="text" id="s-org-add-signer" data-safe="${esc(admin)}" class="project-input" placeholder="0x…" style="flex:1;font-size:0.85em;font-family:'SF Mono',monospace" autocomplete="off">
+          <button class="buy-btn" data-org-signer-action="add" data-safe="${esc(admin)}" style="font-size:0.75em;padding:0.25em 1ch">add</button>
+        </div>
+      </div>
+      <p data-org-signer-status style="font-size:0.75em;color:var(--muted);min-height:1em;margin:0.5em 0 0"></p>
+      <p style="font-size:0.7em;color:var(--dim);margin:0.3em 0 0;line-height:1.5">changes take effect after your wallet confirms. on a Safe requiring more than one signature, other co-owners will need to co-sign before the change goes live.</p>
+    </div>
+  `
 }
 
 // Wire the shared-account panel actions once markup is in DOM. Idempotent
@@ -1339,6 +1441,101 @@ function _wireOrgSafePanel(siteOrg) {
       }
     })
   })
+
+  // Signer management buttons — add / remove / threshold. Each button
+  // wraps a Safe.execTransaction targeting the Safe itself; on 1-of-1
+  // Safes the caller's pre-approved signature is enough, on multi-sig
+  // the tx queues as pending for other owners to co-sign (that flow
+  // requires the Safe UI at safe.global today).
+  const signerButtons = container.querySelectorAll('[data-org-signer-action]')
+  signerButtons.forEach(btn => {
+    if (btn.dataset.wired === '1') return
+    btn.dataset.wired = '1'
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.orgSignerAction
+      const safeAddress = btn.dataset.safe
+      const signer = btn.dataset.signer || ''
+      const statusEl = container.querySelector('[data-org-signer-status]')
+      if (!safeAddress) return
+      if (action === 'add') await _handleOrgSignerAdd(safeAddress, statusEl, btn, container)
+      else if (action === 'remove') await _handleOrgSignerRemove(safeAddress, signer, statusEl, btn)
+      else if (action === 'threshold') await _handleOrgSignerThreshold(safeAddress, statusEl, btn, container)
+    })
+  })
+}
+
+async function _handleOrgSignerAdd(safeAddress, statusEl, btn, container) {
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color || 'var(--muted)'; statusEl.textContent = msg } }
+  const input = container.querySelector('#s-org-add-signer')
+  const newSigner = String(input?.value || '').trim()
+  if (!/^0x[0-9a-fA-F]{40}$/.test(newSigner)) { setStatus('enter a valid 0x address', 'var(--dim)'); return }
+  btn.disabled = true
+  setStatus('confirm in wallet…')
+  try {
+    const { safeAddSigner, getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
+    const owners = await getSafeOwners(safeAddress)
+    if (owners.some(o => o.toLowerCase() === newSigner.toLowerCase())) {
+      setStatus('already a co-owner', 'var(--dim)')
+      btn.disabled = false
+      return
+    }
+    // Keep existing threshold — user changes it separately with the
+    // slider. Safe requires threshold <= new owner count; adding an
+    // owner grows the count so any current threshold stays valid.
+    const threshold = await getSafeThreshold(safeAddress)
+    await safeAddSigner({ safeAddress, newSigner, threshold })
+    setStatus('added ✓', 'var(--green)')
+    if (input) input.value = ''
+    setTimeout(() => loadOrgSection(), 1200)
+  } catch (e) {
+    setStatus(e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'add failed').slice(0, 140), 'var(--dim)')
+    btn.disabled = false
+  }
+}
+
+async function _handleOrgSignerRemove(safeAddress, signerToRemove, statusEl, btn) {
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color || 'var(--muted)'; statusEl.textContent = msg } }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(signerToRemove)) return
+  if (!confirm(`Remove ${signerToRemove.slice(0, 6)}… as a co-owner? They will lose all access to this shared account.`)) return
+  btn.disabled = true
+  setStatus('confirm in wallet…')
+  try {
+    const { safeRemoveSigner, getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
+    const owners = await getSafeOwners(safeAddress)
+    // If threshold would exceed remaining owners (e.g. 2-of-2 → remove 1
+    // → 2-of-1 is impossible) drop threshold to remaining count. Safe
+    // reverts otherwise.
+    const currentThresh = await getSafeThreshold(safeAddress)
+    const newOwnerCount = owners.length - 1
+    const newThresh = Math.min(currentThresh, Math.max(1, newOwnerCount))
+    await safeRemoveSigner({ safeAddress, signerToRemove, threshold: newThresh })
+    setStatus('removed ✓', 'var(--green)')
+    setTimeout(() => loadOrgSection(), 1200)
+  } catch (e) {
+    setStatus(e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'remove failed').slice(0, 140), 'var(--dim)')
+    btn.disabled = false
+  }
+}
+
+async function _handleOrgSignerThreshold(safeAddress, statusEl, btn, container) {
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color || 'var(--muted)'; statusEl.textContent = msg } }
+  const input = container.querySelector('#s-org-threshold')
+  const value = Number(input?.value || 0)
+  if (!Number.isInteger(value) || value < 1) { setStatus('threshold must be at least 1', 'var(--dim)'); return }
+  btn.disabled = true
+  setStatus('confirm in wallet…')
+  try {
+    const { safeChangeThreshold, getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
+    const [owners, current] = await Promise.all([getSafeOwners(safeAddress), getSafeThreshold(safeAddress)])
+    if (value > owners.length) { setStatus(`can't require more signatures than co-owners (${owners.length})`, 'var(--dim)'); btn.disabled = false; return }
+    if (value === current) { setStatus('no change', 'var(--dim)'); btn.disabled = false; return }
+    await safeChangeThreshold({ safeAddress, threshold: value })
+    setStatus('threshold updated ✓', 'var(--green)')
+    setTimeout(() => loadOrgSection(), 1200)
+  } catch (e) {
+    setStatus(e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'update failed').slice(0, 140), 'var(--dim)')
+    btn.disabled = false
+  }
 }
 
 async function _handleOrgSafeClaim(safeAddress, statusEl, btn) {

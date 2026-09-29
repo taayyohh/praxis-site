@@ -255,6 +255,88 @@ export async function getSafePendingWithdrawal(safeAddress, contractAddr) {
   } catch { return 0n }
 }
 
+// --- Signer + threshold management ---
+//
+// Adding/removing signers and changing threshold happen ON the Safe as
+// msg.sender — every one of these is a Safe.execTransaction call
+// wrapping a call into the Safe's own storage. That's why routing
+// through execSafeTx: no owner can just call Safe.addOwnerWithThreshold
+// directly, the Safe has to authorize itself.
+//
+// Sentinel address for the Safe's owner linked list. Safe stores owners
+// as a singly-linked list where each node points to the next; SENTINEL
+// (0x1) is both head-of-list and end-of-list marker. To remove an owner
+// you must pass its predecessor in the list.
+const SAFE_SENTINEL_OWNER = '0x0000000000000000000000000000000000000001'
+
+const SAFE_OWNER_MGMT_ABI = [
+  { name: 'addOwnerWithThreshold', type: 'function', stateMutability: 'nonpayable', inputs: [
+    { name: 'owner', type: 'address' },
+    { name: 'threshold', type: 'uint256' },
+  ], outputs: [] },
+  { name: 'removeOwner', type: 'function', stateMutability: 'nonpayable', inputs: [
+    { name: 'prevOwner', type: 'address' },
+    { name: 'owner', type: 'address' },
+    { name: 'threshold', type: 'uint256' },
+  ], outputs: [] },
+  { name: 'changeThreshold', type: 'function', stateMutability: 'nonpayable', inputs: [
+    { name: 'threshold', type: 'uint256' },
+  ], outputs: [] },
+]
+
+// Add a signer, optionally changing threshold in the same tx. threshold
+// must be between 1 and (current owner count + 1). Fires Safe.execTx
+// with the caller as pre-approved signer — meaningful only on a 1-of-1
+// Safe today; a multi-sig Safe will queue this as a pending tx for
+// remaining owners to co-sign (that flow is TODO).
+export async function safeAddSigner({ safeAddress, newSigner, threshold }) {
+  const { encodeFunctionData } = await import('./vendor.js')
+  const callData = encodeFunctionData({
+    abi: SAFE_OWNER_MGMT_ABI, functionName: 'addOwnerWithThreshold',
+    args: [newSigner, BigInt(threshold)],
+  })
+  return execSafeTx({ safeAddress, target: safeAddress, callData })
+}
+
+// Remove a signer + set new threshold. Safe stores owners as a
+// singly-linked list, so the caller has to figure out `prevOwner`
+// (the owner that comes BEFORE the removee in the list) — we compute
+// it by walking getOwners() and matching index. If the removee is at
+// index 0, prevOwner = SENTINEL.
+export async function safeRemoveSigner({ safeAddress, signerToRemove, threshold }) {
+  const owners = await getSafeOwners(safeAddress)
+  const lower = signerToRemove.toLowerCase()
+  const idx = owners.findIndex(o => o.toLowerCase() === lower)
+  if (idx === -1) throw new Error('signer not found on this Safe')
+  const prevOwner = idx === 0 ? SAFE_SENTINEL_OWNER : owners[idx - 1]
+  const { encodeFunctionData } = await import('./vendor.js')
+  const callData = encodeFunctionData({
+    abi: SAFE_OWNER_MGMT_ABI, functionName: 'removeOwner',
+    args: [prevOwner, signerToRemove, BigInt(threshold)],
+  })
+  return execSafeTx({ safeAddress, target: safeAddress, callData })
+}
+
+// Change threshold only (no signer changes). Must be >= 1 and <= owner
+// count.
+export async function safeChangeThreshold({ safeAddress, threshold }) {
+  const { encodeFunctionData } = await import('./vendor.js')
+  const callData = encodeFunctionData({
+    abi: SAFE_OWNER_MGMT_ABI, functionName: 'changeThreshold',
+    args: [BigInt(threshold)],
+  })
+  return execSafeTx({ safeAddress, target: safeAddress, callData })
+}
+
+// Read current threshold.
+export async function getSafeThreshold(safeAddress) {
+  const pc = await getPublicClient()
+  const abi = [{ name: 'getThreshold', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] }]
+  try {
+    return Number(await pc.readContract({ address: safeAddress, abi, functionName: 'getThreshold' }))
+  } catch { return 1 }
+}
+
 // Fund a freshly-deployed Safe with ETH from the connected wallet.
 // Needed so the Safe can pay gas for its own first execTransaction
 // (e.g. Praxis.acceptInvite). 0.001 ETH covers a handful of Optimism

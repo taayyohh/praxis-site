@@ -350,6 +350,13 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
     content,
     name: escapeForHtml(site.name),
     domain: escapeForHtml(site.domain),
+    // siteIdentity: the top-left brand slot in the top-bar. Renders
+    // the CMS-uploaded logo as an <img> when set, otherwise falls
+    // back to plain domain text. Kept size-clamped by the .site-logo
+    // rule so an oversized upload can't blow out the header.
+    siteIdentity: site.logo
+      ? `<img src="${escapeForHtml(site.logo)}" alt="${escapeForHtml(site.name || site.domain)}" class="site-logo">`
+      : escapeForHtml(site.domain),
     wallet: site.wallet || '',
     blogRegistry: site.network?.blogRegistryAddress || '',
     mediaRegistry: site.network?.mediaAddress || site.media?.contractAddress || '',

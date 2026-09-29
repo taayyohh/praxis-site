@@ -115,6 +115,19 @@ input[type="number"] {
   color: var(--fg);
 }
 
+/* CMS-uploaded site logo — replaces the domain text in the top-left
+   when set. Clamped so any oversized upload still fits the header
+   band. object-fit contain preserves aspect ratio; display:block
+   removes the img baseline gap so the anchor sits flush. */
+.site-logo {
+  max-height: 28px;
+  max-width: 200px;
+  width: auto;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
 /* --- praxis mark menu --- */
 
 .praxis-mark {
