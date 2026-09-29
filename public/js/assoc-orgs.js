@@ -98,23 +98,11 @@ async function initAssocOrgs() {
   const wrap = document.createElement('div')
   wrap.id = 'assoc-orgs'
   wrap.className = 'assoc-orgs assoc-orgs-hero'
-  // "orgs" heading + optional works count on the same row so signers
-  // see the org chips as an anchored side widget, not floating icons.
-  // Works count is picked up from the .header-count element already
-  // rendered in the hero on artist templates; if there is none we just
-  // skip the works line.
-  const worksEl = heroHeader.querySelector('.header-count, [data-works-count]')
-  const worksText = worksEl?.textContent?.trim() || ''
-  const worksLine = worksText ? `<span class="assoc-orgs-works">${escapeHtml(worksText)}</span>` : ''
-  // Detach the original inline "N works" so it doesn't duplicate.
-  if (worksEl && worksText) worksEl.style.display = 'none'
-  wrap.innerHTML = `
-    <div class="assoc-orgs-heading">
-      <span class="assoc-orgs-label">orgs</span>
-      ${worksLine}
-    </div>
-    <div class="assoc-orgs-chips">${chips}</div>
-  `
+  // Just the chips — no "ORGS" label. Miles pulled it after seeing it
+  // in feed mode alongside org-creation activity cards, where the
+  // heading felt redundant. The circle avatars on their own read as
+  // "orgs" without a label.
+  wrap.innerHTML = `<div class="assoc-orgs-chips">${chips}</div>`
   heroHeader.appendChild(wrap)
 }
 
