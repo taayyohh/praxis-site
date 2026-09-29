@@ -384,6 +384,13 @@ export async function renderOwnerBadges() {
   const ownerAddr = document.body.dataset.owner
   if (!ownerAddr) return
 
+  // On org sites the badges would render the admin wallet's *personal*
+  // media + credential counts, not the org's. Skip entirely — the org
+  // template surfaces the org's own tagged catalog separately below.
+  // Detect by the presence of the org-roster anchor, which only the
+  // organization template renders.
+  if (document.getElementById('org-roster')) return
+
   try {
     const parts = []
 
