@@ -1857,16 +1857,25 @@ async function showCreateOrgModal() {
       // site.json.wallet (instead of the signing EOA). That way the
       // org site's on-chain identity matches its site.json owner.
       const payload = { orgId: orgIdNum, domain, wallet: addr, safeAddress, name, bio: desc, orgType, signature, message }
+
+      // Org attach fee — $10 in ETH, matching the artist deploy fee.
+      // Goes to TREASURY_ADMIN_ADDR (sweeps to EtherFi Cash later).
+      // BYO: single tx = ORG_ATTACH_FEE_ETH. Buy: single tx =
+      // ORG_ATTACH_FEE_ETH + domainPriceEth (both to same recipient).
+      const ORG_ATTACH_FEE_ETH = 0.003 // ~$10 at $3300/ETH
+      const totalFeeEth = domainMode === 'buy'
+        ? Math.max(0.003, selectedPriceEth) + ORG_ATTACH_FEE_ETH
+        : ORG_ATTACH_FEE_ETH
+      statusEl.textContent = `confirm ${totalFeeEth.toFixed(4)} ETH payment (org fee${domainMode === 'buy' ? ' + domain' : ''})…`
+      const totalWei = parseEther(totalFeeEth.toFixed(6))
+      const feeTxHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: totalWei, account })
+      statusEl.textContent = `payment sent (${feeTxHash.slice(0, 10)}…) — waiting…`
+      await pc.waitForTransactionReceipt({ hash: feeTxHash })
+      payload.txHash = feeTxHash
+
       if (domainMode === 'buy') {
-        // Pay NameSilo cost to the treasury admin EOA, then hit register.
-        statusEl.textContent = `confirm ${selectedPriceEth.toFixed(4)} ETH payment…`
-        const priceWei = parseEther(Math.max(0.003, selectedPriceEth).toFixed(6))
-        const txHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: priceWei, account })
-        statusEl.textContent = `payment sent (${txHash.slice(0, 10)}…) — waiting…`
-        await pc.waitForTransactionReceipt({ hash: txHash })
         endpoint = '/orchestrator/org-site/register'
         payload.contactInfo = contactInfo
-        payload.txHash = txHash
       }
 
       statusEl.textContent = 'provisioning site…'
@@ -2151,15 +2160,22 @@ async function showAttachOrgSiteModal(org) {
 
       let endpoint = '/orchestrator/org-site/attach'
       const payload = { orgId: Number(org.id), domain, wallet: addr, name: org.name, bio: org.bio || '', orgType, signature, message }
+
+      // Org attach fee — same $10 as the create flow.
+      const ORG_ATTACH_FEE_ETH_A = 0.003
+      const totalFeeEth = domainMode === 'buy'
+        ? Math.max(0.003, selectedPriceEth) + ORG_ATTACH_FEE_ETH_A
+        : ORG_ATTACH_FEE_ETH_A
+      statusEl.textContent = `confirm ${totalFeeEth.toFixed(4)} ETH payment (org fee${domainMode === 'buy' ? ' + domain' : ''})…`
+      const totalWei = parseEther(totalFeeEth.toFixed(6))
+      const feeTxHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: totalWei, account })
+      statusEl.textContent = `payment sent (${feeTxHash.slice(0, 10)}…) — waiting…`
+      await pc.waitForTransactionReceipt({ hash: feeTxHash })
+      payload.txHash = feeTxHash
+
       if (domainMode === 'buy') {
-        statusEl.textContent = `confirm ${selectedPriceEth.toFixed(4)} ETH payment…`
-        const priceWei = parseEther(Math.max(0.003, selectedPriceEth).toFixed(6))
-        const txHash = await dwc.sendTransaction({ to: TREASURY_ADMIN_ADDR, value: priceWei, account })
-        statusEl.textContent = `payment sent (${txHash.slice(0, 10)}…) — waiting…`
-        await pc.waitForTransactionReceipt({ hash: txHash })
         endpoint = '/orchestrator/org-site/register'
         payload.contactInfo = contactInfo
-        payload.txHash = txHash
       }
 
       statusEl.textContent = 'provisioning site…'
