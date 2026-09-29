@@ -2103,7 +2103,7 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
       const addr = await ensureWallet()
       if (!addr) throw new Error('connect wallet')
       const account = window.getEmbeddedAccount?.() || addr
-      const wc = getWalletClient()
+      const wc = await getWalletClient()
       const pc = await getPublicClient()
 
       // 1. Deploy Safe with current admin as 1-of-1 signer.

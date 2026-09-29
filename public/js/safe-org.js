@@ -83,7 +83,7 @@ export async function deployOrgSafe({ signers, threshold = 1, saltNonce } = {}) 
   })
 
   const account = await window.authorizedSigner?.(addr)
-  const wc = getWalletClient()
+  const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: SAFE_ADDRESSES.proxyFactory,
     abi: PROXY_FACTORY_ABI,
@@ -153,7 +153,7 @@ export async function execSafeTx({ safeAddress, target, callData, value = 0n, op
   const signature = ('0x' + paddedOwner + '0'.repeat(64) + '01')
 
   const account = await window.authorizedSigner?.(addr)
-  const wc = getWalletClient()
+  const wc = await getWalletClient()
   const hash = await wc.writeContract({
     address: safeAddress,
     abi: SAFE_ABI,
