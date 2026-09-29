@@ -1168,10 +1168,34 @@ function stopNotifPolling() {
   }
 }
 
+// On an org tenant where the viewer is a Safe signer, notifications
+// belong to the ORG (the Safe address holds the identity — that's
+// who owns the media, who's followed, who receives replies), not the
+// signer's personal wallet. Every entry point that used to feed
+// window.getWalletAddress() straight to initNotifications now goes
+// through _effectiveAddr so the addr swaps to the Safe when
+// appropriate. Caches keyed by addr already keep the two identities
+// separate. On personal artist tenants (or when the viewer isn't a
+// Safe signer of this org) the function is a no-op returning viewer.
+async function _effectiveAddr(viewer) {
+  if (!viewer) return viewer
+  const isOrgSite = !!document.body?.dataset?.orgId
+  if (!isOrgSite) return viewer
+  const siteOwner = String(document.body?.dataset?.owner || '')
+  if (!/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) return viewer
+  try {
+    const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
+    if (await isSafeAddress(siteOwner) && await isSafeSigner(siteOwner, viewer)) {
+      return siteOwner
+    }
+  } catch {}
+  return viewer
+}
+
 function _visTick() {
   if (document.visibilityState !== 'visible') return
   const a = window.getWalletAddress?.()
-  if (a) pollOnce(a)
+  if (a) _effectiveAddr(a).then(eff => pollOnce(eff))
 }
 
 // listen for wallet connect
@@ -1179,8 +1203,11 @@ window.addEventListener('wallet-connected', (e) => {
   const addr = e.detail?.address
   if (addr) {
     // wait a tick for dock to render
-    setTimeout(() => initNotifications(addr), 100)
-    startNotifPolling(addr)
+    setTimeout(async () => {
+      const eff = await _effectiveAddr(addr)
+      initNotifications(eff)
+      startNotifPolling(eff)
+    }, 100)
   }
 })
 
@@ -1194,17 +1221,18 @@ window.addEventListener('wallet-disconnected', () => {
 })
 
 // re-init on SPA navigation (e.g. navigating to /notifications)
-window.addEventListener('spa-navigate', () => {
+window.addEventListener('spa-navigate', async () => {
   const a = window.getWalletAddress?.()
   if (a) {
     const notifPage = document.getElementById('notifications-page')
     if (notifPage) {
+      const eff = await _effectiveAddr(a)
       // re-render into page with cached notifications
       const contentEl = document.getElementById('notifications-content')
       if (contentEl && currentNotifications.length > 0) {
         renderNotificationsPage(contentEl, currentNotifications)
       } else if (contentEl) {
-        initNotifications(a)
+        initNotifications(eff)
       }
     }
   }
@@ -1212,8 +1240,11 @@ window.addEventListener('spa-navigate', () => {
 
 // if already connected at load time, init + start polling
 if (window.getWalletAddress?.()) {
-  setTimeout(() => {
+  setTimeout(async () => {
     const a = window.getWalletAddress?.()
-    if (a) { initNotifications(a); startNotifPolling(a) }
+    if (!a) return
+    const eff = await _effectiveAddr(a)
+    initNotifications(eff)
+    startNotifPolling(eff)
   }, 200)
 }

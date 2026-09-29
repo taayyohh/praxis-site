@@ -37,10 +37,16 @@ body {
   }
 }
 
+/* Explicit selector inside .org-header-row so the h1's font-size wins
+   even when the containing div gets `flex: 1; min-width: 0` for
+   text-wrap purposes. The bare `header h1` rule was being trumped by
+   inherited font-size rules on artist tenants with older content. */
+header .org-header-row h1,
 header h1 {
   font-size: 2.4em;
+  line-height: 1.1;
   letter-spacing: -0.02em;
-  margin-bottom: 0;
+  margin: 0 0 0.15em;
 }
 
 /* roster grid */
