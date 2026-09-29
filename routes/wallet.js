@@ -83,9 +83,35 @@ export async function handleWallet(ctx) {
       } catch {
         json(res, { error: 'encrypted must be valid JSON' }, 400); return true
       }
+      // Resolve target tenant's siteDir when targetDomain is set —
+      // supports the "org separate login" flow, which lets a caller on
+      // milesxb.bio write the encrypted blob into whatifwe.nyc's dir
+      // without hitting a cross-origin CSP block. Requires
+      // tenantOnly: true; the shared dir is never touched by this
+      // path. Rejected if the target isn't a known Praxis tenant.
+      let effectiveSiteDir = siteDir
+      if (data.targetDomain) {
+        if (!data.tenantOnly) {
+          json(res, { error: 'targetDomain requires tenantOnly: true' }, 400); return true
+        }
+        const domainLc = String(data.targetDomain).toLowerCase()
+        // Look up the handle from all three tenant sources — artists,
+        // project_site, org_site. Uses the same fallback pattern the
+        // index-store resolver added earlier.
+        let targetHandle = null
+        try {
+          const idx = await import('../lib/index-store.js')
+          targetHandle = idx.resolveDomain(domainLc)
+        } catch {}
+        if (!targetHandle) {
+          json(res, { error: 'targetDomain is not a known Praxis tenant' }, 404); return true
+        }
+        effectiveSiteDir = join(ARTISTS_DIR, targetHandle)
+      }
+
       const filename = data.address.toLowerCase().replace(/[^0-9a-fx]/g, '') + '.json'
       const existingSharedPath = join(SHARED_WALLET_DIR, filename)
-      const perSitePath = join(siteDir, 'wallet-backups', filename)
+      const perSitePath = join(effectiveSiteDir, 'wallet-backups', filename)
       // For tenantOnly writes, the first-write squatting check runs
       // against the per-tenant file (not the shared one) — the shared
       // dir is left alone entirely, and each tenant's alias slot is
@@ -142,7 +168,7 @@ export async function handleWallet(ctx) {
         storedAt: new Date().toISOString(),
         tenantOnly: !!data.tenantOnly,
       })
-      const walletDir = join(siteDir, 'wallet-backups')
+      const walletDir = join(effectiveSiteDir, 'wallet-backups')
       mkdirSync(walletDir, { recursive: true })
       await writeFile(join(walletDir, filename), backupData)
       if (!data.tenantOnly) {

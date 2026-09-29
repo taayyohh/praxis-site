@@ -2077,7 +2077,12 @@ async function setupOrgSeparateLogin(orgDomain, currentPassword, newPassword) {
   const message = `praxis-store:${account.address.toLowerCase()}:${ts}`
   const signature = await account.signMessage({ message })
 
-  const res = await fetch(`https://${orgDomain}/api/wallet/store`, {
+  // POST to the SAME origin — the CSP connect-src on the caller's site
+  // (milesxb.bio) doesn't list every other Praxis tenant, so a direct
+  // https://<orgDomain>/api/wallet/store fetch hits "Failed to fetch"
+  // in the browser. Our own server has filesystem access to every
+  // tenant's dir and handles the routing via the targetDomain field.
+  const res = await fetch('/api/wallet/store', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2086,6 +2091,7 @@ async function setupOrgSeparateLogin(orgDomain, currentPassword, newPassword) {
       message,
       signature,
       tenantOnly: true,
+      targetDomain: orgDomain,
     }),
   })
   if (!res.ok) {
