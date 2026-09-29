@@ -1798,6 +1798,27 @@ function showSignInPrompt() {
 
         // if not a raw address, look up via Ponder (handle → domain → wallet)
         if (!/^0x[0-9a-fA-F]{40}$/.test(handle)) {
+          // Local-tenant alias: if the typed handle equals this site's
+          // own hostname, resolve directly from body.dataset.owner
+          // (which the template writes from site.json.wallet). This is
+          // how an org site's separate-login flow works — whatifwe.nyc
+          // on whatifwe.nyc bypasses Ponder (whatifwe isn't in the
+          // artists table) and finds the admin wallet address.
+          try {
+            const currentHost = location.hostname.toLowerCase()
+            const typed = handle.toLowerCase()
+            if (typed === currentHost || `${typed}.ourpraxis.network` === currentHost) {
+              const localOwner = document.body?.dataset?.owner
+              if (localOwner && /^0x[0-9a-fA-F]{40}$/.test(localOwner)) {
+                address = localOwner
+                // Skip the Ponder resolution branch entirely.
+                address = address.toLowerCase()
+              }
+            }
+          } catch {}
+          if (/^0x[0-9a-fA-F]{40}$/.test(address)) {
+            // Local resolution succeeded — proceed to retrieve.
+          } else {
           // try as domain or handle — resolve via artists query
           const lookupDomain = handle.includes('.') ? handle : handle + '.ourpraxis.network'
           const ponderUrl = '/ponder'
@@ -1848,6 +1869,7 @@ function showSignInPrompt() {
           }
           if (!found) { errorEl.textContent = 'handle not found'; return }
           address = found
+          }
         }
 
         address = address.toLowerCase()
@@ -2031,9 +2053,52 @@ window.getEmbeddedWalletAddress = getEmbeddedWalletAddress
 window.getEmbeddedAccount = getEmbeddedAccount
 window.downloadRecoveryPhrase = downloadRecoveryPhrase
 
+// Re-encrypt the current wallet's private key with a new password
+// and store the alias blob on ANOTHER Praxis tenant's server (the
+// org's own domain). Same wallet under the hood, but signing in on
+// the org domain with the new password unlocks it independently of
+// the artist domain's password.
+async function setupOrgSeparateLogin(orgDomain, currentPassword, newPassword) {
+  if (!newPassword || newPassword.length < 8) throw new Error('password must be at least 8 characters')
+  if (currentPassword === newPassword) throw new Error('org password must differ from your artist password')
+  const encrypted = localStorage.getItem(STORAGE_KEY)
+  if (!encrypted) throw new Error('no wallet on this device')
+
+  let privateKey
+  try {
+    privateKey = await decryptKey(encrypted, currentPassword)
+  } catch {
+    throw new Error('current password is wrong')
+  }
+  const account = privateKeyToAccount(privateKey)
+  const newEncrypted = await encryptKey(privateKey, newPassword)
+
+  const ts = Date.now()
+  const message = `praxis-store:${account.address.toLowerCase()}:${ts}`
+  const signature = await account.signMessage({ message })
+
+  const res = await fetch(`https://${orgDomain}/api/wallet/store`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: account.address,
+      encrypted: newEncrypted,
+      message,
+      signature,
+      tenantOnly: true,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `store failed (${res.status})`)
+  }
+  return { ok: true, domain: orgDomain, address: account.address }
+}
+
 export {
   createWallet,
   unlockWallet,
+  setupOrgSeparateLogin,
   isWalletLocked,
   hasEmbeddedWallet,
   getEmbeddedWalletAddress,

@@ -85,7 +85,14 @@ export async function handleWallet(ctx) {
       }
       const filename = data.address.toLowerCase().replace(/[^0-9a-fx]/g, '') + '.json'
       const existingSharedPath = join(SHARED_WALLET_DIR, filename)
-      const isFirstWrite = !existsSync(existingSharedPath)
+      const perSitePath = join(siteDir, 'wallet-backups', filename)
+      // For tenantOnly writes, the first-write squatting check runs
+      // against the per-tenant file (not the shared one) — the shared
+      // dir is left alone entirely, and each tenant's alias slot is
+      // its own scope.
+      const isFirstWrite = data.tenantOnly
+        ? !existsSync(perSitePath)
+        : !existsSync(existingSharedPath)
 
       // First-write squatting defence: without an owner session for this
       // address, require a signed `praxis-store:<addr>:<ts>` challenge
@@ -133,12 +140,15 @@ export async function handleWallet(ctx) {
         address: data.address.toLowerCase(),
         encrypted: data.encrypted,
         storedAt: new Date().toISOString(),
+        tenantOnly: !!data.tenantOnly,
       })
       const walletDir = join(siteDir, 'wallet-backups')
       mkdirSync(walletDir, { recursive: true })
       await writeFile(join(walletDir, filename), backupData)
-      mkdirSync(SHARED_WALLET_DIR, { recursive: true })
-      await writeFile(join(SHARED_WALLET_DIR, filename), backupData)
+      if (!data.tenantOnly) {
+        mkdirSync(SHARED_WALLET_DIR, { recursive: true })
+        await writeFile(join(SHARED_WALLET_DIR, filename), backupData)
+      }
       json(res, { ok: true }); return true
     } catch (e) {
       json(res, { error: e.message }, 500); return true

@@ -1065,6 +1065,9 @@ async function loadOrgSection() {
           const attachBtn = (isAdminHere && !hasSite)
             ? `<button class="buy-btn org-attach-site" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" style="font-size:0.75em;padding:0.2em 1ch">attach a site</button>`
             : ''
+          const loginBtn = (isAdminHere && hasSite)
+            ? `<button class="buy-btn org-setup-login" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" data-org-domain="${esc(o.domain)}" style="font-size:0.75em;padding:0.2em 1ch;border-color:var(--dim);color:var(--dim)" title="set a separate password for signing in on ${esc(o.domain)}">set login</button>`
+            : ''
           const actionLabel = hasSite
             ? `<a href="https://${esc(o.domain)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:0.85em">${esc(o.domain)} →</a>`
             : `<a href="/org?id=${esc(String(o.id))}" style="color:var(--accent);text-decoration:none;font-size:0.85em">${isAdminHere ? 'manage' : 'view'} →</a>`
@@ -1073,6 +1076,7 @@ async function loadOrgSection() {
             <span style="display:flex;align-items:center;gap:0.75em;flex-shrink:0">
               ${roleTag}
               ${attachBtn}
+              ${loginBtn}
               ${actionLabel}
             </span>
           </div>`
@@ -1111,6 +1115,13 @@ async function loadOrgSection() {
         const org = orgs.find(o => String(o.id) === btn.dataset.orgId)
         if (org) showAttachOrgSiteModal(org)
       })
+    })
+    orgContent.querySelectorAll('.org-setup-login').forEach(btn => {
+      btn.addEventListener('click', () => showSetupOrgLoginModal({
+        orgId: btn.dataset.orgId,
+        orgName: btn.dataset.orgName,
+        orgDomain: btn.dataset.orgDomain,
+      }))
     })
     // "re-establish" runs the same createOrg flow as convert (site.json
     // already has template: 'organization' so no template swap needed).
@@ -2145,6 +2156,74 @@ async function showAttachOrgSiteModal(org) {
       statusEl.style.color = '#ef4444'
       statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 100)}`
       submitBtn.disabled = false
+    }
+  })
+}
+
+// Set up a separate login for an org site. Same wallet under the
+// hood (no on-chain transferAdmin needed), just a distinct
+// encrypted backup stored on the org's own tenant with a different
+// password. After success, the org's admin signs in on the org
+// domain with `<orgDomain>` as the handle + the new password —
+// mentally separate from the artist wallet's own login.
+async function showSetupOrgLoginModal({ orgId, orgName, orgDomain }) {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10010'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '480px'
+  dialog.innerHTML = `
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">separate login for <span style="color:var(--accent)">${escapeHtml(orgName)}</span></h3>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em;line-height:1.55">
+      Sets a password just for <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">${escapeHtml(orgDomain)}</code>.
+      Same wallet under the hood — no on-chain change — but sign-in on that domain uses this new password instead of your artist one.
+      Sign in with <code>${escapeHtml(orgDomain)}</code> as the handle.
+    </p>
+
+    <label style="font-size:0.8em;color:var(--muted)">your current (artist) password</label>
+    <input type="password" id="sol-current" class="project-input" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
+
+    <label style="font-size:0.8em;color:var(--muted)">new org password (min 8 chars)</label>
+    <input type="password" id="sol-new" class="project-input" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.5em">
+
+    <label style="font-size:0.8em;color:var(--muted)">confirm new org password</label>
+    <input type="password" id="sol-new2" class="project-input" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
+
+    <p id="sol-status" style="color:var(--muted);font-size:0.85em;min-height:1.2em;margin:0.5em 0"></p>
+    <div style="display:flex;gap:0.5em;margin-top:0.5em">
+      <button class="buy-btn" id="sol-submit" style="flex:1;font-size:0.85em;padding:0.5em">set up login</button>
+      <button class="buy-btn" id="sol-cancel" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#sol-cancel').addEventListener('click', () => overlay.remove())
+  dialog.querySelector('#sol-current').focus()
+
+  const statusEl = dialog.querySelector('#sol-status')
+  dialog.querySelector('#sol-submit').addEventListener('click', async () => {
+    const current = dialog.querySelector('#sol-current').value
+    const next = dialog.querySelector('#sol-new').value
+    const next2 = dialog.querySelector('#sol-new2').value
+    if (!current) { statusEl.textContent = 'enter your current password'; return }
+    if (next.length < 8) { statusEl.textContent = 'new password must be at least 8 characters'; return }
+    if (next !== next2) { statusEl.textContent = 'new passwords do not match'; return }
+    if (next === current) { statusEl.textContent = 'new password must differ from your artist password'; return }
+    statusEl.style.color = 'var(--muted)'
+    statusEl.textContent = 're-encrypting + uploading…'
+    dialog.querySelector('#sol-submit').disabled = true
+    try {
+      const { setupOrgSeparateLogin } = await import('./embedded-wallet.js')
+      await setupOrgSeparateLogin(orgDomain, current, next)
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.innerHTML = `done — <a href="https://${escapeHtml(orgDomain)}" target="_blank" rel="noopener" style="color:var(--accent)">sign in at ${escapeHtml(orgDomain)}</a> with the new password`
+      setTimeout(() => overlay.remove(), 4000)
+    } catch (e) {
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.message || 'setup failed'
+      dialog.querySelector('#sol-submit').disabled = false
     }
   })
 }
