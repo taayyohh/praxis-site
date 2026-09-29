@@ -654,7 +654,7 @@ function renderIdentityTab(el) {
             ${siteData.logo ? `<button type="button" id="s-logo-remove" class="btn-small" style="font-size:0.8em;opacity:0.6">remove</button>` : ''}
           </div>
         </div>
-        <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.5">replaces your domain name in the top-left of every page. wide horizontal images work best (transparent PNG or SVG). auto-shrunk to fit — max 36px tall, 240px wide.</p>
+        <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.5">replaces your domain name in the top-left of every page. wide horizontal images work best (transparent PNG or SVG). auto-shrunk to fit — max 40px tall, 260px wide.</p>
       </div>
       <div class="settings-field">
         <label class="settings-label">short bio</label>

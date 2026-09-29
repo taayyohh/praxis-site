@@ -159,8 +159,26 @@ async function togglePanel() {
 // --- XMTP Client ---
 
 async function initClient() {
-  const address = window.getWalletAddress()
-  if (!address || client) return
+  const walletAddr = window.getWalletAddress()
+  if (!walletAddr || client) return
+  // On an org tenant where the connected wallet is a Safe owner, the
+  // XMTP identity is the org's Safe (EIP-1271 inbox). dm.js only
+  // reconnects via Client.build so it doesn't need a signer — just
+  // the right identity address. Non-signer visitors keep their
+  // personal EOA identity and their own OPFS state.
+  let address = walletAddr
+  try {
+    const orgTenant = !!document.body?.dataset?.orgType
+    const siteOwner = document.body?.dataset?.owner || ''
+    if (orgTenant && /^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
+      const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
+      const [isSafe, ownerIsSigner] = await Promise.all([
+        isSafeAddress(siteOwner),
+        isSafeSigner(siteOwner, walletAddr),
+      ])
+      if (isSafe && ownerIsSigner) address = siteOwner
+    }
+  } catch {}
 
   // Reuse existing client from messages.js or wallet.js if available
   if (window._xmtpClient?.inboxId) {

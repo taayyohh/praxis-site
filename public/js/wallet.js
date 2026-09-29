@@ -441,23 +441,33 @@ function showDock() {
     })
   }
 
-  // Org tenants only get org-scoped affordances. Collection, messages,
-  // journal, and write are personal to the visitor — none of them
-  // author or read anything on the org's behalf, so surfacing them on
-  // an org tenant just leaks the visitor's personal life onto the
-  // org's site. The visitor still reaches those from their own tenant.
-  // (Org blog / posts via Safe.execTx into BlogRegistry is queued as
-  // a separate task.)
+  // Org tenants only get org-scoped affordances. Collection, journal,
+  // and write are personal to the visitor — none of them author or
+  // read anything on the org's behalf, so surfacing them on an org
+  // tenant just leaks the visitor's personal life onto the org's
+  // site. The visitor still reaches those from their own tenant.
+  // Messages IS org-scoped though: with EIP-1271 the org's Safe holds
+  // its own XMTP inbox, so /messages on an org site is the org's
+  // shared inbox, not the visitor's personal DMs. That's why chat
+  // rejoined the org dock alongside treasury and manage.
   //
-  // Org signer's dock: portfolio (public site) + treasury (Safe
-  // balance / claim / send) + manage (settings) + sections toggle.
-  // Treasury opens the manage panel focused on the org's shared-
-  // account section; the panel + the modal live in settings.js.
-  const isOrgSite = !!document.body.dataset.orgId
+  // Org signer's dock: portfolio (public site) + propose + messages
+  // (Safe inbox via EIP-1271) + treasury (Safe balance / claim /
+  // send) + manage (settings) + sections toggle. Treasury opens the
+  // manage panel focused on the org's shared-account section; the
+  // panel + the modal live in settings.js.
+  const isOrgSite = !!document.body.dataset.orgId || !!document.body.dataset.orgType
+  // Chat is hidden by default on org tenants and revealed only when
+  // the connected wallet is verified as a Safe owner. Non-signer
+  // visitors clicking /messages here would either spawn their own
+  // personal inbox under the org's origin (identity fragmentation) or
+  // fail on the SCW sign step — both bad. Async check runs a beat
+  // after render and toggles display.
   const dockTools = isOrgSite
     ? `
       <button class="dock-btn" id="dock-portfolio" title="${t('dock.portfolio')}"><i class="ph ${document.body.classList.contains('feed-mode') ? 'ph-pulse' : 'ph-squares-four'}"></i></button>
       <a href="/propose" class="dock-btn" id="dock-org-propose" title="start a production"><i class="ph ph-plus"></i></a>
+      <a href="/messages" class="dock-btn" id="dock-chat" title="${t('dock.messages')}" style="position:relative;display:none"><i class="ph ph-chat-circle"></i><span id="dock-msg-dot" class="dock-msg-dot" style="display:none"></span></a>
       <button class="dock-btn" id="dock-org-treasury" title="treasury"><i class="ph ph-bank"></i></button>
       <button class="dock-btn" id="dock-org-manage" title="manage"><i class="ph ph-gear"></i></button>
       <button class="dock-btn" id="dock-sections-toggle" title="sections"><i class="ph ph-dots-three"></i></button>
@@ -510,7 +520,26 @@ function showDock() {
     const dot = document.getElementById('dock-msg-dot')
     if (dot) dot.style.display = ''
   }
-  // dock-chat is now an <a> link to /messages
+  // dock-chat is now an <a> link to /messages. On org tenants it
+  // starts hidden and reveals only if the connected wallet is a Safe
+  // signer — that's when /messages routes into the org's shared
+  // inbox via EIP-1271. Any other viewer stays without the icon.
+  if (isOrgSite) {
+    const chatEl = document.getElementById('dock-chat')
+    const siteOwner = document.body?.dataset?.owner || ''
+    const viewer = window.getWalletAddress?.() || ''
+    if (chatEl && siteOwner && viewer && /^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
+      import('./safe-org.js').then(async ({ isSafeAddress, isSafeSigner }) => {
+        try {
+          const [isSafe, ownerIsSigner] = await Promise.all([
+            isSafeAddress(siteOwner),
+            isSafeSigner(siteOwner, viewer),
+          ])
+          if (isSafe && ownerIsSigner) chatEl.style.display = ''
+        } catch {}
+      })
+    }
+  }
   document.getElementById('dock-portfolio')?.addEventListener('click', () => {
     if (window.location.pathname === '/' || window.location.pathname === '') {
       window.dispatchEvent(new CustomEvent('toggle-portfolio'))

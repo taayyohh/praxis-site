@@ -5,6 +5,53 @@ import { t } from './i18n.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic, uploadToIpfs } from './utils.js'
+import { createSafeXmtpSigner } from './safe-xmtp-signer.js'
+import { isSafeAddress, isSafeSigner } from './safe-org.js'
+
+// Resolve who the XMTP identity should be on this page. On an artist
+// tenant (or a non-Safe org) this returns the connected EOA in both
+// slots. On a Safe-admined org tenant where the connected wallet is
+// one of the Safe's owners, the Safe address becomes the XMTP
+// identity — the org holds its own inbox, verified via EIP-1271. The
+// signer authority stays the connected EOA (a Safe owner).
+async function _resolveXmtpIdentity(walletAddr) {
+  const base = { xmtpAddress: walletAddr, walletAddress: walletAddr, isOrgSafeMode: false }
+  if (!walletAddr) return base
+  const orgTenant = !!document.body?.dataset?.orgType
+  if (!orgTenant) return base
+  const siteOwner = document.body?.dataset?.owner || ''
+  if (!siteOwner || !/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) return base
+  try {
+    const [isSafe, ownerIsSigner] = await Promise.all([
+      isSafeAddress(siteOwner),
+      isSafeSigner(siteOwner, walletAddr),
+    ])
+    if (!isSafe || !ownerIsSigner) return base
+    return { xmtpAddress: siteOwner, walletAddress: walletAddr, isOrgSafeMode: true }
+  } catch (e) {
+    console.warn('praxis: XMTP identity resolve failed, falling back to EOA:', e?.message)
+    return base
+  }
+}
+
+// Build the XMTP signer object for the current identity context.
+// EOA path is the historic pattern; SCW path uses safe-xmtp-signer.js
+// which packs personal_sign output into the Safe eth_sign format so
+// Safe.isValidSignature accepts it via EIP-1271.
+async function _buildXmtpSigner(ctx) {
+  if (ctx.isOrgSafeMode) {
+    return createSafeXmtpSigner({
+      safeAddress: ctx.xmtpAddress,
+      ownerAddress: ctx.walletAddress,
+      sdk,
+    })
+  }
+  return {
+    type: 'EOA',
+    getIdentifier: () => ({ identifier: ctx.xmtpAddress, identifierKind: sdk.IdentifierKind.Ethereum }),
+    signMessage: (message) => _xmtpPersonalSign(ctx.walletAddress, message),
+  }
+}
 
 // Sign a message via the embedded wallet, falling back to window.ethereum.
 // Critical: when another wallet (Phantom, Coinbase, Rabby) has locked window.ethereum
@@ -734,6 +781,18 @@ async function startXmtp(address) {
   document.getElementById('messages-connect').style.display = 'none'
   document.getElementById('messages-loading').style.display = 'block'
 
+  // Resolve the effective XMTP identity for this tenant. On a Safe-
+  // admined org tenant where the connected wallet is a Safe owner,
+  // the org's Safe address becomes the XMTP identity (inbox holder)
+  // and the connected EOA remains the signer authority via EIP-1271.
+  // Everywhere below, `address` is the XMTP identity; `walletAddress`
+  // is the connected EOA used only for signing prompts.
+  const _xmtpCtx = await _resolveXmtpIdentity(address)
+  const walletAddress = _xmtpCtx.walletAddress
+  address = _xmtpCtx.xmtpAddress
+  const isOrgSafeMode = _xmtpCtx.isOrgSafeMode
+  if (isOrgSafeMode) dbg('praxis: XMTP org-safe mode', { safe: address, owner: walletAddress })
+
   // Cross-tab coordination via xmtp-proxy module
   const _xmtpLockName = `xmtp-${location.hostname}`
   const { acquireLeadership, patchWorker } = await import('./xmtp-proxy.js')
@@ -857,11 +916,7 @@ async function startXmtp(address) {
           console.warn('praxis: cached XMTP client is not registered — registering now')
           await window.ensureAuthorized?.()
           // Build a fresh signer (the original may have come from a different scope)
-          const repairSigner = {
-            type: 'EOA',
-            getIdentifier: () => ({ identifier: address, identifierKind: sdk.IdentifierKind.Ethereum }),
-            signMessage: (message) => _xmtpPersonalSign(address, message),
-          }
+          const repairSigner = await _buildXmtpSigner(_xmtpCtx)
           try {
             await client.register?.(repairSigner)
             try { localStorage.setItem(`xmtp-registered-${address.toLowerCase()}`, '1') } catch {}
@@ -901,14 +956,7 @@ async function startXmtp(address) {
       await window.ensureAuthorized?.()
     }
 
-    const signer = {
-      type: 'EOA',
-      getIdentifier: () => ({
-        identifier: address,
-        identifierKind: sdk.IdentifierKind.Ethereum,
-      }),
-      signMessage: (message) => _xmtpPersonalSign(address, message),
-    }
+    const signer = await _buildXmtpSigner(_xmtpCtx)
 
     // On /messages page, prefer Client.create (needs signer for send/revoke).
     // On other pages (e.g. dm.js unread badge), Client.build is fine for read-only.
@@ -3333,8 +3381,12 @@ async function ensureFullClient() {
   if (!window._xmtpClientIsReadOnly) return true // already full
   if (!client || !sdk) return false
 
-  const address = window.getWalletAddress?.()
-  if (!address) return false
+  const walletAddr = window.getWalletAddress?.()
+  if (!walletAddr) return false
+  // Resolve org-safe vs EOA identity the same way startXmtp does so an
+  // org tenant reconnecting a read-only client gets a full SCW signer
+  // and can send from the Safe.
+  const ctx = await _resolveXmtpIdentity(walletAddr)
 
   dbg('praxis: upgrading read-only client to full client for sending')
   const statusEl = document.getElementById('messages-input')
@@ -3348,11 +3400,7 @@ async function ensureFullClient() {
     window._xmtpClient = null
     await new Promise(r => setTimeout(r, 1500))
 
-    const signer = {
-      type: 'EOA',
-      getIdentifier: () => ({ identifier: address, identifierKind: sdk.IdentifierKind.Ethereum }),
-      signMessage: (message) => _xmtpPersonalSign(address, message),
-    }
+    const signer = await _buildXmtpSigner(ctx)
     client = await sdk.Client.create(signer, { env: 'production', disableAutoRegister: true })
     try { const { ReactionCodec } = await import('./vendor-xmtp-reaction.js'); client.registerCodec?.(new ReactionCodec()) } catch {}
     window._xmtpClient = client

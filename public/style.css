@@ -124,12 +124,12 @@ input[type="number"] {
   top: 0;
   left: 0;
   right: 0;
-  height: 3em;
+  min-height: 3em;
   background: var(--bg);
   display: flex;
   align-items: center;
   gap: 0.5ch;
-  padding: 0 2em;
+  padding: 4px 2em 0;
   z-index: 100;
 }
 #top-bar > #praxis-menu-dropdown {
@@ -274,8 +274,8 @@ body.org-vault-mode .vault-lead-label::after {
    band. object-fit contain preserves aspect ratio; display:block
    removes the img baseline gap so the anchor sits flush. */
 .site-logo {
-  max-height: 36px;
-  max-width: 240px;
+  max-height: 40px;
+  max-width: 260px;
   width: auto;
   height: auto;
   display: block;
@@ -720,9 +720,24 @@ img.wallet-greeting-avatar { padding: 0; }
 .assoc-orgs-hero {
   width: 100%;
   margin-top: 1em;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.35em;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}
+.assoc-orgs-badges {
+  color: var(--muted);
+  font-size: 0.85em;
+  /* Match the chip strip's visual height so the text sits at the
+     same vertical center as the 40px chip circles. Without this the
+     "9 works" text center-aligns against a natural 1em band and
+     reads as anchored to the top of the chips instead of the middle. */
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+.assoc-orgs-badges:empty {
+  display: none;
 }
 .assoc-orgs-heading {
   display: flex;

@@ -98,12 +98,37 @@ async function initAssocOrgs() {
   const wrap = document.createElement('div')
   wrap.id = 'assoc-orgs'
   wrap.className = 'assoc-orgs assoc-orgs-hero'
-  // Just the chips — no "ORGS" label. Miles pulled it after seeing it
-  // in feed mode alongside org-creation activity cards, where the
-  // heading felt redundant. The circle avatars on their own read as
-  // "orgs" without a label.
-  wrap.innerHTML = `<div class="assoc-orgs-chips">${chips}</div>`
+  // Left group: the artist's owner-badges (e.g. "9 works", "N
+  // completed"). Right group: the org chips. Same row, above the
+  // divider — Miles wanted them together instead of stacked
+  // separately. renderOwnerBadges (media.js) populates #owner-badges
+  // async after a Ponder query, so its content isn't guaranteed to
+  // be present when this init runs; use a MutationObserver to mirror
+  // it into the left group and hide the original the moment it
+  // arrives.
+  wrap.innerHTML = `
+    <div class="assoc-orgs-badges"></div>
+    <div class="assoc-orgs-chips">${chips}</div>
+  `
   heroHeader.appendChild(wrap)
+
+  const badgesTarget = wrap.querySelector('.assoc-orgs-badges')
+  const ownerBadges = document.getElementById('owner-badges')
+  const syncBadges = () => {
+    if (!ownerBadges || !badgesTarget) return
+    const html = (ownerBadges.innerHTML || '').trim()
+    if (!html) return
+    badgesTarget.innerHTML = html
+    ownerBadges.style.display = 'none'
+  }
+  syncBadges() // in case badges were already populated before us
+  if (ownerBadges && !ownerBadges.innerHTML.trim()) {
+    const mo = new MutationObserver(() => { if (ownerBadges.innerHTML.trim()) { syncBadges(); mo.disconnect() } })
+    mo.observe(ownerBadges, { childList: true, subtree: true, characterData: true })
+    // Safety: stop watching after 10s so a page where badges never
+    // populate doesn't hold the observer forever.
+    setTimeout(() => mo.disconnect(), 10_000)
+  }
 }
 
 if (document.readyState === 'loading') {
