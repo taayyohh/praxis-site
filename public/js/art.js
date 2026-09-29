@@ -333,13 +333,24 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' }))))
     html += `<button class="album-play-btn feed-card-btn" data-queue="${queueData}"><i class="ph ph-play"></i> ${t('art.play')}</button>`
   }
-  // Buy album button — sum all track prices
+  // Buy album button — sum all track prices from site.json first.
+  // If site.json has no mediaId/mediaPrice on tracks (older content
+  // that pre-dated on-chain listing), we still render an async
+  // placeholder that hydrates from on-chain listings — the same
+  // source /works reads — so an album that shows a buy button on the
+  // works grid also shows one on its own detail page.
   const buyableTracks = (album.tracks || []).filter(t => t.mediaId != null && t.mediaPrice && Number(t.mediaPrice) > 0)
   if (buyableTracks.length > 0) {
     let totalWei = 0n
     for (const t of buyableTracks) { try { totalWei += BigInt(Math.round(Number(t.mediaPrice))) } catch {} }
     const allMediaIds = buyableTracks.map(t => t.mediaId).join(',')
     html += `<button class="feed-buy-btn feed-card-btn green" data-media-id="${escapeHtml(allMediaIds)}" data-price="${escapeHtml(String(totalWei))}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)">${t('art.buy')} <span data-eth-wei="${escapeHtml(String(totalWei))}" data-fiat-primary="true"></span></button>`
+  } else {
+    // Async slot — filled by hydrateAlbumBuyFromChain below with an
+    // on-chain-listing-based buy button when site.json tracks don't
+    // carry mediaId/mediaPrice (older content). Empty otherwise so
+    // albums that were never listed don't ship a phantom button.
+    html += `<span data-album-buy-slot></span>`
   }
   // Overflow menu for queue + reference
   const firstListedTrack = (album.tracks || []).find(t => t.mediaId != null)
@@ -407,6 +418,11 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  // If site.json's tracks lack mediaId/mediaPrice, ask on-chain for
+  // matching listings and inject a buy-album button after render.
+  // The works grid does the same grouping — this brings the detail
+  // page in sync with what /works advertises for the same album.
+  if (!buyableTracks.length) _hydrateAlbumBuyFromChain(el, album, alias)
 
   // Wire overflow menus (··· buttons)
   const signal = _artAbortController?.signal
@@ -430,6 +446,81 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
       item.closest('.track-overflow-menu').style.display = 'none'
     }, { signal })
   })
+}
+
+// Hydrate a buy-album button on an album detail page whose site.json
+// tracks predate the on-chain listing wire-up. Reads the artist's
+// PraxisMedia listings (same source /works uses), groups by
+// metadataCid, picks the group whose album title matches, and swaps
+// the empty <span data-album-buy-slot> in the hero for a real button.
+// Match strategy (in order): metadataCid == album cover CID; then
+// >= half the track titles overlap. Silent no-op if nothing matches
+// so albums that were never listed just stay play-only.
+async function _hydrateAlbumBuyFromChain(rootEl, album, alias) {
+  const slot = rootEl.querySelector('[data-album-buy-slot]')
+  if (!slot) return
+  const owner = document.body?.dataset?.owner
+  if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return
+  try {
+    const { getArtistMedia } = await import('./media.js')
+    const { items = [] } = await getArtistMedia(owner)
+    if (!items.length) return
+    // Group by metadataCid — that's the album cover, shared across
+    // all tracks of the same release. Skip singletons (individual
+    // media, not album tracks).
+    const groups = new Map()
+    for (const it of items) {
+      if (!it.metadataCid) continue
+      if (!groups.has(it.metadataCid)) groups.set(it.metadataCid, [])
+      groups.get(it.metadataCid).push(it)
+    }
+    if (!groups.size) return
+    // Extract album cover CID from album.art if it's an IPFS URL.
+    const artStr = String(album.art || '')
+    const ipfsMatch = artStr.match(/(?:ipfs:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)([A-Za-z0-9]+)/)
+    const albumCid = ipfsMatch?.[1] || ''
+    // Title set for overlap match.
+    const jsonTitles = new Set((album.tracks || []).map(t => (t.title || '').trim().toLowerCase()).filter(Boolean))
+    let matched = null
+    if (albumCid && groups.has(albumCid)) {
+      matched = groups.get(albumCid)
+    } else if (jsonTitles.size) {
+      for (const g of groups.values()) {
+        if (g.length < 2) continue
+        const chainTitles = new Set(g.map(x => (x.title || '').trim().toLowerCase()).filter(Boolean))
+        let overlap = 0
+        for (const tt of jsonTitles) if (chainTitles.has(tt)) overlap++
+        if (overlap * 2 >= jsonTitles.size) { matched = g; break }
+      }
+    }
+    if (!matched || matched.length === 0) return
+    // Sum prices, ignoring free/zero-priced tracks (nothing to charge).
+    let totalWei = 0n
+    const buyIds = []
+    for (const m of matched) {
+      try {
+        const p = BigInt(m.price || 0)
+        if (p > 0n) { totalWei += p; buyIds.push(m.mediaId) }
+      } catch {}
+    }
+    if (!buyIds.length) return
+    const idsAttr = escapeHtml(buyIds.join(','))
+    const priceAttr = escapeHtml(String(totalWei))
+    const titleAttr = escapeHtml(`${album.title || 'album'} (${matched.length} tracks)`)
+    const btn = document.createElement('button')
+    btn.className = 'feed-buy-btn feed-card-btn green'
+    btn.setAttribute('data-media-id', idsAttr)
+    btn.setAttribute('data-price', priceAttr)
+    btn.setAttribute('data-title', titleAttr)
+    btn.innerHTML = `${t('art.buy')} <span data-eth-wei="${priceAttr}" data-fiat-primary="true"></span>`
+    slot.replaceWith(btn)
+    // Re-wire so the newly injected button picks up the buy handler.
+    wireArtDetailBuyButtons(rootEl)
+    // Nudge the fiat formatter to fill the price span.
+    window.dispatchEvent(new CustomEvent('fiat-format-request'))
+  } catch (e) {
+    console.warn('praxis: album buy hydrate failed:', e?.message)
+  }
 }
 
 function renderGalleryImage(el, image, idx) {

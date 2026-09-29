@@ -3558,7 +3558,7 @@ body:has(.collection-container) {
 /* Works for sale — card grid */
 .works-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 1em;
 }
 @media (max-width: 768px) { .works-grid { grid-template-columns: repeat(2, 1fr); } }

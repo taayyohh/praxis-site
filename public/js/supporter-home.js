@@ -378,7 +378,13 @@ function renderMasonryTile(purchase) {
         <div style="font-size:0.75em;color:#ccc">${escapeHtml(artistName)}</div>
       </div>`
   } else if (ct.startsWith('video/') || ct === 'video') {
-    const thumbSrc = media.ipfsCid ? `/api/video-thumb?cid=${media.ipfsCid}&w=400` : ''
+    // encodeURIComponent on ipfsCid — the string is attacker-controlled
+    // via PraxisMedia.list() (any address can list media with any
+    // CID string; on-chain there is no CID-format validation). Without
+    // encoding, a malicious CID like `x" onerror=alert(1) x="` breaks
+    // out of the src attribute and runs script in the origin of every
+    // supporter portfolio that renders this tile.
+    const thumbSrc = media.ipfsCid ? `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=400` : ''
     inner = `
       <img src="${thumbSrc}" loading="lazy" alt="${title}">
       <div class="masonry-tile-overlay">
@@ -402,7 +408,8 @@ function renderMasonryTile(purchase) {
     // Unknown contentType: try video-thumb for singles, fallback chain
     const coverSrc = media.metadataCid
       ? `/api/img?url=${encodeURIComponent(ipfsUrl(media.metadataCid))}&w=400` : ''
-    const thumbSrc = media.ipfsCid ? `/api/video-thumb?cid=${media.ipfsCid}&w=400` : ''
+    // Same attribute-breakout risk as the video/ branch above.
+    const thumbSrc = media.ipfsCid ? `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=400` : ''
     const imgFallback = media.ipfsCid ? `/api/img?url=${encodeURIComponent(ipfsUrl(media.ipfsCid))}&w=400` : ''
     if (coverSrc) {
       inner = `

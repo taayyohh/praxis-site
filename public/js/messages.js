@@ -4,33 +4,23 @@ import { query } from './ponder.js'
 import { t } from './i18n.js'
 import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
-import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic, uploadToIpfs } from './utils.js'
+import { escapeHtml, resolveAddresses, isBlocked, blockUser, unblockUser, registerPage, dbg, boundedSet, getPublicClient, getProfilePic, uploadToIpfs, resolveActingIdentity } from './utils.js'
 import { createSafeXmtpSigner } from './safe-xmtp-signer.js'
-import { isSafeAddress, isSafeSigner } from './safe-org.js'
 
-// Resolve who the XMTP identity should be on this page. On an artist
-// tenant (or a non-Safe org) this returns the connected EOA in both
-// slots. On a Safe-admined org tenant where the connected wallet is
-// one of the Safe's owners, the Safe address becomes the XMTP
-// identity — the org holds its own inbox, verified via EIP-1271. The
-// signer authority stays the connected EOA (a Safe owner).
+// Resolve who the XMTP identity should be on this page. Delegates to
+// the shared resolveActingIdentity() so all org-scoped surfaces
+// (vault, notifications, dm badge, chat dock reveal) stay in sync.
+// XMTP-specific shape:
+//   - xmtpAddress: identity that owns the inbox
+//   - walletAddress: EOA that actually signs (SCW EIP-1271 flow)
+//   - isOrgSafeMode: signer type differs — SCW vs EOA
 async function _resolveXmtpIdentity(walletAddr) {
-  const base = { xmtpAddress: walletAddr, walletAddress: walletAddr, isOrgSafeMode: false }
-  if (!walletAddr) return base
-  const orgTenant = !!document.body?.dataset?.orgType
-  if (!orgTenant) return base
-  const siteOwner = document.body?.dataset?.owner || ''
-  if (!siteOwner || !/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) return base
-  try {
-    const [isSafe, ownerIsSigner] = await Promise.all([
-      isSafeAddress(siteOwner),
-      isSafeSigner(siteOwner, walletAddr),
-    ])
-    if (!isSafe || !ownerIsSigner) return base
-    return { xmtpAddress: siteOwner, walletAddress: walletAddr, isOrgSafeMode: true }
-  } catch (e) {
-    console.warn('praxis: XMTP identity resolve failed, falling back to EOA:', e?.message)
-    return base
+  if (!walletAddr) return { xmtpAddress: '', walletAddress: '', isOrgSafeMode: false }
+  const ident = await resolveActingIdentity(walletAddr)
+  return {
+    xmtpAddress: ident.acting,
+    walletAddress: ident.walletAddress,
+    isOrgSafeMode: ident.mode === 'org-safe',
   }
 }
 
@@ -2402,55 +2392,57 @@ async function loadConversations() {
       })
     })
 
-    // "Load more" handler
-    const loadMoreEl = document.getElementById('messages-load-more')
-    if (loadMoreEl) {
-      loadMoreEl.addEventListener('click', () => {
-        const start = _msgDisplayCount
-        const next = items.slice(start, start + CONVO_PAGE_SIZE)
-        _msgDisplayCount += CONVO_PAGE_SIZE
+    // "Load more" handler — named so re-adding the button after a
+    // page load rebinds the SAME function. Previous version bound the
+    // handler via addEventListener (so `loadMoreEl.onclick` is null),
+    // then called `newLoadMore.addEventListener('click', null)` on the
+    // fresh button — a no-op, so pagination past page 2 silently died.
+    const onLoadMore = () => {
+      const start = _msgDisplayCount
+      const next = items.slice(start, start + CONVO_PAGE_SIZE)
+      _msgDisplayCount += CONVO_PAGE_SIZE
 
-        // Remove the load-more button
-        loadMoreEl.remove()
+      // Remove the current load-more button (fetched fresh — the one
+      // captured in closure may already be gone after a re-render).
+      document.getElementById('messages-load-more')?.remove()
 
-        // Append new items
-        const moreHtml = next.map((item, j) => {
-          const idx = start + j
-          return `<div class="msg-convo-item${item.isGroup ? ' msg-convo-group' : ''}" data-idx="${idx}">
-            <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)}</div>
-            <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
-            <div class="msg-convo-time">${item.time}</div>
-          </div>`
-        }).join('')
+      // Append new items
+      const moreHtml = next.map((item, j) => {
+        const idx = start + j
+        return `<div class="msg-convo-item${item.isGroup ? ' msg-convo-group' : ''}" data-idx="${idx}">
+          <div class="msg-convo-peer">${item.isUnread ? '<span class="msg-unread-dot" style="display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;margin-right:0.5ch;vertical-align:middle"></span>' : ''}${escapeHtml(item.peerDomain)}</div>
+          <div class="msg-convo-preview">${escapeHtml(item.preview.slice(0, 60))}</div>
+          <div class="msg-convo-time">${item.time}</div>
+        </div>`
+      }).join('')
 
-        const stillMore = items.length > start + CONVO_PAGE_SIZE
-        listEl.insertAdjacentHTML('beforeend', moreHtml + (stillMore ? `<div id="messages-load-more" class="msg-convo-item" style="text-align:center;color:var(--muted);cursor:pointer">${t('messages.loadMore') || 'load more conversations'}</div>` : ''))
+      const stillMore = items.length > start + CONVO_PAGE_SIZE
+      listEl.insertAdjacentHTML('beforeend', moreHtml + (stillMore ? `<div id="messages-load-more" class="msg-convo-item" style="text-align:center;color:var(--muted);cursor:pointer">${t('messages.loadMore') || 'load more conversations'}</div>` : ''))
 
-        // Bind click handlers on new items
-        listEl.querySelectorAll('.msg-convo-item:not(#messages-load-more)').forEach(el => {
-          if (!el.dataset.bound) {
-            el.dataset.bound = '1'
-            el.addEventListener('click', () => {
-              listEl.querySelectorAll('.msg-convo-item').forEach(e => e.classList.remove('active'))
-              el.classList.add('active')
-              const item = _msgItems[parseInt(el.dataset.idx)]
-              if (item) {
-                try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
-          // Remove the red unread dot from this conversation item
-          el.querySelector('.msg-unread-dot')?.remove()
-                openConversation(item.convo, item.peerDomain)
-              }
-            })
-          }
-        })
-
-        // Re-bind load more if added
-        const newLoadMore = document.getElementById('messages-load-more')
-        if (newLoadMore) {
-          newLoadMore.addEventListener('click', loadMoreEl.onclick)
+      // Bind click handlers on new items
+      listEl.querySelectorAll('.msg-convo-item:not(#messages-load-more)').forEach(el => {
+        if (!el.dataset.bound) {
+          el.dataset.bound = '1'
+          el.addEventListener('click', () => {
+            listEl.querySelectorAll('.msg-convo-item').forEach(e => e.classList.remove('active'))
+            el.classList.add('active')
+            const item = _msgItems[parseInt(el.dataset.idx)]
+            if (item) {
+              try { localStorage.setItem(`praxis:msg-seen:${item.convo.id}`, String(BigInt(Date.now()) * 1000000n)) } catch {}
+              // Remove the red unread dot from this conversation item
+              el.querySelector('.msg-unread-dot')?.remove()
+              openConversation(item.convo, item.peerDomain)
+            }
+          })
         }
       })
+
+      // Re-bind load more if added
+      const newLoadMore = document.getElementById('messages-load-more')
+      if (newLoadMore) newLoadMore.addEventListener('click', onLoadMore)
     }
+    const loadMoreEl = document.getElementById('messages-load-more')
+    if (loadMoreEl) loadMoreEl.addEventListener('click', onLoadMore)
   } catch (e) {
     console.error('load conversations:', e)
   }
@@ -3487,9 +3479,15 @@ async function sendMessage(e) {
         })()
       } catch {}
     }
-    // if this was a request (non-mutual), move it to main list after replying
-    const requestEl = document.querySelector(`.msg-convo-item[data-idx]`)
-    if (requestEl?.closest('.msg-requests-section')) {
+    // If this was a request conversation (non-mutual peer), sending a
+    // reply promotes it to the main list — re-run _loadConversations
+    // so it moves out of Requests. The active convo carries the
+    // `msg-convo-request` class in the sidebar (see the render at
+    // line ~2361); the previous check for `.msg-requests-section` was
+    // a class that doesn't exist, so replies to requests never
+    // triggered the promotion.
+    const activeItem = document.querySelector('.msg-convo-item.active')
+    if (activeItem?.classList.contains('msg-convo-request')) {
       _loadConversations(window.getWalletAddress?.()).catch(() => {})
     }
   } catch (err) {

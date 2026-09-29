@@ -1364,8 +1364,10 @@ async function _renderOrgSafePanel(siteOrg) {
     // (so it's transparent who has spending authority); only signers
     // can add/remove others or change the threshold. On a 1-of-1 Safe
     // the "co-owners" section reads as "you are the sole owner" until
-    // a second signer is added.
-    const signersPanel = amSigner ? _renderSignersPanel({ owners, threshold, viewer, admin }) : ''
+    // a second signer is added. If threshold read failed (RPC blip)
+    // hide the panel — better a missing panel than one that shows a
+    // wrong number and lets the viewer write it back to chain.
+    const signersPanel = (amSigner && threshold != null) ? _renderSignersPanel({ owners, threshold, viewer, admin }) : ''
 
     return `
       <div style="margin-top:1em;padding-top:0.75em;border-top:1px dashed var(--border)">
@@ -1497,7 +1499,10 @@ async function _handleOrgSignerAdd(safeAddress, statusEl, btn, container) {
     // Keep existing threshold — user changes it separately with the
     // slider. Safe requires threshold <= new owner count; adding an
     // owner grows the count so any current threshold stays valid.
+    // getSafeThreshold returns null on RPC error — bail rather than
+    // silently ship a downgrade to whatever a fallback would be.
     const threshold = await getSafeThreshold(safeAddress)
+    if (threshold == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
     await safeAddSigner({ safeAddress, newSigner, threshold })
     setStatus('added ✓', 'var(--green)')
     if (input) input.value = ''
@@ -1521,6 +1526,7 @@ async function _handleOrgSignerRemove(safeAddress, signerToRemove, statusEl, btn
     // → 2-of-1 is impossible) drop threshold to remaining count. Safe
     // reverts otherwise.
     const currentThresh = await getSafeThreshold(safeAddress)
+    if (currentThresh == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
     const newOwnerCount = owners.length - 1
     const newThresh = Math.min(currentThresh, Math.max(1, newOwnerCount))
     await safeRemoveSigner({ safeAddress, signerToRemove, threshold: newThresh })
@@ -1542,6 +1548,7 @@ async function _handleOrgSignerThreshold(safeAddress, statusEl, btn, container) 
   try {
     const { safeChangeThreshold, getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
     const [owners, current] = await Promise.all([getSafeOwners(safeAddress), getSafeThreshold(safeAddress)])
+    if (current == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
     if (value > owners.length) { setStatus(`can't require more signatures than co-owners (${owners.length})`, 'var(--dim)'); btn.disabled = false; return }
     if (value === current) { setStatus('no change', 'var(--dim)'); btn.disabled = false; return }
     await safeChangeThreshold({ safeAddress, threshold: value })

@@ -75,10 +75,26 @@ export async function getAuthToken({ force = false } = {}) {
 // When another wallet (Phantom/Coinbase/Rabby) has locked window.ethereum as
 // non-configurable, our embedded provider lives at window.praxisEthereum.
 // EVERY wallet RPC call must go through this helper, not window.ethereum directly.
+// Does the current page render as an org tenant? Both `data-org-id`
+// and `data-org-type` are stamped by the organization template, but
+// legacy orgs (like lucid.haus before the org-id backfill) have
+// orgId=null in site.json → the template renders `data-org-id=""`
+// → dataset.orgId is falsy. `data-org-type` on the other hand is
+// always set to the org shape (label, collective, etc.), so it's the
+// reliable signal. Match either — orgId as a positive tell, orgType
+// as the fallback so legacy tenants aren't excluded from org-scoped
+// behavior.
+export function isOrgTenant() {
+  const b = document?.body
+  if (!b) return false
+  return !!(b.dataset?.orgId || b.dataset?.orgType)
+}
+
 // Is the connected wallet allowed to admin THIS site?
 // - Plain artist/project sites: viewer address must equal body.dataset.owner
-// - Org sites (data-org-id present): body.dataset.owner is the Safe address;
-//   viewer is an EOA signer, so we check Safe.isOwner(viewer) on-chain.
+// - Org sites: body.dataset.owner is either an EOA (legacy) or a
+//   Safe address; for a Safe, viewer is an EOA signer, so we check
+//   Safe.isOwner(viewer) on-chain.
 // Cached per (siteOwner, viewer) tuple with a 60s TTL so repeated
 // checks in the same page don't spam RPC.
 const _siteOwnerCache = new Map()
@@ -90,8 +106,7 @@ export async function isSiteOwner(viewer, siteOwner) {
   if (v === s) return true
   // Only try the Safe lookup on org sites — no point querying isOwner
   // on an EOA (would revert and cost RPC).
-  const isOrgSite = !!document.body?.dataset?.orgId
-  if (!isOrgSite) return false
+  if (!isOrgTenant()) return false
   const key = `${s}:${v}`
   const cached = _siteOwnerCache.get(key)
   if (cached && Date.now() - cached.ts < _SITE_OWNER_TTL) return cached.result
@@ -101,6 +116,46 @@ export async function isSiteOwner(viewer, siteOwner) {
     _siteOwnerCache.set(key, { result, ts: Date.now() })
     return result
   } catch { return false }
+}
+
+// Resolve who the current viewer is acting AS on this page. Every
+// org-scoped surface needs the same answer: on an artist tenant it's
+// always the personal wallet; on an org tenant a Safe owner acts as
+// the Safe; on an EOA-run legacy org the viewer signed in as the org
+// wallet itself. This centralizes the branch so future changes land
+// once instead of in seven places.
+//
+// Returns:
+//   { acting, walletAddress, mode }
+// where mode is one of:
+//   'personal'       → not on an org tenant, or viewer is a fan; act as EOA
+//   'org-eoa'        → viewer connected as the org's own EOA wallet
+//   'org-safe'       → viewer is a Safe owner; act as the Safe
+// `acting` is the address to use as identity (Safe address in org-safe
+// mode, walletAddress otherwise). `walletAddress` is always the
+// connected EOA — the one that actually signs.
+export async function resolveActingIdentity(viewer) {
+  const walletAddress = viewer ? String(viewer) : ''
+  const base = { acting: walletAddress, walletAddress, mode: 'personal' }
+  if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) return base
+  if (!isOrgTenant()) return base
+  const siteOwner = document.body?.dataset?.owner || ''
+  if (!siteOwner || !/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) return base
+  // EOA-run org (lucid.haus shape): the signed-in wallet IS the org.
+  if (siteOwner.toLowerCase() === walletAddress.toLowerCase()) {
+    return { acting: siteOwner, walletAddress, mode: 'org-eoa' }
+  }
+  // Safe-run org: probe on chain. Any RPC failure falls back to
+  // 'personal' — safer to under-report authority than over-report.
+  try {
+    const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
+    const [isSafe, ownerIsSigner] = await Promise.all([
+      isSafeAddress(siteOwner),
+      isSafeSigner(siteOwner, walletAddress),
+    ])
+    if (isSafe && ownerIsSigner) return { acting: siteOwner, walletAddress, mode: 'org-safe' }
+  } catch {}
+  return base
 }
 
 export function getWalletProvider() {

@@ -37,11 +37,21 @@ function _greetingWord() { return _walletWord('greeting', 'wallet.greeting') }
 // Resolve MY name + profile pic on cross-tenant browsing. Uses the shared
 // /api/artists/resolve endpoint which the resolver batcher already hits.
 // Cached by address for the session so repeated dropdown opens don't
-// re-hit the network.
+// re-hit the network. Bounded (LRU-ish: evict oldest on insert past
+// cap) to satisfy CLAUDE.md's "all caches must be bounded" rule — the
+// user only ever sees one connected address, but wallet-switching or
+// signin flows can accumulate entries over a long session.
+const _MY_IDENTITY_CACHE_CAP = 32
 const _myIdentityCache = new Map()
 async function _resolveMyIdentity(address) {
   const key = String(address).toLowerCase()
-  if (_myIdentityCache.has(key)) return _myIdentityCache.get(key)
+  if (_myIdentityCache.has(key)) {
+    // Refresh recency for LRU eviction.
+    const val = _myIdentityCache.get(key)
+    _myIdentityCache.delete(key)
+    _myIdentityCache.set(key, val)
+    return val
+  }
   try {
     const res = await fetch(`/api/artists/resolve`, {
       method: 'POST',
@@ -57,6 +67,11 @@ async function _resolveMyIdentity(address) {
     const displayName = data?.names?.[key] || domain || null
     const pic = data?.profilePics?.[key] || getProfilePic(address) || null
     const out = { name: displayName, pic }
+    // Enforce cap before insert — evict oldest (first insertion order).
+    if (_myIdentityCache.size >= _MY_IDENTITY_CACHE_CAP) {
+      const oldest = _myIdentityCache.keys().next().value
+      if (oldest) _myIdentityCache.delete(oldest)
+    }
     _myIdentityCache.set(key, out)
     return out
   } catch {
@@ -276,7 +291,11 @@ async function showAddress(address) {
     // wrong — Miles is himself, signing on behalf of the org.
     if (walletTop) {
       const siteName = document.body.dataset.name || ''
-      const isOrgSite = !!document.body.dataset.orgId
+      // Match both signals — legacy orgs (like lucid.haus) can have
+      // orgId empty in site.json but always carry orgType from the
+      // template. Checking orgId alone would drop them out of the
+      // "owner of X" subtitle path.
+      const isOrgSite = !!document.body.dataset.orgId || !!document.body.dataset.orgType
       const shortAddr = `${address.slice(0,6)}...${address.slice(-4)}`
       // On a personal artist tenant where the visitor owns the site,
       // greet them with the baked-in site name. Everywhere else (org
@@ -522,37 +541,23 @@ function showDock() {
   }
   // dock-chat is now an <a> link to /messages. On org tenants it
   // starts hidden and reveals only when the connected wallet is
-  // authorized to speak AS the org — two shapes:
-  //   1. EOA org (like lucid.haus, run from an embedded wallet the
-  //      admin unlocks with password): the connected wallet IS the
-  //      org wallet. Standard XMTP with that identity.
-  //   2. Safe org (like whatifwe.nyc): the connected wallet is a Safe
-  //      owner. XMTP identity is the Safe, signer is the owner via
-  //      EIP-1271 (safe-xmtp-signer.js).
-  // Any other viewer (a fan browsing the org's page) stays without
-  // the icon — they don't get to send DMs as the org.
+  // authorized to speak AS the org. resolveActingIdentity handles
+  // both shapes (Safe owner and legacy EOA-org owner); any other
+  // viewer (a fan browsing the org's page) stays without the icon
+  // and can't accidentally spawn a personal inbox under the org's
+  // origin.
   if (isOrgSite) {
     const chatEl = document.getElementById('dock-chat')
-    const siteOwner = document.body?.dataset?.owner || ''
     const viewer = window.getWalletAddress?.() || ''
-    if (chatEl && siteOwner && viewer && /^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
-      // EOA org path: viewer signed in as the org itself. Reveal
-      // right away; no Safe check needed.
-      if (viewer.toLowerCase() === siteOwner.toLowerCase()) {
-        chatEl.style.display = ''
-      } else {
-        // Safe org path: probe Safe.isOwner(viewer). Async — leaves
-        // the icon hidden until the check confirms.
-        import('./safe-org.js').then(async ({ isSafeAddress, isSafeSigner }) => {
-          try {
-            const [isSafe, ownerIsSigner] = await Promise.all([
-              isSafeAddress(siteOwner),
-              isSafeSigner(siteOwner, viewer),
-            ])
-            if (isSafe && ownerIsSigner) chatEl.style.display = ''
-          } catch {}
-        })
-      }
+    if (chatEl && viewer) {
+      import('./utils.js').then(async ({ resolveActingIdentity }) => {
+        try {
+          const ident = await resolveActingIdentity(viewer)
+          if (ident.mode === 'org-safe' || ident.mode === 'org-eoa') {
+            chatEl.style.display = ''
+          }
+        } catch {}
+      })
     }
   }
   document.getElementById('dock-portfolio')?.addEventListener('click', () => {

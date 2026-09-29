@@ -470,27 +470,19 @@ async function initVault() {
     return
   }
 
-  // On an org tenant where the viewer is a Safe signer, /vault is the
-  // ORG's vault, not the viewer's personal vault. Swap addr from the
-  // viewer's EOA to the Safe address so every downstream fetch
-  // (balance, pending withdrawals, earnings) reads the org's numbers.
-  // On artist tenants (no data-org-id) or when the viewer isn't a
-  // signer, keep the personal-vault behaviour.
-  let addr = viewer
-  let orgSafeAddr = ''
-  const isOrgSite = !!document.body?.dataset?.orgId
-  if (isOrgSite) {
-    const siteOwner = String(document.body?.dataset?.owner || '')
-    if (/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
-      try {
-        const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
-        if (await isSafeAddress(siteOwner) && await isSafeSigner(siteOwner, viewer)) {
-          addr = siteOwner
-          orgSafeAddr = siteOwner
-        }
-      } catch {}
-    }
-  }
+  // On an org tenant where the viewer can act as the org, /vault is
+  // the ORG's vault. resolveActingIdentity handles both shapes:
+  //   - org-safe: viewer is a Safe owner → swap addr to Safe address,
+  //     enable org-vault-mode (send/claim route through Safe.execTx)
+  //   - org-eoa: viewer signed in AS the org wallet → addr already
+  //     equals siteOwner, no swap, send/claim use standard wallet
+  //     calls (no CSS mode class since save-to-BOLD works fine)
+  // On artist tenants or for a fan visiting an org, falls back to
+  // the viewer's personal vault.
+  const { resolveActingIdentity } = await import('./utils.js')
+  const ident = await resolveActingIdentity(viewer)
+  let addr = ident.acting
+  const orgSafeAddr = ident.mode === 'org-safe' ? ident.acting : ''
   _orgVaultAddr = orgSafeAddr // module-scoped so click handlers see it
 
   // Tag body so CSS can hide personal-only affordances (save-to-BOLD
@@ -2656,6 +2648,11 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
   if (!container) return
   const { getSafeOwners, getSafeThreshold } = await import('./safe-org.js')
   const [owners, threshold] = await Promise.all([getSafeOwners(safeAddress), getSafeThreshold(safeAddress)])
+  // Threshold null = RPC read failed. Don't render the co-owners
+  // strip with a fabricated default — the UI's "signatures required"
+  // input would show a wrong number and a save click would push that
+  // wrong number to the Safe.
+  if (!owners.length || threshold == null) return
   const doc = container.querySelector('.vault-doc') || container
   const section = document.createElement('section')
   section.className = 'vault-co-owners'
@@ -2714,6 +2711,7 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
           const existing = await rf(safeAddress)
           if (existing.some(o => o.toLowerCase() === val.toLowerCase())) { setStatus('already a co-owner', 'var(--dim)'); btn.disabled = false; return }
           const t = await gt(safeAddress)
+          if (t == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
           setStatus('confirm in wallet…')
           await safeAddSigner({ safeAddress, newSigner: val, threshold: t })
           setStatus('added ✓', 'var(--green)')
@@ -2722,6 +2720,7 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
           const signer = btn.dataset.signer
           if (!confirm(`Remove ${signer.slice(0, 6)}… as a co-owner? They will lose access to this shared account.`)) { btn.disabled = false; return }
           const [existing, t] = await Promise.all([rf(safeAddress), gt(safeAddress)])
+          if (t == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
           const newCount = existing.length - 1
           const newT = Math.min(t, Math.max(1, newCount))
           setStatus('confirm in wallet…')

@@ -1168,28 +1168,23 @@ function stopNotifPolling() {
   }
 }
 
-// On an org tenant where the viewer is a Safe signer, notifications
-// belong to the ORG (the Safe address holds the identity — that's
+// On an org tenant where the viewer can act as the org, notifications
+// belong to the ORG (the org's address holds the identity — that's
 // who owns the media, who's followed, who receives replies), not the
 // signer's personal wallet. Every entry point that used to feed
-// window.getWalletAddress() straight to initNotifications now goes
-// through _effectiveAddr so the addr swaps to the Safe when
-// appropriate. Caches keyed by addr already keep the two identities
-// separate. On personal artist tenants (or when the viewer isn't a
-// Safe signer of this org) the function is a no-op returning viewer.
+// window.getWalletAddress() straight to initNotifications goes
+// through _effectiveAddr, which routes through resolveActingIdentity
+// so both org shapes are covered: a Safe owner acts as the Safe, an
+// EOA-org owner already IS the org wallet (identity resolves to
+// itself, which is what we want). Caches keyed by addr keep the two
+// identities separate.
 async function _effectiveAddr(viewer) {
   if (!viewer) return viewer
-  const isOrgSite = !!document.body?.dataset?.orgId
-  if (!isOrgSite) return viewer
-  const siteOwner = String(document.body?.dataset?.owner || '')
-  if (!/^0x[0-9a-fA-F]{40}$/.test(siteOwner)) return viewer
   try {
-    const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
-    if (await isSafeAddress(siteOwner) && await isSafeSigner(siteOwner, viewer)) {
-      return siteOwner
-    }
-  } catch {}
-  return viewer
+    const { resolveActingIdentity } = await import('./utils.js')
+    const ident = await resolveActingIdentity(viewer)
+    return ident.acting
+  } catch { return viewer }
 }
 
 function _visTick() {

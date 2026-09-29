@@ -47,19 +47,14 @@ export async function createSafeXmtpSigner({ safeAddress, ownerAddress, sdk }) {
     }),
     getChainId: () => OPTIMISM_CHAIN_ID,
     getBlockNumber: async () => {
-      // XMTP verifies signature validity against a specific block so
-      // ownership changes on the Safe are attributed correctly. Fresh
-      // block per signature is fine — Optimism confirms in ~2s.
-      try {
-        const pc = await getPublicClient()
-        const bn = await pc.getBlockNumber()
-        return bn
-      } catch {
-        // Fall back to 0 if RPC is unreachable; XMTP will surface
-        // a validation error the user can retry rather than we
-        // silently pass a stale number.
-        return 0n
-      }
+      // XMTP verifies the EIP-1271 signature against Safe state at a
+      // specific block, so this number matters. Do NOT swallow RPC
+      // errors and return 0n — verification against block 0 asks
+      // XMTP to prove ownership before the Safe existed and fails
+      // opaquely. Propagate the error so XMTP retries and the user
+      // sees a real signal that RPC is unreachable.
+      const pc = await getPublicClient()
+      return pc.getBlockNumber()
     },
     signMessage: async (message) => {
       const provider = getWalletProvider()

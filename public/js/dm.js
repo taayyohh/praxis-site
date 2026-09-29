@@ -161,24 +161,20 @@ async function togglePanel() {
 async function initClient() {
   const walletAddr = window.getWalletAddress()
   if (!walletAddr || client) return
-  // On an org tenant where the connected wallet is a Safe owner, the
-  // XMTP identity is the org's Safe (EIP-1271 inbox). dm.js only
-  // reconnects via Client.build so it doesn't need a signer — just
-  // the right identity address. Non-signer visitors keep their
-  // personal EOA identity and their own OPFS state.
+  // Resolve XMTP identity for this tenant. On an org tenant the
+  // identity depends on shape: a Safe owner acts as the Safe (its
+  // own EIP-1271 inbox), an EOA-org owner acts as the org wallet
+  // itself. resolveActingIdentity picks the right one. Any error
+  // resolving falls back to the connected EOA — but log it so we
+  // don't silently open a different inbox than /messages did.
   let address = walletAddr
   try {
-    const orgTenant = !!document.body?.dataset?.orgType
-    const siteOwner = document.body?.dataset?.owner || ''
-    if (orgTenant && /^0x[0-9a-fA-F]{40}$/.test(siteOwner)) {
-      const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
-      const [isSafe, ownerIsSigner] = await Promise.all([
-        isSafeAddress(siteOwner),
-        isSafeSigner(siteOwner, walletAddr),
-      ])
-      if (isSafe && ownerIsSigner) address = siteOwner
-    }
-  } catch {}
+    const { resolveActingIdentity } = await import('./utils.js')
+    const ident = await resolveActingIdentity(walletAddr)
+    address = ident.acting
+  } catch (e) {
+    console.warn('praxis: dm identity resolve failed, using EOA:', e?.message)
+  }
 
   // Reuse existing client from messages.js or wallet.js if available
   if (window._xmtpClient?.inboxId) {

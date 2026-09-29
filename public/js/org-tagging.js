@@ -120,7 +120,12 @@ export async function attachOrgTagger(cardEl, media) {
   const trigger = document.createElement('button')
   trigger.className = 'org-tag-trigger'
   trigger.type = 'button'
-  trigger.style.cssText = 'background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.9ch;cursor:pointer;border-radius:2px;white-space:nowrap'
+  // Subtle inline link, not a bordered button — the buy affordance
+  // above it is the primary action; org tagging is a quieter
+  // meta-level control that a visitor scans to understand context
+  // and an owner clicks to publish/unpublish. Text-only lets it
+  // recede while still being clickable.
+  trigger.style.cssText = 'background:none;border:none;color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0;cursor:pointer;white-space:nowrap;text-decoration:underline;text-decoration-color:color-mix(in srgb, var(--dim) 40%, transparent);text-underline-offset:2px'
   const _labelFor = () => {
     const activeCount = orgs.filter(o => tagged.has(String(o.id))).length
     return activeCount > 0 ? `in ${activeCount} org${activeCount === 1 ? '' : 's'}` : 'publish'

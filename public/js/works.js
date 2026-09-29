@@ -411,18 +411,26 @@ function renderListings(listings) {
 
     const spanAttr = type === 'video' ? ' data-span="2"' : ''
     const artLinkWrap = type === 'video' ? coverImgHtml : `<a href="${artDetailUrl}" style="display:block;width:100%;height:100%">${coverImgHtml}</a>`
+    // Whole card is a click target to the detail page (except the
+    // play overlay + buy button, which stop propagation). Before, only
+    // the cover art and the title text were links — for a text-only
+    // work like a play with no cover, that title was almost invisible
+    // as a click target, so the item felt like it had no detail page.
+    // The click routes via <a data-card-link> on the info block; the
+    // per-element art link + title link stay as backup targets and
+    // for right-click "open in new tab".
     html += `<div class="works-card" data-media-id="${item.id}" data-price="${item.price}" data-type="${type}"${spanAttr}>
       <div class="works-card-art">${artLinkWrap}${artOverlay}</div>
-      <div class="works-card-info">
-        <a href="${artDetailUrl}" class="works-card-title">${title}</a>
+      <a href="${artDetailUrl}" class="works-card-info" data-card-link style="text-decoration:none;color:inherit;display:block">
+        <span class="works-card-title" style="display:block">${title}</span>
         <div class="works-card-meta">${priceDisplay}${supplyText !== t('works.unlimited') ? ` · ${supplyText}` : ''}</div>
         <div class="works-card-actions" style="display:flex;gap:0.4em;align-items:center">
           ${soldOut
             ? `<span style="color:var(--muted);font-size:0.85em">${t('works.soldOut')}</span>`
-            : `<button class="works-buy-btn feed-card-btn green" data-media-id="${item.id}" data-price="${item.price}">${t('works.buy')}</button>`
+            : `<button class="works-buy-btn feed-card-btn green" data-media-id="${item.id}" data-price="${item.price}" onclick="event.stopPropagation()">${(!item.price || BigInt(item.price) === 0n) ? t('art.collectFree') : t('works.buy')}</button>`
           }
         </div>
-      </div>
+      </a>
     </div>`
   }
   return html

@@ -12,8 +12,15 @@
 // a "pre-approved" signature — no cryptographic sig needed, just packed
 // signer address + zero-word + 0x01 (signature type = "owner sender").
 
-import { createWalletClient, custom, optimism, encodeFunctionData, parseEther } from './vendor.js'
+import { createWalletClient, custom, optimism, encodeFunctionData, parseEther, keccak256, toBytes } from './vendor.js'
 import { getPublicClient, getWalletClient, getWalletProvider, ensureWallet } from './utils.js'
+
+// Precomputed keccak256("ProxyCreation(address,address)") — Safe
+// factory emits this event with topics[1] = proxy address (indexed).
+// We filter receipt logs by this exact hash so an unrelated event
+// on the factory address can't fool us into returning the wrong
+// contract as the Safe.
+const PROXY_CREATION_TOPIC = keccak256(toBytes('ProxyCreation(address,address)'))
 
 export const SAFE_ADDRESSES = {
   proxyFactory: '0x14F2982D601c9458F93bd70B218933A6f8165e7b',
@@ -75,7 +82,20 @@ export async function deployOrgSafe({ signers, threshold = 1, saltNonce } = {}) 
   if (!addr) throw new Error('connect wallet')
   if (!await window.ensureOptimism?.()) return
 
-  const nonce = saltNonce != null ? BigInt(saltNonce) : BigInt(Date.now())
+  // saltNonce must be unique per (signers, threshold) tuple or CREATE2
+  // yields an already-deployed address and the tx reverts. Date.now()
+  // collides across concurrent tabs in the same millisecond; mix in
+  // crypto random for guaranteed uniqueness.
+  let nonce
+  if (saltNonce != null) {
+    nonce = BigInt(saltNonce)
+  } else {
+    const rand = new Uint8Array(8)
+    crypto.getRandomValues(rand)
+    let randHex = ''
+    for (const b of rand) randHex += b.toString(16).padStart(2, '0')
+    nonce = (BigInt(Date.now()) << 64n) | BigInt('0x' + randHex)
+  }
   const initializer = encodeFunctionData({
     abi: SAFE_ABI,
     functionName: 'setup',
@@ -94,18 +114,18 @@ export async function deployOrgSafe({ signers, threshold = 1, saltNonce } = {}) 
   const pc = await getPublicClient()
   const receipt = await pc.waitForTransactionReceipt({ hash })
 
-  // Find the ProxyCreation event — topic[0] is keccak256(ProxyCreation)
-  // in the factory's ABI. Rather than compute it, filter by factory
-  // address + the singleton in data.
+  // Find the ProxyCreation event by exact topic hash. Filtering by
+  // factory address + topics.length alone matched ANY indexed-arg
+  // event on the factory — a future factory extension emitting a
+  // different event first would have returned the wrong address as
+  // the Safe.
   for (const log of receipt.logs || []) {
     if (log.address?.toLowerCase() !== SAFE_ADDRESSES.proxyFactory.toLowerCase()) continue
-    // ProxyCreation event: topic[1] is the proxy address (indexed)
-    if (log.topics?.length >= 2 && log.topics[0]) {
-      try {
-        const safeAddress = '0x' + log.topics[1].slice(-40)
-        return { safeAddress, txHash: hash }
-      } catch {}
-    }
+    if (log.topics?.[0]?.toLowerCase() !== PROXY_CREATION_TOPIC.toLowerCase()) continue
+    if (log.topics.length < 2) continue
+    // topic[1] is the indexed proxy address, ABI-encoded as 32-byte word.
+    const safeAddress = '0x' + log.topics[1].slice(-40)
+    return { safeAddress, txHash: hash }
   }
   throw new Error('Safe deployed but proxy address not found in receipt')
 }
@@ -328,13 +348,16 @@ export async function safeChangeThreshold({ safeAddress, threshold }) {
   return execSafeTx({ safeAddress, target: safeAddress, callData })
 }
 
-// Read current threshold.
+// Read current threshold. Returns null on RPC failure — callers MUST
+// treat null as "don't know" and abort any write that would set a new
+// threshold based on this value. Old behavior (return 1 on error)
+// silently downgraded a 3-of-5 Safe to 1-of-N on the next addSigner
+// write when an RPC blip happened between read and write.
 export async function getSafeThreshold(safeAddress) {
   const pc = await getPublicClient()
-  const abi = [{ name: 'getThreshold', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] }]
   try {
-    return Number(await pc.readContract({ address: safeAddress, abi, functionName: 'getThreshold' }))
-  } catch { return 1 }
+    return Number(await pc.readContract({ address: safeAddress, abi: SAFE_ABI, functionName: 'getThreshold' }))
+  } catch { return null }
 }
 
 // Fund a freshly-deployed Safe with ETH from the connected wallet.
