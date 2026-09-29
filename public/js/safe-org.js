@@ -2,10 +2,11 @@
 // via a Safe multisig, so the org is a genuine shared account instead
 // of "one admin EOA + a decorative members list."
 //
-// Safe v1.4.1 on Optimism:
-//   SafeProxyFactory: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
-//   SafeSingleton:    0x41675C099F32341bf84BFc5382aF534df5C7461a
-//   CompatibilityFallbackHandler: 0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99
+// Safe v1.5.0 on Optimism (source: github.com/safe-global/safe-deployments
+// v1.5.0 canonical, all three verified to have contract code via
+// eth_getCode against mainnet.optimism.io). v1.4.1 is also live and
+// canonical on Optimism; we ship v1.5.0 because it's what safe.global's
+// UI treats as current — any Safe deployed here looks "native" there.
 //
 // For a 1-of-1 Safe where msg.sender IS an owner, execTransaction accepts
 // a "pre-approved" signature — no cryptographic sig needed, just packed
@@ -15,9 +16,9 @@ import { createWalletClient, custom, optimism, encodeFunctionData, parseEther } 
 import { getPublicClient, getWalletClient, getWalletProvider, ensureWallet } from './utils.js'
 
 export const SAFE_ADDRESSES = {
-  proxyFactory: '0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67',
-  singleton: '0x41675C099F32341bf84BFc5382aF534df5C7461a',
-  fallbackHandler: '0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99',
+  proxyFactory: '0x14F2982D601c9458F93bd70B218933A6f8165e7b',
+  singleton: '0xFf51A5898e281Db6DfC7855790607438dF2ca44b',
+  fallbackHandler: '0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4',
 }
 
 const ZERO = '0x0000000000000000000000000000000000000000'

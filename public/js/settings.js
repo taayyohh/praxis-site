@@ -1802,22 +1802,33 @@ async function showCreateOrgModal() {
       }
       if (!metadataCid) throw new Error('org metadata upload timed out')
 
-      // 2. createOrg on Ethereum.
+      // 2. Deploy a Safe multisig with the caller as sole 1-of-1
+      // signer. Safe becomes the org admin from msg.sender of
+      // createOrg — no post-hoc transferAdmin needed.
       const { ensureWallet, getWalletClient, getPublicClient, getWalletProvider } = await import('./utils.js')
       const { ORG_ADDRESS, ORG_ABI, TREASURY_ADMIN_ADDR } = await import('./contracts.js')
-      const { createWalletClient, custom, optimism } = await import('./vendor.js')
+      const { createWalletClient, custom, optimism, encodeFunctionData } = await import('./vendor.js')
+      const { deployOrgSafe, fundSafeForBoot, execSafeTx } = await import('./safe-org.js')
       const addr = await ensureWallet()
       if (!addr) throw new Error('wallet required')
       const account = window.getEmbeddedAccount?.() || addr
       const wc = await getWalletClient()
       const pc = await getPublicClient()
 
-      statusEl.textContent = 'confirm createOrg…'
-      const createHash = await wc.writeContract({ address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'createOrg', args: [name, metadataCid], account })
-      statusEl.textContent = 'waiting for confirmation…'
+      statusEl.textContent = 'deploying Safe multisig…'
+      const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
+      statusEl.textContent = 'funding Safe (0.001 ETH)…'
+      await fundSafeForBoot(safeAddress, '0.002') // two txs coming: createOrg + updateDomain
+
+      // 3. Safe.execTx(createOrg) — Safe becomes admin.
+      statusEl.textContent = 'creating org from Safe…'
+      const createData = encodeFunctionData({ abi: ORG_ABI, functionName: 'createOrg', args: [name, metadataCid] })
+      const createHash = await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: createData })
       const createReceipt = await pc.waitForTransactionReceipt({ hash: createHash })
 
-      // 3. Extract orgId from OrgCreated(uint256 indexed orgId, ...)
+      // 4. Extract orgId from OrgCreated(uint256 indexed orgId, ...)
+      // The event still fires from Praxis.sol during the inner call —
+      // logs appear in the outer Safe.execTransaction receipt.
       const ORG_CREATED_TOPIC = '0xd78a3321fe7d2b183580459478e5563faf4fb5fae376030d1c606eebccd87918'
       let orgId = null
       for (const log of createReceipt.logs || []) {
@@ -1828,19 +1839,24 @@ async function showCreateOrgModal() {
       if (orgId == null) throw new Error('could not read orgId from receipt')
       const orgIdNum = Number(orgId)
 
-      // 4. Link the domain on-chain (updateDomain).
-      statusEl.textContent = 'linking domain to org…'
-      const linkHash = await wc.writeContract({ address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'updateDomain', args: [orgId, domain], account })
-      await pc.waitForTransactionReceipt({ hash: linkHash })
+      // 5. Safe.execTx(updateDomain) — Safe as admin links its domain.
+      statusEl.textContent = 'linking domain from Safe…'
+      const linkData = encodeFunctionData({ abi: ORG_ABI, functionName: 'updateDomain', args: [orgId, domain] })
+      await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: linkData })
 
-      // 5. Sign attach + POST to orchestrator.
+      // 6. Sign attach with caller's EOA. Orchestrator recognizes
+      // Safe signers as valid attach signers (verifyOrgAttach checks
+      // Safe.isOwner when the on-chain admin is a contract).
       const message = `praxis-org-attach:${orgIdNum}:${domain}:${Date.now()}`
       statusEl.textContent = 'sign attach…'
       const dwc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const signature = await dwc.signMessage({ account, message })
 
       let endpoint = '/orchestrator/org-site/attach'
-      const payload = { orgId: orgIdNum, domain, wallet: addr, name, bio: desc, orgType, signature, message }
+      // Pass the Safe address so the orchestrator writes it as
+      // site.json.wallet (instead of the signing EOA). That way the
+      // org site's on-chain identity matches its site.json owner.
+      const payload = { orgId: orgIdNum, domain, wallet: addr, safeAddress, name, bio: desc, orgType, signature, message }
       if (domainMode === 'buy') {
         // Pay NameSilo cost to the treasury admin EOA, then hit register.
         statusEl.textContent = `confirm ${selectedPriceEth.toFixed(4)} ETH payment…`
