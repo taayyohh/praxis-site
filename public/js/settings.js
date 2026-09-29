@@ -1028,16 +1028,14 @@ async function loadOrgSection() {
     }
 
     // Case 1 — this site is flagged as an org locally but there is NO
-    // matching on-chain org for it. That happens when a contract redeploy
-    // wipes org state (PraxisOrganization has no migration function). Give
-    // the user a clear explanation + a "re-establish" flow that runs
-    // createOrg() again. We keep the "create separate organization" escape
-    // hatch so an admin can spin up a fresh org under a different name too.
+    // matching on-chain org for it. Usually a past contract redeploy
+    // cleared the previous org record. Route through the same
+    // Safe-based create flow — deploys a Safe as admin from scratch.
     if (siteFlaggedAsOrg && !siteOrg) {
       html += `<div style="border:1px solid var(--border);padding:1em;margin-bottom:1em">
-        <p style="font-size:0.9em;color:var(--fg);margin:0 0 0.5em">this site is set up as an organization, but no record exists on Ethereum yet.</p>
-        <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.75em;line-height:1.5">this usually means a past contract redeploy cleared the previous org and its members. re-establish the organization on Ethereum to invite members again — you'll need to re-invite each artist.</p>
-        <button id="s-org-reestablish" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">re-establish organization</button>
+        <p style="font-size:0.9em;color:var(--fg);margin:0 0 0.5em">this site doesn't have a shared account yet.</p>
+        <p style="font-size:0.8em;color:var(--muted);margin:0 0 0.75em;line-height:1.5">set one up so the org can post, collect, and hold funds as a group. you'll be the sole owner to start — add collaborators any time.</p>
+        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">set up shared account</button>
       </div>`
     }
 
@@ -1072,7 +1070,7 @@ async function loadOrgSection() {
           // it's already a Safe.
           const isEoaAdmin = isAdminHere && /^0x[0-9a-fA-F]{40}$/.test(o.admin) && !o.admin?.startsWith('0x0000')
           const upgradeBtn = isEoaAdmin
-            ? `<button class="buy-btn org-upgrade-safe" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" data-org-domain="${esc(o.domain || '')}" style="font-size:0.75em;padding:0.2em 1ch;border-color:var(--dim);color:var(--dim)" title="make this a genuine shared org with a Safe multisig — the org gets its own on-chain identity and notifications">upgrade to safe</button>`
+            ? `<button class="buy-btn org-upgrade-safe" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" data-org-domain="${esc(o.domain || '')}" style="font-size:0.75em;padding:0.2em 1ch;border-color:var(--dim);color:var(--dim)" title="turn this into a shared account so the org has its own posts, notifications, and treasury — separate from your personal account. you can add co-owners later.">make it shared</button>`
             : ''
           const actionLabel = hasSite
             ? `<a href="https://${esc(o.domain)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:0.85em">${esc(o.domain)} →</a>`
@@ -1090,16 +1088,17 @@ async function loadOrgSection() {
       </div>`
     }
 
-    // Case 4 — nothing on-chain, nothing flagged locally. Offer conversion.
+    // Case 4 — no org yet. Offer to create one (Safe-based, own domain).
+    // Convert-this-artist-site-to-org used to live here; removed
+    // because Safe-based orgs have their own on-chain identity + Safe
+    // signers — pretending an artist's EOA is now "an org" was the
+    // fake-shared-account pattern Miles flagged.
     if (!siteOrg && !siteFlaggedAsOrg && !otherOrgs.length) {
       html += `
         <p style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">you are not a member of any organization</p>
-        <button id="s-org-convert" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">convert this site to an organization</button>
-        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-left:0.5em;border-color:var(--dim);color:var(--dim)">create separate organization</button>`
+        <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch">create an organization</button>`
     } else if (!siteOrg && !siteFlaggedAsOrg && otherOrgs.length) {
-      // Wallet belongs to some orgs but the current site isn't one — offer conversion of THIS site too.
-      html += `<button id="s-org-convert" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0.75em">convert this site to an organization</button>
-      <button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-left:0.5em;margin-top:0.75em;border-color:var(--dim);color:var(--dim)">create another organization</button>`
+      html += `<button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:0.75em">create another organization</button>`
     } else if (siteOrg && !otherOrgs.length) {
       html += `<button id="s-org-create" class="buy-btn" style="font-size:0.85em;padding:0.4em 1.5ch;margin-top:1em;border-color:var(--dim);color:var(--dim)">create another organization</button>`
     }
@@ -1114,7 +1113,6 @@ async function loadOrgSection() {
       btn.addEventListener('click', () => handleOrgInvite(btn, 'declineInvite', btn.dataset.orgId))
     })
 
-    document.getElementById('s-org-convert')?.addEventListener('click', showConvertToOrgModal)
     document.getElementById('s-org-create')?.addEventListener('click', showCreateOrgModal)
     orgContent.querySelectorAll('.org-attach-site').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1129,9 +1127,6 @@ async function loadOrgSection() {
         orgDomain: btn.dataset.orgDomain,
       }))
     })
-    // "re-establish" runs the same createOrg flow as convert (site.json
-    // already has template: 'organization' so no template swap needed).
-    document.getElementById('s-org-reestablish')?.addEventListener('click', showConvertToOrgModal)
 
     if (siteOrg) _wireInlineOrgAdmin(siteOrg, addr)
   } catch {
@@ -1435,170 +1430,6 @@ function _wireInlineOrgAdmin(siteOrg, myAddr) {
   refreshPending()
 }
 
-async function showConvertToOrgModal() {
-  const overlay = document.createElement('div')
-  overlay.className = 'praxis-modal-overlay'
-  overlay.style.zIndex = '10010'
-  const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '440px'
-  const handle = window._siteData?.handle || siteData?.handle || location.hostname.split('.')[0]
-  const domain = window._siteData?.domain || siteData?.domain || location.hostname
-  // Re-establish case: site is already flagged as an org locally but no
-  // matching on-chain record exists. Different copy so the user knows this
-  // is a recovery, not a fresh conversion.
-  const isReestablish = siteData?.template === 'organization'
-  const heading = isReestablish ? 're-establish organization' : 'convert to organization'
-  const explainer = isReestablish
-    ? `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will create a new organization on Ethereum for <strong style="color:var(--fg)">${escapeHtml(domain)}</strong>. any previous members will need to be re-invited from here.</p>`
-    : `<p style="font-size:0.85em;color:var(--muted);margin:0 0 0.8em;line-height:1.5">this will convert <strong style="color:var(--fg)">${escapeHtml(domain)}</strong> into an organization. your site, domain, and wallet stay the same — your template will switch to the organization layout.</p>`
-  dialog.innerHTML = `
-    <h3 style="margin:0 0 0.5em;font-size:1em">${heading}</h3>
-    ${explainer}
-    <div style="margin-bottom:0.8em">
-      <label style="font-size:0.8em;color:var(--muted)">organization name</label>
-      <input type="text" id="org-convert-name" class="project-input" value="${escapeHtml(handle)}" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:0.25em">
-    </div>
-    <div id="org-convert-status" style="font-size:0.85em;color:var(--muted);min-height:1.2em;margin-bottom:0.6em"></div>
-    <div style="display:flex;gap:0.5em">
-      <button id="org-convert-submit" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em">${isReestablish ? 're-establish' : 'convert'}</button>
-      <button id="org-convert-cancel" class="buy-btn" style="flex:1;font-size:0.85em;padding:0.5em;border-color:var(--dim);color:var(--dim)">cancel</button>
-    </div>
-  `
-  overlay.appendChild(dialog)
-  document.body.appendChild(overlay)
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  dialog.querySelector('#org-convert-cancel')?.addEventListener('click', () => overlay.remove())
-  dialog.querySelector('#org-convert-name')?.focus()
-
-  dialog.querySelector('#org-convert-submit')?.addEventListener('click', async () => {
-    const nameInput = dialog.querySelector('#org-convert-name')
-    const statusEl = dialog.querySelector('#org-convert-status')
-    const submitBtn = dialog.querySelector('#org-convert-submit')
-    const cancelBtn = dialog.querySelector('#org-convert-cancel')
-    const name = nameInput?.value?.trim()
-    if (!name) { statusEl.textContent = 'name is required'; return }
-
-    // Disable both buttons and give the submit an explicit "in-progress"
-    // label. Without this the button read blank while the flow ran, since
-    // its original label was set once at render time and nothing kept it
-    // consistent through the async steps.
-    submitBtn.disabled = true
-    if (cancelBtn) cancelBtn.disabled = true
-    submitBtn.textContent = isReestablish ? 're-establishing…' : 'converting…'
-
-    try {
-      // Inline unlock: if the embedded wallet is locked, render unlock
-      // inside THIS dialog first. The unlock hides our children, paints
-      // the unlock UI, then restores our children — DOM refs (submitBtn,
-      // statusEl, cancelBtn) still point at the SAME nodes after unlock.
-      const inlineUnlockNeeded = window.hasEmbeddedWallet?.() && window.isWalletUnlocked && !window.isWalletUnlocked()
-      if (inlineUnlockNeeded) {
-        const unlocked = await window.ensureAuthorized?.({ target: dialog })
-        if (!unlocked) {
-          submitBtn.disabled = false
-          if (cancelBtn) cancelBtn.disabled = false
-          submitBtn.textContent = isReestablish ? 're-establish' : 'convert'
-          statusEl.textContent = ''
-          return
-        }
-      }
-      statusEl.textContent = 'uploading metadata...'
-      const metadata = JSON.stringify({ name, convertedFrom: handle })
-      const blob = new Blob([metadata], { type: 'application/json' })
-      const token = await getSettingsToken()
-      if (!token) { statusEl.textContent = 'auth required'; return }
-
-      const uploadData = await uploadToIpfs('org-metadata.json', await blob.arrayBuffer(), token)
-
-      let metadataCid = ''
-      if (uploadData.cid) {
-        metadataCid = uploadData.cid
-      } else if (uploadData.jobId) {
-        statusEl.textContent = 'waiting for upload...'
-        for (let i = 0; i < 60; i++) {
-          await new Promise(r => setTimeout(r, 2000))
-          const sres = await fetch(`/api/ipfs/status/${uploadData.jobId}`)
-          const sdata = await sres.json()
-          if (sdata.status === 'done' && sdata.cid) { metadataCid = sdata.cid; break }
-          if (sdata.status === 'error') throw new Error(sdata.error || 'upload failed')
-        }
-        if (!metadataCid) throw new Error('upload timed out')
-      } else {
-        throw new Error(uploadData.error || 'upload failed')
-      }
-
-      statusEl.textContent = 'confirm create-org tx…'
-      if (!await window.ensureOptimism?.()) { statusEl.textContent = 'wallet not connected'; return }
-      const { getWalletClient, getPublicClient } = await import('./utils.js')
-      const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
-      const addr = window.getWalletAddress?.()
-      const wc = await getWalletClient()
-      const hash = await wc.writeContract({
-        address: ORG_ADDRESS,
-        abi: ORG_ABI,
-        functionName: 'createOrg',
-        args: [name, metadataCid],
-        account: window.getEmbeddedAccount?.() || addr,
-      })
-
-      statusEl.textContent = 'waiting for create-org confirmation…'
-      const pc = await getPublicClient()
-      const receipt = await pc.waitForTransactionReceipt({ hash })
-
-      // Extract orgId from the OrgCreated event so we can immediately
-      // link the domain. Without this the org has no domain on-chain,
-      // and settings can't detect that THIS site is the one that org
-      // corresponds to (matching is by domain).
-      //
-      // OrgCreated(uint256 indexed orgId, address indexed admin, string, string)
-      // topic0 = keccak of the signature (constant); topic1 = orgId as uint256.
-      const ORG_CREATED_TOPIC = '0xd78a3321fe7d2b183580459478e5563faf4fb5fae376030d1c606eebccd87918'
-      let orgId = null
-      for (const log of receipt.logs || []) {
-        if (log.address?.toLowerCase() !== ORG_ADDRESS.toLowerCase()) continue
-        if (!log.topics?.length) continue
-        if (String(log.topics[0]).toLowerCase() !== ORG_CREATED_TOPIC) continue
-        try { orgId = BigInt(log.topics[1]); break } catch {}
-      }
-
-      if (orgId != null) {
-        statusEl.textContent = 'linking domain to organization…'
-        try {
-          const linkHash = await wc.writeContract({
-            address: ORG_ADDRESS,
-            abi: ORG_ABI,
-            functionName: 'updateDomain',
-            args: [orgId, domain],
-            account: window.getEmbeddedAccount?.() || addr,
-          })
-          await pc.waitForTransactionReceipt({ hash: linkHash })
-        } catch (e) {
-          // Non-fatal — the org is created, domain just isn't linked yet.
-          // Surface a soft warning; the user can retry via re-establish.
-          console.warn('updateDomain failed', e)
-        }
-      }
-
-      statusEl.textContent = 'updating site template…'
-      const siteRes = await fetch('/api/site')
-      const siteData = await siteRes.json()
-      siteData.template = 'organization'
-      await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-
-      statusEl.style.color = 'var(--green,#4a4)'
-      statusEl.textContent = isReestablish ? 'organization re-established!' : 'converted to organization!'
-      setTimeout(() => { overlay.remove(); loadOrgSection(); location.reload() }, 1500)
-    } catch (e) {
-      statusEl.style.color = '#ef4444'
-      statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 80)}`
-      submitBtn.disabled = false
-      if (cancelBtn) cancelBtn.disabled = false
-      submitBtn.textContent = isReestablish ? 're-establish' : 'convert'
-    }
-  })
-}
-
 // Create a separate organization AND spin up its own site (name +
 // type + domain). Sequence:
 //   1. upload org metadata to IPFS
@@ -1628,7 +1459,7 @@ async function showCreateOrgModal() {
 
   dialog.innerHTML = `
     <h3 style="margin:0 0 0.5em;font-size:1.05em">create organization</h3>
-    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">Sign the on-chain create + link the domain in one flow. The site provisions on our infrastructure and comes back at the domain you attach.</p>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">Set up a shared account for your studio, label, collective, or company — with its own site, posts, credentials, and treasury. You'll be the sole owner to start; invite co-owners any time.</p>
 
     <label style="font-size:0.8em;color:var(--muted)">name</label>
     <input type="text" id="org-create-name" class="project-input" placeholder="e.g. whatifwe pictures" maxlength="80" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
@@ -1815,13 +1646,13 @@ async function showCreateOrgModal() {
       const wc = await getWalletClient()
       const pc = await getPublicClient()
 
-      statusEl.textContent = 'deploying Safe multisig…'
+      statusEl.textContent = 'setting up the org account…'
       const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
-      statusEl.textContent = 'funding Safe (0.001 ETH)…'
+      statusEl.textContent = 'funding it (small gas float)…'
       await fundSafeForBoot(safeAddress, '0.002') // two txs coming: createOrg + updateDomain
 
       // 3. Safe.execTx(createOrg) — Safe becomes admin.
-      statusEl.textContent = 'creating org from Safe…'
+      statusEl.textContent = 'registering the org…'
       const createData = encodeFunctionData({ abi: ORG_ABI, functionName: 'createOrg', args: [name, metadataCid] })
       const createHash = await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: createData })
       const createReceipt = await pc.waitForTransactionReceipt({ hash: createHash })
@@ -1840,7 +1671,7 @@ async function showCreateOrgModal() {
       const orgIdNum = Number(orgId)
 
       // 5. Safe.execTx(updateDomain) — Safe as admin links its domain.
-      statusEl.textContent = 'linking domain from Safe…'
+      statusEl.textContent = 'linking the domain…'
       const linkData = encodeFunctionData({ abi: ORG_ABI, functionName: 'updateDomain', args: [orgId, domain] })
       await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: linkData })
 
@@ -1848,7 +1679,7 @@ async function showCreateOrgModal() {
       // Safe signers as valid attach signers (verifyOrgAttach checks
       // Safe.isOwner when the on-chain admin is a contract).
       const message = `praxis-org-attach:${orgIdNum}:${domain}:${Date.now()}`
-      statusEl.textContent = 'sign attach…'
+      statusEl.textContent = 'confirm ownership…'
       const dwc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
       const signature = await dwc.signMessage({ account, message })
 
@@ -1926,7 +1757,7 @@ async function showAttachOrgSiteModal(org) {
 
   dialog.innerHTML = `
     <h3 style="margin:0 0 0.5em;font-size:1.05em">attach a site to <span style="color:var(--accent)">${escapeHtml(org.name)}</span></h3>
-    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">This uses the existing on-chain organization (org #${escapeHtml(String(org.id))}) — no new record. Sign in with the same wallet on the attached domain to admin it.</p>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em">Give this existing org a site at your own domain. Sign in on the attached domain with the same account to manage it.</p>
 
     <label style="font-size:0.8em;color:var(--muted)">type</label>
     <div id="oa-type-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;margin:0.4em 0 0.75em">
@@ -2218,29 +2049,27 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
   dialog.className = 'praxis-modal-dialog'
   dialog.style.maxWidth = '520px'
   dialog.innerHTML = `
-    <h3 style="margin:0 0 0.5em;font-size:1.05em">upgrade <span style="color:var(--accent)">${escapeHtml(orgName)}</span> to a shared org</h3>
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">turn <span style="color:var(--accent)">${escapeHtml(orgName)}</span> into a shared account</h3>
     <p style="color:var(--muted);font-size:0.85em;margin:0 0 0.75em;line-height:1.55">
-      Deploys a Safe multisig for this org with you as the sole signer.
-      From then on, the org has its own on-chain identity — separate notifications, its own credentials, its own treasury.
-      Add more signers later (2-of-3, 3-of-5, whatever fits) as you bring in collaborators.
+      Right now this org runs off your personal account. Setting it up as a shared account gives the org its own identity — its own posts, notifications, credentials, and treasury, separate from you.
+      You'll be the sole owner to start. Add co-owners any time to share control (2-of-3, 3-of-5 — whatever fits).
     </p>
     <p style="color:var(--dim);font-size:0.8em;margin:0 0 1em;line-height:1.5">
-      Requires 4 wallet signatures + ~0.001 ETH to fund the Safe's first tx.
-      Once complete, sign in on ${escapeHtml(orgDomain || 'the org domain')} with your own artist password — you'll unlock the org because you're a Safe signer.
+      Takes 4 confirmations + about $2 in gas. When you're done, sign in on ${escapeHtml(orgDomain || 'the org domain')} with your own password — you'll unlock the org because you own it.
     </p>
 
     <ol id="upgrade-steps" style="list-style:none;padding:0;margin:0 0 1em;color:var(--dim);font-size:0.85em;line-height:1.7">
-      <li data-step="1"><span class="step-dot">○</span> deploy Safe multisig</li>
-      <li data-step="2"><span class="step-dot">○</span> fund Safe for its first tx</li>
-      <li data-step="3"><span class="step-dot">○</span> invite Safe as org member</li>
-      <li data-step="4"><span class="step-dot">○</span> accept invite (from Safe)</li>
-      <li data-step="5"><span class="step-dot">○</span> transfer admin to Safe</li>
+      <li data-step="1"><span class="step-dot">○</span> set up shared account</li>
+      <li data-step="2"><span class="step-dot">○</span> fund it (small gas float)</li>
+      <li data-step="3"><span class="step-dot">○</span> add it as a member</li>
+      <li data-step="4"><span class="step-dot">○</span> accept the invite</li>
+      <li data-step="5"><span class="step-dot">○</span> hand ownership to the shared account</li>
       <li data-step="6"><span class="step-dot">○</span> update site config</li>
     </ol>
 
     <p id="upgrade-status" style="color:var(--muted);font-size:0.85em;min-height:1.2em;margin:0.5em 0"></p>
     <div style="display:flex;gap:0.5em;margin-top:0.5em">
-      <button class="buy-btn" id="upgrade-submit" style="flex:1;font-size:0.85em;padding:0.5em">upgrade to safe</button>
+      <button class="buy-btn" id="upgrade-submit" style="flex:1;font-size:0.85em;padding:0.5em">make it shared</button>
       <button class="buy-btn" id="upgrade-cancel" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
     </div>
   `
@@ -2278,17 +2107,17 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
       const pc = await getPublicClient()
 
       // 1. Deploy Safe with current admin as 1-of-1 signer.
-      markStep(1, 'active'); statusEl.textContent = 'deploying Safe (confirm in wallet)…'
+      markStep(1, 'active'); statusEl.textContent = 'setting up shared account (confirm in wallet)…'
       const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
-      markStep(1, 'done'); statusEl.textContent = `Safe deployed at ${safeAddress.slice(0, 10)}…`
+      markStep(1, 'done'); statusEl.textContent = `shared account created`
 
       // 2. Fund Safe with a bit of ETH so it can pay gas.
-      markStep(2, 'active'); statusEl.textContent = 'funding Safe (0.001 ETH)…'
+      markStep(2, 'active'); statusEl.textContent = 'funding it (small gas float)…'
       await fundSafeForBoot(safeAddress, '0.001')
       markStep(2, 'done')
 
       // 3. Admin invites Safe as member.
-      markStep(3, 'active'); statusEl.textContent = 'inviting Safe as org member…'
+      markStep(3, 'active'); statusEl.textContent = 'adding it as a member…'
       const inviteHash = await wc.writeContract({
         address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
         args: [BigInt(orgId), safeAddress], account,
@@ -2298,13 +2127,13 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
 
       // 4. Safe accepts the invite. execTransaction from Safe with
       //    owner-sender pre-approved signature.
-      markStep(4, 'active'); statusEl.textContent = 'accepting invite from Safe…'
+      markStep(4, 'active'); statusEl.textContent = 'accepting the invite…'
       const acceptData = encodeFunctionData({ abi: ORG_ABI, functionName: 'acceptInvite', args: [BigInt(orgId)] })
       await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: acceptData })
       markStep(4, 'done')
 
       // 5. Admin transfers admin to Safe.
-      markStep(5, 'active'); statusEl.textContent = 'transferring admin to Safe…'
+      markStep(5, 'active'); statusEl.textContent = 'handing ownership to the shared account…'
       const xferHash = await wc.writeContract({
         address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'transferAdmin',
         args: [BigInt(orgId), safeAddress], account,
@@ -2330,7 +2159,7 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
       }
 
       statusEl.style.color = 'var(--green,#4a4)'
-      statusEl.innerHTML = `upgraded ✓ &nbsp; Safe: <code style="font-size:0.85em">${safeAddress}</code>${orgDomain ? ` &nbsp; <a href="https://${escapeHtml(orgDomain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(orgDomain)}</a>` : ''}`
+      statusEl.innerHTML = `done ✓ &nbsp; this org is now a shared account${orgDomain ? ` &nbsp; <a href="https://${escapeHtml(orgDomain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(orgDomain)}</a>` : ''}`
       setTimeout(() => { overlay.remove(); if (typeof loadOrgSection === 'function') loadOrgSection() }, 5000)
     } catch (e) {
       const activeLi = dialog.querySelector('#upgrade-steps li .step-dot')
@@ -2343,72 +2172,6 @@ async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
       statusEl.style.color = '#ef4444'
       statusEl.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'upgrade failed').slice(0, 200)
       dialog.querySelector('#upgrade-submit').disabled = false
-    }
-  })
-}
-
-// [DEPRECATED] set-login flow — same-wallet, different-password. Left
-// in place for now but no longer wired to any button; superseded by
-// showUpgradeToSafeModal above. Safe to delete once we're sure no
-// tenant relies on it.
-async function showSetupOrgLoginModal({ orgId, orgName, orgDomain }) {
-  const overlay = document.createElement('div')
-  overlay.className = 'praxis-modal-overlay'
-  overlay.style.zIndex = '10010'
-  const dialog = document.createElement('div')
-  dialog.className = 'praxis-modal-dialog'
-  dialog.style.maxWidth = '480px'
-  dialog.innerHTML = `
-    <h3 style="margin:0 0 0.5em;font-size:1.05em">separate login for <span style="color:var(--accent)">${escapeHtml(orgName)}</span></h3>
-    <p style="color:var(--muted);font-size:0.85em;margin:0 0 1em;line-height:1.55">
-      Sets a password just for <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">${escapeHtml(orgDomain)}</code>.
-      Same wallet under the hood — no on-chain change — but sign-in on that domain uses this new password instead of your artist one.
-      Sign in with <code>${escapeHtml(orgDomain)}</code> as the handle.
-    </p>
-
-    <label style="font-size:0.8em;color:var(--muted)">your current (artist) password</label>
-    <input type="password" id="sol-current" class="project-input" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
-
-    <label style="font-size:0.8em;color:var(--muted)">new org password (min 8 chars)</label>
-    <input type="password" id="sol-new" class="project-input" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.5em">
-
-    <label style="font-size:0.8em;color:var(--muted)">confirm new org password</label>
-    <input type="password" id="sol-new2" class="project-input" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:0.25em 0 0.75em">
-
-    <p id="sol-status" style="color:var(--muted);font-size:0.85em;min-height:1.2em;margin:0.5em 0"></p>
-    <div style="display:flex;gap:0.5em;margin-top:0.5em">
-      <button class="buy-btn" id="sol-submit" style="flex:1;font-size:0.85em;padding:0.5em">set up login</button>
-      <button class="buy-btn" id="sol-cancel" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
-    </div>
-  `
-  overlay.appendChild(dialog)
-  document.body.appendChild(overlay)
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  dialog.querySelector('#sol-cancel').addEventListener('click', () => overlay.remove())
-  dialog.querySelector('#sol-current').focus()
-
-  const statusEl = dialog.querySelector('#sol-status')
-  dialog.querySelector('#sol-submit').addEventListener('click', async () => {
-    const current = dialog.querySelector('#sol-current').value
-    const next = dialog.querySelector('#sol-new').value
-    const next2 = dialog.querySelector('#sol-new2').value
-    if (!current) { statusEl.textContent = 'enter your current password'; return }
-    if (next.length < 8) { statusEl.textContent = 'new password must be at least 8 characters'; return }
-    if (next !== next2) { statusEl.textContent = 'new passwords do not match'; return }
-    if (next === current) { statusEl.textContent = 'new password must differ from your artist password'; return }
-    statusEl.style.color = 'var(--muted)'
-    statusEl.textContent = 're-encrypting + uploading…'
-    dialog.querySelector('#sol-submit').disabled = true
-    try {
-      const { setupOrgSeparateLogin } = await import('./embedded-wallet.js')
-      await setupOrgSeparateLogin(orgDomain, current, next)
-      statusEl.style.color = 'var(--green,#4a4)'
-      statusEl.innerHTML = `done — <a href="https://${escapeHtml(orgDomain)}" target="_blank" rel="noopener" style="color:var(--accent)">sign in at ${escapeHtml(orgDomain)}</a> with the new password`
-      setTimeout(() => overlay.remove(), 4000)
-    } catch (e) {
-      statusEl.style.color = '#ef4444'
-      statusEl.textContent = e.message || 'setup failed'
-      dialog.querySelector('#sol-submit').disabled = false
     }
   })
 }
