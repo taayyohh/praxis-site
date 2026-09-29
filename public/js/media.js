@@ -353,6 +353,151 @@ export async function delistMedia(mediaId) {
   return hash
 }
 
+// ── tagWork: publish a media listing to an organization catalog ────
+//
+// PraxisOrganization.tagWork(orgId, mediaContract, mediaId) requires
+// msg.sender to be the media's on-chain artist AND (member of org OR
+// admin of org). Enforced in the contract via
+// IPraxisMedia(mediaContract).media(mediaId).artist. Both sides need
+// to be present for the call to succeed.
+export async function tagWorkToOrg(orgId, mediaContract, mediaId) {
+  const addr = await ensureWallet()
+  if (!addr) throw new Error('connect wallet')
+  if (!await window.ensureOptimism?.()) return
+  const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+  const account = await window.authorizedSigner?.(addr)
+  const wc = getWalletClient()
+  const hash = await wc.writeContract({
+    address: ORG_ADDRESS,
+    abi: ORG_ABI,
+    functionName: 'tagWork',
+    args: [BigInt(orgId), mediaContract, BigInt(mediaId)],
+    account,
+  })
+  const pc = await getPublicClient()
+  await pc.waitForTransactionReceipt({ hash })
+  return hash
+}
+
+export async function untagWorkFromOrg(orgId, mediaContract, mediaId) {
+  const addr = await ensureWallet()
+  if (!addr) throw new Error('connect wallet')
+  if (!await window.ensureOptimism?.()) return
+  const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+  const account = await window.authorizedSigner?.(addr)
+  const wc = getWalletClient()
+  const hash = await wc.writeContract({
+    address: ORG_ADDRESS,
+    abi: ORG_ABI,
+    functionName: 'untagWork',
+    args: [BigInt(orgId), mediaContract, BigInt(mediaId)],
+    account,
+  })
+  const pc = await getPublicClient()
+  await pc.waitForTransactionReceipt({ hash })
+  return hash
+}
+
+// Which of the caller's orgs is this media tagged to? Returns a Set
+// of orgId strings the caller can render as toggle state.
+export async function getTaggedOrgs(mediaContract, mediaId, orgIds) {
+  const { ORG_ADDRESS, ORG_ABI } = await import('./contracts.js')
+  const pc = await getPublicClient()
+  const calls = orgIds.map(id => ({
+    address: ORG_ADDRESS, abi: ORG_ABI,
+    functionName: 'isWorkTagged',
+    args: [BigInt(id), mediaContract, BigInt(mediaId)],
+  }))
+  const results = await pc.multicall({ contracts: calls, allowFailure: true })
+  const tagged = new Set()
+  for (let i = 0; i < orgIds.length; i++) {
+    if (results[i].status === 'success' && results[i].result === true) {
+      tagged.add(String(orgIds[i]))
+    }
+  }
+  return tagged
+}
+
+// Render the "publish to org" panel into `container` for a media the
+// connected wallet owns. Fetches the wallet's orgs, checks isWorkTagged
+// state, renders per-org toggles. No-op if no wallet, no orgs, or
+// media not owned by the wallet.
+export async function renderPublishToOrgPanel(container, { mediaContract, mediaId }) {
+  if (!container || !mediaContract || mediaId == null) return
+  const addr = window.getWalletAddress?.()
+  if (!addr) return
+  // Verify the wallet is the media artist — otherwise the contract
+  // will revert on tag/untag anyway, and there's no reason to render
+  // a control that can't succeed.
+  try {
+    const pc = await getPublicClient()
+    const mediaAddress = getMediaAddress()
+    if (!mediaAddress) return
+    const media = await pc.readContract({ address: mediaAddress, abi: MEDIA_ABI, functionName: 'media', args: [BigInt(mediaId)] })
+    const artist = media[0]
+    if (!artist || String(artist).toLowerCase() !== addr.toLowerCase()) return
+  } catch { return }
+
+  let orgs = []
+  try {
+    const res = await fetch(`/api/orgs/by-member/${addr}`)
+    if (!res.ok) return
+    const data = await res.json()
+    orgs = (data.orgs || []).filter(o => !o.dissolved)
+  } catch { return }
+  if (!orgs.length) return
+
+  const orgIds = orgs.map(o => o.id)
+  let tagged = new Set()
+  try { tagged = await getTaggedOrgs(mediaContract, mediaId, orgIds) } catch {}
+
+  container.innerHTML = `
+    <div class="publish-to-org">
+      <div class="publish-to-org-title">publish to</div>
+      <div class="publish-to-org-hint">show this work in an organization's catalog. only the on-chain owner (you) can publish.</div>
+      <div class="publish-to-org-list">
+        ${orgs.map(o => {
+          const on = tagged.has(String(o.id))
+          const domainLink = o.domain ? `<a href="https://${escapeHtml(o.domain)}" target="_blank" rel="noopener" class="publish-to-org-domain">${escapeHtml(o.domain)}</a>` : ''
+          return `<label class="publish-to-org-row" data-org-id="${escapeHtml(String(o.id))}">
+            <input type="checkbox" class="publish-to-org-toggle" ${on ? 'checked' : ''} data-org-id="${escapeHtml(String(o.id))}" data-tagged="${on}">
+            <span class="publish-to-org-name">${escapeHtml(o.name)}</span>
+            ${domainLink}
+          </label>`
+        }).join('')}
+      </div>
+      <p class="publish-to-org-status" style="min-height:1.2em"></p>
+    </div>
+  `
+
+  const statusEl = container.querySelector('.publish-to-org-status')
+  container.querySelectorAll('.publish-to-org-toggle').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      const orgId = cb.dataset.orgId
+      const wasTagged = cb.dataset.tagged === 'true'
+      const wantTag = cb.checked
+      if (wasTagged === wantTag) return
+      cb.disabled = true
+      statusEl.textContent = wantTag ? 'confirm tag…' : 'confirm untag…'
+      statusEl.style.color = 'var(--muted)'
+      try {
+        if (wantTag) await tagWorkToOrg(orgId, mediaContract, mediaId)
+        else await untagWorkFromOrg(orgId, mediaContract, mediaId)
+        cb.dataset.tagged = String(wantTag)
+        statusEl.textContent = wantTag ? 'published ✓' : 'unpublished ✓'
+        statusEl.style.color = 'var(--accent)'
+      } catch (err) {
+        // Roll checkbox state back to what the chain actually says.
+        cb.checked = wasTagged
+        statusEl.textContent = err.code === 4001 ? 'cancelled' : `error: ${(err.shortMessage || err.message || '').slice(0, 100)}`
+        statusEl.style.color = '#ef4444'
+      } finally {
+        cb.disabled = false
+      }
+    })
+  })
+}
+
 export async function withdrawEarnings() {
   const address = getMediaAddress()
   if (!address) throw new Error('media contract not configured')
@@ -616,8 +761,16 @@ async function renderOrgRoster() {
     } catch {}
 
     _homeDomainMap = domainMap
-    const orgType = org.metadata?.orgType || window._siteData?.orgType || 'collective'
-    const rosterLabel = { label: 'artists', gallery: 'represented', company: 'company', publisher: 'authors', collective: 'roster' }[orgType] || 'roster'
+    // orgType resolution order: body data attr (rendered from site.json,
+    // most trustworthy for THIS tenant), then on-chain metadata, then
+    // legacy _siteData, then 'collective' as the neutral default.
+    const orgType = document.body?.dataset?.orgType || org.metadata?.orgType || window._siteData?.orgType || 'collective'
+    // 'company' now maps to 'team' — the previous 'company' label was
+    // redundant with the org's own name in most cases (Miles flagged
+    // "roster" reading as music-label-specific on whatifwe.nyc; company
+    // sites are typically film/theater/dance where 'team' is the right
+    // frame — cast + crew + producers collaborating on a production).
+    const rosterLabel = { label: 'artists', gallery: 'represented', company: 'team', publisher: 'authors', collective: 'roster' }[orgType] || 'roster'
     el.innerHTML = `
       <div class="roster-title">${escapeHtml(rosterLabel)}</div>
       <div class="roster-grid">
@@ -826,7 +979,10 @@ async function renderOrgCatalog(rosterEl, orgId, orgType) {
     wrapper.style.cssText = 'margin:2em 0 3em'
     const title = document.createElement('div')
     title.className = 'roster-title'
-    const catLabel = { label: 'catalog', gallery: 'collection', company: 'productions', publisher: 'catalog', collective: 'works' }[orgType] || 'works'
+    // Same label mapping principle as roster — resolve orgType from the
+    // most-trusted source (body data attr) rather than caller default.
+    const resolvedOrgType = document.body?.dataset?.orgType || orgType || 'collective'
+    const catLabel = { label: 'catalog', gallery: 'collection', company: 'productions', publisher: 'catalog', collective: 'works' }[resolvedOrgType] || 'works'
     title.textContent = catLabel
 
     const toggle = document.createElement('div')

@@ -2,7 +2,7 @@
 // Routes: /art?type=music&alias=0&album=1 (local) or /art?media=0 (on-chain)
 import { query } from './ponder.js'
 import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, formatEthAmount, getPublicClient, registerPage, slugify } from './utils.js'
-import { purchaseMedia, getArtistMedia, annotateRelistings } from './media.js'
+import { purchaseMedia, getArtistMedia, annotateRelistings, renderPublishToOrgPanel } from './media.js'
 import { resolveContentTypes, classifyContentType } from './utils.js'
 import { formatEther } from './vendor.js'
 
@@ -796,8 +796,21 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   // this page today, but the reserved slot keeps principle 9
   // honest as more sections get appended in the future).
   html += `<div id="art-collectors" class="art-collectors-slot"></div>`
+  // Owner-only: "publish to org" panel. Rendered async after paint so
+  // we don't block first-paint on the orgs-by-member + isWorkTagged
+  // multicall. Panel self-hides if the connected wallet isn't the
+  // media artist or belongs to no orgs.
+  html += `<div id="art-publish-to-org" class="art-publish-to-org-slot"></div>`
 
   contentEl.innerHTML = html
+
+  // Hydrate the "publish to org" panel — self-hides for non-owners /
+  // non-members. Also re-run on wallet-connect so a mid-page unlock
+  // reveals the panel without a reload.
+  const publishEl = document.getElementById('art-publish-to-org')
+  const _publishHydrate = () => { renderPublishToOrgPanel(publishEl, { mediaContract: mediaAddr, mediaId: String(mediaId) }).catch(() => {}) }
+  _publishHydrate()
+  window.addEventListener('wallet-connected', _publishHydrate, { once: false })
 
   if (pendingPdf) {
     const { renderMedia } = await import('./utils.js')

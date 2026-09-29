@@ -9,7 +9,7 @@ registerPage('org-page', initOrg)
 const ORG_TYPE_CONFIG = {
   label:      { rosterTitle: 'artists', catalogTitle: 'releases', maxWidth: '1000px' },
   gallery:    { rosterTitle: 'represented', catalogTitle: 'collection', maxWidth: '1200px' },
-  company:    { rosterTitle: 'company', catalogTitle: 'productions', maxWidth: '1100px' },
+  company:    { rosterTitle: 'team', catalogTitle: 'productions', maxWidth: '1100px' },
   publisher:  { rosterTitle: 'authors', catalogTitle: 'catalog', maxWidth: '700px' },
   collective: { rosterTitle: 'roster', catalogTitle: 'works', maxWidth: '1000px' },
 }
@@ -51,7 +51,7 @@ async function renderOrg(container, org, orgId) {
   const myAddr = (window.getWalletAddress?.() || '').toLowerCase()
   const isAdmin = myAddr && myAddr === adminAddr
   const isMember = myAddr && org.members?.some(m => (m.wallet || m).toLowerCase() === myAddr)
-  const orgType = meta.orgType || window._siteData?.orgType || 'collective'
+  const orgType = document.body?.dataset?.orgType || meta.orgType || window._siteData?.orgType || 'collective'
   const cfg = ORG_TYPE_CONFIG[orgType] || ORG_TYPE_CONFIG.collective
 
   let memberDomains = {}

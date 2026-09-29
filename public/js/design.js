@@ -525,6 +525,28 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>publish to org panel · media detail owner-only affordance</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">Rendered on /art?media=X for the media's on-chain artist. Fetches /api/orgs/by-member/&lt;wallet&gt;, then multicalls <code>isWorkTagged(orgId, mediaContract, mediaId)</code> for each. Toggling calls <code>Praxis.tagWork</code> / <code>untagWork</code>. Panel self-hides for non-owners or wallets without orgs. This is the UI that lets a member curate an org's catalog — the org catalog endpoint is explicit-tag-only, so this is how work gets published to whatifwe pictures, lucidhaus, etc.</p>
+          <div class="publish-to-org" style="max-width:520px">
+            <div class="publish-to-org-title">publish to</div>
+            <div class="publish-to-org-hint">show this work in an organization's catalog. only the on-chain owner (you) can publish.</div>
+            <div class="publish-to-org-list">
+              <label class="publish-to-org-row">
+                <input type="checkbox" class="publish-to-org-toggle" checked>
+                <span class="publish-to-org-name">whatifwe pictures</span>
+                <a href="#" class="publish-to-org-domain">whatifwe.nyc</a>
+              </label>
+              <label class="publish-to-org-row">
+                <input type="checkbox" class="publish-to-org-toggle">
+                <span class="publish-to-org-name">lucidhaus</span>
+                <a href="#" class="publish-to-org-domain">lucid.haus</a>
+              </label>
+            </div>
+            <p class="publish-to-org-status" style="color:var(--accent)">published ✓</p>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>library item</h3>
           <div class="library-item" style="cursor:pointer;max-width:520px">
             <div class="library-item-header">

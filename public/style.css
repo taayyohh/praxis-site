@@ -9830,6 +9830,55 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 
 
 
+/* --- Publish-to-org (tagWork) panel on media detail --- */
+
+.art-publish-to-org-slot { margin-top: 2em; }
+.publish-to-org {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1em 1.25em;
+  background: color-mix(in srgb, var(--fg) 2%, transparent);
+}
+.publish-to-org-title {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4em;
+}
+.publish-to-org-hint {
+  font-size: 0.8em;
+  color: var(--dim);
+  margin-bottom: 0.75em;
+  line-height: 1.5;
+}
+.publish-to-org-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  margin-bottom: 0.5em;
+}
+.publish-to-org-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75ch;
+  cursor: pointer;
+  padding: 0.35em 0.5ch;
+  border-radius: 4px;
+}
+.publish-to-org-row:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.publish-to-org-toggle { cursor: pointer; }
+.publish-to-org-name { color: var(--fg); font-size: 0.9em; }
+.publish-to-org-domain {
+  color: var(--muted);
+  font-size: 0.75em;
+  text-decoration: none;
+  margin-left: auto;
+}
+.publish-to-org-domain:hover { color: var(--accent); }
+.publish-to-org-status { color: var(--muted); font-size: 0.8em; margin: 0.5em 0 0; }
+
 /* --- Project site attach modal + inline panel --- */
 
 .pd-project-site-row {

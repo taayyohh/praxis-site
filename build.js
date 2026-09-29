@@ -353,6 +353,8 @@ function wrap(content, title, canonicalPath, ogImage, { description: descOverrid
     themeGreen: palette.green.color,
     themeFont: site.theme?.font || "-apple-system, 'Helvetica Neue', Arial, sans-serif",
     projectId: site.projectId != null ? String(site.projectId) : '',
+    orgId: site.orgId != null ? String(site.orgId) : '',
+    orgType: site.orgType || '',
   })
 }
 
