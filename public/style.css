@@ -133,6 +133,40 @@ body.org-vault-mode .vault-lead-label::after {
   font-size: 0.9em;
 }
 
+/* --- Shared card hover treatment ---
+   One transition + hover shape so every clickable card in the app
+   feels the same on pointer-in. Uses a soft cubic-bezier (out-quint)
+   over 260ms instead of the abrupt 150ms linear the earlier cards
+   used. Cards opt in by adding themselves to the .praxis-card-hover
+   class list below OR by chaining onto the shared selector list.
+   Kept as a selector list rather than a shared class so existing
+   markup doesn't need edits. */
+.wip-card,
+.works-card,
+.roster-card,
+.collection-card,
+.project-summary-card,
+.project-card,
+.template-card,
+.assoc-org-chip {
+  transition:
+    border-color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.wip-card:hover,
+.works-card:hover,
+.roster-card:hover,
+.collection-card:hover,
+.project-summary-card:hover,
+.project-card:hover,
+.template-card:hover,
+.assoc-org-chip:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
 /* Works-in-progress preview cards. Rendered by demos.js renderHighlights,
    sits under the "WORKS IN PROGRESS" heading in the highlights strip.
    2x2 on desktop, single column on narrow screens. Each card links
@@ -142,21 +176,23 @@ body.org-vault-mode .vault-lead-label::after {
   grid-template-columns: repeat(2, 1fr);
   gap: 1em;
   margin-top: 0.5em;
+  /* stretch: default; makes every row's cards equal-height, so a
+     text-only card fills the same vertical space as a card with a
+     16:10 art slot next to it. Combined with flex-column + flex:1
+     on the info block below, the text card's content centers into
+     the empty space instead of collapsing to its own natural size. */
+  align-items: stretch;
 }
 @media (max-width: 640px) {
   .wip-grid { grid-template-columns: 1fr; }
 }
 .wip-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   text-decoration: none;
   color: inherit;
   border: 1px solid var(--border);
   overflow: hidden;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.wip-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
 }
 .wip-card-art {
   aspect-ratio: 16 / 10;
@@ -165,9 +201,14 @@ body.org-vault-mode .vault-lead-label::after {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .wip-card-info {
-  padding: 0.75em 1ch;
+  padding: 0.85em 1.1ch;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 .wip-card-title {
   color: var(--fg);
@@ -184,10 +225,14 @@ body.org-vault-mode .vault-lead-label::after {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-/* Text-only variant — outlined card with no art slot, more padding
-   so the words breathe. Used when a WIP has no cover art yet. */
+/* Text-only variant — no art slot, but the same total footprint as
+   the graphic card next to it so the 2x2 grid keeps a clean shape
+   even when one card is text and its neighbour has cover art. Info
+   block fills the whole card and centers vertically so a two-line
+   title reads as intentional rather than shoved to the top. */
 .wip-card--text .wip-card-info {
   padding: 1em 1.25ch;
+  justify-content: center;
 }
 
 /* CMS-uploaded site logo — replaces the domain text in the top-left
@@ -677,12 +722,10 @@ img.wallet-greeting-avatar { padding: 0; }
   border-radius: 50%;
   overflow: hidden;
   border: 1px solid var(--border);
-  transition: border-color 0.15s, transform 0.15s;
   text-decoration: none;
-}
-.assoc-org-chip:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  /* transition + hover shape handled by the shared card-hover rule
+     near the top of this file so chips move with the same easing as
+     every other card in the app. */
 }
 .assoc-org-pic {
   width: 100%;
