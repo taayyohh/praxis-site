@@ -1371,6 +1371,10 @@ async function checkDomainRenewal(address) {
   if (!currentDomain || currentDomain === 'localhost') return
   // supporter subdomains don't have custom domains to renew
   if (currentDomain.endsWith('.ourpraxis.network')) return
+  // Org tenants BYO their domain (they never bought one through
+  // Praxis), so there's no renewal expiry to warn about. Skip the
+  // cross-origin fetch entirely.
+  if (document.body?.dataset?.orgId) return
 
   try {
     const orchBase = document.body.dataset.orchestrator || 'https://ourpraxis.network'

@@ -542,6 +542,47 @@ img.wallet-greeting-avatar { padding: 0; }
   transition: color 0.15s;
 }
 
+/* Associated-org badges — 32px circle avatars in the top-bar, links
+   to each org the site owner belongs to. Only rendered on artist
+   tenants (the org's own site never shows them). */
+.assoc-orgs {
+  display: flex;
+  align-items: center;
+  gap: 0.5ch;
+  margin-left: auto;
+  margin-right: 1ch;
+}
+.assoc-org-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, transform 0.15s;
+  text-decoration: none;
+}
+.assoc-org-chip:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.assoc-org-pic {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 0.8em;
+  font-family: 'SF Mono', monospace;
+}
+.assoc-org-pic--fallback {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
 .dock-btn:hover,
 .dock-btn.active {
   color: var(--accent);
