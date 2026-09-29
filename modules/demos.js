@@ -304,44 +304,49 @@ export default {
   renderHighlights(data) {
     const items = Array.isArray(data) ? data : data?.items || []
     if (!items.length) return ''
-    return items.slice(0, 3).map(item => {
+    // Slug helper — reuses the same URL fragment /demos generates for
+    // each item so clicking a preview card lands the reader on that
+    // specific work in the full section.
+    const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+    const cards = items.slice(0, 4).map((item, i) => {
       const type = detectType(item)
-      const artSrc = item.coverArt || item.art || (type !== 'image' ? item.image : '') || ''
-      const imgProxy = artSrc ? `/api/img?url=${encodeURIComponent(artSrc)}&w=80` : ''
-      let html = `<div class="credit" style="display:flex;align-items:center;gap:0.75em">`
+      const artSrc = item.coverArt || item.art || (type !== 'image' ? item.image : (item.image || item.src)) || ''
+      const imgSrc = type === 'image' ? (item.image || item.src) : artSrc
+      const imgProxy = imgSrc ? `/api/img?url=${encodeURIComponent(imgSrc)}&w=400` : ''
+      const href = `/demos#${slug(item.title || String(i))}`
+      // Art slot: thumbnail when we have imagery, minimal type-glyph
+      // when we don't. Text-only items fall through to the text-card
+      // branch below and skip the art slot entirely — cleaner than
+      // rendering a big empty rectangle.
+      const hasArt = !!imgProxy
+      const artInner = hasArt
+        ? `<img src="${esc(imgProxy)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
+        : ''
+      const meta = [
+        item.status ? esc(item.status) : '',
+        item.medium ? esc(item.medium) : '',
+        item.description ? esc(item.description) : '',
+      ].filter(Boolean).join(' · ')
 
-      // Thumbnail based on type
-      if (type === 'audio' && item.src) {
-        if (imgProxy) {
-          html += `<div style="flex-shrink:0;width:40px;height:40px;position:relative;border-radius:3px;overflow:hidden"><img src="${esc(imgProxy)}" alt="" style="width:100%;height:100%;object-fit:cover"><button class="track-play-btn" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist="" style="position:absolute;inset:0;background:rgba(0,0,0,0.3);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button></div>`
-        } else {
-          html += `<button class="track-play-btn" data-track-src="${esc(item.src)}" data-track-title="${esc(item.title || 'demo')}" data-track-artist="" style="flex-shrink:0;width:32px;height:32px;background:var(--surface);border:1px solid var(--border);border-radius:50%;color:var(--fg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.65em"><i class="ph ph-play"></i></button>`
-        }
-      } else if (type === 'video') {
-        html += `<div style="flex-shrink:0;width:40px;height:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;display:flex;align-items:center;justify-content:center"><i class="ph ph-film-strip" style="color:var(--muted)"></i></div>`
-      } else if (type === 'pdf') {
-        html += `<div style="flex-shrink:0;width:40px;height:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;display:flex;align-items:center;justify-content:center"><i class="ph ph-file-pdf" style="color:var(--muted)"></i></div>`
-      } else if (type === 'image' && (item.image || item.src)) {
-        const src = item.image || item.src
-        html += `<div style="flex-shrink:0;width:40px;height:40px;border-radius:3px;overflow:hidden"><img src="${esc(`/api/img?url=${encodeURIComponent(src)}&w=80`)}" alt="" style="width:100%;height:100%;object-fit:cover"></div>`
-      } else if (type === 'unknown' || (item.src && type !== 'text')) {
-        html += `<div class="demo-highlight-unk" data-src="${esc(item.src)}" style="flex-shrink:0;width:40px;height:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;display:flex;align-items:center;justify-content:center"><i class="ph ph-file" style="color:var(--muted)"></i></div>`
+      if (hasArt) {
+        return `<a href="${esc(href)}" class="wip-card wip-card--art">
+          <div class="wip-card-art">${artInner}</div>
+          <div class="wip-card-info">
+            <div class="wip-card-title">${esc(item.title || 'untitled')}</div>
+            ${meta ? `<div class="wip-card-meta">${meta}</div>` : ''}
+          </div>
+        </a>`
       }
-
-      // Title + metadata
-      html += `<div style="flex:1;min-width:0">`
-      html += `<span class="credit-title" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.title || 'untitled')}</span>`
-      if (item.status || item.description) {
-        html += `<span class="credit-detail" style="display:block;font-size:0.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">`
-        if (item.status) html += esc(item.status)
-        if (item.status && item.description) html += ' · '
-        if (item.description) html += esc(item.description)
-        html += `</span>`
-      }
-      html += `</div>`
-      html += `</div>`
-      return html
+      // Text-only card — outlined, no art slot. Reads as a note rather
+      // than a placeholder for missing media.
+      return `<a href="${esc(href)}" class="wip-card wip-card--text">
+        <div class="wip-card-info">
+          <div class="wip-card-title">${esc(item.title || 'untitled')}</div>
+          ${meta ? `<div class="wip-card-meta">${meta}</div>` : ''}
+        </div>
+      </a>`
     }).join('\n')
+    return `<div class="wip-grid">${cards}</div>`
   },
 
   renderCV(data) {
