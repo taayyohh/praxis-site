@@ -64,13 +64,26 @@ export async function openProjectAttachModal(projectId, project, opts = {}) {
 
       <section class="project-attach-panel" data-panel="byo">
         <p class="project-attach-help">
-          Point an A record for your domain at <code class="project-attach-ip">${SERVER_IP_FALLBACK}</code>,
-          wait a minute or two for DNS to propagate, then paste the
-          domain below.
+          At your registrar, add two records for your domain — <strong>A</strong>
+          → <code class="project-attach-ip">${SERVER_IP_FALLBACK}</code>, and
+          <strong>TXT</strong> at <code>_praxis-verify.&lt;domain&gt;</code>
+          → the value shown below (proves you own the domain, not just
+          the DNS pointer).
         </p>
         <div class="project-attach-form">
           <input type="text" class="project-input" id="pa-byo-domain" placeholder="thatguythefilm.com" autocomplete="off">
-          <button class="buy-btn" id="pa-byo-attach">attach</button>
+          <button class="buy-btn" id="pa-byo-check">show TXT</button>
+        </div>
+        <div id="pa-byo-txt" class="project-attach-txt-block" hidden>
+          <div class="project-attach-txt-row"><span class="project-attach-txt-label">record</span><code id="pa-byo-txt-name"></code></div>
+          <div class="project-attach-txt-row"><span class="project-attach-txt-label">value</span><code id="pa-byo-txt-value"></code></div>
+          <div class="project-attach-txt-row">
+            <button type="button" class="project-attach-txt-copy" id="pa-byo-txt-copy">copy value</button>
+            <span id="pa-byo-verify-state" class="project-attach-txt-state">not verified</span>
+          </div>
+        </div>
+        <div class="project-attach-form" id="pa-byo-attach-row" hidden style="grid-template-columns:1fr">
+          <button class="buy-btn" id="pa-byo-attach" disabled>attach (verify DNS first)</button>
         </div>
         <p class="project-attach-status" id="pa-byo-status"></p>
       </section>
@@ -223,12 +236,96 @@ export async function openProjectAttachModal(projectId, project, opts = {}) {
   }
 
   // ── BYO path ─────────────────────────────────────────
-  overlay.querySelector('#pa-byo-attach').addEventListener('click', async () => {
+  //
+  // Two-step: (1) show the TXT record derived from the caller's
+  // wallet + projectId + domain, (2) after the user adds the record
+  // at their registrar and DNS propagates, verify + attach. The
+  // attach button stays disabled until the verify endpoint confirms
+  // the TXT record contains the expected value — that's the actual
+  // proof of ownership; a DNS A pointer alone is not enough because
+  // our server IP is public.
+
+  let byoTxtVerified = false
+  let byoPollTimer = null
+
+  function stopBoyPoll() { if (byoPollTimer) { clearInterval(byoPollTimer); byoPollTimer = null } }
+
+  async function pollByoTxt(domain) {
+    try {
+      const res = await fetch('/orchestrator/verify-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'project', id: projectId, wallet: addr, domain }),
+      })
+      const data = await res.json()
+      const stateEl = overlay.querySelector('#pa-byo-verify-state')
+      if (data.verified) {
+        byoTxtVerified = true
+        stopBoyPoll()
+        stateEl.textContent = 'verified ✓'
+        stateEl.classList.add('is-verified')
+        const btn = overlay.querySelector('#pa-byo-attach')
+        btn.disabled = false
+        btn.textContent = 'attach'
+      } else if (data.error) {
+        stateEl.textContent = `error: ${data.error}`
+      } else {
+        stateEl.textContent = 'checking DNS… (updates every 10s)'
+      }
+    } catch (e) { console.warn('verify-txt poll failed:', e?.message) }
+  }
+
+  overlay.querySelector('#pa-byo-check').addEventListener('click', async () => {
     const domain = overlay.querySelector('#pa-byo-domain').value.trim().toLowerCase()
     if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
       byoStatus.textContent = 'enter a valid domain (e.g. thatguythefilm.com)'
+      byoStatus.classList.add('is-error')
       return
     }
+    byoStatus.classList.remove('is-error')
+    byoStatus.textContent = 'computing verification value…'
+    try {
+      const res = await fetch('/orchestrator/verify-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'project', id: projectId, wallet: addr, domain }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+
+      overlay.querySelector('#pa-byo-txt-name').textContent = data.recordName
+      overlay.querySelector('#pa-byo-txt-value').textContent = data.expectedValue
+      overlay.querySelector('#pa-byo-txt').hidden = false
+      overlay.querySelector('#pa-byo-attach-row').hidden = false
+      overlay.querySelector('#pa-byo-copy')?.remove?.()
+      byoStatus.textContent = 'add the TXT record above, then wait — this checks DNS every 10s.'
+      overlay.querySelector('#pa-byo-verify-state').textContent = data.verified ? 'verified ✓' : 'not verified — add the record at your registrar'
+      if (data.verified) {
+        byoTxtVerified = true
+        overlay.querySelector('#pa-byo-verify-state').classList.add('is-verified')
+        const btn = overlay.querySelector('#pa-byo-attach')
+        btn.disabled = false
+        btn.textContent = 'attach'
+      } else {
+        stopBoyPoll()
+        byoPollTimer = setInterval(() => pollByoTxt(domain), 10000)
+      }
+    } catch (e) {
+      byoStatus.textContent = formatTxError(e)
+      byoStatus.classList.add('is-error')
+    }
+  })
+
+  overlay.querySelector('#pa-byo-txt-copy').addEventListener('click', () => {
+    const val = overlay.querySelector('#pa-byo-txt-value').textContent
+    navigator.clipboard?.writeText(val).catch(() => {})
+    overlay.querySelector('#pa-byo-txt-copy').textContent = 'copied'
+    setTimeout(() => { overlay.querySelector('#pa-byo-txt-copy').textContent = 'copy value' }, 1500)
+  })
+
+  overlay.querySelector('#pa-byo-attach').addEventListener('click', async () => {
+    if (!byoTxtVerified) { byoStatus.textContent = 'wait for TXT verification'; return }
+    const domain = overlay.querySelector('#pa-byo-domain').value.trim().toLowerCase()
     byoStatus.classList.remove('is-error')
     try {
       const cid = await resolvePosterCid(byoStatus)

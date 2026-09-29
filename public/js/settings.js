@@ -1902,9 +1902,20 @@ async function showAttachOrgSiteModal(org) {
       <button type="button" class="oa-domain-tab" data-tab="buy" style="background:none;border:0;color:var(--muted);font:inherit;font-size:0.85em;padding:0.4em 1ch;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer">buy a new one</button>
     </div>
     <section id="oa-domain-byo">
-      <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">Point an A record for your domain at <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">5.161.199.120</code>, then paste it.</p>
+      <p style="color:var(--muted);font-size:0.75em;margin:0 0 0.5em">Two records at your registrar: an <strong>A</strong> record → <code style="background:color-mix(in srgb, var(--fg) 8%, transparent);padding:0.1em 0.4ch;border-radius:3px">5.161.199.120</code>, and a <strong>TXT</strong> at <code>_praxis-verify.&lt;domain&gt;</code> shown after you enter the domain.</p>
       <input type="text" id="oa-byo-domain" class="project-input" placeholder="whatifwe.nyc" value="${escapeHtml(currentOnChainDomain)}" style="width:100%;box-sizing:border-box">
-      ${currentOnChainDomain ? `<p style="color:var(--dim);font-size:0.7em;margin:0.25em 0 0">on-chain record already points here — no extra tx needed.</p>` : ''}
+      ${currentOnChainDomain ? `<p style="color:var(--dim);font-size:0.7em;margin:0.25em 0 0">on-chain record already points here — no updateDomain tx needed.</p>` : ''}
+      <div style="margin-top:0.5em">
+        <button type="button" class="buy-btn" id="oa-byo-check" style="font-size:0.8em;padding:0.25em 1ch">show TXT record</button>
+      </div>
+      <div id="oa-byo-txt" hidden style="margin-top:0.75em;padding:0.75em;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb, var(--fg) 3%, transparent)">
+        <div style="display:flex;gap:0.5em;align-items:baseline;font-size:0.8em"><span style="color:var(--muted);width:6ch">record</span><code id="oa-byo-txt-name" style="word-break:break-all"></code></div>
+        <div style="display:flex;gap:0.5em;align-items:baseline;font-size:0.8em;margin-top:0.3em"><span style="color:var(--muted);width:6ch">value</span><code id="oa-byo-txt-value" style="word-break:break-all"></code></div>
+        <div style="display:flex;gap:0.75em;align-items:center;margin-top:0.5em">
+          <button type="button" class="buy-btn" id="oa-byo-txt-copy" style="font-size:0.75em;padding:0.15em 1ch">copy value</button>
+          <span id="oa-byo-verify-state" style="font-size:0.75em;color:var(--muted)">not verified</span>
+        </div>
+      </div>
     </section>
     <section id="oa-domain-buy" hidden>
       <div style="display:flex;gap:0.5em">
@@ -1930,7 +1941,54 @@ async function showAttachOrgSiteModal(org) {
   let domainMode = 'byo'
   let selectedDomain = null
   let selectedPriceEth = 0
+  let byoTxtVerified = false
+  let byoPollTimer = null
   const statusEl = dialog.querySelector('#oa-status')
+
+  function stopPoll() { if (byoPollTimer) { clearInterval(byoPollTimer); byoPollTimer = null } }
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { stopPoll(); overlay.remove() } })
+
+  async function verifyTxt(domain, silent) {
+    try {
+      const res = await fetch('/orchestrator/verify-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'org', id: Number(org.id), wallet: org.admin, domain }),
+      })
+      const data = await res.json()
+      const stateEl = dialog.querySelector('#oa-byo-verify-state')
+      if (data.error) { if (stateEl) stateEl.textContent = `error: ${data.error}`; return null }
+      if (data.verified) {
+        byoTxtVerified = true
+        stopPoll()
+        if (stateEl) { stateEl.textContent = 'verified ✓'; stateEl.style.color = '#4ade80' }
+        return data
+      }
+      if (!silent && stateEl) stateEl.textContent = 'not verified — add the record at your registrar'
+      return data
+    } catch { return null }
+  }
+
+  dialog.querySelector('#oa-byo-check')?.addEventListener('click', async () => {
+    const domain = dialog.querySelector('#oa-byo-domain').value.trim().toLowerCase()
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) { statusEl.textContent = 'enter a valid domain first'; return }
+    statusEl.textContent = ''
+    const data = await verifyTxt(domain, false)
+    if (!data) return
+    dialog.querySelector('#oa-byo-txt-name').textContent = data.recordName
+    dialog.querySelector('#oa-byo-txt-value').textContent = data.expectedValue
+    dialog.querySelector('#oa-byo-txt').hidden = false
+    if (!data.verified) {
+      stopPoll()
+      byoPollTimer = setInterval(() => verifyTxt(domain, true), 10000)
+    }
+  })
+  dialog.querySelector('#oa-byo-txt-copy')?.addEventListener('click', () => {
+    const val = dialog.querySelector('#oa-byo-txt-value').textContent
+    navigator.clipboard?.writeText(val).catch(() => {})
+    dialog.querySelector('#oa-byo-txt-copy').textContent = 'copied'
+    setTimeout(() => { dialog.querySelector('#oa-byo-txt-copy').textContent = 'copy value' }, 1500)
+  })
 
   dialog.querySelectorAll('#oa-type-cards .template-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -2006,6 +2064,11 @@ async function showAttachOrgSiteModal(org) {
     if (domainMode === 'byo') {
       domain = dialog.querySelector('#oa-byo-domain').value.trim().toLowerCase()
       if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) { statusEl.textContent = 'enter a valid domain'; return }
+      // Force a final TXT check right before the tx flurry — a stale
+      // "verified" flag from 5 min ago isn't good enough if the record
+      // was removed. Silent poll; error if not verified now.
+      const check = await verifyTxt(domain, true)
+      if (!check?.verified) { statusEl.textContent = 'TXT record not verified — click "show TXT record" first'; return }
     } else {
       domain = selectedDomain
       if (!domain) { statusEl.textContent = 'pick a domain from the search results'; return }

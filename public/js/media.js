@@ -554,13 +554,37 @@ async function renderOrgRoster() {
   if (!ownerAddr) return
 
   try {
+    // Determine THIS site's org (not just any org the owner is in).
+    // A wallet often admins multiple orgs — Miles admins whatifwe pictures
+    // AND is a member of lucidhaus. Grabbing orgs[0] rendered lucidhaus's
+    // roster + catalog on whatifwe.nyc. Resolve by matching site.json's
+    // own orgId first; fall back to matching the site's domain against
+    // each org's on-chain domain; only then use orgs[0] as a legacy
+    // catch-all for sites without an orgId yet.
+    let siteOrgId = null
+    let siteDomain = null
+    try {
+      const sj = await fetch('/api/site').then(r => r.json()).catch(() => null)
+      if (sj?.orgId != null) siteOrgId = String(sj.orgId)
+      siteDomain = String(sj?.domain || location.hostname || '').toLowerCase()
+    } catch {}
+
     const res = await fetch(`/api/orgs/by-member/${ownerAddr}`)
     if (!res.ok) return
     const data = await res.json()
     const orgs = data.orgs || data || []
     if (!orgs?.length) { el.innerHTML = ''; return }
 
-    const orgId = orgs[0].id ?? orgs[0]
+    let orgId = null
+    if (siteOrgId != null) {
+      const match = orgs.find(o => String(o.id) === siteOrgId)
+      if (match) orgId = match.id
+    }
+    if (orgId == null && siteDomain) {
+      const match = orgs.find(o => String(o.domain || '').toLowerCase() === siteDomain)
+      if (match) orgId = match.id
+    }
+    if (orgId == null) orgId = orgs[0].id ?? orgs[0]
     const orgRes = await fetch(`/api/org/${orgId}`)
     if (!orgRes.ok) return
     const org = await orgRes.json()

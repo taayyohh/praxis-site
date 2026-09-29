@@ -9940,6 +9940,45 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .project-attach-status { color: var(--muted); font-size: 0.85em; min-height: 1.3em; margin: 0; line-height: 1.55; }
 .project-attach-status.is-error { color: #ef4444; }
 
+/* TXT verification block — shown after the user enters a domain in
+   the BYO flow so they can copy the record + value at their
+   registrar. Polls verify-txt every 10s while unverified. */
+.project-attach-txt-block {
+  margin: 0.75em 0;
+  padding: 0.75em 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.project-attach-txt-row {
+  display: flex; gap: 0.5em; align-items: baseline;
+  font-size: 0.8em;
+  margin-top: 0.3em;
+}
+.project-attach-txt-row:first-child { margin-top: 0; }
+.project-attach-txt-label { color: var(--muted); width: 6ch; flex-shrink: 0; }
+.project-attach-txt-row code {
+  word-break: break-all;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: 0.15em 0.5ch;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--fg);
+}
+.project-attach-txt-copy {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75em;
+  padding: 0.15em 1ch;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.project-attach-txt-copy:hover { border-color: var(--border-hover); }
+.project-attach-txt-state { color: var(--muted); font-size: 0.75em; }
+.project-attach-txt-state.is-verified { color: #4ade80; }
+
 .project-attach-results { display: flex; flex-direction: column; gap: 0.5em; margin-top: 0.75em; }
 .project-attach-domain-row {
   display: flex; justify-content: space-between; align-items: center; gap: 1em;
