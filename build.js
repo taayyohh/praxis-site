@@ -92,10 +92,28 @@ function buildPortfolioNav() {
     const i18nAttr = m.customLabel ? '' : ` data-i18n="module.${m.type}"`
     return `<a href="${mod.route}"${i18nAttr}>${label}</a>`
   }).join(' ')
-  // Always show "blog" in the portfolio nav so signed-out visitors can
-  // find the artist's blog (the dock is owner-only so visitors can't see
-  // the blog icon there). Placed after all module links.
-  return moduleLinks + ' <a href="/blog" data-i18n="nav.blog">blog</a>'
+  // Blog only appears in the nav when there's something to show. Empty
+  // blog links used to render as dead-end nav items on every fresh site.
+  // We check both blog-collections and any published posts on this
+  // tenant — either is enough to warrant surfacing the link.
+  const hasBlogCollections = Array.isArray(site.blogCollections) && site.blogCollections.length > 0
+  const hasPublishedPosts = _tenantHasBlogPosts()
+  const blogLink = (hasBlogCollections || hasPublishedPosts)
+    ? ' <a href="/blog" data-i18n="nav.blog">blog</a>'
+    : ''
+  return moduleLinks + blogLink
+}
+
+// Cheap check: any .md file under content/blog on this tenant? The blog
+// module writes posts there before pushing to BlogRegistry. Silent on
+// missing directory so a brand-new tenant renders without the link.
+// Runs relative to the build's CWD, which is always the site's own dir.
+function _tenantHasBlogPosts() {
+  try {
+    if (!existsSync('content/blog')) return false
+    const entries = readdirSync('content/blog')
+    return entries.some(e => e.endsWith('.md') || e.endsWith('.mdx'))
+  } catch { return false }
 }
 
 // Tracks which module types were rendered into the homepage highlights

@@ -542,15 +542,19 @@ img.wallet-greeting-avatar { padding: 0; }
   transition: color 0.15s;
 }
 
-/* Associated-org badges — 32px circle avatars in the top-bar, links
-   to each org the site owner belongs to. Only rendered on artist
-   tenants (the org's own site never shows them). */
+/* Associated-org badges — 32px circle avatars linking to each org
+   the site owner belongs to. Rendered inside the hero <header>,
+   right-aligned above the divider that separates hero from CV /
+   credits below. Only rendered on artist tenants — the org's own
+   site never advertises its own membership. */
 .assoc-orgs {
   display: flex;
   align-items: center;
   gap: 0.5ch;
-  margin-left: auto;
-  margin-right: 1ch;
+}
+.assoc-orgs-hero {
+  justify-content: flex-end;
+  margin-top: 1em;
 }
 .assoc-org-chip {
   display: inline-flex;
@@ -588,18 +592,11 @@ img.wallet-greeting-avatar { padding: 0; }
   color: var(--accent);
 }
 
-/* Primary dock action — used on org tenants for "start a production".
-   Reads first at rest so signers see the main thing an org does. */
-.dock-btn.dock-btn-primary {
-  color: var(--accent);
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  padding: 0.25em;
-}
-.dock-btn.dock-btn-primary:hover {
-  color: var(--fg);
-  border-color: var(--fg);
-}
+/* dock-btn-primary used to add a pill border + accent color to the
+   "start a production" plus icon on org tenants. That made the icon
+   visibly bigger than its neighbours and its at-rest state didn't
+   match the row. Reverted to plain .dock-btn styling — the icon
+   glyph (ph-plus) is already distinctive enough. */
 
 .dock-tools {
   display: flex;

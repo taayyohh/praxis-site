@@ -1,15 +1,12 @@
 // Associated-orgs badges — small circle avatars of each org the site
-// owner belongs to, shown top-right on artist tenants. Clicking one
-// links out to the org's own site (its domain).
+// owner belongs to. Rendered on artist tenants, positioned inside the
+// hero header (right-aligned above the divider line), each linked to
+// the org's own tenant.
 //
-// Where: on artist sites (data-org-id NOT set). Never on org tenants
-// themselves — they're the org and don't display "belongs to" chips.
-// Renders inline into the top-bar between the domain link and the
-// praxis menu trigger.
+// Skipped on org tenants themselves — an org's site doesn't advertise
+// its own membership.
 
 import { escapeHtml } from './utils.js'
-
-const IPFS_GATEWAY = '/api/ipfs-proxy/'
 
 async function initAssocOrgs() {
   // Don't render on org tenants — they are the org.
@@ -17,8 +14,12 @@ async function initAssocOrgs() {
   const owner = document.body?.dataset?.owner
   if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return
 
-  const topBar = document.getElementById('top-bar')
-  if (!topBar) return
+  // Anchor inside the hero <header>. Every template's index.html
+  // starts with <header> containing the profile pic + name, so this
+  // is the reliable slot across default/musician/writer/visual/
+  // performer/filmmaker/organization.
+  const heroHeader = document.querySelector('header')
+  if (!heroHeader) return
 
   let orgs = []
   try {
@@ -29,33 +30,36 @@ async function initAssocOrgs() {
   } catch { return }
   if (!orgs.length) return
 
-  // Fetch each org's metadata (for profilePic) in parallel. The by-member
-  // endpoint gives name + domain + admin but not the IPFS metadata; the
-  // /api/org/:id endpoint hydrates it. Miss-tolerant: an org whose
-  // metadata fetch fails still renders as an initial-letter fallback.
+  // Pic source priority:
+  // 1. profilePic on the by-member row (server-enriched from the
+  //    org tenant's site.json — the same file the org's CMS updates
+  //    when uploading a logo).
+  // 2. Fall back to the org's IPFS metadata if by-member didn't
+  //    stamp a pic (e.g. an org that hasn't attached a tenant yet).
+  // 3. Otherwise render an initial-letter fallback.
   const detailed = await Promise.all(orgs.map(async (o) => {
+    if (o.profilePic) return o
     try {
       const r = await fetch(`/api/org/${encodeURIComponent(o.id)}`)
       if (!r.ok) return o
       const detail = await r.json()
-      return { ...o, metadata: detail.metadata || {} }
+      const fromMeta = detail.metadata?.profilePic
+      return fromMeta ? { ...o, profilePic: fromMeta } : o
     } catch { return o }
   }))
 
-  // Build the badges strip. Each avatar is a link to the org's own
-  // domain (skipped when the org hasn't attached one yet — no dead
-  // link).
   const chips = detailed
     .map(o => {
       const name = o.name || `org #${o.id}`
       const domain = String(o.domain || '').trim()
-      const raw = o.metadata?.profilePic || ''
-      // Only proxy IPFS/https URLs through the resize proxy; strip
-      // anything else since the CMS bio field can be arbitrary text.
+      const raw = o.profilePic || ''
+      // Only proxy HTTP(S) or IPFS URLs — bare strings from settings
+      // may already be full URLs served by the org's own tenant.
       let picUrl = ''
       if (raw.startsWith('http')) picUrl = `/api/img?url=${encodeURIComponent(raw)}&w=64`
-      else if (raw.startsWith('ipfs://')) picUrl = IPFS_GATEWAY + raw.slice(7)
-      else if (raw && /^[A-Za-z0-9]+$/.test(raw)) picUrl = IPFS_GATEWAY + raw
+      else if (raw.startsWith('ipfs://')) picUrl = '/api/ipfs-proxy/' + raw.slice(7)
+      else if (raw.startsWith('/')) picUrl = raw // tenant-hosted asset
+      else if (raw && /^[A-Za-z0-9]+$/.test(raw)) picUrl = '/api/ipfs-proxy/' + raw
       const initial = escapeHtml((name.trim()[0] || 'O').toUpperCase())
       const inner = picUrl
         ? `<img src="${escapeHtml(picUrl)}" alt="" class="assoc-org-pic" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className:'assoc-org-pic assoc-org-pic--fallback', textContent:'${initial}'}))">`
@@ -68,13 +72,9 @@ async function initAssocOrgs() {
 
   const wrap = document.createElement('div')
   wrap.id = 'assoc-orgs'
-  wrap.className = 'assoc-orgs'
+  wrap.className = 'assoc-orgs assoc-orgs-hero'
   wrap.innerHTML = chips
-  // Insert after site-identity so the chips sit on the left half of
-  // the right-hand cluster, before the praxis menu.
-  const menuTrigger = topBar.querySelector('#praxis-menu-trigger')
-  if (menuTrigger) topBar.insertBefore(wrap, menuTrigger)
-  else topBar.appendChild(wrap)
+  heroHeader.appendChild(wrap)
 }
 
 if (document.readyState === 'loading') {
