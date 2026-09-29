@@ -55,16 +55,19 @@ async function initAssocOrgs() {
       const name = o.name || `org #${o.id}`
       const domain = String(o.domain || '').trim()
       const raw = o.profilePic || ''
-      // Only proxy HTTP(S) or IPFS URLs — bare strings from settings
-      // may already be full URLs served by the org's own tenant. A
-      // path that starts with "/" is a tenant-relative upload that
-      // lives on the ORG's tenant server, not on the current site's
-      // origin — always resolve those against the org's own domain
-      // so the browser fetches the right host.
+      // Pick the URL the browser can fetch directly.
+      // - Full https URLs → load as-is. <img> is cross-origin by
+      //   default so this Just Works (unlike fetch()).
+      // - IPFS ipfs:// or bare-CID → local proxy so we get caching.
+      // - Tenant-relative ("/uploads/logo.png") → resolve against the
+      //   org's own domain. The old code proxied these through
+      //   /api/img which rejects external URLs (400) — that's why
+      //   Miles's lucidhaus + whatifwe chips kept falling back to
+      //   the initial letter instead of showing the actual logo.
       let picUrl = ''
-      if (raw.startsWith('http')) picUrl = `/api/img?url=${encodeURIComponent(raw)}&w=80`
+      if (raw.startsWith('http')) picUrl = raw
       else if (raw.startsWith('ipfs://')) picUrl = '/api/ipfs-proxy/' + raw.slice(7)
-      else if (raw.startsWith('/') && domain) picUrl = `/api/img?url=${encodeURIComponent(`https://${domain}${raw}`)}&w=80`
+      else if (raw.startsWith('/') && domain) picUrl = `https://${domain}${raw}`
       else if (raw.startsWith('/')) picUrl = raw
       else if (raw && /^[A-Za-z0-9]+$/.test(raw)) picUrl = '/api/ipfs-proxy/' + raw
       const initial = escapeHtml((name.trim()[0] || 'O').toUpperCase())
