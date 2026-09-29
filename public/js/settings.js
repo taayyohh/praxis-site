@@ -8,6 +8,14 @@ import { parseEther } from './vendor.js'
 
 let settingsToken = ''
 let siteData = null
+// Frozen-at-load copy of siteData. saveSettings diffs the live
+// siteData against this to detect what actually changed locally, so
+// concurrent updates from other tabs / other flows (a pic upload
+// that hit the server while this panel was open, an org sync, etc.)
+// don't get clobbered by a PUT of the stale full object. Reset on
+// every openSettings so a stale snapshot from a previous session
+// can't leak into the next one.
+let _siteDataSnapshot = null
 
 
 // --- Sub-page navigation state ---
@@ -534,6 +542,13 @@ async function openSettings() {
     document.getElementById('settings-content').innerHTML = `<p style="color:var(--muted)">${t('settings.signIn')}</p>`
     return
   }
+  // Snapshot the loaded server state so saveSettings can compute a
+  // diff and PUT only what actually changed locally. Without this,
+  // PUT ships the whole in-memory siteData — a font-change save with
+  // a stale profilePic in memory then overwrites a newer profilePic
+  // that hit the server through some other path. Miles hit this exact
+  // regression today (font change reverted his profile pic).
+  _siteDataSnapshot = JSON.parse(JSON.stringify(siteData))
 
   // supporters don't have modules or highlights — hide those tabs
   if (siteData.supporter) {
@@ -5569,10 +5584,33 @@ async function saveSettings() {
   }
 
   try {
+    // Compute the diff of top-level keys that changed since the panel
+    // opened. Fetch the current server state, apply only those keys,
+    // and PUT the merged result. This preserves fields updated
+    // concurrently elsewhere (a pic upload on another tab, an org
+    // metadata sync) instead of clobbering them with the stale
+    // snapshot loaded when the panel first rendered.
+    const changed = _computeSiteDataDiff(siteData, _siteDataSnapshot)
+    if (!changed.length) {
+      if (statusEl) statusEl.textContent = 'no changes'
+      setTimeout(() => { if (statusEl) statusEl.textContent = '' }, 1500)
+      _savingInFlight = false
+      return
+    }
+    const serverCurrent = await api('/api/site').catch(() => null)
+    const merged = serverCurrent && typeof serverCurrent === 'object'
+      ? { ...serverCurrent }
+      : { ...siteData }
+    for (const k of changed) merged[k] = siteData[k]
     await api('/api/site', {
       method: 'PUT',
-      body: JSON.stringify(siteData),
+      body: JSON.stringify(merged),
     })
+    // Refresh both the live siteData and the snapshot from the merged
+    // result so the next diff computes against what the server actually
+    // has now.
+    siteData = merged
+    _siteDataSnapshot = JSON.parse(JSON.stringify(merged))
     if (statusEl) statusEl.textContent = 'saved'
     setTimeout(() => { if (statusEl) statusEl.textContent = '' }, 2000)
   } catch (e) {
@@ -5580,4 +5618,23 @@ async function saveSettings() {
   } finally {
     _savingInFlight = false
   }
+}
+
+// Shallow diff of two site.json shapes — returns the set of
+// top-level keys that differ. Uses stable JSON serialization to
+// compare nested objects like theme / modules / highlights without
+// depending on reference identity (siteData.theme.font = X mutates
+// the same object siteData.theme was at load time, so the snapshot
+// must be a deep clone, not a reference).
+function _computeSiteDataDiff(current, snapshot) {
+  if (!snapshot) return Object.keys(current || {})
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(snapshot || {})])
+  const changed = []
+  for (const k of keys) {
+    let a, b
+    try { a = JSON.stringify(current?.[k]) } catch { a = String(current?.[k]) }
+    try { b = JSON.stringify(snapshot?.[k]) } catch { b = String(snapshot?.[k]) }
+    if (a !== b) changed.push(k)
+  }
+  return changed
 }

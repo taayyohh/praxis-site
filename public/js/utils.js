@@ -183,6 +183,16 @@ export function ipfsUrl(cid) {
 export async function resizeImageFile(file, maxDim, quality) {
   if (!file || !file.type || !file.type.startsWith('image/')) return file
   if (/gif|svg/.test(file.type)) return file
+  // Preserve the alpha channel when the input has one. PNG → PNG,
+  // WebP → WebP, everything else → JPEG. Forcing JPEG on a
+  // transparent PNG (as the earlier code did) flattens alpha to
+  // whatever the canvas background is — black by default — which is
+  // exactly what turned Miles's transparent logo upload into a black
+  // rectangle after the round-trip through the resize + proxy.
+  const isPng = file.type === 'image/png'
+  const isWebp = file.type === 'image/webp'
+  const outType = isPng ? 'image/png' : isWebp ? 'image/webp' : 'image/jpeg'
+  const outExt = isPng ? '.png' : isWebp ? '.webp' : '.jpg'
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise((resolve, reject) => {
@@ -200,9 +210,11 @@ export async function resizeImageFile(file, maxDim, quality) {
     canvas.height = h
     const ctx = canvas.getContext('2d')
     ctx.drawImage(img, 0, 0, w, h)
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+    // PNG is lossless — canvas.toBlob ignores the quality arg for
+    // 'image/png'. JPEG + WebP still take quality.
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, outType, quality))
     if (!blob) return file
-    return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() })
+    return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + outExt, { type: outType, lastModified: Date.now() })
   } finally {
     URL.revokeObjectURL(url)
   }
