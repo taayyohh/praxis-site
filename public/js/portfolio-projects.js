@@ -57,14 +57,22 @@ async function initPortfolioProjects() {
   }
 }
 
-function _isOwner(tenantWallet) {
+async function _isOwner(tenantWallet) {
   const viewer = window.getWalletAddress?.()
   if (!viewer) return false
-  return viewer.toLowerCase() === tenantWallet
+  // Delegate to isSiteOwner so Safe signers are recognized on org
+  // tenants — otherwise the portfolio strip's hide affordance wouldn't
+  // appear for org signers even though they admin the site.
+  try {
+    const { isSiteOwner } = await import('./utils.js')
+    return await isSiteOwner(viewer, tenantWallet)
+  } catch {
+    return viewer.toLowerCase() === tenantWallet
+  }
 }
 
 function _applyOwnerMode(el, tenantWallet) {
-  const apply = () => el.classList.toggle('is-owner', _isOwner(tenantWallet))
+  const apply = async () => el.classList.toggle('is-owner', await _isOwner(tenantWallet))
   apply()
   // Owner status can flip after initial render (e.g. wallet unlock)
   window.addEventListener('wallet-connected', apply)
@@ -78,7 +86,7 @@ function _wireHideButtons(el, tenantWallet) {
     // Eat the click before the card's <a> navigation fires.
     e.preventDefault()
     e.stopPropagation()
-    if (!_isOwner(tenantWallet)) return
+    if (!(await _isOwner(tenantWallet))) return
     const projectId = btn.dataset.projectId
     if (!projectId) return
 

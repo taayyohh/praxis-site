@@ -75,6 +75,34 @@ export async function getAuthToken({ force = false } = {}) {
 // When another wallet (Phantom/Coinbase/Rabby) has locked window.ethereum as
 // non-configurable, our embedded provider lives at window.praxisEthereum.
 // EVERY wallet RPC call must go through this helper, not window.ethereum directly.
+// Is the connected wallet allowed to admin THIS site?
+// - Plain artist/project sites: viewer address must equal body.dataset.owner
+// - Org sites (data-org-id present): body.dataset.owner is the Safe address;
+//   viewer is an EOA signer, so we check Safe.isOwner(viewer) on-chain.
+// Cached per (siteOwner, viewer) tuple with a 60s TTL so repeated
+// checks in the same page don't spam RPC.
+const _siteOwnerCache = new Map()
+const _SITE_OWNER_TTL = 60_000
+export async function isSiteOwner(viewer, siteOwner) {
+  if (!viewer || !siteOwner) return false
+  const v = String(viewer).toLowerCase()
+  const s = String(siteOwner).toLowerCase()
+  if (v === s) return true
+  // Only try the Safe lookup on org sites — no point querying isOwner
+  // on an EOA (would revert and cost RPC).
+  const isOrgSite = !!document.body?.dataset?.orgId
+  if (!isOrgSite) return false
+  const key = `${s}:${v}`
+  const cached = _siteOwnerCache.get(key)
+  if (cached && Date.now() - cached.ts < _SITE_OWNER_TTL) return cached.result
+  try {
+    const { isSafeSigner } = await import('./safe-org.js')
+    const result = await isSafeSigner(s, v)
+    _siteOwnerCache.set(key, { result, ts: Date.now() })
+    return result
+  } catch { return false }
+}
+
 export function getWalletProvider() {
   if (typeof window === 'undefined') return null
   // Always use the embedded wallet — never fall back to MetaMask/browser extensions

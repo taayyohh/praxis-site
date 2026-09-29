@@ -1,5 +1,5 @@
 import { t, getLang, applyTranslations, whenReady as i18nReady } from './i18n.js'
-import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic } from './utils.js'
+import { getWalletProvider, boundedSet, escapeHtml, getCachedAuthToken, getProfilePic, isSiteOwner } from './utils.js'
 
 // Sync fallback map — the wallet dropdown renders before the i18n JSON
 // has always finished loading; t() returns the raw key on miss. Keeps
@@ -220,7 +220,7 @@ function clearBridgeAddress() {
   bridgeRequest({ type: 'praxis-bridge-clear' }).catch(() => {})
 }
 
-function showAddress(address) {
+async function showAddress(address) {
   connectedAddress = address
   localStorage.removeItem('wallet-disconnected')
   try { localStorage.setItem('praxis-wallet', address.toLowerCase()) } catch {}
@@ -230,7 +230,10 @@ function showAddress(address) {
   // top bar: bell in header bar, wallet actions inline in praxis dropdown
   if (topBarWallet) {
     const siteOwner = document.body.dataset.owner?.toLowerCase() || ''
-    const isOwnerView = siteOwner && address.toLowerCase() === siteOwner
+    // Safe-org sites: siteOwner is the Safe address (contract), viewer
+    // is an EOA signer — isSiteOwner does the on-chain isOwner check
+    // and caches the result briefly.
+    const isOwnerView = siteOwner && await isSiteOwner(address, siteOwner)
 
     // bell in the top bar itself (next to praxis mark), owner's site only
     if (isOwnerView && !document.getElementById('top-notifications')) {
@@ -389,9 +392,9 @@ function showAddress(address) {
     })
   }
 
-  // show floating dock only for site owner
+  // show floating dock only for site owner (or, on org sites, any Safe signer)
   const owner = document.body.dataset.owner
-  const isOwner = owner && address.toLowerCase() === owner.toLowerCase()
+  const isOwner = owner && await isSiteOwner(address, owner)
   if (isOwner) {
     showDock()
     checkDomainRenewal(address)

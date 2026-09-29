@@ -1065,8 +1065,14 @@ async function loadOrgSection() {
           const attachBtn = (isAdminHere && !hasSite)
             ? `<button class="buy-btn org-attach-site" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" style="font-size:0.75em;padding:0.2em 1ch">attach a site</button>`
             : ''
-          const loginBtn = (isAdminHere && hasSite)
-            ? `<button class="buy-btn org-setup-login" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" data-org-domain="${esc(o.domain)}" style="font-size:0.75em;padding:0.2em 1ch;border-color:var(--dim);color:var(--dim)" title="set a separate password for signing in on ${esc(o.domain)}">set login</button>`
+          // "upgrade to shared org (Safe)" — offered when the wallet is
+          // admin AND the org is still owned by an EOA (not yet a Safe).
+          // isSafe check happens client-side in the click handler; here
+          // we always render the button for admins and hide it live if
+          // it's already a Safe.
+          const isEoaAdmin = isAdminHere && /^0x[0-9a-fA-F]{40}$/.test(o.admin) && !o.admin?.startsWith('0x0000')
+          const upgradeBtn = isEoaAdmin
+            ? `<button class="buy-btn org-upgrade-safe" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" data-org-domain="${esc(o.domain || '')}" style="font-size:0.75em;padding:0.2em 1ch;border-color:var(--dim);color:var(--dim)" title="make this a genuine shared org with a Safe multisig — the org gets its own on-chain identity and notifications">upgrade to safe</button>`
             : ''
           const actionLabel = hasSite
             ? `<a href="https://${esc(o.domain)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:0.85em">${esc(o.domain)} →</a>`
@@ -1076,7 +1082,7 @@ async function loadOrgSection() {
             <span style="display:flex;align-items:center;gap:0.75em;flex-shrink:0">
               ${roleTag}
               ${attachBtn}
-              ${loginBtn}
+              ${upgradeBtn}
               ${actionLabel}
             </span>
           </div>`
@@ -1116,8 +1122,8 @@ async function loadOrgSection() {
         if (org) showAttachOrgSiteModal(org)
       })
     })
-    orgContent.querySelectorAll('.org-setup-login').forEach(btn => {
-      btn.addEventListener('click', () => showSetupOrgLoginModal({
+    orgContent.querySelectorAll('.org-upgrade-safe').forEach(btn => {
+      btn.addEventListener('click', () => showUpgradeToSafeModal({
         orgId: btn.dataset.orgId,
         orgName: btn.dataset.orgName,
         orgDomain: btn.dataset.orgDomain,
@@ -2160,12 +2166,159 @@ async function showAttachOrgSiteModal(org) {
   })
 }
 
-// Set up a separate login for an org site. Same wallet under the
-// hood (no on-chain transferAdmin needed), just a distinct
-// encrypted backup stored on the org's own tenant with a different
-// password. After success, the org's admin signs in on the org
-// domain with `<orgDomain>` as the handle + the new password —
-// mentally separate from the artist wallet's own login.
+// Upgrade an EOA-admined org to a Safe multisig. Deploys a 1-of-1
+// Safe with the current admin as sole signer, funds it enough for
+// its first tx, then runs the on-chain dance:
+//   1. admin.inviteMember(orgId, safeAddress)
+//   2. safe.execTransaction(Praxis.acceptInvite(orgId))
+//   3. admin.transferAdmin(orgId, safeAddress)
+//   4. server updates /data/artists/<handle>/site.json.wallet to safe
+//
+// After this, the org has its own on-chain identity — notifications
+// targeting the Safe are org-scoped (not admin-scoped), additional
+// signers can be added later via Safe.addOwnerWithThreshold, and
+// treasury flows go through the Safe.
+async function showUpgradeToSafeModal({ orgId, orgName, orgDomain }) {
+  const overlay = document.createElement('div')
+  overlay.className = 'praxis-modal-overlay'
+  overlay.style.zIndex = '10010'
+  const dialog = document.createElement('div')
+  dialog.className = 'praxis-modal-dialog'
+  dialog.style.maxWidth = '520px'
+  dialog.innerHTML = `
+    <h3 style="margin:0 0 0.5em;font-size:1.05em">upgrade <span style="color:var(--accent)">${escapeHtml(orgName)}</span> to a shared org</h3>
+    <p style="color:var(--muted);font-size:0.85em;margin:0 0 0.75em;line-height:1.55">
+      Deploys a Safe multisig for this org with you as the sole signer.
+      From then on, the org has its own on-chain identity — separate notifications, its own credentials, its own treasury.
+      Add more signers later (2-of-3, 3-of-5, whatever fits) as you bring in collaborators.
+    </p>
+    <p style="color:var(--dim);font-size:0.8em;margin:0 0 1em;line-height:1.5">
+      Requires 4 wallet signatures + ~0.001 ETH to fund the Safe's first tx.
+      Once complete, sign in on ${escapeHtml(orgDomain || 'the org domain')} with your own artist password — you'll unlock the org because you're a Safe signer.
+    </p>
+
+    <ol id="upgrade-steps" style="list-style:none;padding:0;margin:0 0 1em;color:var(--dim);font-size:0.85em;line-height:1.7">
+      <li data-step="1"><span class="step-dot">○</span> deploy Safe multisig</li>
+      <li data-step="2"><span class="step-dot">○</span> fund Safe for its first tx</li>
+      <li data-step="3"><span class="step-dot">○</span> invite Safe as org member</li>
+      <li data-step="4"><span class="step-dot">○</span> accept invite (from Safe)</li>
+      <li data-step="5"><span class="step-dot">○</span> transfer admin to Safe</li>
+      <li data-step="6"><span class="step-dot">○</span> update site config</li>
+    </ol>
+
+    <p id="upgrade-status" style="color:var(--muted);font-size:0.85em;min-height:1.2em;margin:0.5em 0"></p>
+    <div style="display:flex;gap:0.5em;margin-top:0.5em">
+      <button class="buy-btn" id="upgrade-submit" style="flex:1;font-size:0.85em;padding:0.5em">upgrade to safe</button>
+      <button class="buy-btn" id="upgrade-cancel" style="flex:0 0 auto;font-size:0.85em;padding:0.5em 1.25ch;border-color:var(--dim);color:var(--dim)">cancel</button>
+    </div>
+  `
+  overlay.appendChild(dialog)
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  dialog.querySelector('#upgrade-cancel').addEventListener('click', () => overlay.remove())
+
+  const statusEl = dialog.querySelector('#upgrade-status')
+  const markStep = (n, state) => {
+    const li = dialog.querySelector(`#upgrade-steps li[data-step="${n}"]`)
+    if (!li) return
+    const dot = li.querySelector('.step-dot')
+    if (state === 'active') { dot.textContent = '●'; li.style.color = 'var(--fg)' }
+    else if (state === 'done') { dot.textContent = '✓'; li.style.color = 'var(--accent)' }
+    else if (state === 'error') { dot.textContent = '✗'; li.style.color = '#ef4444' }
+  }
+
+  dialog.querySelector('#upgrade-submit').addEventListener('click', async () => {
+    statusEl.style.color = 'var(--muted)'
+    dialog.querySelector('#upgrade-submit').disabled = true
+
+    try {
+      const [{ deployOrgSafe, fundSafeForBoot, execSafeTx }, { ensureWallet, getWalletClient, getPublicClient }, { ORG_ADDRESS, ORG_ABI }, { createWalletClient, custom, optimism, encodeFunctionData }] = await Promise.all([
+        import('./safe-org.js'),
+        import('./utils.js'),
+        import('./contracts.js'),
+        import('./vendor.js'),
+      ])
+
+      const addr = await ensureWallet()
+      if (!addr) throw new Error('connect wallet')
+      const account = window.getEmbeddedAccount?.() || addr
+      const wc = getWalletClient()
+      const pc = await getPublicClient()
+
+      // 1. Deploy Safe with current admin as 1-of-1 signer.
+      markStep(1, 'active'); statusEl.textContent = 'deploying Safe (confirm in wallet)…'
+      const { safeAddress } = await deployOrgSafe({ signers: [addr], threshold: 1 })
+      markStep(1, 'done'); statusEl.textContent = `Safe deployed at ${safeAddress.slice(0, 10)}…`
+
+      // 2. Fund Safe with a bit of ETH so it can pay gas.
+      markStep(2, 'active'); statusEl.textContent = 'funding Safe (0.001 ETH)…'
+      await fundSafeForBoot(safeAddress, '0.001')
+      markStep(2, 'done')
+
+      // 3. Admin invites Safe as member.
+      markStep(3, 'active'); statusEl.textContent = 'inviting Safe as org member…'
+      const inviteHash = await wc.writeContract({
+        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
+        args: [BigInt(orgId), safeAddress], account,
+      })
+      await pc.waitForTransactionReceipt({ hash: inviteHash })
+      markStep(3, 'done')
+
+      // 4. Safe accepts the invite. execTransaction from Safe with
+      //    owner-sender pre-approved signature.
+      markStep(4, 'active'); statusEl.textContent = 'accepting invite from Safe…'
+      const acceptData = encodeFunctionData({ abi: ORG_ABI, functionName: 'acceptInvite', args: [BigInt(orgId)] })
+      await execSafeTx({ safeAddress, target: ORG_ADDRESS, callData: acceptData })
+      markStep(4, 'done')
+
+      // 5. Admin transfers admin to Safe.
+      markStep(5, 'active'); statusEl.textContent = 'transferring admin to Safe…'
+      const xferHash = await wc.writeContract({
+        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'transferAdmin',
+        args: [BigInt(orgId), safeAddress], account,
+      })
+      await pc.waitForTransactionReceipt({ hash: xferHash })
+      markStep(5, 'done')
+
+      // 6. Tell the server to update site.json.wallet on the org's
+      //    tenant. Server verifies the transfer already happened on-chain
+      //    before writing.
+      if (orgDomain) {
+        markStep(6, 'active'); statusEl.textContent = 'updating site config…'
+        const res = await fetch('/api/org-site/rewire-safe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId: Number(orgId), safeAddress, callerWallet: addr }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || 'site rewire failed')
+        markStep(6, 'done')
+      } else {
+        markStep(6, 'done')
+      }
+
+      statusEl.style.color = 'var(--green,#4a4)'
+      statusEl.innerHTML = `upgraded ✓ &nbsp; Safe: <code style="font-size:0.85em">${safeAddress}</code>${orgDomain ? ` &nbsp; <a href="https://${escapeHtml(orgDomain)}" target="_blank" rel="noopener" style="color:var(--accent)">visit ${escapeHtml(orgDomain)}</a>` : ''}`
+      setTimeout(() => { overlay.remove(); if (typeof loadOrgSection === 'function') loadOrgSection() }, 5000)
+    } catch (e) {
+      const activeLi = dialog.querySelector('#upgrade-steps li .step-dot')
+      // Mark the first active step as errored so the user can see where it broke.
+      dialog.querySelectorAll('#upgrade-steps li').forEach(li => {
+        if (li.querySelector('.step-dot').textContent === '●') {
+          markStep(li.dataset.step, 'error')
+        }
+      })
+      statusEl.style.color = '#ef4444'
+      statusEl.textContent = e.code === 4001 ? 'cancelled' : (e.shortMessage || e.message || 'upgrade failed').slice(0, 200)
+      dialog.querySelector('#upgrade-submit').disabled = false
+    }
+  })
+}
+
+// [DEPRECATED] set-login flow — same-wallet, different-password. Left
+// in place for now but no longer wired to any button; superseded by
+// showUpgradeToSafeModal above. Safe to delete once we're sure no
+// tenant relies on it.
 async function showSetupOrgLoginModal({ orgId, orgName, orgDomain }) {
   const overlay = document.createElement('div')
   overlay.className = 'praxis-modal-overlay'
