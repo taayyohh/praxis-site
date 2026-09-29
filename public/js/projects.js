@@ -828,6 +828,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       <a href="/projects" id="propose-close" style="color:var(--dim);text-decoration:none;font-size:0.85em;display:flex;align-items:center;gap:0.3ch;padding:1em 0"><i class="ph ph-arrow-left"></i> back to projects</a>
       <h2 style="font-size:1.1em;color:var(--accent);margin:0 0 0.3em">propose a project</h2>
       <p style="color:var(--dim);font-size:0.85em;max-width:50ch;margin:0 0 1.5em;line-height:1.5">propose, fund, and produce artistic work together. 100% of funding goes directly to the team. <a href="https://ourpraxis.network/how-it-works#projects" target="_blank" style="color:var(--accent)">learn more</a></p>
+      ${document.body?.dataset?.orgId ? `<p style="color:var(--fg);font-size:0.85em;max-width:50ch;margin:0 0 1.5em;padding:0.5em 0.75em;border-left:2px solid var(--accent);background:color-mix(in srgb, var(--accent) 6%, transparent);line-height:1.5">Proposing as <strong>${escapeHtml(document.body.dataset.name || 'this org')}</strong>. Funds and credits go to the org account, not your personal wallet.</p>` : ''}
     </div>
     <div class="compose-panel-inner" style="overflow-y:auto">
       <div style="flex:1;overflow-y:auto;padding-bottom:3em">
@@ -2175,12 +2176,44 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
 
       ps.textContent = t('projects.confirming')
       const proposeAcct = await window.authorizedSigner?.(window.getWalletAddress())
-          const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-      const hash = await wc.writeContract({
-        address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-        args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
-        account: proposeAcct,
-      })
+      const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+
+      // On an org tenant admined by a Safe, route the propose through
+      // Safe.execTransaction so the project's proposer (msg.sender
+      // inside Praxis.proposeProject) is the Safe — the org — not the
+      // signer's personal wallet. Funds land at the Safe, credits list
+      // the org, and the org's own credentials mint from its identity.
+      // On artist tenants (or when the site wallet is an EOA) we keep
+      // the direct writeContract path.
+      const _isOrgSite = !!document.body?.dataset?.orgId
+      const _siteWallet = document.body?.dataset?.owner || ''
+      let hash
+      if (_isOrgSite && _siteWallet && /^0x[0-9a-fA-F]{40}$/.test(_siteWallet)) {
+        const { isSafeAddress, isSafeSigner, execSafeTx } = await import('./safe-org.js')
+        const { encodeFunctionData } = await import('./vendor.js')
+        const isSafe = await isSafeAddress(_siteWallet)
+        const amSigner = isSafe && await isSafeSigner(_siteWallet, window.getWalletAddress())
+        if (isSafe && amSigner) {
+          ps.textContent = 'confirming as ' + (document.body.dataset.name || 'the org') + '…'
+          const callData = encodeFunctionData({
+            abi: HUB_ABI, functionName: 'proposeProject',
+            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+          })
+          hash = await execSafeTx({ safeAddress: _siteWallet, target: hubAddress, callData })
+        } else {
+          hash = await wc.writeContract({
+            address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
+            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+            account: proposeAcct,
+          })
+        }
+      } else {
+        hash = await wc.writeContract({
+          address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
+          args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+          account: proposeAcct,
+        })
+      }
       ps.textContent = `tx: ${hash.slice(0, 14)}...`
       const receipt = await publicClient.waitForTransactionReceipt({ hash })
       ps.textContent = t('projects.doneReloading')

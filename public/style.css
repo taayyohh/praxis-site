@@ -547,6 +547,19 @@ img.wallet-greeting-avatar { padding: 0; }
   color: var(--accent);
 }
 
+/* Primary dock action — used on org tenants for "start a production".
+   Reads first at rest so signers see the main thing an org does. */
+.dock-btn.dock-btn-primary {
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.25em;
+}
+.dock-btn.dock-btn-primary:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+
 .dock-tools {
   display: flex;
   flex-direction: column;

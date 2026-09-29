@@ -457,6 +457,7 @@ function showDock() {
   const dockTools = isOrgSite
     ? `
       <button class="dock-btn" id="dock-portfolio" title="${t('dock.portfolio')}"><i class="ph ${document.body.classList.contains('feed-mode') ? 'ph-pulse' : 'ph-squares-four'}"></i></button>
+      <a href="/propose" class="dock-btn dock-btn-primary" id="dock-org-propose" title="start a production"><i class="ph ph-plus"></i></a>
       <button class="dock-btn" id="dock-org-treasury" title="treasury"><i class="ph ph-bank"></i></button>
       <button class="dock-btn" id="dock-org-manage" title="manage"><i class="ph ph-gear"></i></button>
       <button class="dock-btn" id="dock-sections-toggle" title="sections"><i class="ph ph-dots-three"></i></button>
