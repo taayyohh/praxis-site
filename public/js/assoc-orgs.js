@@ -9,9 +9,16 @@
 import { escapeHtml } from './utils.js'
 
 async function initAssocOrgs() {
-  // Don't render on org tenants — they are the org.
-  if (document.body?.dataset?.orgId) return
-  const owner = document.body?.dataset?.owner
+  // Don't render on org tenants — they are the org. Some org tenants
+  // still have orgId=null in site.json (Safe migration didn't stamp
+  // one, or the tenant predates the field) but they always carry
+  // data-org-type from the organization template. Match either
+  // signal so lucid.haus (orgId=null, template=organization) doesn't
+  // slip past this guard and render its own chip.
+  const body = document.body
+  if (body?.dataset?.orgId) return
+  if (body?.dataset?.orgType) return
+  const owner = body?.dataset?.owner
   if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return
 
   // Anchor inside the hero <header>. Every template's index.html
@@ -64,8 +71,16 @@ async function initAssocOrgs() {
       //   /api/img which rejects external URLs (400) — that's why
       //   Miles's lucidhaus + whatifwe chips kept falling back to
       //   the initial letter instead of showing the actual logo.
+      // Any /api/ipfs-proxy or /ipfs path resolves the same content
+      // regardless of which tenant serves it — use our own origin so
+      // the browser can hit an internal path with no cross-origin
+      // round-trip and no dependency on the org tenant being up.
+      // That's the case for lucid.haus (profilePic points at
+      // /api/ipfs-proxy/<CID>): we can serve that CID from milesxb.bio
+      // just fine.
       let picUrl = ''
       if (raw.startsWith('http')) picUrl = raw
+      else if (raw.startsWith('/api/ipfs-proxy/') || raw.startsWith('/ipfs/')) picUrl = raw
       else if (raw.startsWith('ipfs://')) picUrl = '/api/ipfs-proxy/' + raw.slice(7)
       else if (raw.startsWith('/') && domain) picUrl = `https://${domain}${raw}`
       else if (raw.startsWith('/')) picUrl = raw

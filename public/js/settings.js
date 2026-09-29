@@ -646,7 +646,7 @@ function renderIdentityTab(el) {
       <div class="settings-field">
         <label class="settings-label">site logo</label>
         <div style="display:flex;align-items:center;gap:1em">
-          <div id="s-logo-preview" style="width:120px;height:36px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg2,#1a1a1a);padding:0.2em 0.5ch;flex-shrink:0">
+          <div id="s-logo-preview" style="width:160px;height:44px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg2,#1a1a1a);padding:0.2em 0.5ch;flex-shrink:0">
             ${siteData.logo ? `<img src="${esc(siteData.logo)}" style="max-height:100%;max-width:100%;object-fit:contain">` : `<span style="font-size:0.7em;color:var(--dim)">${esc(siteData.domain || 'domain')}</span>`}
           </div>
           <div style="display:flex;gap:0.5em;flex-wrap:wrap">
@@ -654,7 +654,7 @@ function renderIdentityTab(el) {
             ${siteData.logo ? `<button type="button" id="s-logo-remove" class="btn-small" style="font-size:0.8em;opacity:0.6">remove</button>` : ''}
           </div>
         </div>
-        <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.5">replaces your domain name in the top-left of every page. wide horizontal images work best (transparent PNG or SVG). auto-shrunk to fit — max 28px tall, 200px wide.</p>
+        <p style="font-size:0.75em;color:var(--dim);margin:0.4em 0 0;line-height:1.5">replaces your domain name in the top-left of every page. wide horizontal images work best (transparent PNG or SVG). auto-shrunk to fit — max 36px tall, 240px wide.</p>
       </div>
       <div class="settings-field">
         <label class="settings-label">short bio</label>
