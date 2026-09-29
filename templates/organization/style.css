@@ -6,19 +6,35 @@ body {
 
 .org-header-row {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
   text-align: left;
-  gap: 1.25em;
+  gap: 1.75em;
+}
+
+.org-header-row > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .org-logo {
-  width: 100%;
-  max-width: 250px;
-  aspect-ratio: 1 / 1;
-  height: auto;
+  width: 200px;
+  height: 200px;
+  flex-shrink: 0;
   border-radius: 12px;
   object-fit: cover;
+}
+
+@media (max-width: 640px) {
+  .org-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1em;
+  }
+  .org-logo {
+    width: 160px;
+    height: 160px;
+  }
 }
 
 header h1 {
