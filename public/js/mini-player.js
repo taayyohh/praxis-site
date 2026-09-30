@@ -256,22 +256,43 @@
     setTimeout(scanVideos, 200)
   })
 
-  // Also scan when new content is dynamically inserted (video-lazy -> video replacement)
+  // Also scan when new content is dynamically inserted (video-lazy → video).
+  // MutationObserver on document.body with childList+subtree fires on
+  // EVERY DOM insertion (feed scroll, chat stream, cover-flip anim).
+  // Prior version scanned inside the callback synchronously — under
+  // active pages that meant continuous callbacks. Now we mark a scan
+  // as pending and coalesce via requestAnimationFrame + a trailing
+  // idle window so bursts of insertions trigger at most one scan per
+  // frame. Also stashed in _miniPlayerBodyObserver for SPA teardown
+  // (see spa-navigate handler below).
+  let _rescanQueued = false
+  const _queueRescan = () => {
+    if (_rescanQueued) return
+    _rescanQueued = true
+    const runner = () => { _rescanQueued = false; scanVideos() }
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(runner, { timeout: 250 })
+    } else {
+      requestAnimationFrame(runner)
+    }
+  }
   const bodyObserver = new MutationObserver((mutations) => {
-    let hasNewVideo = false
     for (const m of mutations) {
       for (const node of m.addedNodes) {
-        if (node.nodeName === 'VIDEO') { hasNewVideo = true; break }
-        if (node.querySelectorAll) {
-          const vids = node.querySelectorAll('video[controls]')
-          if (vids.length) { hasNewVideo = true; break }
+        if (node.nodeName === 'VIDEO' || (node.querySelectorAll && node.querySelectorAll('video[controls]').length)) {
+          _queueRescan()
+          return
         }
       }
-      if (hasNewVideo) break
     }
-    if (hasNewVideo) scanVideos()
   })
   bodyObserver.observe(document.body, { childList: true, subtree: true })
+  window._miniPlayerBodyObserver = bodyObserver
+  window.addEventListener('spa-navigate', () => {
+    // Disconnect on nav so re-inits don't stack observers across pages.
+    try { window._miniPlayerBodyObserver?.disconnect() } catch {}
+    window._miniPlayerBodyObserver = null
+  }, { once: true })
 
   // Update mini-player position when audio player visibility changes
   const playerBar = document.getElementById('global-player')

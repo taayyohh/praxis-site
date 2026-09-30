@@ -120,14 +120,30 @@ async function serializeConvo(c, clientInboxId) {
 // Leader tab listens for proxy-request messages and dispatches to real client
 
 export function startLeaderResponder(channel, getClient, { onYield, releaseLock } = {}) {
+  // Bounded (LRU on cache miss) so an account with hundreds of DMs +
+  // groups doesn't hold every convo object forever. CLAUDE.md rule.
+  const _CONVO_CACHE_CAP = 500
   const _convoCache = new Map()
+  function _cacheConvo(id, convo) {
+    if (_convoCache.has(id)) _convoCache.delete(id)
+    else if (_convoCache.size >= _CONVO_CACHE_CAP) {
+      const oldest = _convoCache.keys().next().value
+      if (oldest !== undefined) _convoCache.delete(oldest)
+    }
+    _convoCache.set(id, convo)
+  }
 
   async function _findConvo(client, conversationId) {
     let convo = _convoCache.get(conversationId)
-    if (convo) return convo
+    if (convo) {
+      // Promote recency for LRU eviction.
+      _convoCache.delete(conversationId)
+      _convoCache.set(conversationId, convo)
+      return convo
+    }
     // Cache miss — refresh from client
     const convos = await client.conversations.list()
-    for (const c of convos) _convoCache.set(c.id, c)
+    for (const c of convos) _cacheConvo(c.id, c)
     return _convoCache.get(conversationId) || null
   }
 

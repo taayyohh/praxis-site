@@ -679,14 +679,35 @@ function renderPost(p, domainMap) {
 }
 
 
-// Hide buy buttons for media the current user already owns (purchased)
+// Hide buy buttons for media the current user already owns (purchased).
+// _ownedMediaIds is keyed BY wallet — the owner switches (sign-in, wallet
+// swap, disconnect + reconnect) invalidate the prior cache so we don't
+// show "owned" state from a previous user. Prior version kept a plain
+// Set across the whole session, so a re-connect to a different wallet
+// still saw the old wallet's owned items.
 let _ownedMediaIds = null
+let _ownedMediaFor = ''
+if (typeof window !== 'undefined') {
+  // Reset on wallet-connected / disconnect so the very next feed render
+  // requeries the new owner's purchases. Also on wallet-balance-changed
+  // (which fires after a successful buy) so a just-purchased item flips
+  // from "buy" to "owned" without a full reload.
+  const _resetOwned = () => { _ownedMediaIds = null; _ownedMediaFor = '' }
+  window.addEventListener('wallet-connected', _resetOwned)
+  window.addEventListener('wallet-disconnected', _resetOwned)
+  window.addEventListener('wallet-balance-changed', _resetOwned)
+  // Explicit purchase-completed hook — feed doesn't always see a
+  // balance-change (free items, batches with zero price). pay.js dispatches
+  // this after every successful buy.
+  window.addEventListener('purchase-completed', _resetOwned)
+}
 async function hideOwnedBuyButtons(container, myAddr) {
   if (!myAddr || !container) return
   try {
-    // Lazy-load owned media IDs (once per session)
-    if (!_ownedMediaIds) {
-      const addr = myAddr.toLowerCase()
+    // Lazy-load owned media IDs (once per session, per owner).
+    const addr = myAddr.toLowerCase()
+    if (!_ownedMediaIds || _ownedMediaFor !== addr) {
+      _ownedMediaFor = addr
       const allIds = new Set()
       let cursor = null
       do {

@@ -813,6 +813,41 @@ export async function getWalletClient() {
   return createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
 }
 
+// One-call wallet setup for a write. Collapses the pattern that used
+// to be inlined at 17+ call sites (network.js, projects.js, pay.js,
+// write.js, library.js, journal.js, profile.js, etc.):
+//
+//   const addr = window.getWalletAddress?.()
+//   if (!addr) { … }
+//   if (!await window.ensureOptimism?.()) return
+//   const account = await window.authorizedSigner?.(addr)   // often undefined
+//   const wc = createWalletClient({chain:optimism, transport:custom(getWalletProvider())})
+//   await wc.writeContract({ …, account })  // silently fails if account was undefined
+//
+// The audit flagged the whole class as CRITICAL because
+// `authorizedSigner?.(...)` returns undefined when the embedded wallet
+// is locked, and viem's `sendTransaction({account: undefined})` then
+// prompts the wrong wallet or fails opaquely. This helper throws
+// clear typed errors so callers `try/catch` once and know exactly
+// what went wrong.
+//
+// Returns `{ wc, account, addr }`. Throws:
+//   'wallet unavailable' — user hasn't connected any wallet
+//   'wrong chain'         — user declined to switch to Optimism
+//   'wallet unauthorized' — embedded wallet locked / user cancelled unlock
+export async function getOptimismWallet() {
+  const addr = await ensureWallet()
+  if (!addr) throw new Error('wallet unavailable')
+  if (typeof window.ensureOptimism === 'function') {
+    const ok = await window.ensureOptimism()
+    if (!ok) throw new Error('wrong chain')
+  }
+  const account = await window.authorizedSigner?.(addr)
+  if (!account) throw new Error('wallet unauthorized')
+  const wc = await getWalletClient()
+  return { wc, account, addr }
+}
+
 export async function ensureWallet() {
   let addr = window.getWalletAddress?.()
   if (!addr) {

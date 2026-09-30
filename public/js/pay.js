@@ -287,6 +287,15 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
         confirmBtn.textContent = t('pay.collected')
         confirmBtn.style.background = 'var(--green)'
         confirmBtn.style.color = '#000'
+        // Notify feed / works / collection so their "already owned"
+        // state updates without a full reload. feed.js drops its
+        // _ownedMediaIds cache on this event; without it, a freshly
+        // purchased item still shows a buy button until nav.
+        try {
+          window.dispatchEvent(new CustomEvent('purchase-completed', {
+            detail: { mediaIds: (mediaId || '').toString().split(',').filter(Boolean) }
+          }))
+        } catch {}
         setTimeout(cleanup, 2000)
       } catch (e) {
         status.textContent = formatTxError(e)

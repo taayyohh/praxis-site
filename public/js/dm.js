@@ -464,14 +464,16 @@ async function loadConversations() {
         loadMoreEl.textContent = 'loading...'
         let more = []
         try {
-          // Fix NEW-M2: XMTP v7 browser SDK does not document an `offset` cursor
-          // for conversations.list(). Previous fallback silently fetched the FULL
-          // list — defeating pagination at 1000+ convos. We now call with limit
-          // only and let the SDK error out if offset isn't honored, so we fail
-          // loudly rather than stalling the UI. Known limitation: true cursor
-          // pagination will need a createdAt/createdAfter filter once the SDK
-          // exposes one.
-          more = await client.conversations.list({ limit: BigInt(CONVO_PAGE), offset: BigInt(conversations.length) })
+          // XMTP v7 browser SDK does not implement `offset` for
+          // conversations.list — it silently returns the same first
+          // page again. Prior code appended the duplicate results
+          // into `conversations` + `window._dmItems` + the DOM. Now
+          // we fetch limit-only, then filter out convos we already
+          // have (by id). If the whole slice was already known, we
+          // stop paginating so we don't loop forever.
+          const raw = await client.conversations.list({ limit: BigInt(CONVO_PAGE * 2) })
+          const knownIds = new Set(conversations.map(c => c?.id).filter(Boolean))
+          more = (raw || []).filter(c => c?.id && !knownIds.has(c.id))
         } catch (e) { console.warn('praxis: dm load more failed:', e?.message) }
         if (!more || more.length === 0) { loadMoreEl.remove(); return }
         conversations = conversations.concat(more)
@@ -1098,7 +1100,15 @@ async function createProjectGroup(projectId, title) {
   if (!client || !sdk) return
 
   try {
-    const convo = await client.conversations.createGroup([], { groupName: title })
+    // Fetch this project's on-chain funders + collaborators, resolve
+    // their inbox IDs via XMTP, and seed the group with them. Old
+    // path passed `[]` which produced a valid but empty group that
+    // no-one else could see — the create silently succeeded and any
+    // "invite funders" step assumed elsewhere never ran. If the
+    // resolve fails we still create the group with just the caller
+    // so the flow doesn't stall; missing members can be re-invited.
+    const memberIds = await _resolveProjectGroupMembers(projectId).catch(() => [])
+    const convo = await client.conversations.createGroup(memberIds, { groupName: title })
     const groupId = convo.id
 
     // store group ID on server
@@ -1116,12 +1126,63 @@ async function createProjectGroup(projectId, title) {
   }
 }
 
+// Resolve XMTP inbox IDs for a project's funders + collaborators. On
+// error returns []; the caller creates the group with just the
+// creator and re-invites later.
+async function _resolveProjectGroupMembers(projectId) {
+  if (!client || !sdk) return []
+  try {
+    // Ponder query: contributions (funders) + creator + collaborators.
+    // Kept small — we only need addresses, not amounts, and the group
+    // is bounded by how many humans a project realistically has.
+    const gql = `query($pid: BigInt!) {
+      contributions(where: { projectId: $pid }, limit: 100) { items { funder } }
+      projects(where: { id: $pid }, limit: 1) { items { creator collaborators } }
+    }`
+    const res = await fetch('/api/feed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: gql, variables: { pid: String(projectId) } }),
+    })
+    const data = await res.json()
+    const project = data?.data?.projects?.items?.[0]
+    const funders = data?.data?.contributions?.items || []
+    const addrs = new Set()
+    for (const f of funders) if (f.funder) addrs.add(String(f.funder).toLowerCase())
+    if (project?.creator) addrs.add(String(project.creator).toLowerCase())
+    for (const c of (project?.collaborators || [])) addrs.add(String(c).toLowerCase())
+    // Drop myself — createGroup adds the caller automatically.
+    const me = window.getWalletAddress?.()?.toLowerCase?.()
+    if (me) addrs.delete(me)
+    if (!addrs.size) return []
+    // Resolve to inbox IDs; XMTP wants inbox IDs, not raw addresses,
+    // for group members that already exist on the network.
+    const kind = sdk.IdentifierKind?.Ethereum ?? 0
+    const identifiers = [...addrs].map(a => ({ identifier: a, identifierKind: kind }))
+    const inboxIds = []
+    for (const id of identifiers) {
+      try {
+        const iid = await client.fetchInboxIdByIdentifier(id)
+        if (iid) inboxIds.push(iid)
+      } catch {}
+    }
+    return inboxIds
+  } catch (e) {
+    console.warn('praxis: resolve project group members failed:', e?.message)
+    return []
+  }
+}
+
 async function openProjectGroup(groupId, title) {
   if (!client) return
 
   try {
     await client.conversations.sync()
-    const convo = client.conversations.getConversationById(groupId)
+    // Old code was missing `await` — getConversationById is async.
+    // Without the await the raw Promise was passed to openConversation
+    // which then called .sync() on the Promise object → thrown error,
+    // group never opened.
+    const convo = await client.conversations.getConversationById(groupId)
     if (convo) {
       openConversation(convo, title)
     }

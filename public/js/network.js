@@ -110,7 +110,13 @@ async function init() {
     return followState[addr.toLowerCase()] && followersState[addr.toLowerCase()]
   }
 
-  async function toggleFollow(targetAddr) {
+  // The retry branch used to call `toggleFollow(targetAddr, btn)` after
+  // a session-expired unlock — but the outer call had already flipped
+  // `followState[target] = !isFollowing`. The retry then read the
+  // NEW state, flipped it again, and issued the OPPOSITE transaction
+  // (unfollow instead of follow). `_isRetry` skips the optimistic
+  // flip so the retry issues the same tx the user requested.
+  async function toggleFollow(targetAddr, _isRetry = false) {
     if (!registryAddress) return
     const userAddr = await requireUser('follow artists')
     if (!userAddr) return
@@ -120,39 +126,50 @@ async function init() {
 
     const isFollowing = followState[targetAddr.toLowerCase()]
 
-    // optimistic update: change state + button text immediately
-    followState[targetAddr.toLowerCase()] = !isFollowing
-    if (btn) {
-      btn.textContent = isFollowing ? t('network.follow') : t('network.unfollow')
-      btn.classList.toggle('nc-btn-filled', !isFollowing)
+    // optimistic update: change state + button text immediately.
+    // Skip on retry — the first pass already flipped this.
+    if (!_isRetry) {
+      followState[targetAddr.toLowerCase()] = !isFollowing
+      if (btn) {
+        btn.textContent = isFollowing ? t('network.follow') : t('network.unfollow')
+        btn.classList.toggle('nc-btn-filled', !isFollowing)
+      }
     }
 
     try {
-      const currentAccount = await window.authorizedSigner?.(window.getWalletAddress())
-          if (!await window.ensureOptimism?.()) return
-      const walletClient = createWalletClient({
-        chain: optimism,
-        transport: custom(getWalletProvider()),
-      })
-      const action = walletClient.writeContract({
+      // One-call wallet setup — replaces the inline createWalletClient +
+      // ensureOptimism + authorizedSigner dance that used to be repeated
+      // at 17+ sites, and closes the account:undefined class bug.
+      const { getOptimismWallet } = await import('./utils.js')
+      const { wc, account } = await getOptimismWallet()
+      const action = wc.writeContract({
         address: registryAddress,
         abi: REGISTRY_ABI,
         functionName: isFollowing ? 'unfollow' : 'follow',
         args: [targetAddr],
-        account: currentAccount,
+        account,
       })
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('transaction timed out')), 15000))
       const hash = await Promise.race([action, timeout])
       await publicClient.waitForTransactionReceipt({ hash })
     } catch (e) {
       const msg = e?.shortMessage || e?.message || ''
-      // session expired — prompt unlock and retry once
+      // session expired — prompt unlock and retry once (marked _isRetry
+      // so we don't re-flip the optimistic state).
       if (msg.includes('session expired') && window.showUnlockPrompt) {
         const addr = await window.showUnlockPrompt()
         if (addr) {
           if (btn) btn.disabled = false
-          return toggleFollow(targetAddr, btn)
+          return toggleFollow(targetAddr, true)
         }
+      }
+      // Wrong chain / wallet unauthorized: revert optimistic state and
+      // surface the reason. getOptimismWallet throws typed errors.
+      if (msg === 'wrong chain' || msg === 'wallet unauthorized' || msg === 'wallet unavailable') {
+        followState[targetAddr.toLowerCase()] = isFollowing
+        if (btn) { btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow'); btn.classList.toggle('nc-btn-filled', isFollowing) }
+        import('./toast.js').then(({ toast }) => toast.error(msg === 'wrong chain' ? 'switch to Optimism' : msg === 'wallet unauthorized' ? 'unlock wallet' : 'connect a wallet')).catch(() => {})
+        return
       }
       // if "already following" or "not following" — state was stale, correct it
       if (msg.includes('already following')) {

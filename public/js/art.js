@@ -463,28 +463,41 @@ async function _hydrateAlbumBuyFromChain(rootEl, album, alias) {
   if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return
   try {
     const { getArtistMedia } = await import('./media.js')
-    const { items = [] } = await getArtistMedia(owner)
-    if (!items.length) return
-    // Group by metadataCid — that's the album cover, shared across
-    // all tracks of the same release. Skip singletons (individual
-    // media, not album tracks).
-    const groups = new Map()
-    for (const it of items) {
-      if (!it.metadataCid) continue
-      if (!groups.has(it.metadataCid)) groups.set(it.metadataCid, [])
-      groups.get(it.metadataCid).push(it)
-    }
-    if (!groups.size) return
-    // Extract album cover CID from album.art if it's an IPFS URL.
+    // Extract the album's cover CID once up front so we can stop
+    // paginating as soon as we find a matching group. getArtistMedia
+    // returns 50 items per call; artists with >50 listings had the
+    // buy button silently miss any album whose tracks fell past the
+    // first page. Walk pages until we find a match OR run out.
     const artStr = String(album.art || '')
     const ipfsMatch = artStr.match(/(?:ipfs:\/\/|\/api\/ipfs-proxy\/|\/ipfs\/)([A-Za-z0-9]+)/)
     const albumCid = ipfsMatch?.[1] || ''
-    // Title set for overlap match.
     const jsonTitles = new Set((album.tracks || []).map(t => (t.title || '').trim().toLowerCase()).filter(Boolean))
+
+    const groups = new Map()
+    let cursor = null
+    const MAX_PAGES = 20 // 1000 listings — well past any real artist
     let matched = null
-    if (albumCid && groups.has(albumCid)) {
-      matched = groups.get(albumCid)
-    } else if (jsonTitles.size) {
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const res = await getArtistMedia(owner, cursor)
+      const items = res?.items || []
+      for (const it of items) {
+        if (!it.metadataCid) continue
+        if (!groups.has(it.metadataCid)) groups.set(it.metadataCid, [])
+        groups.get(it.metadataCid).push(it)
+      }
+      // Early match: exact cover CID (cheapest signal).
+      if (albumCid && groups.has(albumCid) && groups.get(albumCid).length >= 2) {
+        matched = groups.get(albumCid)
+        break
+      }
+      cursor = res?.cursor || null
+      if (!cursor || !res?.hasMore) break
+    }
+    if (!groups.size) return
+    // Fall back to title-overlap match if the cover-CID path didn't
+    // pick a group (site.json's `album.art` may be a non-IPFS URL, or
+    // the CID is different from the on-chain metadataCid).
+    if (!matched && jsonTitles.size) {
       for (const g of groups.values()) {
         if (g.length < 2) continue
         const chainTitles = new Set(g.map(x => (x.title || '').trim().toLowerCase()).filter(Boolean))
