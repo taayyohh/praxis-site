@@ -130,12 +130,15 @@ export async function deployOrgSafe({ signers, threshold = 1, saltNonce } = {}) 
   throw new Error('Safe deployed but proxy address not found in receipt')
 }
 
-// Read helpers — no wallet needed.
+// Read helpers — no wallet needed. Returns null on RPC error so
+// callers that use the length to compute a new threshold don't
+// silently downgrade a real Safe (empty owner list → newThreshold=1).
+// Callers MUST treat null as "don't know" and abort the write.
 export async function getSafeOwners(safeAddress) {
   const pc = await getPublicClient()
   try {
     return await pc.readContract({ address: safeAddress, abi: SAFE_ABI, functionName: 'getOwners' })
-  } catch { return [] }
+  } catch { return null }
 }
 
 export async function isSafeSigner(safeAddress, wallet) {

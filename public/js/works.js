@@ -401,12 +401,17 @@ function renderListings(listings) {
       coverImgHtml = `<span style="color:var(--dim);font-size:0.8em">${type}</span>`
     }
 
-    // Play overlay on art area — matches feed card pattern
+    // Play overlay on art area — matches feed card pattern. ipfsCidUrl
+    // is `/api/ipfs-proxy/<raw cid>` and the raw CID comes from
+    // PraxisMedia.list() which stores arbitrary strings on-chain with
+    // no CID validation. A malicious listing with a CID containing `"`
+    // would break out of the src attribute and run script, so escape.
+    const safeArtSrc = escapeHtml(ipfsCidUrl)
     let artOverlay = ''
     if (type === 'video' && ipfsCidUrl) {
-      artOverlay = `<div class="video-lazy" data-src="${ipfsCidUrl}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
+      artOverlay = `<div class="video-lazy" data-src="${safeArtSrc}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
     } else if (type === 'audio' && ipfsCidUrl) {
-      artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${ipfsCidUrl}" data-track-title="${title}" data-track-artist=""><i class="ph ph-play"></i></button>`
+      artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${safeArtSrc}" data-track-title="${title}" data-track-artist=""><i class="ph ph-play"></i></button>`
     }
 
     const spanAttr = type === 'video' ? ' data-span="2"' : ''
@@ -570,7 +575,11 @@ function renderAlbumCard(mcid, items) {
     ? `<button class="album-play-btn media-play-overlay" data-queue="${queueData}"><i class="ph ph-play"></i></button>`
     : ''
 
-  return `<div class="works-card works-album-card" id="album-${mcid}" data-span="2" data-type="${mtype}" data-mcid="${mcid}">
+  // mcid is metadataCid from PraxisMedia.list() (attacker-controlled,
+  // no on-chain CID validation). Interpolated into id + data-mcid
+  // attributes here — escape both to close attribute breakout.
+  const safeMcid = escapeHtml(mcid)
+  return `<div class="works-card works-album-card" id="album-${safeMcid}" data-span="2" data-type="${mtype}" data-mcid="${safeMcid}">
     <div class="works-card-art">${coverImgHtml}
       <span class="works-album-badge">${itemLabel}</span>
       ${playOverlay}

@@ -880,11 +880,15 @@ function _renderCatalogCard(item) {
     coverImgHtml = `<span style="color:var(--dim);font-size:0.8em">${type}</span>`
   }
 
+  // ipfsCidUrl embeds the raw on-chain CID string, which PraxisMedia
+  // stores without validation; a malicious listing with `"` in its CID
+  // would break out of the attribute here. Escape it before interp.
+  const safeArtSrc = escapeHtml(ipfsCidUrl)
   let artOverlay = ''
   if (type === 'video' && ipfsCidUrl) {
-    artOverlay = `<div class="video-lazy works-card-video-overlay" data-src="${ipfsCidUrl}" data-title="${title}"><button class="media-play-overlay media-play-overlay--video works-card-play"><i class="ph ph-play"></i></button></div>`
+    artOverlay = `<div class="video-lazy works-card-video-overlay" data-src="${safeArtSrc}" data-title="${title}"><button class="media-play-overlay media-play-overlay--video works-card-play"><i class="ph ph-play"></i></button></div>`
   } else if (type === 'audio' && ipfsCidUrl) {
-    artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${ipfsCidUrl}" data-track-title="${title}" data-track-artist="${escapeHtml(artistName)}"><i class="ph ph-play"></i></button>`
+    artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${safeArtSrc}" data-track-title="${title}" data-track-artist="${escapeHtml(artistName)}"><i class="ph ph-play"></i></button>`
   }
 
   const buyBtn = `<button class="works-buy-btn feed-card-btn green" data-media-id="${item.id}" data-price="${item.price}">buy</button>`

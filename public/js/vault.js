@@ -2652,7 +2652,7 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
   // strip with a fabricated default — the UI's "signatures required"
   // input would show a wrong number and a save click would push that
   // wrong number to the Safe.
-  if (!owners.length || threshold == null) return
+  if (owners == null || !owners.length || threshold == null) return
   const doc = container.querySelector('.vault-doc') || container
   const section = document.createElement('section')
   section.className = 'vault-co-owners'
@@ -2709,6 +2709,7 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
           const val = String(input?.value || '').trim()
           if (!/^0x[0-9a-fA-F]{40}$/.test(val)) { setStatus('enter a valid 0x address', 'var(--dim)'); btn.disabled = false; return }
           const existing = await rf(safeAddress)
+          if (existing == null) { setStatus('couldn’t read co-owners, try again', 'var(--dim)'); btn.disabled = false; return }
           if (existing.some(o => o.toLowerCase() === val.toLowerCase())) { setStatus('already a co-owner', 'var(--dim)'); btn.disabled = false; return }
           const t = await gt(safeAddress)
           if (t == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
@@ -2720,7 +2721,10 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
           const signer = btn.dataset.signer
           if (!confirm(`Remove ${signer.slice(0, 6)}… as a co-owner? They will lose access to this shared account.`)) { btn.disabled = false; return }
           const [existing, t] = await Promise.all([rf(safeAddress), gt(safeAddress)])
-          if (t == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
+          // Both reads must succeed — an owners=null would let
+          // newCount go negative, and a threshold=null would let a
+          // fabricated default push through.
+          if (existing == null || t == null) { setStatus('couldn’t read Safe state, try again', 'var(--dim)'); btn.disabled = false; return }
           const newCount = existing.length - 1
           const newT = Math.min(t, Math.max(1, newCount))
           setStatus('confirm in wallet…')
@@ -2731,8 +2735,10 @@ async function _appendOrgCoOwners(container, safeAddress, viewer) {
           const input = section.querySelector('#vault-threshold')
           const v = Number(input?.value || 0)
           const existing = await rf(safeAddress)
+          if (existing == null) { setStatus('couldn’t read co-owners, try again', 'var(--dim)'); btn.disabled = false; return }
           if (!Number.isInteger(v) || v < 1 || v > existing.length) { setStatus(`must be between 1 and ${existing.length}`, 'var(--dim)'); btn.disabled = false; return }
           const t = await gt(safeAddress)
+          if (t == null) { setStatus('couldn’t read current threshold, try again', 'var(--dim)'); btn.disabled = false; return }
           if (v === t) { setStatus('no change', 'var(--dim)'); btn.disabled = false; return }
           setStatus('confirm in wallet…')
           await safeChangeThreshold({ safeAddress, threshold: v })

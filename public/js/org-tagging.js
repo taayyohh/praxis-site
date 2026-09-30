@@ -8,9 +8,22 @@ import { ORG_ADDRESS, ORG_ABI, getMediaAddress } from './contracts.js'
 
 // Cache the artist's org memberships + per-media tag state so opening
 // multiple work menus doesn't re-fetch the world. Keyed by artist addr
-// (memberships) and by mediaId (tag state per work).
+// (memberships) and by mediaId (tag state per work). Bounded (LRU cap
+// via delete+set on hit; evict oldest on insert past cap) so long
+// sessions on a viral artist's site don't accumulate every viewed
+// work + every viewed artist forever — CLAUDE.md rule.
+const _MEMBER_ORGS_CACHE_CAP = 200
+const _TAG_STATE_CACHE_CAP = 500
 const _memberOrgsCache = new Map()   // artistLower -> [{ id, name }]
 const _tagStateCache = new Map()     // `${mediaId}` -> Set of orgIds
+function _lruSet(map, key, value, cap) {
+  if (map.has(key)) map.delete(key)
+  else if (map.size >= cap) {
+    const oldest = map.keys().next().value
+    if (oldest !== undefined) map.delete(oldest)
+  }
+  map.set(key, value)
+}
 
 // The tagWork/untagWork functions live in the PraxisOrganization contract
 // version that ships with the #93 redeploy. Until that redeploy, the
@@ -40,23 +53,34 @@ function _checkTagWorkAvailable() {
 
 async function _fetchMemberOrgs(artist) {
   const key = artist.toLowerCase()
-  if (_memberOrgsCache.has(key)) return _memberOrgsCache.get(key)
+  if (_memberOrgsCache.has(key)) {
+    // Promote recency for LRU eviction.
+    const v = _memberOrgsCache.get(key)
+    _memberOrgsCache.delete(key)
+    _memberOrgsCache.set(key, v)
+    return v
+  }
   try {
     const res = await fetch(`/api/orgs/by-member/${encodeURIComponent(artist)}`)
     if (!res.ok) throw new Error('http')
     const data = await res.json()
     const orgs = (data.orgs || []).filter(o => !o.dissolved)
-    _memberOrgsCache.set(key, orgs)
+    _lruSet(_memberOrgsCache, key, orgs, _MEMBER_ORGS_CACHE_CAP)
     return orgs
   } catch {
-    _memberOrgsCache.set(key, [])
+    _lruSet(_memberOrgsCache, key, [], _MEMBER_ORGS_CACHE_CAP)
     return []
   }
 }
 
 async function _fetchTagState(mediaId) {
   const key = String(mediaId)
-  if (_tagStateCache.has(key)) return _tagStateCache.get(key)
+  if (_tagStateCache.has(key)) {
+    const v = _tagStateCache.get(key)
+    _tagStateCache.delete(key)
+    _tagStateCache.set(key, v)
+    return v
+  }
   try {
     // orgWorks entries are keyed on (orgId, mediaContract, mediaId). We
     // look up every row for this mediaId and let the caller cross-check
@@ -73,11 +97,11 @@ async function _fetchTagState(mediaId) {
     const data = await res.json()
     const rows = data?.data?.orgWorks?.items || []
     const set = new Set(rows.map(r => String(r.orgId)))
-    _tagStateCache.set(key, set)
+    _lruSet(_tagStateCache, key, set, _TAG_STATE_CACHE_CAP)
     return set
   } catch {
     const empty = new Set()
-    _tagStateCache.set(key, empty)
+    _lruSet(_tagStateCache, key, empty, _TAG_STATE_CACHE_CAP)
     return empty
   }
 }
