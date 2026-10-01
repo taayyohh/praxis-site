@@ -176,6 +176,17 @@ async function initProjectDetail() {
   const loadingEl = document.getElementById('project-detail-loading')
   const contentEl = document.getElementById('project-detail-content')
   const praxisAddr = el.dataset.praxis
+  const extensionsAddr = el.dataset.extensions
+  // Functions that live on PraxisExtensions rather than Praxis. execAction
+  // routes to extensionsAddr when the fn name is in this set — a single
+  // source of truth so future moves only need to update the list.
+  const EXTENSIONS_FNS = new Set([
+    'submitMilestone', 'disputeMilestone', 'releaseMilestone',
+    'distributeRevenue', 'claimRevenue', 'checkIn', 'updateTier',
+    'claimCompletionInvites',
+    // Moved from Praxis in fleet phase 2 to keep Praxis under EIP-170.
+    'updateProject', 'deployerCancel', 'timeoutProject',
+  ])
   const registryAddr = el.dataset.registry
 
   if (!projectId) {
@@ -737,8 +748,9 @@ async function initProjectDetail() {
         await window.ensureScroll?.()
         const currentAccount = await window.authorizedSigner?.(addr)
           const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+        const target = EXTENSIONS_FNS.has(fn) && extensionsAddr ? extensionsAddr : praxisAddr
         const action = walletClient.writeContract({
-          address: praxisAddr, abi: PRAXIS_ABI,
+          address: target, abi: PRAXIS_ABI,
           functionName: fn, args, account: currentAccount,
           ...(value ? { value } : {}),
         })

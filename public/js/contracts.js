@@ -3,12 +3,12 @@
 
 // --- Contract Addresses (Optimism L2, chain 10) ---
 // All 9 contracts redeployed to Optimism 2026-04-10.
-export const PRAXIS_ADDR = '0xD89Ff399A71838aC41CeF6B066bD62f8A7d3dE65'
-export const INVITES_ADDR = '0x3dB35f96F45C57D9dfB3391f5De7fa3F9Efa6140'
-export const TICKET_MARKET_ADDR = '0x74207EA63fBB6D40FE8cD707A668f639b4F84b5c'
-export const ARTIST_SPONSOR_ADDR = '0x4b7064b27C2806001F354c4720c7134ef4d3EeB2'
-export const LIBRARY_ADDR = '0xB6353c48e87782a96046bB92819f1B237F89d0a1'
-export const TREASURY_ADDR = '0x2ed5Df36cf248906c04AAd63cB9E68d4e83a00da'
+export const PRAXIS_ADDR = '0x3fe244c48a1de9964e8180761fbf4ae6f7c874b1'
+export const INVITES_ADDR = '0xd76bcf949d52d1b95d24bde109bf14c4ff5d2310'
+export const TICKET_MARKET_ADDR = '0xa1243c5401227b61bceb790eaf3329aca7090d2d'
+export const ARTIST_SPONSOR_ADDR = '0x520b4d27790215bf9c3981fffbacf7efe04f8dab'
+export const LIBRARY_ADDR = '0xb47d06d04677977a44d228519f6bee1af83c056a'
+export const TREASURY_ADDR = '0x22fa45d0fb31e60ad9614c83033161d53504eab5'
 export const TREASURY_ADMIN_ADDR = '0x46db55AD42dA6bA3c29a3C1522EBBF8e16960725'
 
 // Dynamic addresses (from HTML data attributes)
@@ -245,7 +245,7 @@ export const ARTIST_SPONSOR_ABI = [
 ]
 
 // PraxisOrganization — orgs, members, management
-export const ORG_ADDRESS = '0xbd3013c6064b08f0a88d30dfc35bec5a05fe1e83'
+export const ORG_ADDRESS = '0xbd8bac18440570df25beed05705a3964cac75aaa'
 export const ORG_ABI = [
   // Lifecycle
   { name: 'createOrg', type: 'function', inputs: [{ name: 'name', type: 'string' }, { name: 'metadataCid', type: 'string' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'nonpayable' },

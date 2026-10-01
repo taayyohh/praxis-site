@@ -766,8 +766,12 @@ out('messages', wrap(messagesHtml, 'messages', '/messages', '/og/messages.png', 
 // project detail page (JS-rendered from Ponder)
 const praxisAddr = site.network?.praxisAddress || ''
 const regAddr = site.network?.registryAddress || ''
+// Extensions holds milestone / revenue / check-in / updateTier /
+// updateProject / deployerCancel / timeoutProject / claimCompletionInvites.
+// The client resolves it by name via project-detail.js.
+const extensionsAddr = site.network?.extensionsAddress || ''
 const projectDetailHtml = `
-<div id="project-detail-page" data-praxis="${praxisAddr}" data-registry="${regAddr}" data-blog="${blogRegistryAddr}">
+<div id="project-detail-page" data-praxis="${praxisAddr}" data-registry="${regAddr}" data-blog="${blogRegistryAddr}" data-extensions="${extensionsAddr}">
   <p id="project-detail-loading"><span class="praxis-loader"></span></p>
   <div id="project-detail-content"></div>
 </div>`
