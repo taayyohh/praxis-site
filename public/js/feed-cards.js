@@ -642,8 +642,13 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   const buyer = resolve(d.buyer)
   const artist = d.artist ? resolve(d.artist) : ''
   const headline = d.headline || 'untitled'
-  const albumPath = d.albumPath
-  const slugUrl2 = albumPath?.aliasName ? `/music/${slugify(albumPath.aliasName)}/${slugify(albumPath.albumTitle || headline)}` : null
+  // Server emits aliasName + headline at the top level and `albumPath`
+  // as positional indices ({alias, album}) — not names — so the previous
+  // `albumPath?.aliasName` / `albumPath?.albumTitle` lookups were always
+  // undefined and the "view" link resolved to '#'. Build the album slug
+  // off the top-level aliasName + headline instead.
+  const aliasName = d.aliasName || ''
+  const slugUrl2 = aliasName ? `/music/${slugify(aliasName)}/${slugify(headline)}` : null
   const artLink = slugUrl2
     ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl2}` : slugUrl2)
     : '#'
@@ -651,7 +656,6 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   const metaCid = firstItem?.metadataCid || ''
   const artRaw = metaCid ? `/api/ipfs-proxy/${metaCid}` : ''
   const artSrc = metaCid ? `/api/img?url=${encodeURIComponent(artRaw)}&w=280` : ''
-  const aliasName = d.aliasName || ''
   const displayArtist = aliasName || artist
   const sorted = [...(d.items || [])].sort((a, b) => {
     try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 }
