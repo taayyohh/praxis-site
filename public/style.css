@@ -10375,3 +10375,379 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .project-attach-contact-grid { grid-template-columns: 1fr; }
 }
 
+
+/* --- universal event card --- */
+/* Three layouts (--line, --banner, --inline-reference) × tone modifiers
+   (--green, --red, --muted). One shared base. No new tokens; borders only
+   do work on interactive variants. */
+.event-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: transparent;
+}
+.event-card[href] { cursor: pointer; }
+.event-card[href]:hover { border-color: color-mix(in srgb, var(--fg) 24%, var(--border)); }
+.event-card--green { border-color: color-mix(in srgb, var(--green) 18%, var(--border)); }
+.event-card--red   { border-color: color-mix(in srgb, var(--red) 20%, var(--border)); }
+.event-card--muted { border-color: var(--border); opacity: 0.9; }
+.event-card-inner { padding: 1em 1.25em; }
+
+.event-card-headline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  min-width: 0;
+}
+.event-card-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.event-card-icon {
+  font-size: 1.1em;
+  color: var(--muted);
+  flex-shrink: 0;
+  width: 1.4em;
+  text-align: center;
+}
+.event-card--green .event-card-icon { color: var(--green); }
+.event-card--red   .event-card-icon { color: var(--red); }
+
+.event-card-headline {
+  font-size: 0.9em;
+  line-height: 1.5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-card-name   { color: var(--accent); font-weight: 600; }
+.event-card-strong { color: var(--fg); font-weight: 700; }
+.event-card-label  { color: var(--muted); }
+.event-card-amount { color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.event-card--green .event-card-amount { color: var(--green); }
+
+.event-card-time {
+  color: var(--muted);
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 0.75em;
+}
+.event-card-meta {
+  margin-top: 0.6em;
+  font-size: 0.78em;
+  color: var(--muted);
+  display: flex;
+  gap: 0.5ch;
+}
+.event-card-body {
+  color: var(--dim);
+  font-size: 0.82em;
+  line-height: 1.6;
+  margin: 0.75em 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* banner — poster/og hero above headline */
+.event-card--banner .event-card-inner { padding: 1.1em 1.25em 1.15em; }
+.event-card-poster {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.event-card-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.event-card-poster--og { aspect-ratio: 1200 / 630; max-height: 220px; }
+.event-card--banner .event-card-headline { font-size: 0.95em; }
+
+/* line — compact single row, no vertical padding, used for ambient activity */
+.event-card--line .event-card-inner { padding: 0.75em 1.1em; }
+
+/* inline-reference — strip borders, meant to be embedded inside other cards
+   or a mixed stream. Keeps icon + headline, drops meta row. */
+.event-card--inline-reference {
+  border: 0;
+  border-radius: 0;
+  padding: 0.25em 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.85em;
+  min-width: 0;
+}
+.event-card--inline-reference .event-card-headline {
+  font-size: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+  .event-card-inner { padding: 0.85em 1em; }
+  .event-card--line .event-card-inner { padding: 0.65em 0.9em; }
+  .event-card-time { padding-left: 0.5em; }
+}
+
+/* --- universal media card --- */
+/* The one card family for every media surface — works grid,
+ * collection grid+list, feed media + batch cards. See
+ * public/js/media-card.js. Layouts: --square, --wide, --portrait,
+ * --album, --row, --horizontal. Categories: --cat-audio etc. State
+ * modifiers: --state-ended, --state-sold-out, --state-delisted,
+ * --state-live-now, --state-upcoming, --state-limited, --state-gated.
+ */
+.media-card {
+  position: relative;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(40px);
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+}
+.media-card-art {
+  position: relative;
+  display: block;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+.media-card-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-card-art-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+  font-size: 2.2em;
+}
+.media-card-art-mosaic {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.media-card--wide .media-card-art { aspect-ratio: 16 / 9; }
+.media-card--portrait .media-card-art { aspect-ratio: 2 / 3; }
+.media-card-info {
+  padding: 0.75em 0.9em 0.85em;
+  display: flex; flex-direction: column; gap: 0.35em;
+  min-width: 0;
+}
+.media-card-header {
+  padding: 0.6em 0.9em 0;
+  display: flex; align-items: center; gap: 0.5ch;
+  color: var(--muted);
+  font-size: 0.8em;
+  flex-wrap: wrap;
+}
+.media-card-header-actor { color: var(--fg); font-weight: 600; }
+.media-card-header-verb { color: var(--muted); }
+.media-card-author {
+  color: var(--dim); font-size: 0.8em; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.media-card-author:hover { color: var(--fg); }
+.media-card-title {
+  color: var(--fg); font-weight: 600; font-size: 0.95em;
+  text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.3;
+}
+.media-card-title:hover { text-decoration: underline; }
+.media-card-meta {
+  color: var(--muted); font-size: 0.8em;
+  display: flex; align-items: center; gap: 0.5ch; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.media-card-meta [data-eth-wei] { color: var(--fg); }
+.media-card-meta-superseded { color: var(--dim); font-style: italic; }
+.media-card-actions {
+  display: flex; align-items: center; gap: 0.5ch;
+  margin-top: 0.1em;
+  flex-wrap: wrap;
+}
+
+/* buttons shared with feed cards (see .feed-card-btn / .feed-buy-btn).
+ * Icon-only buttons sit next to pill buttons in the same action row. */
+.media-card-icon-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border);
+  color: var(--fg); cursor: pointer; text-decoration: none;
+  font-size: 0.9em; flex-shrink: 0;
+}
+.media-card-icon-btn:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.media-card-view-link { color: var(--dim); font-size: 0.85em; text-decoration: none; }
+.media-card-view-link:hover { color: var(--fg); }
+.media-card-play-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border);
+  color: var(--fg); cursor: pointer;
+  font-size: 0.75em; flex-shrink: 0;
+}
+
+/* audio play overlay sits on the artwork */
+.media-card-play-overlay {
+  position: absolute; right: 10px; bottom: 10px;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.65); border: none; color: #fff; cursor: pointer;
+  font-size: 1em; z-index: 2;
+}
+
+/* ─── tracklist (album layout) ──────────────────────────────── */
+.media-card-tracklist {
+  display: flex; flex-direction: column; gap: 0.25em;
+  margin-top: 0.4em;
+  padding: 0.4em 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.media-card-track {
+  display: flex; align-items: center; gap: 0.6ch;
+  padding: 0.3em 0;
+  font-size: 0.85em;
+  min-width: 0;
+}
+.media-card-track-num {
+  color: var(--muted); font-size: 0.75em; width: 1.5em;
+  text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.media-card-track-title {
+  color: var(--fg); text-decoration: none; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.media-card-track-title:hover { text-decoration: underline; }
+.media-card-track-buy { font-size: 0.75em; padding: 0.2em 0.6ch; }
+
+/* ─── gallery grid (image bundles) ──────────────────────────── */
+.media-card-gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 4px; margin-top: 0.5em;
+}
+.media-card-gallery-cell {
+  display: block; aspect-ratio: 1; border-radius: 4px; overflow: hidden;
+  border: 1px solid var(--border); text-decoration: none;
+}
+.media-card-gallery-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-card-gallery-cell--empty {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--muted);
+}
+.media-card-gallery-more {
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 1; border-radius: 4px;
+  background: var(--surface); color: var(--muted); font-size: 0.8em;
+}
+
+/* ─── album layout: 220px art column + info column ──────────── */
+.media-card--album {
+  flex-direction: row;
+  align-items: stretch;
+}
+.media-card--album .media-card-art {
+  width: 220px; flex-shrink: 0; aspect-ratio: 1;
+}
+.media-card--album .media-card-info {
+  flex: 1; min-width: 0;
+}
+
+/* ─── row layout: 48px thumb, inline info ───────────────────── */
+.media-card--row {
+  flex-direction: row;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  gap: 0.75em;
+}
+.media-card--row .media-card-art {
+  width: 48px; height: 48px; aspect-ratio: 1;
+  border-radius: 6px; flex-shrink: 0;
+}
+.media-card--row .media-card-info {
+  flex: 1; min-width: 0; padding: 0;
+  flex-direction: row; align-items: center; gap: 0.75em;
+}
+.media-card--row .media-card-title { flex: 1; }
+.media-card--row .media-card-meta { margin-left: auto; }
+.media-card--row .media-card-actions { margin-top: 0; }
+
+/* ─── horizontal layout: 120px art, info to the right ───────── */
+.media-card--horizontal {
+  flex-direction: row;
+  align-items: stretch;
+}
+.media-card--horizontal .media-card-art {
+  width: 120px; flex-shrink: 0; aspect-ratio: 1;
+}
+.media-card--horizontal .media-card-info { flex: 1; min-width: 0; }
+
+/* ─── state overlays on the artwork ─────────────────────────── */
+.media-card-state {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex; align-items: center; gap: 0.4ch;
+  padding: 0.25em 0.65ch;
+  border-radius: 99px;
+  background: rgba(0,0,0,0.55); color: #fff;
+  font-size: 0.72em; font-weight: 500;
+  top: 8px; right: 8px;
+  pointer-events: none;
+}
+.media-card-state--upcoming { background: rgba(0,0,0,0.55); color: #fbbf24; }
+.media-card-state--live {
+  background: rgba(239,68,68,0.9); color: #fff;
+  top: 8px; left: 8px; right: auto;
+}
+.media-card-state-pulse {
+  width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  animation: media-card-pulse 1.4s ease-in-out infinite;
+}
+@keyframes media-card-pulse { 50% { opacity: 0.4; } }
+.media-card-state--ended {
+  top: auto; bottom: 0; left: 0; right: 0;
+  border-radius: 0; justify-content: center;
+  background: rgba(0,0,0,0.7);
+}
+.media-card-state--soldout {
+  top: 50%; left: 50%; right: auto;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  padding: 0.35em 1.4ch;
+  background: rgba(239,68,68,0.85);
+  font-size: 0.9em; letter-spacing: 0.1ch;
+}
+.media-card-state--limited {
+  top: auto; right: 8px; bottom: 8px;
+  background: rgba(0,0,0,0.6);
+}
+.media-card-state--gated {
+  top: 50%; left: 50%; right: auto;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.7);
+  width: 42px; height: 42px; padding: 0;
+  justify-content: center; font-size: 1.2em;
+}
+.media-card--state-delisted .media-card-title { text-decoration: line-through; color: var(--muted); }
+.media-card-gated-caption {
+  margin-top: 0.2em;
+  color: var(--muted); font-size: 0.75em;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .media-card--album { flex-direction: column; }
+  .media-card--album .media-card-art { width: 100%; }
+  .media-card--horizontal .media-card-art { width: 96px; }
+}

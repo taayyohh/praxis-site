@@ -144,7 +144,7 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
   const buyBtn = document.querySelector(`.feed-buy-btn[data-media-id="${mediaId}"], .feed-buy-btn[data-media-id="${firstId}"]`)
   const feedCard = buyBtn?.closest('.feed-media-card') || buyBtn?.closest('.feed-collected-card')
   const feedArt = feedCard?.querySelector('.feed-media-card-art img, .feed-collected-art-wrap img')
-  const worksArt = document.querySelector(`.works-card[data-media-id="${firstId}"] .works-card-art img`)
+  const worksArt = document.querySelector(`[data-media-id="${firstId}"] .media-card-art img, [data-media-id="${firstId}"] .works-card-art img`)
   const pageArt = document.querySelector('#art-content img, .art-cover img, [id="art-loading"] ~ * img')
   // Also check video elements and video thumbnails
   const feedVideo = feedCard?.querySelector('video')

@@ -69,6 +69,12 @@ async function initDesign() {
   // /projects, /supporter-home, and other feed-driven views call.
   let F = {}
   try { F = await import('./feed-cards.js') } catch (e) { console.warn('feed-cards import:', e) }
+  // Universal card renderers — the one-card-family migration target.
+  // Section 4/5 entries labeled "universal" call these directly.
+  let U = {}
+  try { U = await import('./media-card.js') } catch (e) { console.warn('media-card import:', e) }
+  let E = {}
+  try { E = await import('./event-card.js') } catch (e) { console.warn('event-card import:', e) }
 
   // Mock data — minimal fixtures each renderer needs to draw.
   const now = Math.floor(Date.now() / 1000)
@@ -142,6 +148,90 @@ async function initDesign() {
       projectId: '10', proposer: A_ADDR, title: 'Live at Elsewhere',
       totalDistributed: '250000000000000000', ts: now - 1800,
     },
+
+    // ── universal MediaCard fixtures ─────────────────────────────
+    // One shape per variant; the component infers category + layout
+    // from the item unless the caller explicitly overrides.
+    uniAudioListed: {
+      mediaId: '101', title: 'End Credits', artist: A_ADDR,
+      aliasName: 'nappy nina', price: '2000000000000000',
+      contentType: 'audio/mpeg',
+    },
+    uniAudioOwned: {
+      mediaId: '102', title: 'End Credits', artist: A_ADDR,
+      aliasName: 'nappy nina', price: '2000000000000000',
+      contentType: 'audio/mpeg',
+    },
+    uniVideo: {
+      mediaId: '103', title: 'Backlot', artist: B_ADDR,
+      price: '5000000000000000', contentType: 'video/mp4',
+    },
+    uniImage: {
+      mediaId: '104', title: 'Study No. 3', artist: C_ADDR,
+      price: '3000000000000000', contentType: 'image/jpeg',
+    },
+    uniPdf: {
+      mediaId: '105', title: 'A Reading of Coriolanus', artist: C_ADDR,
+      price: '0', contentType: 'application/pdf',
+    },
+    uniPortrait: {
+      mediaId: '106', title: 'The Making of Backlot', artist: B_ADDR,
+      price: '1500000000000000', contentType: 'application/pdf',
+    },
+    uniAlbum: {
+      mediaId: '107', headline: 'End Credits', artist: A_ADDR,
+      aliasName: 'nappy nina',
+      albumPath: { alias: 0, album: 0, aliasName: 'nappy nina', albumTitle: 'End Credits' },
+      count: 3, items: [
+        { mediaId: '201', title: 'Overture', price: '2000000000000000', contentType: 'audio/mpeg' },
+        { mediaId: '202', title: 'Second Line', price: '2000000000000000', contentType: 'audio/mpeg' },
+        { mediaId: '203', title: 'Closing', price: '2000000000000000', contentType: 'audio/mpeg' },
+      ],
+    },
+    uniImageAlbum: {
+      mediaId: '108', headline: 'Studies', artist: C_ADDR,
+      aliasName: 'miles', count: 4, items: [
+        { mediaId: '301', title: 'Study 1', price: '1000000000000000', contentType: 'image/jpeg' },
+        { mediaId: '302', title: 'Study 2', price: '1000000000000000', contentType: 'image/jpeg' },
+        { mediaId: '303', title: 'Study 3', price: '1000000000000000', contentType: 'image/jpeg' },
+        { mediaId: '304', title: 'Study 4', price: '1000000000000000', contentType: 'image/jpeg' },
+      ],
+    },
+    uniTicket: {
+      mediaId: '109', title: 'Live at Elsewhere · Mar 12', artist: A_ADDR,
+      price: '15000000000000000', contentType: 'application/octet-stream',
+      kind: 'ticket', maxSupply: '100', totalMinted: '87',
+    },
+    uniCredential: {
+      mediaId: '110', title: 'Contributor · Live at Elsewhere',
+      artist: A_ADDR, price: '0', kind: 'credential',
+    },
+    uniBundle: {
+      mediaId: '111', headline: 'A Studio Visit', artist: B_ADDR,
+      count: 5, items: [
+        { mediaId: '401', title: 'photo 1', price: '0', contentType: 'image/jpeg' },
+        { mediaId: '402', title: 'audio', price: '0', contentType: 'audio/mpeg' },
+        { mediaId: '403', title: 'reading', price: '0', contentType: 'application/pdf' },
+        { mediaId: '404', title: 'video', price: '0', contentType: 'video/mp4' },
+        { mediaId: '405', title: 'extra', price: '0', contentType: 'image/jpeg' },
+      ],
+    },
+
+    // ── universal EventCard fixtures ─────────────────────────────
+    uniEvFollow: { type: 'follow', follower: B_ADDR, followed: A_ADDR, timestamp: now - 3600 },
+    uniEvJoined: { type: 'joined-audience', wallet: B_ADDR, domain: 'blackmatter.world', timestamp: now - 86400 },
+    uniEvOrgCreated: { type: 'org-created', founder: A_ADDR, name: 'Practice Records', description: 'A worker-owned label collective.', timestamp: now - 1209600 },
+    uniEvReferral: { type: 'referral-earned', referrer: A_ADDR, referred: B_ADDR, timestamp: now - 43200 },
+    uniEvProjectProposed: { type: 'project-proposed', proposer: C_ADDR, projectId: '10', title: 'Live at Elsewhere', timestamp: now - 172800 },
+    uniEvProjectConfirmed: { type: 'project-confirmed', proposer: A_ADDR, projectId: '10', title: 'Live at Elsewhere', timestamp: now - 604800 },
+    uniEvProjectDisputed: { type: 'project-disputed', proposer: A_ADDR, disputer: C_ADDR, projectId: '10', title: 'Live at Elsewhere', timestamp: now - 43200 },
+    uniEvProjectCancelled: { type: 'project-cancelled', proposer: A_ADDR, projectId: '10', title: 'Live at Elsewhere', timestamp: now - 21600 },
+    uniEvProjectTimedOut: { type: 'project-timed-out', proposer: A_ADDR, projectId: '10', title: 'Live at Elsewhere', timestamp: now - 3600 },
+    uniEvRevenueDistributed: { type: 'revenue-distributed', proposer: A_ADDR, projectId: '10', title: 'Live at Elsewhere', amount: '250000000000000000', timestamp: now - 1800 },
+    uniEvTransfer: { type: 'transfer', from: B_ADDR, to: C_ADDR, amount: '100000000000000000', timestamp: now - 600 },
+    uniEvTip: { type: 'tip-sent', sender: B_ADDR, recipient: A_ADDR, amount: '5000000000000000', timestamp: now - 1200 },
+    uniEvHandleReserved: { type: 'handle-reserved', wallet: B_ADDR, handle: 'blackmatter', timestamp: now - 3600 },
+    uniEvDomainRegistered: { type: 'domain-registered', wallet: B_ADDR, domain: 'blackmatter.world', timestamp: now - 1200 },
   }
 
   el.innerHTML = `
@@ -302,6 +392,57 @@ async function initDesign() {
           feed. If Ponder adds a new event type, its card gets a row
           here in the same commit.
         </p>
+
+        <div class="design-block">
+          <h3>universal EventCard · line layout</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            One renderer for every protocol event — social, project lifecycle,
+            economic, membership, infrastructure. Default compact row.
+            Red/green tones encode disputes vs. earnings. See
+            public/js/event-card.js.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:0.5em;max-width:720px">
+            ${renderCardSafely('follow', () => E.renderEventCard?.(m.uniEvFollow, { resolve: mockResolve }))}
+            ${renderCardSafely('joined-audience', () => E.renderEventCard?.(m.uniEvJoined, { resolve: mockResolve }))}
+            ${renderCardSafely('referral-earned', () => E.renderEventCard?.(m.uniEvReferral, { resolve: mockResolve }))}
+            ${renderCardSafely('tip-sent (green tone)', () => E.renderEventCard?.(m.uniEvTip, { resolve: mockResolve }))}
+            ${renderCardSafely('transfer', () => E.renderEventCard?.(m.uniEvTransfer, { resolve: mockResolve }))}
+            ${renderCardSafely('handle-reserved', () => E.renderEventCard?.(m.uniEvHandleReserved, { resolve: mockResolve }))}
+            ${renderCardSafely('domain-registered', () => E.renderEventCard?.(m.uniEvDomainRegistered, { resolve: mockResolve }))}
+            ${renderCardSafely('project-cancelled (red tone)', () => E.renderEventCard?.(m.uniEvProjectCancelled, { resolve: mockResolve }))}
+            ${renderCardSafely('project-timed-out (red tone)', () => E.renderEventCard?.(m.uniEvProjectTimedOut, { resolve: mockResolve }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal EventCard · banner layout</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Richer rendering when the event deserves a hero — project
+            lifecycle events, org-created, revenue distributions.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:0.75em;max-width:720px">
+            ${renderCardSafely('project-proposed · banner', () => E.renderEventCard?.(m.uniEvProjectProposed, { resolve: mockResolve, layout: 'banner' }))}
+            ${renderCardSafely('project-confirmed · banner', () => E.renderEventCard?.(m.uniEvProjectConfirmed, { resolve: mockResolve, layout: 'banner' }))}
+            ${renderCardSafely('project-disputed · banner (red tone)', () => E.renderEventCard?.(m.uniEvProjectDisputed, { resolve: mockResolve, layout: 'banner' }))}
+            ${renderCardSafely('revenue-distributed · banner (green tone)', () => E.renderEventCard?.(m.uniEvRevenueDistributed, { resolve: mockResolve, layout: 'banner' }))}
+            ${renderCardSafely('org-created · banner', () => E.renderEventCard?.(m.uniEvOrgCreated, { resolve: mockResolve, layout: 'banner' }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal EventCard · inline-reference</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Zero-border pill meant to embed inside other cards (e.g. a
+            MediaCard footer referencing a dispute event, or a project
+            timeline listing recent activity).
+          </p>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5em;max-width:720px">
+            ${renderCardSafely('follow · inline', () => E.renderEventCard?.(m.uniEvFollow, { resolve: mockResolve, layout: 'inline-reference' }))}
+            ${renderCardSafely('project-confirmed · inline', () => E.renderEventCard?.(m.uniEvProjectConfirmed, { resolve: mockResolve, layout: 'inline-reference' }))}
+            ${renderCardSafely('transfer · inline', () => E.renderEventCard?.(m.uniEvTransfer, { resolve: mockResolve, layout: 'inline-reference' }))}
+          </div>
+        </div>
+
         <div class="design-cards-grid">
           ${renderCardSafely('media card — audio', () => F.renderMediaCard(m.audioCard, mockResolve))}
           ${renderCardSafely('media card — video', () => F.renderMediaCard(m.videoCard, mockResolve))}
@@ -333,6 +474,86 @@ async function initDesign() {
       <!-- ─────────── 5 · media + collection cards ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">5 · media + collection</h2>
+
+        <div class="design-block">
+          <h3>universal MediaCard · square layout</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Default for single-item cards — audio singles, images,
+            documents, 3D, interactive, tickets, credentials. 1:1 art
+            + title + meta + actions. See public/js/media-card.js.
+          </p>
+          <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+            ${renderCardSafely('audio · listed · buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+            ${renderCardSafely('audio · owned · play', () => U.renderMediaCard?.(m.uniAudioOwned, { resolve: mockResolve, owned: true }))}
+            ${renderCardSafely('image · for sale', () => U.renderMediaCard?.(m.uniImage, { resolve: mockResolve, header: { kind: 'listed', actor: C_ADDR } }))}
+            ${renderCardSafely('document · free collect', () => U.renderMediaCard?.(m.uniPdf, { resolve: mockResolve }))}
+            ${renderCardSafely('ticket · limited state', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'limited' }))}
+            ${renderCardSafely('credential · claimable', () => U.renderMediaCard?.(m.uniCredential, { resolve: mockResolve }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal MediaCard · wide layout (video)</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">16:9 artwork for video + live.</p>
+          <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+            ${renderCardSafely('video · listed', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal MediaCard · portrait layout</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">2:3 artwork for book covers, chapbooks, posters, vertical video.</p>
+          <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+            ${renderCardSafely('book cover', () => U.renderMediaCard?.(m.uniPortrait, { resolve: mockResolve, layout: 'portrait', category: 'document' }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal MediaCard · album layout</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Two-column: 220px art + info with play-all / buy-album +
+            numbered tracklist. For image bundles the tracklist is
+            replaced by a 12-cell gallery grid.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:1em;max-width:720px">
+            ${renderCardSafely('audio album · 3 tracks', () => U.renderMediaCard?.(m.uniAlbum, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+            ${renderCardSafely('image gallery · 4 cells', () => U.renderMediaCard?.(m.uniImageAlbum, { resolve: mockResolve, header: { kind: 'posted', actor: C_ADDR } }))}
+            ${renderCardSafely('bundle · mosaic artwork', () => U.renderMediaCard?.(m.uniBundle, { resolve: mockResolve, category: 'bundle', layout: 'album' }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal MediaCard · row + horizontal</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Row is the collection list-view (48px thumb, inline info).
+            Horizontal is feed-collected-card's shape (120px art, text
+            block right).
+          </p>
+          <div style="display:flex;flex-direction:column;gap:0.5em;max-width:620px">
+            ${renderCardSafely('row · audio', () => U.renderMediaCardRow?.(m.uniAudioOwned, { resolve: mockResolve, owned: true }))}
+            ${renderCardSafely('row · video', () => U.renderMediaCardRow?.(m.uniVideo, { resolve: mockResolve, owned: true }))}
+            ${renderCardSafely('row · document', () => U.renderMediaCardRow?.(m.uniPdf, { resolve: mockResolve, owned: true }))}
+            ${renderCardSafely('horizontal · feed collected', () => U.renderMediaCardHorizontal?.(m.uniAudioOwned, { resolve: mockResolve, header: { kind: 'collected', actor: B_ADDR } }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>universal MediaCard · state overlays</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Every state renders as an absolute-positioned overlay over
+            the artwork, never pushing layout. Delisted strikes the
+            title. Gated shows the lock + a caption in the meta line.
+          </p>
+          <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+            ${renderCardSafely('state · upcoming', () => U.renderMediaCard?.({ ...m.uniTicket, startsAt: now + 3 * 86400 }, { resolve: mockResolve, state: 'upcoming' }))}
+            ${renderCardSafely('state · live-now', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, state: 'live-now' }))}
+            ${renderCardSafely('state · ended', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'ended' }))}
+            ${renderCardSafely('state · sold-out', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'sold-out' }))}
+            ${renderCardSafely('state · limited', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'limited' }))}
+            ${renderCardSafely('state · delisted', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, state: 'delisted' }))}
+            ${renderCardSafely('state · gated', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, state: 'gated', gated: { unlockBy: 'ticket #12345' } }))}
+          </div>
+        </div>
 
         <div class="design-block">
           <h3>collection album card (owned)</h3>

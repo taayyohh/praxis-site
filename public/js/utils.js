@@ -719,6 +719,17 @@ export function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+// Inline avatar — 24px round profile picture, used in card header lines
+// ("miles followed fiction", "whatifwe collected"). Returns empty when
+// no cached picture is known. Resolves either an explicit picture URL
+// or falls back to getProfilePic(addr). Hoisted here from feed-cards.js
+// so MediaCard and EventCard can both share one implementation.
+export function inlineAvatar(addr, explicitPic) {
+  const pic = explicitPic || getProfilePic(addr)
+  if (!pic) return ''
+  return `<img src="${escapeHtml(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`
+}
+
 // Truncate an Ethereum address for display: 0x1234...abcd
 export function shortAddr(addr) {
   if (!addr || addr.length < 10) return addr || ''

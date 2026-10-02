@@ -5,6 +5,11 @@ import { ipfsUrl, escapeHtml, formatEthAmount, registerPage, getWalletProvider, 
 import { t } from './i18n.js'
 import { getArtistMedia, purchaseMedia, annotateRelistings } from './media.js'
 import { formatPriceFiatOnly, getEthPrices } from './fiat.js'
+import { renderMediaCard } from './media-card.js'
+// feed-cards.js self-registers global .feed-buy-btn / .track-play-btn
+// / .album-play-btn delegation on import, so the universal MediaCard's
+// buy + play affordances route through the same path as the feed.
+import './feed-cards.js'
 
 let _worksInited = false
 let _worksLoaded = false
@@ -51,17 +56,16 @@ async function resolveAndUpdateContentTypes(listings) {
     if (!ct) continue
     item.contentType = ct
     item._type = classifyContentType(ct) === 'pdf' ? 'text' : classifyContentType(ct)
-    // Update the DOM for this item
-    const el = document.querySelector(`.works-card[data-media-id="${item.id}"]`)
+    // Replace the whole card with a freshly-rendered MediaCard so the
+    // category, thumb, and actions all come from one code path. Cheap
+    // for the handful of items whose contentType was unknown at list
+    // time; the server probe fills most of them before response.
+    const el = document.querySelector(`.media-card[data-media-id="${item.id}"]`)
     if (el) {
-      el.dataset.type = item._type
-      if (item._type === 'video') el.dataset.span = '2'
-      const artContainer = el.querySelector('.works-card-art')
-      if (artContainer && item._type === 'video') {
-        artContainer.innerHTML = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
-      } else if (artContainer && item._type === 'image') {
-        artContainer.innerHTML = `<img loading="lazy" src="/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + item.ipfsCid)}&w=400">`
-      }
+      const tmp = document.createElement('template')
+      tmp.innerHTML = renderListings([item]).trim()
+      const fresh = tmp.content.firstElementChild
+      if (fresh) el.replaceWith(fresh)
     }
   }
 }
@@ -255,7 +259,6 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
     }
 
     contentEl.innerHTML = html
-    attachBuyHandlers(contentEl)
     attachLoadMore(contentEl, artistAddr)
     attachFilterHandlers(contentEl)
     attachViewToggle(contentEl)
@@ -363,83 +366,33 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
   }
 }
 
+// Map the works nomenclature ("audio" / "video" / "image" / "text") to
+// the universal MediaCard content categories ("audio" / "video" /
+// "image" / "document"). Items with no detectable type fall through
+// to "other" so the category icon still renders.
+function worksTypeToCategory(type) {
+  if (type === 'text' || type === 'pdf') return 'document'
+  if (type === 'audio' || type === 'video' || type === 'image') return type
+  return 'other'
+}
+
 function renderListings(listings) {
   let html = ''
   for (const item of listings) {
-    const title = escapeHtml(item.title || `#${item.id}`)
-    const priceDisplay = formatPriceFiatOnly(item.price, _prices)
+    const type = item._type || classifyType(item)
+    const category = worksTypeToCategory(type)
     const maxSupply = Number(item.maxSupply || 0)
     const totalMinted = Number(item.totalMinted || 0)
     const soldOut = maxSupply > 0 && totalMinted >= maxSupply
-    const supplyText = maxSupply === 0
-      ? t('works.unlimited')
-      : `${totalMinted} / ${maxSupply} ${t('works.minted')}`
-
-    const type = item._type || classifyType(item)
-    const artDetailUrl = `/art?media=${item.id}`
-
-    // Cover art
-    let coverImgHtml = ''
-    const ipfsCidUrl = item.ipfsCid ? ipfsUrl(item.ipfsCid) : ''
-    // Text (pdf/epub/doc etc.) items get a first-page thumbnail via the
-    // server's /api/pdf-thumb pipeline; renders the exact same way the
-    // collection grid serves PDF covers.
-    const isTextLike = (type === 'text' || type === 'pdf' || item.contentType === 'application/pdf')
-    if (type === 'video' && ipfsCidUrl) {
-      coverImgHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
-    } else if (type === 'image' && ipfsCidUrl) {
-      coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=400">`
-    } else if (isTextLike && ipfsCidUrl) {
-      // First try the first-page PDF thumbnail; fall back to the
-      // metadata-cid cover if the item carries one; last-resort text
-      // label matches the pre-PDF-preview behavior.
-      const metaFallback = item.metadataCid ? `this.src='/api/img?url=${encodeURIComponent(ipfsUrl(item.metadataCid))}&w=400';this.onerror=function(){this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'}` : `this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'`
-      coverImgHtml = `<img loading="lazy" src="/api/pdf-thumb?src=${encodeURIComponent(ipfsCidUrl)}" onerror="${metaFallback}">`
-    } else if (item.metadataCid) {
-      coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsUrl(item.metadataCid))}&w=400">`
-    } else if (item.ipfsCid) {
-      // Unknown type: try video-thumb, fall back to image proxy
-      coverImgHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.src='/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=400';this.onerror=function(){this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'}">`
-    } else {
-      coverImgHtml = `<span style="color:var(--dim);font-size:0.8em">${type}</span>`
-    }
-
-    // Play overlay on art area — matches feed card pattern. ipfsCidUrl
-    // is `/api/ipfs-proxy/<raw cid>` and the raw CID comes from
-    // PraxisMedia.list() which stores arbitrary strings on-chain with
-    // no CID validation. A malicious listing with a CID containing `"`
-    // would break out of the src attribute and run script, so escape.
-    const safeArtSrc = escapeHtml(ipfsCidUrl)
-    let artOverlay = ''
-    if (type === 'video' && ipfsCidUrl) {
-      artOverlay = `<div class="video-lazy" data-src="${safeArtSrc}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
-    } else if (type === 'audio' && ipfsCidUrl) {
-      artOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${safeArtSrc}" data-track-title="${title}" data-track-artist=""><i class="ph ph-play"></i></button>`
-    }
-
-    const spanAttr = type === 'video' ? ' data-span="2"' : ''
-    const artLinkWrap = type === 'video' ? coverImgHtml : `<a href="${artDetailUrl}" style="display:block;width:100%;height:100%">${coverImgHtml}</a>`
-    // Whole card is a click target to the detail page (except the
-    // play overlay + buy button, which stop propagation). Before, only
-    // the cover art and the title text were links — for a text-only
-    // work like a play with no cover, that title was almost invisible
-    // as a click target, so the item felt like it had no detail page.
-    // The click routes via <a data-card-link> on the info block; the
-    // per-element art link + title link stay as backup targets and
-    // for right-click "open in new tab".
-    html += `<div class="works-card" data-media-id="${item.id}" data-price="${item.price}" data-type="${type}"${spanAttr}>
-      <div class="works-card-art">${artLinkWrap}${artOverlay}</div>
-      <a href="${artDetailUrl}" class="works-card-info" data-card-link style="text-decoration:none;color:inherit;display:block">
-        <span class="works-card-title" style="display:block">${title}</span>
-        <div class="works-card-meta">${priceDisplay}${supplyText !== t('works.unlimited') ? ` · ${supplyText}` : ''}</div>
-        <div class="works-card-actions" style="display:flex;gap:0.4em;align-items:center">
-          ${soldOut
-            ? `<span style="color:var(--muted);font-size:0.85em">${t('works.soldOut')}</span>`
-            : `<button class="works-buy-btn feed-card-btn green" data-media-id="${item.id}" data-price="${item.price}" onclick="event.stopPropagation()">${(!item.price || BigInt(item.price) === 0n) ? t('art.collectFree') : t('works.buy')}</button>`
-          }
-        </div>
-      </a>
-    </div>`
+    const limited = !soldOut && maxSupply > 0
+    html += renderMediaCard(item, {
+      layout: category === 'video' ? 'wide' : 'square',
+      category,
+      state: soldOut ? 'sold-out' : (limited ? 'limited' : null),
+      resolve: addr => addr,
+      hidePrice: false,
+      extraDataAttrs: { type, price: item.price || '0' },
+    })
   }
   return html
 }
@@ -535,66 +488,48 @@ async function resolveAlbumArt(albumEntries) {
 
 function renderAlbumCard(mcid, items) {
   const cached = _albumArtCache.get(mcid)
-  const albumName = escapeHtml(cached?.albumName || items[0]?.title || 'untitled')
+  const albumName = cached?.albumName || items[0]?.title || 'untitled'
   const mtype = cached?.mediaType || 'album'
-  const trackCount = items.length
-  const itemLabel = mtype === 'collection' ? `${trackCount} pieces` : mtype === 'series' ? `${trackCount} episodes` : `${trackCount} tracks`
 
-  // Sum all track prices for album buy button
-  let totalPrice = 0n
-  let anySoldOut = false
-  let allSoldOut = true
-  for (const item of items) {
-    try { totalPrice += BigInt(item.price || 0) } catch {}
-    const max = Number(item.maxSupply || 0)
-    const minted = Number(item.totalMinted || 0)
-    const soldOut = max > 0 && minted >= max
-    if (soldOut) anySoldOut = true
-    else allSoldOut = false
+  // Decide the item category of the group from the dominant content
+  // type. 'collection' is Praxis-site parlance for a mixed image
+  // bundle; 'series' is video seasons; everything else = audio album.
+  const firstItem = items[0] || {}
+  const firstCategory = worksTypeToCategory(classifyType(firstItem))
+  const groupCategory = mtype === 'collection'
+    ? (firstCategory === 'image' ? 'image' : 'bundle')
+    : (mtype === 'series' ? 'video' : (firstCategory === 'image' ? 'image' : 'audio'))
+
+  const allSoldOut = items.every(it => {
+    const max = Number(it.maxSupply || 0)
+    const minted = Number(it.totalMinted || 0)
+    return max > 0 && minted >= max
+  })
+
+  const albumItem = {
+    mediaId: `album-${mcid}`,
+    headline: albumName,
+    title: albumName,
+    aliasName: cached?.aliasName || '',
+    metadataCid: mcid,
+    count: items.length,
+    items: items.map(it => ({
+      mediaId: it.id,
+      title: it.title || 'untitled',
+      price: it.price,
+      ipfsCid: it.ipfsCid,
+      contentType: it.contentType,
+      metadataCid: it.metadataCid,
+    })),
   }
-  const priceDisplay = formatPriceFiatOnly(totalPrice.toString(), _prices)
 
-  // Cover art
-  let artUrl = cached?.artUrl || ''
-  if (!artUrl && mcid) {
-    artUrl = `/api/img?url=${encodeURIComponent(ipfsUrl(mcid))}&w=400`
-  }
-  const coverImgHtml = artUrl
-    ? `<img loading="lazy" src="${artUrl}" alt="${albumName}" onerror="this.style.display='none'">`
-    : `<span style="color:var(--dim);font-size:0.8em">${mtype}</span>`
-
-  // Buy all button (purchases each track)
-  const mediaIds = items.map(i => i.id).join(',')
-  const buyBtn = allSoldOut
-    ? `<span style="color:var(--muted);font-size:0.85em">${t('works.soldOut')}</span>`
-    : `<button class="works-buy-album-btn feed-card-btn green" data-media-ids="${mediaIds}" data-total-price="${totalPrice.toString()}">buy ${mtype}</button>`
-
-  // Play-all overlay for albums (audio queue)
-  const queueTracks = items.filter(i => i.ipfsCid).map(i => ({
-    src: ipfsUrl(i.ipfsCid), title: i.title || '', artist: '', art: artUrl
-  }))
-  const queueData = escapeHtml(encodeURIComponent(JSON.stringify(queueTracks)))
-  const playOverlay = queueTracks.length > 0
-    ? `<button class="album-play-btn media-play-overlay" data-queue="${queueData}"><i class="ph ph-play"></i></button>`
-    : ''
-
-  // mcid is metadataCid from PraxisMedia.list() (attacker-controlled,
-  // no on-chain CID validation). Interpolated into id + data-mcid
-  // attributes here — escape both to close attribute breakout.
-  const safeMcid = escapeHtml(mcid)
-  return `<div class="works-card works-album-card" id="album-${safeMcid}" data-span="2" data-type="${mtype}" data-mcid="${safeMcid}">
-    <div class="works-card-art">${coverImgHtml}
-      <span class="works-album-badge">${itemLabel}</span>
-      ${playOverlay}
-    </div>
-    <div class="works-card-info">
-      <span class="works-card-title">${albumName}</span>
-      <div class="works-card-meta">${priceDisplay} · ${itemLabel}</div>
-      <div class="works-card-actions" style="display:flex;gap:0.4em;align-items:center">
-        ${buyBtn}
-      </div>
-    </div>
-  </div>`
+  return renderMediaCard(albumItem, {
+    layout: 'album',
+    category: groupCategory,
+    state: allSoldOut ? 'sold-out' : null,
+    resolve: addr => addr,
+    extraDataAttrs: { type: mtype, mcid: mcid, span: '2' },
+  })
 }
 
 async function renderGroupedListings(listings) {
@@ -668,30 +603,19 @@ function attachViewToggle(container) {
       } else {
         grid.innerHTML = renderListings(_currentListings)
       }
-      attachBuyHandlers(container)
 
       // Re-apply active filter
       if (_activeFilter !== 'all') {
-        grid.querySelectorAll('.works-card').forEach(item => {
+        grid.querySelectorAll('.media-card').forEach(item => {
           item.style.display = item.dataset.type === _activeFilter ? '' : 'none'
         })
       }
     })
   })
 
-  // Wire album buy buttons
-  container.querySelectorAll('.works-buy-album-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const ids = (btn.dataset.mediaIds || '').split(',').filter(Boolean)
-      const totalPrice = btn.dataset.totalPrice
-      if (!ids.length) return
-      // Purchase first track to trigger the buy flow (user can buy album from art detail)
-      const { showPurchaseConfirmation } = await import('./pay.js')
-      showPurchaseConfirmation(ids[0], totalPrice, 'album')
-    })
-  })
+  // Album buy buttons are routed through the global .feed-buy-btn
+  // delegation registered by feed-cards.js on import — see the
+  // "buy-album" action in media-card.js.
 }
 
 function attachFilterHandlers(container) {
@@ -711,24 +635,9 @@ function attachFilterHandlers(container) {
       _activeFilter = btn.dataset.filter
       const grid = container.querySelector('#works-grid')
       if (!grid) return
-      grid.querySelectorAll('.works-card').forEach(item => {
+      grid.querySelectorAll('.media-card').forEach(item => {
         item.style.display = (_activeFilter === 'all' || item.dataset.type === _activeFilter) ? '' : 'none'
       })
-    })
-  })
-}
-
-function attachBuyHandlers(container) {
-  container.querySelectorAll('.works-buy-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const mediaId = btn.dataset.mediaId
-      const price = btn.dataset.price
-      const title = btn.closest('.works-card')?.querySelector('.works-card-title')?.textContent || 'untitled'
-      if (!mediaId || !price) return
-      const { showPurchaseConfirmation } = await import('./pay.js')
-      showPurchaseConfirmation(mediaId, price, title)
     })
   })
 }
@@ -755,26 +664,11 @@ function attachLoadMore(container, artistAddr) {
       if (newListings.length > 0) {
         const grid = container.querySelector('#works-grid')
         if (grid) {
-          const beforeCount = grid.children.length
           grid.insertAdjacentHTML('beforeend', renderListings(newListings))
-          attachBuyHandlers(grid)
-          // apply current filter to new items
           if (_activeFilter !== 'all') {
-            grid.querySelectorAll('.works-card').forEach(item => {
+            grid.querySelectorAll('.media-card').forEach(item => {
               item.style.display = item.dataset.type === _activeFilter ? '' : 'none'
             })
-          }
-          // Owner tagging on the newly-added cards.
-          const isOwner = window.getWalletAddress?.()?.toLowerCase() === artistAddr.toLowerCase()
-          if (isOwner) {
-            import('./org-tagging.js').then(({ attachOrgTagger }) => {
-              const cards = Array.from(grid.children).slice(beforeCount)
-              cards.forEach(card => {
-                if (!card.classList?.contains('works-card')) return
-                const mediaId = card.dataset.mediaId
-                if (mediaId) attachOrgTagger(card, { mediaId, artist: artistAddr })
-              })
-            }).catch(() => {})
           }
         }
       }

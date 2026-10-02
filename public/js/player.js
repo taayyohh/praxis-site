@@ -727,7 +727,7 @@ document.addEventListener('click', (e) => {
     const title = btn.dataset.trackTitle || ''
     const artist = btn.dataset.trackArtist || ''
     // Find album art: explicit data attribute first, then nearest container's img
-    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item') || btn.closest('.art-cover') || btn.closest('.feed-collected-art-wrap') || btn.closest('.feed-collected-card') || btn.closest('.works-card-art') || btn.closest('.feed-card')
+    const albumEl = btn.closest('.album') || btn.closest('.album-detail')?.previousElementSibling || btn.closest('.audio-item') || btn.closest('.demo-item') || btn.closest('.art-cover') || btn.closest('.feed-collected-art-wrap') || btn.closest('.feed-collected-card') || btn.closest('.media-card-art') || btn.closest('.works-card-art') || btn.closest('.feed-card')
     const artImg = albumEl?.querySelector('img') || document.querySelector('.art-cover img, .album-art img')
     let art = btn.dataset.trackArt || artImg?.src || ''
     if (currentSrc === src && !audio.paused) {

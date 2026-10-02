@@ -180,7 +180,7 @@ function renderItem(item, domainMap, resolve) {
   if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
   if (item.type === 'supporter') return renderSupporterCard(item.data, resolve)
   if (item.type === 'purchase') return renderPurchaseCard(item.data, resolve)
-  if (item.type === 'purchase-batch') return renderPurchaseBatchCard(item.data, resolve)
+  if (item.type === 'purchase-batch') return renderPurchaseBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
   if (item.type === 'listed') return renderMediaCard(item.data, resolve)
   if (item.type === 'listed-batch') return renderBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
   if (item.type === 'ticket-listed') return renderTicketListedCard(item.data, resolve)
