@@ -645,54 +645,82 @@ export function renderPurchaseBatchCard(d, resolve, opts = {}) {
   // Server emits aliasName + headline at the top level and `albumPath`
   // as positional indices ({alias, album}) — not names — so the previous
   // `albumPath?.aliasName` / `albumPath?.albumTitle` lookups were always
-  // undefined and the "view" link resolved to '#'. Build the album slug
-  // off the top-level aliasName + headline instead.
+  // undefined. Build the album slug off the top-level aliasName + headline.
   const aliasName = d.aliasName || ''
   const slugUrl2 = aliasName ? `/music/${slugify(aliasName)}/${slugify(headline)}` : null
-  const artLink = slugUrl2
-    ? (artist.includes('.') ? `https://${esc(artist)}${slugUrl2}` : slugUrl2)
-    : '#'
+  const artistBase = artist.includes('.') ? `https://${esc(artist)}` : ''
+  const artLink = slugUrl2 ? `${artistBase}${slugUrl2}` : (artistBase || '#')
   const firstItem = d.items?.[0]
   const metaCid = firstItem?.metadataCid || ''
   const artRaw = metaCid ? `/api/ipfs-proxy/${metaCid}` : ''
   const artSrc = metaCid ? `/api/img?url=${encodeURIComponent(artRaw)}&w=280` : ''
-  const displayArtist = aliasName || artist
+  const displayArtist = aliasName || (getArtistName(d.artist) || artist)
+  const linkTarget = opts.external ? ' target="_blank"' : ''
+
   const sorted = [...(d.items || [])].sort((a, b) => {
     try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 }
   })
-  const batchCTs = sorted.map(it => it.contentType || '').filter(Boolean)
-  const purchaseBatchIsAudio = !batchCTs.length || batchCTs.some(ct => ct.startsWith('audio'))
-  const playableTracks = purchaseBatchIsAudio ? sorted.filter(it => it.ipfsCid) : []
-  let playOverlay = ''
-  if (playableTracks.length > 0) {
-    const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(it => ({
-      src: `/api/ipfs-proxy/${it.ipfsCid}`, title: it.title || '', artist: displayArtist, art: artRaw || '',
-    }))))
-    playOverlay = `<button class="album-play-btn feed-collected-play-overlay" data-queue="${queueData}"><i class="ph ph-play"></i></button>`
+
+  const contentTypes = sorted.map(it => it.contentType || '').filter(Boolean)
+  const batchIsImage = contentTypes.length > 0 && contentTypes.every(ct => ct.startsWith('image'))
+  const batchIsVideo = contentTypes.length > 0 && contentTypes.every(ct => ct.startsWith('video'))
+  const batchIsAudio = !batchIsImage && !batchIsVideo
+  const countLabel = batchIsImage ? `${sorted.length} images` : batchIsVideo ? `${sorted.length} videos` : `${d.count || sorted.length} tracks`
+
+  // Full per-track row — mirrors renderBatchCard so a collected album
+  // in the feed shows the same track list a buyer sees on the album
+  // page, just under a "X collected" header.
+  const tracklist = sorted.map((it, i) => {
+    const cid = it.ipfsCid || ''
+    let pw = 0n; try { pw = BigInt(it.price || '0') } catch {}
+    const actionBtn = (batchIsAudio && cid)
+      ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(displayArtist)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>`
+      : ''
+    const buyBtn = pw > 0n
+      ? `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}" style="font-size:0.7em;padding:0.2em 0.6ch"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>`
+      : ''
+    return `<div class="feed-batch-track"><span class="feed-batch-track-num">${i + 1}</span>${actionBtn}<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="color:var(--fg);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
+  }).join('')
+
+  let galleryHtml = ''
+  if (batchIsImage) {
+    galleryHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:4px;margin-top:0.5em">${sorted.slice(0, 12).map(it => {
+      const imgSrc = it.ipfsCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(it.ipfsCid)}&w=160` : ''
+      return imgSrc ? `<a href="${artistBase}/art?media=${encodeURIComponent(it.mediaId)}" style="display:block;aspect-ratio:1;border-radius:4px;overflow:hidden;border:1px solid var(--border)"><img src="${esc(imgSrc)}" alt="${esc(it.title || '')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block"></a>` : ''
+    }).join('')}${sorted.length > 12 ? `<div style="display:flex;align-items:center;justify-content:center;aspect-ratio:1;border-radius:4px;background:var(--surface);color:var(--muted);font-size:0.8em">+${sorted.length - 12}</div>` : ''}</div>`
   }
+
   const albumBuyData = sorted.filter(it => { try { return BigInt(it.price || '0') > 0n } catch { return false } })
   let totalWei = 0n
   for (const it of albumBuyData) { try { totalWei += BigInt(it.price || '0') } catch {} }
   const buyAlbumBtn = albumBuyData.length > 0
     ? buyBtnHtml(albumBuyData[0].mediaId, String(totalWei), `${headline} (${sorted.length} items)`, { ids: albumBuyData.map(it => it.mediaId).join(','), prices: albumBuyData.map(it => it.price).join(',') })
     : ''
-  const linkTarget = opts.external ? ' target="_blank"' : ''
-  const artistLink = artist.includes('.') ? `https://${esc(artist)}` : '#'
+
+  const playableTracks = batchIsAudio ? sorted.filter(it => it.ipfsCid) : []
+  let playAllBtn = ''
+  if (playableTracks.length > 0) {
+    const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(it => ({
+      src: `/api/ipfs-proxy/${it.ipfsCid}`,
+      title: it.title || '',
+      artist: displayArtist,
+      art: artRaw || '',
+    }))))
+    playAllBtn = `<button class="album-play-btn feed-card-btn" data-queue="${queueData}"><i class="ph ph-play"></i> play</button>`
+  }
+
   return `
-    <div class="feed-item feed-collected-card">
-      <div class="feed-collected-art-wrap">
-        ${artSrc ? `<a href="${esc(artLink)}"${linkTarget}><img src="${artSrc}" alt="" loading="lazy"></a>` : ''}
-        ${playOverlay}
-        ${avatarOverlay(d.buyer)}
-      </div>
-      <div class="feed-collected-body">
+    <div class="feed-item feed-media-card feed-batch-card">
+      ${artSrc ? `<a href="${esc(artLink)}"${linkTarget} class="feed-media-card-art" style="position:relative"><img src="${esc(artSrc)}" alt="" loading="lazy">${avatarOverlay(d.buyer)}</a>` : ''}
+      <div class="feed-media-card-info">
         <div style="color:var(--muted);font-size:0.8em;display:flex;align-items:center;gap:0.5ch">${inlineAvatar(d.buyer)}<span style="color:var(--fg)">${esc(buyer)}</span> collected</div>
-        <a href="${esc(artLink)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${esc(headline)}</a>
-        ${displayArtist ? `<a href="${artistLink}"${linkTarget} style="color:var(--muted);font-size:0.8em;text-decoration:none">${esc(displayArtist)}</a>` : ''}
-        <div class="feed-collected-actions">
-          <a href="${esc(artLink)}"${linkTarget} class="feed-card-btn" style="text-decoration:none"><i class="ph ph-arrow-right"></i> view</a>
-          ${buyAlbumBtn}
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="feed-author">${esc(displayArtist)}</span>
+          <span style="color:var(--dim);font-size:0.8em">${countLabel}</span>
         </div>
+        <a href="${esc(artLink)}"${linkTarget} style="color:var(--fg);font-weight:600;text-decoration:none;font-size:0.95em">${esc(headline)}</a>
+        <div class="feed-media-card-actions">${playAllBtn}${buyAlbumBtn}</div>
+        ${batchIsImage ? galleryHtml : `<div class="feed-batch-tracklist">${tracklist}</div>`}
       </div>
     </div>
   `
