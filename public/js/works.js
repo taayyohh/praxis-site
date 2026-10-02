@@ -260,18 +260,11 @@ async function loadWorks(artistAddr, statusEl, contentEl) {
     attachFilterHandlers(contentEl)
     attachViewToggle(contentEl)
 
-    // Owner-only: attach a "publish to organization" affordance to each
-    // work card. Renders inline in the card's action row, opens a small
-    // panel with a checkbox per org the artist belongs to.
-    if (isOwner) {
-      import('./org-tagging.js').then(({ attachOrgTagger }) => {
-        contentEl.querySelectorAll('.works-card[data-media-id]').forEach(card => {
-          const mediaId = card.dataset.mediaId
-          if (!mediaId) return
-          attachOrgTagger(card, { mediaId, artist: artistAddr })
-        })
-      }).catch(() => {})
-    }
+    // Publish-to-organization used to attach a trigger to every work
+    // card's action row — too noisy next to a buy/collect primary. The
+    // owner now reaches it from the item detail page (/art?media=…)
+    // instead, so a visitor's card view stays focused on the one
+    // visitor-facing action.
 
     // Scroll to album if URL hash targets one (e.g. #album-<mcid>)
     if (location.hash) {
@@ -388,10 +381,20 @@ function renderListings(listings) {
     // Cover art
     let coverImgHtml = ''
     const ipfsCidUrl = item.ipfsCid ? ipfsUrl(item.ipfsCid) : ''
+    // Text (pdf/epub/doc etc.) items get a first-page thumbnail via the
+    // server's /api/pdf-thumb pipeline; renders the exact same way the
+    // collection grid serves PDF covers.
+    const isTextLike = (type === 'text' || type === 'pdf' || item.contentType === 'application/pdf')
     if (type === 'video' && ipfsCidUrl) {
       coverImgHtml = `<img loading="lazy" src="/api/video-thumb?cid=${encodeURIComponent(item.ipfsCid)}" onerror="this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>video</span>'">`
     } else if (type === 'image' && ipfsCidUrl) {
       coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsCidUrl)}&w=400">`
+    } else if (isTextLike && ipfsCidUrl) {
+      // First try the first-page PDF thumbnail; fall back to the
+      // metadata-cid cover if the item carries one; last-resort text
+      // label matches the pre-PDF-preview behavior.
+      const metaFallback = item.metadataCid ? `this.src='/api/img?url=${encodeURIComponent(ipfsUrl(item.metadataCid))}&w=400';this.onerror=function(){this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'}` : `this.outerHTML='<span style=\\'color:var(--dim);font-size:0.7em\\'>${type}</span>'`
+      coverImgHtml = `<img loading="lazy" src="/api/pdf-thumb?src=${encodeURIComponent(ipfsCidUrl)}" onerror="${metaFallback}">`
     } else if (item.metadataCid) {
       coverImgHtml = `<img loading="lazy" src="/api/img?url=${encodeURIComponent(ipfsUrl(item.metadataCid))}&w=400">`
     } else if (item.ipfsCid) {
