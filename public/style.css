@@ -3597,8 +3597,13 @@ body:has(.collection-container) {
 .works-card-actions { display: flex; gap: 0.5ch; margin-top: 0.35em; justify-content: flex-end; align-items: center; }
 
 /* Span-2 cards (video, album) — aspect-ratio 2/1 so art height matches 1-col square cards */
-.works-card[data-span="2"] { grid-column: span 2; }
-.works-card[data-span="2"] .works-card-art { aspect-ratio: 2/1; }
+/* Works grid is always 2 columns; album + video cards used to span
+   both for a full-width hero look, but we want every card the same
+   half-width footprint — single-track cards included. Keeping the
+   data-span="2" attribute (still set by works.js for album + video)
+   as a no-op so other grids that use it elsewhere aren't affected. */
+.works-card[data-span="2"] { grid-column: span 1; }
+.works-card[data-span="2"] .works-card-art { aspect-ratio: 1; }
 
 /* Album badge overlay */
 .works-album-badge { position: absolute; top: 0.4em; right: 0.4em; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.65em; padding: 0.2em 0.6em; border-radius: 2px; z-index: 1; }
