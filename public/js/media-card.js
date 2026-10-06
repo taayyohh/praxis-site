@@ -41,9 +41,16 @@ function inferCategory(item, context) {
   const ct = (item.contentType || '').toLowerCase()
   if (item.items && item.items.length > 1) {
     const inner = item.items.map(it => (it.contentType || '').toLowerCase())
-    if (inner.every(c => c.startsWith('image/'))) return 'image'
-    if (inner.every(c => c.startsWith('video/'))) return 'video'
-    if (inner.every(c => c.startsWith('audio/') || c === 'application/ogg')) return 'audio'
+    // Empty contentType is treated as "unknown but could belong" — the
+    // alternative is a mosaic rendering for audio albums whose server
+    // payload hadn't filled contentType on every item yet. Praxis albums
+    // are overwhelmingly audio, so an item without a hint should NOT
+    // flip the whole group into 'bundle'.
+    const nonEmpty = inner.filter(Boolean)
+    if (nonEmpty.length === 0) return 'audio'
+    if (nonEmpty.every(c => c.startsWith('image/'))) return 'image'
+    if (nonEmpty.every(c => c.startsWith('video/'))) return 'video'
+    if (nonEmpty.every(c => c.startsWith('audio/') || c === 'application/ogg')) return 'audio'
     return 'bundle'
   }
   if (ct.startsWith('audio/') || ct === 'application/ogg') return 'audio'
@@ -89,7 +96,14 @@ function albumSlugUrl(item) {
 // ─── art fallback chain per category ───────────────────────────────
 function thumbSrcFor(item, category, width = 280) {
   const cid = item.ipfsCid || ''
-  const metaCid = item.metadataCid || ''
+  // Album / batch payloads often omit a top-level metadataCid — the
+  // cover lives on the first inner item (that's where the server
+  // places it for feed purchase-batch / listed-batch rows). Fall back
+  // across the chain so the artwork actually shows.
+  const metaCid = item.metadataCid
+    || item.items?.[0]?.metadataCid
+    || item.coverCid
+    || ''
   const metaThumb = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=${width}` : ''
   if (category === 'image') {
     if (cid) return `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=${width}`
@@ -100,6 +114,8 @@ function thumbSrcFor(item, category, width = 280) {
     return metaThumb
   }
   if (category === 'document') {
+    // PDF thumbnail route can 500 on scanned or password-protected
+    // PDFs; the caller fallback chain below handles that visually.
     if (cid) return `/api/pdf-thumb?src=${encodeURIComponent(`/api/ipfs-proxy/${cid}`)}`
     return metaThumb
   }
@@ -331,7 +347,19 @@ function renderArt(item, category, state, context) {
     }).join('')
     artInner = `<div class="media-card-art-mosaic" style="${dimStyle.slice(1)}">${mosaic}</div>`
   } else if (src) {
-    artInner = `<img src="${esc(src)}" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;display:block${dimStyle}" onerror="this.style.display='none';this.nextElementSibling&&this.nextElementSibling.removeAttribute('hidden')"><div class="media-card-art-fallback" hidden><i class="ph ${icon}"></i></div>`
+    // For PDFs and other documents, give the pdf-thumb route one
+    // fallback attempt at the item's metadata-cid cover before
+    // conceding to the category icon — matches the pre-universal
+    // works grid behavior and covers scanned PDFs that can't be
+    // rasterised server-side.
+    const metaFallbackCid = item.metadataCid || item.items?.[0]?.metadataCid || item.coverCid || ''
+    const metaFallbackSrc = (category === 'document' && metaFallbackCid)
+      ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaFallbackCid)}&w=400`
+      : ''
+    const onerror = metaFallbackSrc
+      ? `if(this.dataset.fb){this.style.display='none';this.nextElementSibling&&this.nextElementSibling.removeAttribute('hidden')}else{this.dataset.fb='1';this.src='${esc(metaFallbackSrc)}'}`
+      : `this.style.display='none';this.nextElementSibling&&this.nextElementSibling.removeAttribute('hidden')`
+    artInner = `<img src="${esc(src)}" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;display:block${dimStyle}" onerror="${onerror}"><div class="media-card-art-fallback" hidden><i class="ph ${icon}"></i></div>`
   } else {
     artInner = `<div class="media-card-art-fallback"><i class="ph ${icon}"></i></div>`
   }
