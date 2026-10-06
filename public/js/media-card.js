@@ -41,16 +41,24 @@ function inferCategory(item, context) {
   const ct = (item.contentType || '').toLowerCase()
   if (item.items && item.items.length > 1) {
     const inner = item.items.map(it => (it.contentType || '').toLowerCase())
-    // Empty contentType is treated as "unknown but could belong" — the
-    // alternative is a mosaic rendering for audio albums whose server
-    // payload hadn't filled contentType on every item yet. Praxis albums
-    // are overwhelmingly audio, so an item without a hint should NOT
-    // flip the whole group into 'bundle'.
     const nonEmpty = inner.filter(Boolean)
     if (nonEmpty.length === 0) return 'audio'
-    if (nonEmpty.every(c => c.startsWith('image/'))) return 'image'
-    if (nonEmpty.every(c => c.startsWith('video/'))) return 'video'
-    if (nonEmpty.every(c => c.startsWith('audio/') || c === 'application/ogg')) return 'audio'
+    // Majority wins — a 13-track audio album that includes a single
+    // music-video track (e.g. Nappy Nina's "Sow & So" with "Real Tea")
+    // used to flip the whole batch to 'bundle' and render through the
+    // 4-cell mosaic. Count each top-level family and pick the dominant
+    // one; images / videos / audio each read as that medium when they
+    // own the majority; genuinely mixed sets still fall through to
+    // 'bundle' and render the mosaic (that's the honest shape).
+    const counts = { image: 0, video: 0, audio: 0 }
+    for (const c of nonEmpty) {
+      if (c.startsWith('image/')) counts.image++
+      else if (c.startsWith('video/')) counts.video++
+      else if (c.startsWith('audio/') || c === 'application/ogg') counts.audio++
+    }
+    const total = nonEmpty.length
+    const winner = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+    if (winner && winner[1] / total > 0.5) return winner[0]
     return 'bundle'
   }
   if (ct.startsWith('audio/') || ct === 'application/ogg') return 'audio'
@@ -114,9 +122,11 @@ function thumbSrcFor(item, category, width = 280) {
     return metaThumb
   }
   if (category === 'document') {
-    // PDF thumbnail route can 500 on scanned or password-protected
-    // PDFs; the caller fallback chain below handles that visually.
-    if (cid) return `/api/pdf-thumb?src=${encodeURIComponent(`/api/ipfs-proxy/${cid}`)}`
+    // Server reads the query param as `url`, not `src` — a stale param
+    // name here is why Tunnel Vision rendered as the file icon on
+    // prod. The route can also 500 on scanned or password-protected
+    // PDFs; the onerror fallback chain below covers that visually.
+    if (cid) return `/api/pdf-thumb?url=${encodeURIComponent(`/api/ipfs-proxy/${cid}`)}`
     return metaThumb
   }
   return metaThumb
