@@ -10528,6 +10528,17 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   aspect-ratio: 1;
 }
 .media-card-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Floating 32px avatar bottom-left of the artwork — pre-universal
+ * avatarOverlay restored. Z-index above state chips so it stays
+ * readable on sold-out banners etc. */
+.media-card-art-avatar {
+  position: absolute; bottom: 8px; left: 8px;
+  width: 32px; height: 32px; border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.5);
+  z-index: 3;
+}
 .media-card-art-fallback {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -10555,6 +10566,7 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .media-card-header-actor { color: var(--fg); font-weight: 600; }
 .media-card-header-verb { color: var(--muted); }
+.media-card-header-price { color: var(--fg); font-variant-numeric: tabular-nums; }
 .media-card-author {
   color: var(--dim); font-size: 0.8em; text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -10600,13 +10612,41 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   font-size: 0.75em; flex-shrink: 0;
 }
 
-/* audio play overlay sits on the artwork */
+/* audio + video play overlay — frosted glass circle on the artwork.
+ * Mirrors the pre-universal .feed-collected-play-overlay look that
+ * Miles asked us to restore: semi-transparent white with a backdrop
+ * blur so it reads as glass over any album cover. Centered on video
+ * (it's the primary affordance there), bottom-right on audio (the
+ * title + play-all button are the primary affordance). */
 .media-card-play-overlay {
-  position: absolute; right: 10px; bottom: 10px;
-  width: 36px; height: 36px; border-radius: 50%;
+  position: absolute; right: 12px; bottom: 12px;
+  width: 44px; height: 44px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.65); border: none; color: #fff; cursor: pointer;
-  font-size: 1em; z-index: 2;
+  background: color-mix(in srgb, #fff 15%, transparent);
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  border: 1px solid color-mix(in srgb, #fff 25%, transparent);
+  color: #fff; cursor: pointer;
+  font-size: 1.1em; z-index: 2;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  transition: background 0.15s, transform 0.15s;
+}
+.media-card-play-overlay:hover {
+  background: color-mix(in srgb, #fff 25%, transparent);
+  transform: scale(1.05);
+}
+.media-card-play-overlay--video {
+  right: auto; bottom: auto;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px; height: 60px;
+  font-size: 1.5em;
+}
+.media-card-play-overlay--video:hover { transform: translate(-50%, -50%) scale(1.05); }
+.media-card-art--video {
+  position: relative;
+  cursor: pointer;
+  background: #000;
 }
 
 /* ─── tracklist (album layout) ──────────────────────────────── */
@@ -10696,13 +10736,19 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .media-card--row .media-card-meta { margin-left: auto; }
 .media-card--row .media-card-actions { margin-top: 0; }
 
-/* ─── horizontal layout: 120px art, info to the right ───────── */
+/* ─── horizontal layout: art + info side by side ─────────────
+ * Unified at 220px to match --album — Miles's rule that an album
+ * cover and a single-track cover should read as the same visual
+ * weight when they sit in the same feed column. The info column
+ * stacks top-aligned so a short single doesn't stretch out of
+ * proportion when the card is 220 tall.
+ */
 .media-card--horizontal {
   flex-direction: row;
-  align-items: stretch;
+  align-items: start;
 }
 .media-card--horizontal .media-card-art {
-  width: 120px; flex-shrink: 0; aspect-ratio: 1;
+  width: 220px; flex-shrink: 0; aspect-ratio: 1;
 }
 .media-card--horizontal .media-card-info { flex: 1; min-width: 0; }
 
@@ -10765,5 +10811,6 @@ a.media-card-meta-superseded:hover { color: var(--fg); text-decoration: underlin
 @media (max-width: 600px) {
   .media-card--album { flex-direction: column; }
   .media-card--album .media-card-art { width: 100%; }
-  .media-card--horizontal .media-card-art { width: 96px; }
+  .media-card--horizontal { flex-direction: column; }
+  .media-card--horizontal .media-card-art { width: 100%; }
 }

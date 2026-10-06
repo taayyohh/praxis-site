@@ -33,6 +33,17 @@ import {
 
 const DELIST_PRICE_SENTINEL = 2n ** 128n
 
+// Floating 32px profile picture overlaid on the bottom-left of the
+// artwork. Mirrors the pre-universal avatarOverlay — attributes the
+// card to its actor (buyer when it's a purchase card, artist
+// otherwise) without taking a row of its own. Returns empty when no
+// cached picture is known.
+function artAvatarOverlay(addr, explicitPic) {
+  const pic = explicitPic || getProfilePic(addr)
+  if (!pic) return ''
+  return `<img src="${esc(pic)}" class="media-card-art-avatar" loading="lazy" onerror="this.style.display='none'">`
+}
+
 // ─── category inference ────────────────────────────────────────────
 // Maps an item's contentType / subtype hint to one of 12 content
 // categories. Caller can always override by passing context.category.
@@ -290,7 +301,11 @@ function displayName(addr, context, explicitName) {
 }
 
 // ─── header slot ───────────────────────────────────────────────────
-function renderHeader(header, context) {
+// For purchase cards: appends "for $X" when the item carries a price,
+// mirroring the pre-universal renderPurchaseCard byline ("miles
+// collected for $0.82"). Keeps the price inline with the verb so the
+// money fact rides on the attribution line instead of a separate row.
+function renderHeader(header, context, item) {
   if (!header) return ''
   const actor = header.actor
   const name = header.actorName || displayName(actor, context)
@@ -303,7 +318,14 @@ function renderHeader(header, context) {
     contributed: 'contributed to library',
     proposed: 'proposed',
   }[header.kind] || header.kind
-  return `<div class="media-card-header">${avatar}<span class="media-card-header-actor">${esc(name)}</span><span class="media-card-header-verb">${esc(verb)}</span></div>`
+  let priceSuffix = ''
+  if (header.kind === 'collected' && item?.price && item.price !== '0') {
+    const pw = parsePrice(item.price)
+    if (pw > 0n && pw < DELIST_PRICE_SENTINEL) {
+      priceSuffix = ` <span class="media-card-header-verb">for</span> <span class="media-card-header-price" data-eth-wei="${esc(item.price)}" data-fiat-primary="true"></span>`
+    }
+  }
+  return `<div class="media-card-header">${avatar}<span class="media-card-header-actor">${esc(name)}</span><span class="media-card-header-verb">${esc(verb)}</span>${priceSuffix}</div>`
 }
 
 // ─── state overlay ─────────────────────────────────────────────────
@@ -348,6 +370,7 @@ function renderArt(item, category, state, context) {
   const stateOverlay = renderStateOverlay(state, item)
   const dimmed = state === 'ended' || state === 'delisted'
   const dimStyle = dimmed ? ';opacity:0.5' : ''
+  const cid = item.ipfsCid || ''
 
   let artInner
   if (category === 'bundle' && item.items && item.items.length > 1) {
@@ -359,12 +382,10 @@ function renderArt(item, category, state, context) {
     }).join('')
     artInner = `<div class="media-card-art-mosaic" style="${dimStyle.slice(1)}">${mosaic}</div>`
   } else if (src) {
-    // For PDFs and other documents, give the pdf-thumb route one
-    // fallback attempt at the item's metadata-cid cover before
-    // conceding to the category icon — matches the pre-universal
-    // works grid behavior and covers scanned PDFs that can't be
-    // rasterised server-side.
-    const metaFallbackCid = item.metadataCid || item.items?.[0]?.metadataCid || item.coverCid || ''
+    const metaFallbackCid = item.metadataCid
+      || (item.items && item.items.find(it => it && it.metadataCid)?.metadataCid)
+      || item.coverCid
+      || ''
     const metaFallbackSrc = (category === 'document' && metaFallbackCid)
       ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaFallbackCid)}&w=400`
       : ''
@@ -376,13 +397,40 @@ function renderArt(item, category, state, context) {
     artInner = `<div class="media-card-art-fallback"><i class="ph ${icon}"></i></div>`
   }
 
-  // Audio over-art play overlay for single-item owned/listed cards
-  const showPlayOverlay = category === 'audio' && item.ipfsCid && (context.actions || []).includes('play')
-  const playOverlay = showPlayOverlay
-    ? `<button class="track-play-btn media-card-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(item.ipfsCid)}" data-track-title="${esc(item.title || 'untitled')}" data-track-artist="${esc(displayName(item.artist, context))}" data-track-art="${esc(src)}" aria-label="play"><i class="ph ph-play"></i></button>`
+  // Glass play overlay — ALWAYS present when audio has a playable
+  // ipfsCid, independent of the caller's actions set. Clicking plays
+  // inline via player.js (which stopPropagations + preventDefaults
+  // the enclosing anchor). Mirrors the pre-universal feed card's
+  // .feed-collected-play-overlay affordance.
+  const playOverlay = (category === 'audio' && cid)
+    ? `<button class="track-play-btn media-card-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(item.title || 'untitled')}" data-track-artist="${esc(displayName(item.artist, context))}" data-track-art="${esc(src)}" aria-label="play"><i class="ph ph-play"></i></button>`
     : ''
 
-  return `<a class="media-card-art" href="${esc(link)}"${linkTarget}>${artInner}${playOverlay}${stateOverlay}</a>`
+  // Avatar overlay — attributes the card to its actor without taking
+  // a row of its own. header.actor when set (purchase cards), else
+  // item.artist (listed cards).
+  const actorAddr = context.header?.actor || item.artist
+  const actorPic = context.header?.actorPic || item.artistPic || null
+  const avatarHtml = actorAddr ? artAvatarOverlay(actorAddr, actorPic) : ''
+
+  // Document (PDF/text) with an ipfsCid gets the library sheet
+  // affordance back — clicking opens the file inline via the global
+  // .feed-library-open handler instead of jumping to the detail page.
+  if (category === 'document' && cid) {
+    const mediaSrc = `/api/ipfs-proxy/${encodeURIComponent(cid)}`
+    return `<a class="media-card-art media-card-art--document feed-library-open" href="#" data-media-url="${esc(mediaSrc)}" data-title="${esc(item.title || 'untitled')}">${artInner}${avatarHtml}${stateOverlay}</a>`
+  }
+
+  // Video: wrap the artwork in a .video-lazy div so the global
+  // handler can upgrade it to an inline <video> element on click —
+  // this is the "video plays inline, not on detail page" behavior the
+  // pre-universal cards had.
+  if (category === 'video' && cid) {
+    const videoSrc = `/api/ipfs-proxy/${encodeURIComponent(cid)}`
+    return `<div class="media-card-art media-card-art--video video-lazy" data-src="${esc(videoSrc)}" data-title="${esc(item.title || 'untitled')}" data-poster="${esc(src)}">${artInner}${avatarHtml}<button class="media-card-play-overlay media-card-play-overlay--video" aria-label="play"><i class="ph ph-play"></i></button>${stateOverlay}</div>`
+  }
+
+  return `<a class="media-card-art" href="${esc(link)}"${linkTarget}>${artInner}${avatarHtml}${playOverlay}${stateOverlay}</a>`
 }
 
 // ─── album tracklist ───────────────────────────────────────────────
@@ -517,7 +565,7 @@ export function renderMediaCard(item, context = {}) {
 
   context = { ...context, category, state, layout, actions: context.actions || inferActions(item, category, state, context) }
 
-  const headerHtml = renderHeader(header, context)
+  const headerHtml = renderHeader(header, context, item)
   const artHtml = renderArt(item, category, state, context)
   const metaHtml = renderMeta(item, category, state, context)
   const actionsHtml = renderActions(item, category, state, context)

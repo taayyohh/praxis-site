@@ -722,6 +722,10 @@ document.addEventListener('click', (e) => {
   // single track button
   const btn = e.target.closest('.track-play-btn[data-track-src]')
   if (btn) {
+    // preventDefault: track-play-btn may sit inside an <a> wrapper
+    // (e.g. .media-card-art is an anchor). Without this the browser
+    // navigates to the detail page instead of starting inline playback.
+    e.preventDefault()
     e.stopPropagation()
     const src = btn.dataset.trackSrc
     const title = btn.dataset.trackTitle || ''
@@ -748,6 +752,7 @@ document.addEventListener('click', (e) => {
   // album play button — plays full queue
   const albumBtn = e.target.closest('.album-play-btn[data-queue]')
   if (albumBtn) {
+    e.preventDefault()
     e.stopPropagation()
     try {
       const raw = albumBtn.dataset.queue
