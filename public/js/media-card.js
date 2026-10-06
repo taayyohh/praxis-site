@@ -372,13 +372,17 @@ function renderArt(item, category, state, context) {
   const dimStyle = dimmed ? ';opacity:0.5' : ''
   const cid = item.ipfsCid || ''
 
+  // No category / media-type icons on the artwork — a solid dark art
+  // surface stands in when the cover is missing. The actor avatar
+  // overlay still provides attribution; the glass play circle still
+  // marks the card as playable.
   let artInner
   if (category === 'bundle' && item.items && item.items.length > 1) {
     const mosaic = item.items.slice(0, 4).map(it => {
       const s = thumbSrcFor(it, inferCategory(it, {}), 140)
       return s
         ? `<img src="${esc(s)}" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;display:block">`
-        : `<div class="media-card-art-fallback"><i class="ph ${categoryIcon(inferCategory(it, {}))}"></i></div>`
+        : `<div class="media-card-art-blank"></div>`
     }).join('')
     artInner = `<div class="media-card-art-mosaic" style="${dimStyle.slice(1)}">${mosaic}</div>`
   } else if (src) {
@@ -390,12 +394,14 @@ function renderArt(item, category, state, context) {
       ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaFallbackCid)}&w=400`
       : ''
     const onerror = metaFallbackSrc
-      ? `if(this.dataset.fb){this.style.display='none';this.nextElementSibling&&this.nextElementSibling.removeAttribute('hidden')}else{this.dataset.fb='1';this.src='${esc(metaFallbackSrc)}'}`
-      : `this.style.display='none';this.nextElementSibling&&this.nextElementSibling.removeAttribute('hidden')`
-    artInner = `<img src="${esc(src)}" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;display:block${dimStyle}" onerror="${onerror}"><div class="media-card-art-fallback" hidden><i class="ph ${icon}"></i></div>`
+      ? `if(this.dataset.fb){this.style.display='none'}else{this.dataset.fb='1';this.src='${esc(metaFallbackSrc)}'}`
+      : `this.style.display='none'`
+    artInner = `<img src="${esc(src)}" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;display:block${dimStyle}" onerror="${onerror}">`
   } else {
-    artInner = `<div class="media-card-art-fallback"><i class="ph ${icon}"></i></div>`
+    artInner = ''
   }
+  // Suppress TS: category + icon were used by the deleted fallback.
+  void icon
 
   // Glass play overlay — ALWAYS present when audio has a playable
   // ipfsCid, independent of the caller's actions set. Clicking plays
@@ -465,8 +471,12 @@ function renderTracklist(item, context) {
   if (items.length <= TRACKLIST_PREVIEW_LIMIT + 2) {
     return items.map(renderOne).join('')
   }
+  // Rest tracks keep their absolute index so numbering continues
+  // 6, 7, 8 … instead of restarting at 1.
   const preview = items.slice(0, TRACKLIST_PREVIEW_LIMIT).map(renderOne).join('')
-  const rest = items.slice(TRACKLIST_PREVIEW_LIMIT).map(renderOne).join('')
+  const rest = items.slice(TRACKLIST_PREVIEW_LIMIT)
+    .map((it, i) => renderOne(it, i + TRACKLIST_PREVIEW_LIMIT))
+    .join('')
   const hiddenCount = items.length - TRACKLIST_PREVIEW_LIMIT
   return `${preview}<div class="media-card-tracklist-rest" hidden>${rest}</div><button type="button" class="media-card-tracklist-toggle" data-collapsed-label="+ ${hiddenCount} more" data-expanded-label="show less">+ ${hiddenCount} more</button>`
 }

@@ -10527,11 +10527,15 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   overflow: hidden;
   aspect-ratio: 1;
 }
-.media-card-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-card-art > img:not(.media-card-art-avatar) {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+}
 /* Floating 32px avatar bottom-left of the artwork — pre-universal
- * avatarOverlay restored. Z-index above state chips so it stays
- * readable on sold-out banners etc. */
-.media-card-art-avatar {
+ * avatarOverlay restored. Selector specificity has to beat
+ * .media-card-art img, otherwise it inherits width:100% and expands
+ * to the full artwork square (which is what Miles was seeing when
+ * the avatar rendered as a giant circle on top of the album cover). */
+.media-card-art img.media-card-art-avatar {
   position: absolute; bottom: 8px; left: 8px;
   width: 32px; height: 32px; border-radius: 50%;
   object-fit: cover;
@@ -10539,11 +10543,9 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   box-shadow: 0 1px 6px rgba(0,0,0,0.5);
   z-index: 3;
 }
-.media-card-art-fallback {
+.media-card-art-blank {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--muted);
-  font-size: 2.2em;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
 }
 .media-card-art-mosaic {
   position: absolute; inset: 0;
@@ -10619,30 +10621,28 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
  * (it's the primary affordance there), bottom-right on audio (the
  * title + play-all button are the primary affordance). */
 .media-card-play-overlay {
-  position: absolute; right: 12px; bottom: 12px;
-  width: 44px; height: 44px; border-radius: 50%;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px; height: 56px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, #fff 15%, transparent);
   backdrop-filter: blur(14px) saturate(180%);
   -webkit-backdrop-filter: blur(14px) saturate(180%);
   border: 1px solid color-mix(in srgb, #fff 25%, transparent);
   color: #fff; cursor: pointer;
-  font-size: 1.1em; z-index: 2;
+  font-size: 1.4em; z-index: 2;
   box-shadow: 0 2px 12px rgba(0,0,0,0.35);
   transition: background 0.15s, transform 0.15s;
 }
 .media-card-play-overlay:hover {
   background: color-mix(in srgb, #fff 25%, transparent);
-  transform: scale(1.05);
+  transform: translate(-50%, -50%) scale(1.05);
 }
 .media-card-play-overlay--video {
-  right: auto; bottom: auto;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 60px; height: 60px;
+  width: 64px; height: 64px;
   font-size: 1.5em;
 }
-.media-card-play-overlay--video:hover { transform: translate(-50%, -50%) scale(1.05); }
 .media-card-art--video {
   position: relative;
   cursor: pointer;
@@ -10672,7 +10672,10 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .media-card-track-title:hover { text-decoration: underline; }
 .media-card-track-buy { font-size: 0.75em; padding: 0.2em 0.6ch; }
-.media-card-tracklist-rest { display: contents; }
+.media-card-tracklist-rest {
+  display: flex; flex-direction: column; gap: 0.25em;
+}
+.media-card-tracklist-rest[hidden] { display: none; }
 .media-card-tracklist-toggle {
   background: none; border: none;
   color: var(--dim); font-size: 0.8em;
