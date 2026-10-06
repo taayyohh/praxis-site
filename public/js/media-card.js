@@ -403,14 +403,28 @@ function renderArt(item, category, state, context) {
   // Suppress TS: category + icon were used by the deleted fallback.
   void icon
 
-  // Glass play overlay — ALWAYS present when audio has a playable
-  // ipfsCid, independent of the caller's actions set. Clicking plays
-  // inline via player.js (which stopPropagations + preventDefaults
-  // the enclosing anchor). Mirrors the pre-universal feed card's
-  // .feed-collected-play-overlay affordance.
-  const playOverlay = (category === 'audio' && cid)
-    ? `<button class="track-play-btn media-card-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(item.title || 'untitled')}" data-track-artist="${esc(displayName(item.artist, context))}" data-track-art="${esc(src)}" aria-label="play"><i class="ph ph-play"></i></button>`
-    : ''
+  // Glass play overlay — present whenever audio is playable, either as
+  // a single track (ipfsCid on the item) OR as an album (ipfsCid on
+  // one or more items[]). Album overlays enqueue the whole album;
+  // single overlays play that one track. Both route through player.js
+  // which calls preventDefault() on the delegate so the enclosing
+  // anchor doesn't navigate.
+  const artistName = displayName(item.artist, context)
+  let playOverlay = ''
+  if (category === 'audio' && cid) {
+    playOverlay = `<button class="track-play-btn media-card-play-overlay" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(item.title || 'untitled')}" data-track-artist="${esc(artistName)}" data-track-art="${esc(src)}" aria-label="play"><i class="ph ph-play"></i></button>`
+  } else if (category === 'audio' && item.items && item.items.length) {
+    const playable = item.items.filter(it => it && it.ipfsCid)
+    if (playable.length) {
+      const queue = encodeURIComponent(JSON.stringify(playable.map(it => ({
+        src: `/api/ipfs-proxy/${it.ipfsCid}`,
+        title: it.title || '',
+        artist: artistName,
+        art: src,
+      }))))
+      playOverlay = `<button class="album-play-btn media-card-play-overlay" data-queue="${queue}" aria-label="play album"><i class="ph ph-play"></i></button>`
+    }
+  }
 
   // Avatar overlay — attributes the card to its actor without taking
   // a row of its own. header.actor when set (purchase cards), else
