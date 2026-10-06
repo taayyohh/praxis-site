@@ -10547,11 +10547,11 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   min-width: 0;
 }
 .media-card-header {
-  padding: 0.6em 0.9em 0;
   display: flex; align-items: center; gap: 0.5ch;
   color: var(--muted);
   font-size: 0.8em;
   flex-wrap: wrap;
+  margin-bottom: 0.1em;
 }
 .media-card-header-actor { color: var(--fg); font-weight: 600; }
 .media-card-header-verb { color: var(--muted); }
@@ -10654,25 +10654,19 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 
 /* ─── album layout: 220px art column + info column ──────────── */
-/* Grid, not flex — the header slot ("Miles collected") needs to span
- * the full width across both columns, not land as a third sibling in
- * a flex row. aspect-ratio on the art is also only honored when the
- * art isn't stretched vertically by an align: stretch default.
+/* Flex row — the collected / listed header lives inside .media-card-info
+ * now (as the first line of the info stack), so no grid dance required
+ * to span it across both columns. align-items: start keeps the art's
+ * aspect-ratio honoured — a flex default of stretch would ignore it.
  */
 .media-card--album {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  grid-template-areas:
-    "header header"
-    "art    info";
+  flex-direction: row;
   align-items: start;
 }
-.media-card--album .media-card-header { grid-area: header; }
 .media-card--album .media-card-art {
-  grid-area: art;
-  width: 220px; aspect-ratio: 1; align-self: start;
+  width: 220px; flex-shrink: 0; aspect-ratio: 1;
 }
-.media-card--album .media-card-info { grid-area: info; min-width: 0; }
+.media-card--album .media-card-info { flex: 1; min-width: 0; }
 
 /* ─── row layout: 48px thumb, inline info ───────────────────── */
 .media-card--row {
@@ -10760,13 +10754,7 @@ a.media-card-meta-superseded:hover { color: var(--fg); text-decoration: underlin
 }
 
 @media (max-width: 600px) {
-  .media-card--album {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "header"
-      "art"
-      "info";
-  }
+  .media-card--album { flex-direction: column; }
   .media-card--album .media-card-art { width: 100%; }
   .media-card--horizontal .media-card-art { width: 96px; }
 }

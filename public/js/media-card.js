@@ -506,12 +506,16 @@ export function renderMediaCard(item, context = {}) {
   const actionsHtml = renderActions(item, category, state, context)
   const titleHtml = renderTitle(item, context)
 
+  // Header lives INSIDE the info column — never spans across the art.
+  // That keeps a card's byline attached to its title ("miles collected
+  // · Nappy Nina · Sow & So" reads as one unit) and avoids a floating
+  // orphan row above the art-info split in --album / --horizontal.
   let infoBody
   if (layout === 'album') {
     const inner = category === 'image' ? renderGallery(item) : `<div class="media-card-tracklist">${renderTracklist(item, context)}</div>`
-    infoBody = `${titleHtml}${metaHtml}${actionsHtml}${inner}`
+    infoBody = `${headerHtml}${titleHtml}${metaHtml}${actionsHtml}${inner}`
   } else {
-    infoBody = `${titleHtml}${metaHtml}${actionsHtml}`
+    infoBody = `${headerHtml}${titleHtml}${metaHtml}${actionsHtml}`
   }
 
   const gatedCaption = gated?.unlockBy
@@ -532,7 +536,6 @@ export function renderMediaCard(item, context = {}) {
 
   return `
     <div class="media-card media-card--${layout} media-card--cat-${category}${state ? ' media-card--state-' + state : ''}${extraClasses}" data-media-id="${esc(String(item.mediaId || item.id || ''))}" data-category="${esc(category)}" ${extraAttrs}>
-      ${headerHtml}
       ${artHtml}
       <div class="media-card-info">${infoBody}${gatedCaption}</div>
     </div>

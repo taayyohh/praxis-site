@@ -200,17 +200,32 @@ function renderItem(item, domainMap, resolve) {
   if (t === 'library') return renderLibraryActivity(item.data, resolve)
 
   // ── media (listings + purchases) ──────────────────────────
+  // Layout rules the FEED enforces (works/collection grids pick their
+  // own layouts, this only governs the full-width feed column):
+  //   - batches (listed-batch, purchase-batch) → --album
+  //       (220px cover + tracklist earns its size — an album is the
+  //        biggest unit a card represents)
+  //   - solo video → --wide (16:9 preview is the point)
+  //   - solo everything else (audio, image, document, ticket, …) →
+  //       --horizontal (120px art + info + inline buttons)
+  // Why one shape for all singles: a single track isn't more important
+  // than an album, so it must not take more viewport than an album.
+  // Design philosophy §1 "content earns its size" + §9 "the eye should
+  // never have to re-find where things are" — one rendering per unit.
   if (t === 'listed' || t === 'listed-batch' || t === 'purchase' || t === 'purchase-batch') {
     const d = item.data
     const isBatch = t === 'listed-batch' || t === 'purchase-batch'
     const isPurchase = t === 'purchase' || t === 'purchase-batch'
+    const ct = (d.contentType || '').toLowerCase()
+    const isVideo = ct.startsWith('video/')
+    const layout = isBatch ? 'album' : (isVideo ? 'wide' : 'horizontal')
     return renderMediaCard(d, {
-      layout: isBatch ? 'album' : (isPurchase ? 'horizontal' : null),
+      layout,
       resolve,
       header: isPurchase ? { kind: 'collected', actor: d.buyer } : null,
       actions: isPurchase
-        ? (isBatch ? ['view'] : ['view', 'buy'])
-        : (isBatch ? ['play-all', 'buy-album'] : null),
+        ? (isBatch ? ['view'] : ['view'])
+        : (isBatch ? ['play-all', 'buy-album'] : ['buy']),
     })
   }
 
