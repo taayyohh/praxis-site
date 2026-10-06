@@ -10740,6 +10740,10 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   justify-content: center; font-size: 1.2em;
 }
 .media-card--state-delisted .media-card-title { text-decoration: line-through; color: var(--muted); }
+.media-card--state-superseded { opacity: 0.5; }
+.media-card--state-superseded .media-card-title { text-decoration: line-through; color: var(--muted); }
+a.media-card-meta-superseded { color: var(--dim); text-decoration: none; font-style: italic; }
+a.media-card-meta-superseded:hover { color: var(--fg); text-decoration: underline; }
 .media-card-gated-caption {
   margin-top: 0.2em;
   color: var(--muted); font-size: 0.75em;

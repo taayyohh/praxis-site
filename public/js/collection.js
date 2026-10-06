@@ -5,6 +5,10 @@ import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getP
 import { t } from './i18n.js'
 import { getCollection, annotateRelistings } from './media.js'
 import { getCached, setCache, TTL } from './cache.js'
+import { renderMediaCard, renderMediaCardRow } from './media-card.js'
+// Side-effect: feed-cards.js registers the global .track-play-btn /
+// .album-play-btn delegation that the universal MediaCard relies on.
+import './feed-cards.js'
 
 let _collectionInited = false
 let _collectionWalletBound = false
@@ -967,9 +971,21 @@ async function resolveAlbumInfo(albums) {
   }
 }
 
+// Map the cached collection media-type ('audio' / 'video' / 'other')
+// to a MediaCard content category. For 'other' items we rely on the
+// contentType the server now attaches server-side.
+function collectionTypeToCategory(cachedType, contentType) {
+  if (cachedType === 'audio' || cachedType === 'video') return cachedType
+  if (contentType?.startsWith('image/')) return 'image'
+  if (contentType === 'application/pdf' || contentType?.startsWith('text/')) return 'document'
+  if (contentType?.startsWith('audio/') || contentType === 'application/ogg') return 'audio'
+  if (contentType?.startsWith('video/')) return 'video'
+  return 'other'
+}
+
 function renderMediaItems(mediaPurchases) {
-  // Group by shared cover art CID (album grouping)
-  const albumGroups = new Map() // coverCid -> { items, artistDomain, coverUrl }
+  // Group by shared cover art CID (album grouping).
+  const albumGroups = new Map()
   const singles = []
   for (const purchase of mediaPurchases) {
     const coverCid = _coverArtMap.get(purchase.mediaId) || ''
@@ -980,161 +996,111 @@ function renderMediaItems(mediaPurchases) {
       singles.push(purchase)
     }
   }
-  // Split: groups with 2+ items = albums, rest = singles
+  // Groups with 2+ items are albums; singletons fall back into the
+  // flat singles list.
   const albums = []
-  for (const [cid, group] of albumGroups) {
-    if (group.items.length >= 2) {
-      albums.push(group)
-    } else {
-      singles.push(...group.items)
-    }
+  for (const [, group] of albumGroups) {
+    if (group.items.length >= 2) albums.push(group)
+    else singles.push(...group.items)
   }
 
   let html = ''
 
-  // Render albums
+  // ── Albums ──────────────────────────────────────────────────
   for (const album of albums) {
     const first = album.items[0]
-    const media = _mediaDetails.get(first.mediaId)
-    const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
-    // Attribution link routes through the collection's own artist filter
-    // so clicking "by <artist>" stays on the current tenant, per the ask
-    // that everything in the collection render locally rather than jump
-    // off to the source artist site.
-    const artistLink = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : '#'
-    const coverUrl = ipfsUrl(album.coverCid)
-    const sorted = [...album.items].sort((a, b) => { try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 } })
-    const trackCount = sorted.length
-
-    // Album name + path from site.json resolution
+    const firstMedia = _mediaDetails.get(first.mediaId) || {}
+    const artistDomain = firstMedia.artist ? resolveDomain(_domainMap, firstMedia.artist) : ''
+    const sorted = [...album.items].sort((a, b) => {
+      try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 }
+    })
     const info = _lruGet(_albumInfoCache, album.coverCid) || {}
-    const albumName = info.name || `${trackCount} tracks`
+    const albumName = info.name || `${sorted.length} tracks`
     const aliasName = info.aliasName || artistDomain
-    const albumPath = info.path
-    // Local detail route — /art hydrates from the artist's site.json via
-    // /api/artist-site, so an album (or any purchased media type) renders
-    // an in-house detail page on the current tenant instead of jumping
-    // off to the source artist's domain. Carrying artist + album + alias
-    // in the URL gives /art enough to fetch and render the album view;
-    // it still falls back to a single-track detail if album info is missing.
+    // Local-tenant detail link — carries album + alias + artist so /art
+    // can hydrate an in-house album detail page instead of bouncing to
+    // the source artist's own site.
     const albumLink = (info.aliasName && info.name)
       ? `/art?media=${first.mediaId}&album=${encodeURIComponent(info.name)}&alias=${encodeURIComponent(info.aliasName)}&artist=${encodeURIComponent(artistDomain)}`
       : `/art?media=${first.mediaId}`
+    const authorHref = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : null
 
-    // Build play-all queue
-    const queueTracks = sorted.filter(p => _mediaDetails.get(p.mediaId)?.ipfsCid).map(p => {
-      const m = _mediaDetails.get(p.mediaId)
-      return { src: ipfsUrl(m.ipfsCid), title: m.title || '', artist: aliasName, art: `/api/img?url=${encodeURIComponent(coverUrl)}&w=200` }
-    })
-    const queueData = encodeURIComponent(JSON.stringify(queueTracks))
-
-    if (_viewMode === 'grid') {
-      html += `<div class="collection-card collection-album-card collection-item" data-media-id="${escapeHtml(String(first.mediaId))}" data-media-type="audio" data-span="2">
-        <div class="card-art">
-          <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400" style="border-radius:6px"></a>
-          <span class="card-type-badge">${trackCount} tracks</span>
-        </div>
-        <div class="card-info">
-          <a href="${albumLink}" class="card-title">${escapeHtml(albumName)}</a>
-          <a href="${artistLink}" class="card-artist">${escapeHtml(aliasName)}</a>
-          <div class="card-actions">
-            <button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7em"><i class="ph ph-play"></i></button>
-            <a href="${escapeHtml(queueTracks[0]?.src || '#')}" download="${escapeHtml(albumName)}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>
-          </div>
-        </div>
-      </div>`
-    } else {
-      // Album in list view — iTunes style
-      html += `<div class="collection-album-list collection-item" data-media-id="${escapeHtml(String(first.mediaId))}" data-media-type="audio">
-        <div class="album-list-header">
-          <a href="${albumLink}"><img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=200" class="album-list-art"></a>
-          <div class="album-list-info">
-            <a href="${albumLink}" style="color:var(--fg);font-weight:600;text-decoration:none;font-size:1em">${escapeHtml(albumName)}</a>
-            <a href="${artistLink}" class="card-artist">${escapeHtml(aliasName)}</a>
-            <div style="display:flex;gap:0.5ch;margin-top:0.4em;align-items:center">
-              <button class="album-play-btn" data-queue="${queueData}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.75em;padding:0.25em 0.8ch;cursor:pointer;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-play"></i> play all</button>
-              <span style="color:var(--dim);font-size:0.75em">${trackCount} tracks</span>
-            </div>
-          </div>
-        </div>
-        <div class="album-tracklist">`
-      for (let i = 0; i < sorted.length; i++) {
-        const p = sorted[i]
-        const m = _mediaDetails.get(p.mediaId)
-        const trackTitle = m ? escapeHtml(m.title) : `#${p.mediaId}`
-        const trackUrl = m?.ipfsCid ? ipfsUrl(m.ipfsCid) : ''
-        html += `<div class="album-track">
-          <span class="track-num">${i + 1}</span>
-          ${trackUrl ? `<button class="track-play-btn" data-track-src="${escapeHtml(trackUrl)}" data-track-title="${trackTitle}" data-track-artist="${escapeHtml(aliasName)}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em;flex-shrink:0"><i class="ph ph-play"></i></button>` : '<span style="width:22px"></span>'}
-          <span class="track-title">${trackTitle}</span>
-          <div style="display:flex;gap:0.5ch;align-items:center;flex-shrink:0;margin-left:auto;padding-right:0.5em">
-            ${trackUrl ? `<button class="track-queue-btn" data-src="${escapeHtml(trackUrl)}" data-title="${trackTitle}" data-artist="${escapeHtml(aliasName)}" data-art="${escapeHtml(queueTracks[0]?.art || '')}" style="background:none;border:none;color:var(--dim);font-size:0.85em;cursor:pointer;padding:0.15em" title="add to queue"><i class="ph ph-plus"></i></button>` : ''}
-            ${trackUrl ? `<a href="${escapeHtml(trackUrl)}" download="${trackTitle}" style="color:var(--dim);font-size:0.85em;padding:0.15em" title="download"><i class="ph ph-download-simple"></i></a>` : ''}
-          </div>
-        </div>`
-      }
-      html += `</div></div>`
+    const albumItem = {
+      mediaId: `album-${album.coverCid}`,
+      title: albumName,
+      headline: albumName,
+      aliasName,
+      metadataCid: album.coverCid,
+      artist: firstMedia.artist || '',
+      count: sorted.length,
+      items: sorted.map(p => {
+        const m = _mediaDetails.get(p.mediaId) || {}
+        return {
+          mediaId: p.mediaId,
+          title: m.title || `#${p.mediaId}`,
+          price: m.price || '0',
+          ipfsCid: m.ipfsCid || '',
+          contentType: m.contentType || '',
+          metadataCid: m.metadataCid || album.coverCid,
+        }
+      }),
     }
+    html += renderMediaCard(albumItem, {
+      layout: 'album',
+      category: 'audio',
+      linkTo: albumLink,
+      authorHref,
+      resolve: addr => resolveDomain(_domainMap, addr) || addr,
+      owned: true,
+      actions: ['play-all', 'download'],
+      extraClasses: 'collection-item collection-album-card',
+      extraDataAttrs: { 'media-type': 'audio', span: '2' },
+    })
   }
 
-  // Render singles
+  // ── Singles ─────────────────────────────────────────────────
   for (const purchase of singles) {
-    const media = _mediaDetails.get(purchase.mediaId)
-    const title = media ? escapeHtml(media.title) : `#${purchase.mediaId}`
-    const artistDomain = media ? resolveDomain(_domainMap, media.artist) : ''
-    // Attribution link routes through the collection's own artist filter
-    // so clicking "by <artist>" stays on the current tenant, per the ask
-    // that everything in the collection render locally rather than jump
-    // off to the source artist site.
-    const artistLink = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : '#'
-    const mediaUrl = media?.ipfsCid ? ipfsUrl(media.ipfsCid) : ''
+    const media = _mediaDetails.get(purchase.mediaId) || {}
+    const artistDomain = media.artist ? resolveDomain(_domainMap, media.artist) : ''
     const coverCid = _coverArtMap.get(purchase.mediaId) || ''
-    const coverUrl = coverCid ? ipfsUrl(coverCid) : ''
-    const cachedType = media?.ipfsCid ? (_mediaTypeCache.get(media.ipfsCid) || (media.contentType?.startsWith('video/') ? 'video' : 'audio')) : 'other'
-    const isSuperseded = media?.superseded === true
-    const artDetailUrl = isSuperseded ? `/art?media=${media.activeListingId}` : `/art?media=${purchase.mediaId}`
-    const escapedArtist = escapeHtml(artistDomain || '')
+    const cachedType = media.ipfsCid
+      ? (_mediaTypeCache.get(media.ipfsCid) || (media.contentType?.startsWith('video/') ? 'video' : 'audio'))
+      : 'other'
+    const category = collectionTypeToCategory(cachedType, media.contentType)
+    const isSuperseded = media.superseded === true
+    const linkTo = isSuperseded && media.activeListingId
+      ? `/art?media=${media.activeListingId}`
+      : `/art?media=${purchase.mediaId}`
+    const authorHref = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : null
 
-    if (_viewMode === 'grid') {
-      const isVideo = cachedType === 'video'
-      // Art content + play overlay matching feed card pattern
-      let artInner = ''
-      let playOverlay = ''
-      if (isVideo && mediaUrl) {
-        const posterUrl = coverUrl
-          ? `/api/img?url=${encodeURIComponent(coverUrl)}&w=400`
-          : media?.ipfsCid ? `/api/video-thumb?cid=${encodeURIComponent(media.ipfsCid)}&w=600` : ''
-        const posterImg = posterUrl ? `<img loading="lazy" src="${posterUrl}" alt="${title}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''
-        artInner = `${posterImg}<div class="video-lazy" data-src="${escapeHtml(mediaUrl)}" data-title="${title}" style="position:absolute;inset:0;cursor:pointer"><button class="media-play-overlay media-play-overlay--video"><i class="ph ph-play"></i></button></div>`
-      } else {
-        artInner = `<a href="${artDetailUrl}">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=400">` : artPlaceholder(title, 180)}</a>`
-        if (mediaUrl && !isSuperseded && !isVideo) {
-          playOverlay = `<button class="track-play-btn media-play-overlay" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${title}" data-track-artist="${escapedArtist}"><i class="ph ph-play"></i></button>`
-        }
-      }
-      const artStyle = isVideo ? ' style="aspect-ratio:2/1"' : ''
-      html += `<div class="collection-card collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${escapeHtml(String(purchase.mediaId))}" data-media-type="${escapeHtml(cachedType)}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
-        <div class="card-art"${artStyle}>${artInner}${playOverlay}</div>
-        <div class="card-info">
-          <a href="${artDetailUrl}" class="card-title">${title}</a>
-          <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
-          <div class="card-actions">
-            ${mediaUrl && !isSuperseded ? `<a href="${escapeHtml(mediaUrl)}" download="${title}" style="color:var(--dim);font-size:0.9em"><i class="ph ph-download-simple"></i></a>` : ''}
-          </div>
-        </div>
-      </div>`
-    } else {
-      html += `<div class="collection-row collection-item${isSuperseded ? ' media-superseded' : ''}" data-media-id="${escapeHtml(String(purchase.mediaId))}" data-media-type="${escapeHtml(cachedType)}"${isSuperseded ? ' style="opacity:0.5"' : ''}>
-        <a href="${artDetailUrl}" class="row-art">${coverUrl ? `<img loading="lazy" src="/api/img?url=${encodeURIComponent(coverUrl)}&w=120">` : artPlaceholder(title, 48)}</a>
-        <div class="row-info">
-          <a href="${artDetailUrl}" class="card-title">${title}</a>
-          <a href="${artistLink}" class="card-artist">${escapedArtist}</a>
-        </div>
-        <div class="card-actions">
-          ${mediaUrl && !isSuperseded ? `<button class="track-play-btn" data-track-src="${escapeHtml(mediaUrl)}" data-track-title="${title}" data-track-artist="${escapedArtist}" style="background:none;border:1px solid var(--border);color:var(--fg);width:22px;height:22px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.6em"><i class="ph ph-play"></i></button><a href="${escapeHtml(mediaUrl)}" download="${title}" class="track-dl"><i class="ph ph-download-simple"></i></a>` : ''}
-        </div>
-      </div>`
+    const singleItem = {
+      mediaId: purchase.mediaId,
+      title: media.title || `#${purchase.mediaId}`,
+      price: media.price || '0',
+      ipfsCid: media.ipfsCid || '',
+      contentType: media.contentType || '',
+      metadataCid: coverCid || media.metadataCid || '',
+      artist: media.artist || '',
+      aliasName: artistDomain,
+      superseded: isSuperseded,
+      activeListingId: media.activeListingId,
     }
+
+    const layout = _viewMode === 'grid'
+      ? (category === 'video' ? 'wide' : 'square')
+      : 'row'
+    const renderer = layout === 'row' ? renderMediaCardRow : renderMediaCard
+    html += renderer(singleItem, {
+      layout,
+      category,
+      state: isSuperseded ? 'superseded' : null,
+      linkTo,
+      authorHref,
+      resolve: addr => resolveDomain(_domainMap, addr) || addr,
+      owned: true,
+      extraClasses: 'collection-item',
+      extraDataAttrs: { 'media-type': cachedType },
+    })
   }
   return html
 }

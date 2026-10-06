@@ -1,5 +1,11 @@
 // Social feed — shows blog posts from followed artists on the homepage
-import { renderMediaCard, renderBatchCard, renderFollowCard, renderJoinedCard, renderProjectCard, renderFundedCard, renderPurchaseCard, renderPurchaseBatchCard, renderSupporterCard, renderTicketListedCard, renderTicketPurchasedCard, renderTransferCard, renderReferralCard, renderProjectCompletedCard, renderProjectConfirmedCard, renderOrgCreatedCard, renderCredentialCard, renderProjectCompletingCard, renderProjectDisputedCard, renderProjectCancelledCard, renderProjectTimedOutCard, renderRevenueDistributedCard } from './feed-cards.js'
+import { renderProjectCard } from './feed-cards.js'
+import { renderMediaCard } from './media-card.js'
+import { renderEventCard } from './event-card.js'
+// feed-cards.js self-registers the global .feed-buy-btn + .track-play-btn
+// delegation on import; keep the side-effect import so MediaCard's
+// buttons continue to route through showPurchaseConfirmation.
+import './feed-cards.js'
 
 // Named constants for magic numbers used across the module
 const PREVIEW_LEN_WITH_MEDIA = 200
@@ -169,33 +175,60 @@ function renderBalance(addr, balance) {
     }
 }
 
-// Module-level renderItem — shared by renderCachedFeed and renderFeedBatch.
-// domainMap is passed explicitly so the caller controls which map is used.
+// Feed dispatch — media types route to the universal MediaCard; the
+// pure protocol-signal types route to the universal EventCard. Post,
+// project (which carries a funding bar), and library stay bespoke for
+// now. See public/js/media-card.js + public/js/event-card.js.
+const EVENT_TYPES_TO_CARD = new Set([
+  'follow', 'joined', 'supporter', 'funded', 'transfer', 'referral',
+  'org-created', 'ticket-listed', 'ticket-purchased', 'credential',
+  'project-completed', 'project-confirmed', 'project-completing',
+  'project-disputed', 'project-cancelled', 'project-timedout',
+  'revenue-distributed',
+])
+
+// Feed `type` → EventCard DESCRIPTORS key (differs for a few entries).
+const EVENT_TYPE_ALIAS = {
+  joined: 'joined-audience',
+  'project-timedout': 'project-timed-out',
+}
+
 function renderItem(item, domainMap, resolve) {
-  if (item.type === 'post') return renderPost(item.data, domainMap)
-  if (item.type === 'project') return renderProjectCard(item.data, resolve)
-  if (item.type === 'funded') return renderFundedCard(item.data, resolve)
-  if (item.type === 'follow') return renderFollowCard(item.data, resolve)
-  if (item.type === 'joined') return renderJoinedCard(item.data, resolve)
-  if (item.type === 'library') return renderLibraryActivity(item.data, resolve)
-  if (item.type === 'supporter') return renderSupporterCard(item.data, resolve)
-  if (item.type === 'purchase') return renderPurchaseCard(item.data, resolve)
-  if (item.type === 'purchase-batch') return renderPurchaseBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
-  if (item.type === 'listed') return renderMediaCard(item.data, resolve)
-  if (item.type === 'listed-batch') return renderBatchCard(item.data, resolve, { siteModules: _cachedSiteModules })
-  if (item.type === 'ticket-listed') return renderTicketListedCard(item.data, resolve)
-  if (item.type === 'ticket-purchased') return renderTicketPurchasedCard(item.data, resolve)
-  if (item.type === 'transfer') return renderTransferCard(item.data, resolve)
-  if (item.type === 'referral') return renderReferralCard(item.data, resolve)
-  if (item.type === 'project-completed') return renderProjectCompletedCard(item.data, resolve)
-  if (item.type === 'project-confirmed') return renderProjectConfirmedCard(item.data, resolve)
-  if (item.type === 'org-created') return renderOrgCreatedCard(item.data, resolve)
-  if (item.type === 'credential') return renderCredentialCard(item.data, resolve)
-  if (item.type === 'project-completing') return renderProjectCompletingCard(item.data, resolve)
-  if (item.type === 'project-disputed') return renderProjectDisputedCard(item.data, resolve)
-  if (item.type === 'project-cancelled') return renderProjectCancelledCard(item.data, resolve)
-  if (item.type === 'project-timedout') return renderProjectTimedOutCard(item.data, resolve)
-  if (item.type === 'revenue-distributed') return renderRevenueDistributedCard(item.data, resolve)
+  const t = item.type
+  if (t === 'post') return renderPost(item.data, domainMap)
+  if (t === 'project') return renderProjectCard(item.data, resolve)
+  if (t === 'library') return renderLibraryActivity(item.data, resolve)
+
+  // ── media (listings + purchases) ──────────────────────────
+  if (t === 'listed' || t === 'listed-batch' || t === 'purchase' || t === 'purchase-batch') {
+    const d = item.data
+    const isBatch = t === 'listed-batch' || t === 'purchase-batch'
+    const isPurchase = t === 'purchase' || t === 'purchase-batch'
+    return renderMediaCard(d, {
+      layout: isBatch ? 'album' : (isPurchase ? 'horizontal' : null),
+      resolve,
+      header: isPurchase ? { kind: 'collected', actor: d.buyer } : null,
+      actions: isPurchase
+        ? (isBatch ? ['view'] : ['view', 'buy'])
+        : (isBatch ? ['play-all', 'buy-album'] : null),
+    })
+  }
+
+  // ── events ────────────────────────────────────────────────
+  if (EVENT_TYPES_TO_CARD.has(t)) {
+    const descKey = EVENT_TYPE_ALIAS[t] || t
+    const useBanner = (
+      t === 'project-proposed' || t === 'project-confirmed' ||
+      t === 'project-completing' || t === 'project-completed' ||
+      t === 'project-disputed' || t === 'project-cancelled' ||
+      t === 'project-timedout' || t === 'org-created' ||
+      t === 'revenue-distributed' || t === 'funded'
+    )
+    return renderEventCard({ ...item.data, type: descKey }, {
+      resolve,
+      layout: useBanner ? 'banner' : 'line',
+    })
+  }
   return ''
 }
 

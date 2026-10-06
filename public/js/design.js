@@ -443,31 +443,16 @@ async function initDesign() {
           </div>
         </div>
 
-        <div class="design-cards-grid">
-          ${renderCardSafely('media card — audio', () => F.renderMediaCard(m.audioCard, mockResolve))}
-          ${renderCardSafely('media card — video', () => F.renderMediaCard(m.videoCard, mockResolve))}
-          ${renderCardSafely('media card — image', () => F.renderMediaCard(m.imageCard, mockResolve))}
-          ${renderCardSafely('batch card — album', () => F.renderBatchCard(m.batchCard, mockResolve))}
-          ${renderCardSafely('follow card', () => F.renderFollowCard(m.followCard, mockResolve))}
-          ${renderCardSafely('joined card', () => F.renderJoinedCard(m.joinedCard, mockResolve))}
-          ${renderCardSafely('project card', () => F.renderProjectCard(m.projectCard, mockResolve))}
-          ${renderCardSafely('funded card', () => F.renderFundedCard(m.fundedCard, mockResolve))}
-          ${renderCardSafely('purchase card', () => F.renderPurchaseCard(m.purchaseCard, mockResolve))}
-          ${renderCardSafely('purchase batch card', () => F.renderPurchaseBatchCard(m.purchaseBatchCard, mockResolve))}
-          ${renderCardSafely('supporter card', () => F.renderSupporterCard(m.supporterCard, mockResolve))}
-          ${renderCardSafely('ticket listed card', () => F.renderTicketListedCard(m.ticketListedCard, mockResolve))}
-          ${renderCardSafely('ticket purchased card', () => F.renderTicketPurchasedCard(m.ticketPurchasedCard, mockResolve))}
-          ${renderCardSafely('transfer card', () => F.renderTransferCard(m.transferCard, mockResolve))}
-          ${renderCardSafely('referral card', () => F.renderReferralCard(m.referralCard, mockResolve))}
-          ${renderCardSafely('project completed', () => F.renderProjectCompletedCard(m.projectCompletedCard, mockResolve))}
-          ${renderCardSafely('project confirmed', () => F.renderProjectConfirmedCard(m.projectConfirmedCard, mockResolve))}
-          ${renderCardSafely('project completing', () => F.renderProjectCompletingCard(m.projectCompletingCard, mockResolve))}
-          ${renderCardSafely('project disputed', () => F.renderProjectDisputedCard(m.projectDisputedCard, mockResolve))}
-          ${renderCardSafely('project cancelled', () => F.renderProjectCancelledCard(m.projectCancelledCard, mockResolve))}
-          ${renderCardSafely('project timed out', () => F.renderProjectTimedOutCard(m.projectTimedOutCard, mockResolve))}
-          ${renderCardSafely('org created', () => F.renderOrgCreatedCard(m.orgCreatedCard, mockResolve))}
-          ${renderCardSafely('credential card', () => F.renderCredentialCard(m.credentialCard, mockResolve))}
-          ${renderCardSafely('revenue distributed', () => F.renderRevenueDistributedCard(m.revenueDistributedCard, mockResolve))}
+        <div class="design-block">
+          <h3>project card · feed</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Feed-shaped project card still rendered by renderProjectCard in
+            feed-cards.js — the funding progress bar + status pill aren't
+            covered by the universal MediaCard yet.
+          </p>
+          <div class="design-cards-grid" style="grid-template-columns:1fr;max-width:620px">
+            ${renderCardSafely('project card', () => F.renderProjectCard?.(m.projectCard, mockResolve))}
+          </div>
         </div>
       </section>
 

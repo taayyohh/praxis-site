@@ -1,6 +1,9 @@
 // Organization profile page — distinct layouts per org type
 import { escapeHtml, registerPage, resolveAddresses, getPublicClient, getProfilePic, getArtistName } from './utils.js'
-import { renderMediaCard } from './feed-cards.js'
+import { renderMediaCard } from './media-card.js'
+// feed-cards.js side-effect registers global .feed-buy-btn delegation
+// so MediaCard buy buttons route through the shared purchase flow.
+import './feed-cards.js'
 import { query } from './ponder.js'
 import { ORG_ADDRESS, ORG_ABI } from './contracts.js'
 
@@ -367,8 +370,8 @@ function renderCatalog(items, orgType) {
     // hands back `id`. Everything else (artist, title, contentType,
     // ipfsCid, metadataCid, price, artistDomain, artistName, artistPic)
     // is already enriched server-side by /api/org/:id/catalog.
-    const artLink = item.artistDomain ? `https://${item.artistDomain}/art?media=${encodeURIComponent(item.id)}` : `/art?media=${encodeURIComponent(item.id)}`
-    return renderMediaCard({ ...item, mediaId: item.id, artLink, external: !!item.artistDomain }, resolve)
+    const linkTo = item.artistDomain ? `https://${item.artistDomain}/art?media=${encodeURIComponent(item.id)}` : `/art?media=${encodeURIComponent(item.id)}`
+    return renderMediaCard({ ...item, mediaId: item.id }, { resolve, linkTo, external: !!item.artistDomain })
   }).filter(Boolean).join('')
   return `<div class="${gridClass}">${cards}</div>`
 }

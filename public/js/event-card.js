@@ -331,6 +331,74 @@ const DESCRIPTORS = {
       { kind: 'strong', text: d.domain || '' },
     ],
   },
+  // Ticket market — the pre-universal cards (renderTicketListedCard /
+  // renderTicketPurchasedCard) rendered these as text-only rows with
+  // the event name as the strong noun. Mirrored here.
+  'ticket-listed': {
+    icon: 'ph-ticket',
+    tone: 'default',
+    href: () => '/tickets',
+    actor: (d) => d.seller || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.seller || d.actor, r) },
+      { kind: 'label', text: 'listed a ticket for' },
+      { kind: 'strong', text: d.eventName || d.title || 'an event' },
+      d.price && d.price !== '0' ? { kind: 'amount', text: String(d.price) } : null,
+    ].filter(Boolean),
+  },
+  'ticket-purchased': {
+    icon: 'ph-ticket',
+    tone: 'green',
+    href: () => '/tickets',
+    actor: (d) => d.buyer || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.buyer || d.actor, r) },
+      { kind: 'label', text: 'got a ticket to' },
+      { kind: 'strong', text: d.eventName || d.title || 'an event' },
+    ],
+  },
+  // Credentials — the pre-universal renderCredentialCard framed these
+  // as "X earned Y role in Z project".
+  credential: {
+    icon: 'ph-seal-check',
+    tone: 'default',
+    href: (d) => d.projectId ? `/project?id=${d.projectId}` : '',
+    actor: (d) => d.recipient || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.recipient || d.actor, r) },
+      { kind: 'label', text: 'earned' },
+      { kind: 'strong', text: d.role || 'contributor' },
+      d.projectTitle ? { kind: 'label', text: `in ${d.projectTitle}` } : null,
+    ].filter(Boolean),
+  },
+  // Project funded — someone backed a project. renderFundedCard
+  // rendered this as a plain text row with amount + proposer context.
+  funded: {
+    icon: 'ph-hand-coins',
+    tone: 'green',
+    href: (d) => d.projectId ? `/project?id=${d.projectId}` : '',
+    actor: (d) => d.funder || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.funder || d.actor, r) },
+      { kind: 'label', text: 'funded' },
+      { kind: 'strong', text: d.title || 'a project' },
+      d.amount && d.amount !== '0' ? { kind: 'amount', text: String(d.amount) } : null,
+    ].filter(Boolean),
+  },
+  // Supporter — someone registered as an audience member of an artist.
+  // renderSupporterCard framed this as "X joined Y's audience".
+  supporter: {
+    icon: 'ph-sparkle',
+    tone: 'default',
+    href: (d, r) => tenantHref(r && r(d.artist)),
+    actor: (d) => d.supporter || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.supporter || d.actor, r) },
+      { kind: 'label', text: 'joined' },
+      { kind: 'name', text: resolveName(d.artist, r) },
+      { kind: 'label', text: "'s audience" },
+    ],
+  },
 }
 
 // ---------- rendering ----------

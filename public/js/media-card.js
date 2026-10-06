@@ -302,6 +302,12 @@ function renderStateOverlay(state, item) {
   if (state === 'gated') {
     return `<span class="media-card-state media-card-state--gated"><i class="ph ph-lock-key"></i></span>`
   }
+  if (state === 'superseded') {
+    // Rendered as a secondary meta hint ("see newer listing"); the
+    // artwork and title get dimmed via the .media-card--state-superseded
+    // modifier instead of an overlay chip.
+    return ''
+  }
   return ''
 }
 
@@ -403,7 +409,12 @@ function renderMeta(item, category, state, context) {
     parts.push(`${esc(String(item.totalMinted ?? 0))} of ${esc(String(item.maxSupply))}`)
   }
   if (context.subtype) parts.push(esc(context.subtype))
-  if (item.superseded) parts.push('<span class="media-card-meta-superseded">see newer listing</span>')
+  if (item.superseded || state === 'superseded') {
+    const href = item.activeListingId ? `/art?media=${encodeURIComponent(item.activeListingId)}` : null
+    parts.push(href
+      ? `<a class="media-card-meta-superseded" href="${esc(href)}">see newer listing</a>`
+      : '<span class="media-card-meta-superseded">superseded</span>')
+  }
   return parts.length
     ? `<div class="media-card-meta">${parts.join(' · ')}</div>`
     : ''
@@ -424,11 +435,16 @@ function renderTitle(item, context) {
   const link = albumSlugUrl(item) || defaultLinkFor(item, context)
   const linkTarget = context.external ? ' target="_blank"' : ''
   const aliasName = item.albumPath?.aliasName || item.aliasName
-  const authorLine = aliasName
-    ? `<a class="media-card-author" href="/music/${slugify(aliasName)}">${esc(aliasName)}</a>`
-    : item.artist
-      ? `<a class="media-card-author" href="${esc(context.resolve ? ('https://' + context.resolve(item.artist)) : '#')}">${esc(displayName(item.artist, context))}</a>`
-      : ''
+  // Caller can override where the author line links to (e.g. the
+  // collection page routes to its own `/collection?artist=X` filter on
+  // the current tenant rather than off to the artist's own site).
+  const authorHref = context.authorHref
+    || (aliasName ? `/music/${slugify(aliasName)}` : null)
+    || (item.artist && context.resolve ? ('https://' + context.resolve(item.artist)) : null)
+  const authorText = aliasName || (item.artist ? displayName(item.artist, context) : '')
+  const authorLine = authorText && !context.hideAuthor
+    ? `<a class="media-card-author" href="${esc(authorHref || '#')}">${esc(authorText)}</a>`
+    : ''
   return `
     ${authorLine}
     <a class="media-card-title" href="${esc(link)}"${linkTarget}>${esc(title)}</a>
@@ -471,8 +487,13 @@ export function renderMediaCard(item, context = {}) {
     ? Object.entries(context.extraDataAttrs).map(([k, v]) => `data-${esc(k)}="${esc(String(v ?? ''))}"`).join(' ')
     : ''
 
+  // Callers can also append classes (e.g. `.collection-item` for the
+  // collection page's filter / search selectors) without having to
+  // post-process the DOM.
+  const extraClasses = context.extraClasses ? ' ' + context.extraClasses : ''
+
   return `
-    <div class="media-card media-card--${layout} media-card--cat-${category}${state ? ' media-card--state-' + state : ''}" data-media-id="${esc(String(item.mediaId || item.id || ''))}" data-category="${esc(category)}" ${extraAttrs}>
+    <div class="media-card media-card--${layout} media-card--cat-${category}${state ? ' media-card--state-' + state : ''}${extraClasses}" data-media-id="${esc(String(item.mediaId || item.id || ''))}" data-category="${esc(category)}" ${extraAttrs}>
       ${headerHtml}
       ${artHtml}
       <div class="media-card-info">${infoBody}${gatedCaption}</div>
