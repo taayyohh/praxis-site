@@ -10654,16 +10654,25 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 
 /* ─── album layout: 220px art column + info column ──────────── */
+/* Grid, not flex — the header slot ("Miles collected") needs to span
+ * the full width across both columns, not land as a third sibling in
+ * a flex row. aspect-ratio on the art is also only honored when the
+ * art isn't stretched vertically by an align: stretch default.
+ */
 .media-card--album {
-  flex-direction: row;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-areas:
+    "header header"
+    "art    info";
+  align-items: start;
 }
+.media-card--album .media-card-header { grid-area: header; }
 .media-card--album .media-card-art {
-  width: 220px; flex-shrink: 0; aspect-ratio: 1;
+  grid-area: art;
+  width: 220px; aspect-ratio: 1; align-self: start;
 }
-.media-card--album .media-card-info {
-  flex: 1; min-width: 0;
-}
+.media-card--album .media-card-info { grid-area: info; min-width: 0; }
 
 /* ─── row layout: 48px thumb, inline info ───────────────────── */
 .media-card--row {
@@ -10751,7 +10760,13 @@ a.media-card-meta-superseded:hover { color: var(--fg); text-decoration: underlin
 }
 
 @media (max-width: 600px) {
-  .media-card--album { flex-direction: column; }
+  .media-card--album {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "art"
+      "info";
+  }
   .media-card--album .media-card-art { width: 100%; }
   .media-card--horizontal .media-card-art { width: 96px; }
 }
