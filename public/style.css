@@ -10632,6 +10632,15 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .media-card-track-title:hover { text-decoration: underline; }
 .media-card-track-buy { font-size: 0.75em; padding: 0.2em 0.6ch; }
+.media-card-tracklist-rest { display: contents; }
+.media-card-tracklist-toggle {
+  background: none; border: none;
+  color: var(--dim); font-size: 0.8em;
+  padding: 0.4em 0 0.1em; margin-top: 0.1em;
+  cursor: pointer; text-align: left;
+  font-family: inherit;
+}
+.media-card-tracklist-toggle:hover { color: var(--fg); }
 
 /* ─── gallery grid (image bundles) ──────────────────────────── */
 .media-card-gallery {

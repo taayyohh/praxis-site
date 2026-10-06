@@ -105,11 +105,13 @@ function albumSlugUrl(item) {
 function thumbSrcFor(item, category, width = 280) {
   const cid = item.ipfsCid || ''
   // Album / batch payloads often omit a top-level metadataCid — the
-  // cover lives on the first inner item (that's where the server
-  // places it for feed purchase-batch / listed-batch rows). Fall back
-  // across the chain so the artwork actually shows.
+  // cover lives on an inner item. Walk the WHOLE items[] array
+  // because the first item isn't always the one with the cover (e.g.
+  // Nappy Nina's "Sow & So" leads with a music-video track that has
+  // no metadataCid; the album cover lives on items[1..n]). Fall back
+  // across the full chain so the artwork actually shows.
   const metaCid = item.metadataCid
-    || item.items?.[0]?.metadataCid
+    || (item.items && item.items.find(it => it && it.metadataCid)?.metadataCid)
     || item.coverCid
     || ''
   const metaThumb = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=${width}` : ''
@@ -384,6 +386,13 @@ function renderArt(item, category, state, context) {
 }
 
 // ─── album tracklist ───────────────────────────────────────────────
+// Progressive disclosure: first N tracks render inline, the rest sit
+// behind a "+ N more" toggle. Cites IxDF's progressive-disclosure
+// canon (show essentials first, defer the rest on request) and the
+// Spotify/Apple pattern of capping track previews at ~5. For albums
+// of 7 or fewer tracks the whole list fits — no toggle rendered.
+const TRACKLIST_PREVIEW_LIMIT = 5
+
 function renderTracklist(item, context) {
   const items = [...(item.items || [])].sort((a, b) => {
     try { return Number(BigInt(a.mediaId) - BigInt(b.mediaId)) } catch { return 0 }
@@ -392,7 +401,7 @@ function renderTracklist(item, context) {
   const trackLinks = (item.albumPath && item.albumPath.aliasName)
     ? `/music/${slugify(item.albumPath.aliasName)}/${slugify(item.albumPath.albumTitle || item.headline || '')}`
     : null
-  return items.map((it, i) => {
+  const renderOne = (it, i) => {
     const cid = it.ipfsCid || ''
     const pw = parsePrice(it.price)
     const playBtn = cid
@@ -403,7 +412,15 @@ function renderTracklist(item, context) {
       : ''
     const trackLink = trackLinks || `/art?media=${encodeURIComponent(it.mediaId)}`
     return `<div class="media-card-track"><span class="media-card-track-num">${i + 1}</span>${playBtn}<a class="media-card-track-title" href="${esc(trackLink)}">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
-  }).join('')
+  }
+  // Short albums render fully; long albums fold the tail behind a toggle.
+  if (items.length <= TRACKLIST_PREVIEW_LIMIT + 2) {
+    return items.map(renderOne).join('')
+  }
+  const preview = items.slice(0, TRACKLIST_PREVIEW_LIMIT).map(renderOne).join('')
+  const rest = items.slice(TRACKLIST_PREVIEW_LIMIT).map(renderOne).join('')
+  const hiddenCount = items.length - TRACKLIST_PREVIEW_LIMIT
+  return `${preview}<div class="media-card-tracklist-rest" hidden>${rest}</div><button type="button" class="media-card-tracklist-toggle" data-collapsed-label="+ ${hiddenCount} more" data-expanded-label="show less">+ ${hiddenCount} more</button>`
 }
 
 // ─── gallery grid (image bundles) ──────────────────────────────────
@@ -540,6 +557,26 @@ export function renderMediaCard(item, context = {}) {
       <div class="media-card-info">${infoBody}${gatedCaption}</div>
     </div>
   `
+}
+
+// Progressive-disclosure toggle for long album tracklists — one global
+// click delegate instead of a per-card listener (keeps the component
+// framework-free and the catalog page safely re-rendering).
+if (typeof document !== 'undefined' && !window.__mediaCardTracklistToggleBound) {
+  window.__mediaCardTracklistToggleBound = true
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.media-card-tracklist-toggle')
+    if (!btn) return
+    e.preventDefault()
+    e.stopPropagation()
+    const rest = btn.previousElementSibling
+    if (!rest || !rest.classList.contains('media-card-tracklist-rest')) return
+    const nowOpen = rest.hidden
+    rest.hidden = !nowOpen
+    btn.textContent = nowOpen
+      ? (btn.dataset.expandedLabel || 'show less')
+      : (btn.dataset.collapsedLabel || 'show more')
+  })
 }
 
 // ─── row + horizontal layouts share a thinner thumb ────────────────
