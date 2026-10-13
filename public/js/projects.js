@@ -6,7 +6,7 @@ import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicCli
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
-import { getEthPrices, formatPriceSync } from './fiat.js'
+import { getEthPrices, formatPriceSync, getUserCurrency } from './fiat.js'
 
 const PROJECT_TYPE_PRESETS = ['show', 'film', 'theater', 'recording', 'workshop', 'installation']
 const STATUS_LABELS = [
@@ -896,7 +896,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
                   <button type="button" class="remove-tier-btn">&times;</button>
                   <div class="tier-main-fields">
                     <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
-                    <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
+                    <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" " inputmode="decimal"><label class="tier-price-label">price</label><span class="tier-price-hint" style="position:absolute;right:0.75em;bottom:0.5em;color:var(--dim);font-size:0.75em;pointer-events:none"></span></div>
                     <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
                     <div class="field-group"><select class="tier-type-input project-input"><option value="backer">credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
                   </div>
@@ -1921,27 +1921,64 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     }
   })
 
+  // Tier prices are typed in the user's chosen fiat currency per
+  // CLAUDE.md's "Fiat Currency of Choice" rule. We cache the ETH→fiat
+  // rate once on form open and lock it; buyers always pay the ETH
+  // amount recorded on-chain, so later ETH price drift changes the
+  // fiat value a buyer sees but never changes the artist's take.
+  const _proposeCurrency = (getUserCurrency() || 'usd').toUpperCase()
+  let _proposeEthRate = 0 // ETH→fiat multiplier at form open
+  getEthPrices().then(p => {
+    _proposeEthRate = p?.[_proposeCurrency.toLowerCase()] || 0
+    document.querySelectorAll('.tier-price-label').forEach(l => { l.textContent = `price (${_proposeCurrency})` })
+    document.querySelectorAll('.tier-price-input').forEach(refreshTierPriceHint)
+    updateTierCalc()
+  }).catch(() => {})
+
+  function _fiatToEth(fiatAmount) {
+    if (!_proposeEthRate || !fiatAmount) return 0
+    return fiatAmount / _proposeEthRate
+  }
+
+  function refreshTierPriceHint(input) {
+    const row = input.closest('.propose-tier-row')
+    const hint = row?.querySelector('.tier-price-hint')
+    if (!hint) return
+    const fiatAmount = parseFloat(input.value) || 0
+    if (fiatAmount > 0 && _proposeEthRate) {
+      const eth = _fiatToEth(fiatAmount)
+      hint.textContent = `≈ ${eth.toFixed(4)} ETH`
+    } else {
+      hint.textContent = ''
+    }
+  }
+
   // tier management
   function updateTierCalc() {
     const rows = document.querySelectorAll('.propose-tier-row')
-    let total = 0
+    let totalFiat = 0
     for (const row of rows) {
       const price = parseFloat(row.querySelector('.tier-price-input')?.value) || 0
       const supply = parseInt(row.querySelector('.tier-supply-input')?.value) || 0
-      if (supply > 0) total += price * supply
+      if (supply > 0) totalFiat += price * supply
     }
     const el = document.getElementById('tier-calc')
-    if (el) {
-      if (total > 0) {
-        const wei = BigInt(Math.round(total * 1e18))
-        const ethStr = formatEthAmount(wei)
-        el.innerHTML = `funding goal: ${ethStr} ETH <span data-eth-wei="${wei}" data-fiat-primary="true" style="font-weight:600"></span>`
-        el.style.color = 'var(--green, #4ade80)'
-        import('./fiat.js').then(({ enhanceEthLabels }) => enhanceEthLabels(el)).catch(() => {})
-      } else {
-        el.textContent = t('projects.fundingGoal', { eth: '0' }) || 'funding goal: 0 ETH'
-        el.style.color = 'var(--dim)'
-      }
+    if (!el) return
+    if (totalFiat > 0 && _proposeEthRate) {
+      const totalEth = _fiatToEth(totalFiat)
+      const wei = BigInt(Math.round(totalEth * 1e18))
+      const fiatStr = new Intl.NumberFormat(undefined, { style: 'currency', currency: _proposeCurrency, maximumFractionDigits: 2 }).format(totalFiat)
+      el.innerHTML = `funding goal: <span style="color:var(--fg);font-weight:600">${fiatStr}</span> <span style="color:var(--dim)">(${totalEth.toFixed(4)} ETH)</span>`
+      el.style.color = 'var(--green, #4ade80)'
+      el.dataset.goalWei = String(wei)
+    } else if (totalFiat > 0) {
+      // Rate not loaded yet — show fiat only, no ETH conversion
+      const fiatStr = new Intl.NumberFormat(undefined, { style: 'currency', currency: _proposeCurrency, maximumFractionDigits: 2 }).format(totalFiat)
+      el.innerHTML = `funding goal: ${fiatStr}`
+      el.style.color = 'var(--dim)'
+    } else {
+      el.textContent = t('projects.fundingGoal', { eth: '0' }) || `funding goal: 0 ${_proposeCurrency}`
+      el.style.color = 'var(--dim)'
     }
   }
 
@@ -1951,7 +1988,7 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
         <button type="button" class="remove-tier-btn">&times;</button>
         <div class="tier-main-fields">
           <div class="field-group"><input type="text" class="tier-name-input project-input" placeholder=" "><label>name</label></div>
-          <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" "><label>price (ETH)</label></div>
+          <div class="field-group"><input type="text" class="tier-price-input project-input" placeholder=" " inputmode="decimal"><label class="tier-price-label">price</label><span class="tier-price-hint" style="position:absolute;right:0.75em;bottom:0.5em;color:var(--dim);font-size:0.75em;pointer-events:none"></span></div>
           <div class="field-group"><input type="number" class="tier-supply-input project-input" placeholder=" " min="1" value="10"><label>supply</label></div>
           <div class="field-group"><select class="tier-type-input project-input"><option value="backer">credit</option><option value="ticket" data-i18n="projects.ticketTransferable">ticket</option></select><label class="select-label">type</label></div>
         </div>
@@ -1962,6 +1999,8 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       </div>
     </div>`
     document.getElementById('propose-tiers').insertAdjacentHTML('beforeend', row)
+    // Label needs the current currency on dynamically-added rows too.
+    document.querySelectorAll('#propose-tiers .tier-price-label').forEach(l => { l.textContent = `price (${_proposeCurrency})` })
     updateTierCalc()
   })
 
@@ -1972,7 +2011,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     }
   })
 
-  document.getElementById('propose-tiers').addEventListener('input', () => updateTierCalc())
+  document.getElementById('propose-tiers').addEventListener('input', (e) => {
+    if (e.target.classList.contains('tier-price-input')) refreshTierPriceHint(e.target)
+    updateTierCalc()
+  })
 
   document.getElementById('propose-tiers').addEventListener('change', (e) => {
     if (e.target.classList.contains('tier-type-input')) {
@@ -2031,14 +2073,28 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const tierEventDates = []
     const tierLocations = []
     const tierLocStrings = []
+    // Tier prices are typed as fiat (per Fiat Currency of Choice rule).
+    // Convert fiat → ETH at submit using the ETH rate the form opened
+    // with. If the rate failed to load, refuse the submit so an org
+    // doesn't accidentally price a tier at an uncoverted ETH value.
+    if (!_proposeEthRate) {
+      ps.textContent = `can't fetch ETH/${_proposeCurrency} rate — try again in a sec`
+      return
+    }
     for (const row of tierRows) {
       const name = row.querySelector('.tier-name-input').value.trim()
-      const price = row.querySelector('.tier-price-input').value.trim()
+      const priceStr = row.querySelector('.tier-price-input').value.trim()
       const supply = parseInt(row.querySelector('.tier-supply-input').value) || 0
       const transfer = row.querySelector('.tier-type-input').value === 'ticket'
-      if (!name || !price) continue
+      if (!name || !priceStr) continue
+      const fiatAmount = parseFloat(priceStr) || 0
+      if (fiatAmount <= 0) continue
+      const ethAmount = _fiatToEth(fiatAmount)
       tierNames.push(name)
-      tierPrices.push(parseEther(price))
+      // 10 decimals of precision is enough for a per-tier price —
+      // avoids the trailing 1e-18 noise parseEther creates when
+      // division leaves a non-terminating decimal.
+      tierPrices.push(parseEther(ethAmount.toFixed(10)))
       tierSupplies.push(BigInt(supply))
       tierTransferable.push(transfer)
       const dateVal = row.querySelector('.tier-date-input')?.value
