@@ -960,8 +960,10 @@ async function initProjectDetail() {
         const isErc20 = fundingToken !== '0x0000000000000000000000000000000000000000'
 
         if (isErc20) {
-          // ERC20 projects: 2-tx approve + fund via fund-erc20.js. msg.value
-          // MUST be zero or the contract reverts WrongPayment.
+          // ERC20 projects: top-up (swap ETH→token on Optimism) then 2-tx
+          // approve + fund. msg.value stays 0 (contract rejects otherwise).
+          // If the wallet lacks ETH too, fund-erc20 throws code='NEEDS_STRIPE'
+          // and we route to the card onramp with the full project context.
           try {
             const { fundProjectTier } = await import('/js/fund-erc20.js')
             await fundProjectTier(
@@ -972,6 +974,29 @@ async function initProjectDetail() {
             )
             if (statusEl) statusEl.textContent = 'funded'
           } catch (e) {
+            if (e?.code === 'NEEDS_STRIPE') {
+              const sym = p?.fundingTokenSymbol || 'token'
+              if (statusEl) statusEl.textContent = `opening card payment to add ${sym}…`
+              // The landing-page fund flow (/fund) accepts project context in
+              // URL params; it chains Stripe → bridge → swap → fund.
+              const url = new URL('/fund', window.location.origin)
+              url.searchParams.set('project', String(projectId))
+              url.searchParams.set('tier', String(tierId))
+              url.searchParams.set('quantity', String(qty))
+              url.searchParams.set('fundingToken', fundingToken)
+              url.searchParams.set('tierPrice', String(price))
+              // BOLD + USDS are USD-pinned at $1; convert base units → USD.
+              // For a non-stable token we'd need a rate — but the launch
+              // whitelist is only stables, so a $1 pin is accurate.
+              const decimals = Number(p?.fundingTokenDecimals || 18)
+              const totalFiat = Number(price * qty) / Math.pow(10, decimals)
+              url.searchParams.set('amount', totalFiat.toFixed(2))
+              url.searchParams.set('fundingTokenSymbol', p?.fundingTokenSymbol || '')
+              url.searchParams.set('fundingTokenDecimals', String(decimals))
+              url.searchParams.set('returnUrl', window.location.href)
+              window.location.href = url.toString()
+              return
+            }
             if (statusEl) statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${e.shortMessage || e.message}`
           }
           return

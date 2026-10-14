@@ -568,7 +568,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
         <div class="tier-supply">${remaining}</div>
         ${!soldOut ? `<div class="tier-actions">
           <input type="number" class="tier-qty" value="1" min="1" max="${tier.maxSupply > 0 ? tier.maxSupply - tier.sold : 99}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
-          <button class="buy-btn collab-fund-btn" data-id="${p.id}" data-tier="${tier.tierId}" data-price="${tier.price}" data-funding-token="${p.fundingToken || '0x0000000000000000000000000000000000000000'}">${t('projects.fund')}</button>
+          <button class="buy-btn collab-fund-btn" data-id="${p.id}" data-tier="${tier.tierId}" data-price="${tier.price}" data-funding-token="${p.fundingToken || '0x0000000000000000000000000000000000000000'}" data-funding-token-symbol="${p.fundingTokenSymbol || ''}" data-funding-token-decimals="${p.fundingTokenDecimals || 18}">${t('projects.fund')}</button>
         </div>` : `<div style="color:#666;font-size:0.8em">${t('projects.soldOut')}</div>`}
       </div>`
     }).join('')}</div>`
@@ -703,6 +703,23 @@ function attachHandlers(container, hubAddress, publicClient) {
           btn.textContent = 'funded'
           setTimeout(() => { btn.textContent = originalText; btn.disabled = false }, 2000)
         } catch (e) {
+          if (e?.code === 'NEEDS_STRIPE') {
+            // Wallet lacks token AND ETH — hand off to the Stripe onramp page
+            // which chains card → USDC → bridge → swap → fund via stripe-fund.js.
+            const url = new URL('/fund', window.location.origin)
+            url.searchParams.set('project', String(btn.dataset.id))
+            url.searchParams.set('tier', String(tierId))
+            url.searchParams.set('quantity', String(qty))
+            url.searchParams.set('fundingToken', fundingToken)
+            url.searchParams.set('tierPrice', String(price))
+            const decimals = Number(btn.dataset.fundingTokenDecimals || 18)
+            const totalFiat = Number(price * qty) / Math.pow(10, decimals)
+            url.searchParams.set('amount', totalFiat.toFixed(2))
+            url.searchParams.set('fundingTokenSymbol', btn.dataset.fundingTokenSymbol || '')
+            url.searchParams.set('returnUrl', window.location.href)
+            window.location.href = url.toString()
+            return
+          }
           btn.disabled = false
           btn.textContent = e.code === 4001 ? 'cancelled' : `error`
           console.error('praxis fund-erc20:', e)

@@ -174,6 +174,21 @@ function _wireActions(anchor, projectId, project, praxisAddr) {
         if (statusEl) statusEl.textContent = `funded ${tierName} — reloading…`
         setTimeout(() => location.reload(), 1800)
       } catch (e) {
+        if (e?.code === 'NEEDS_STRIPE') {
+          const url = new URL('/fund', window.location.origin)
+          url.searchParams.set('project', String(projectId))
+          url.searchParams.set('tier', String(tierId))
+          url.searchParams.set('quantity', '1')
+          url.searchParams.set('fundingToken', fundingToken)
+          url.searchParams.set('tierPrice', String(priceWei))
+          const decimals = Number(project?.fundingTokenDecimals || 18)
+          const totalFiat = Number(BigInt(priceWei)) / Math.pow(10, decimals)
+          url.searchParams.set('amount', totalFiat.toFixed(2))
+          url.searchParams.set('fundingTokenSymbol', project?.fundingTokenSymbol || '')
+          url.searchParams.set('returnUrl', window.location.href)
+          window.location.href = url.toString()
+          return
+        }
         if (statusEl) statusEl.textContent = formatTxError(e)
       }
       return
