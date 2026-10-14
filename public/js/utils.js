@@ -1442,6 +1442,16 @@ export async function getAllFollows(queryFn, myAddr, maxResults = 200) {
 // --- Shared pending withdrawals (multicall, cached) ---
 import { PRAXIS_ADDR as _PRAXIS_ADDR, PRAXIS_ABI as _PENDING_ABI } from './contracts.js'
 
+// Launch whitelist of per-project ERC20 funding tokens on Optimism.
+// Kept in sync with public/js/fund-erc20.js:FUNDING_TOKENS. Reading them
+// here lets the vault surface each one's pendingTokenWithdrawals bucket
+// so artists can claim BOLD / USDS earnings without a direct contract
+// call.
+const _TOKEN_PENDING_WHITELIST = [
+  { address: '0x03569CC076654F82679C4BA2124D64774781B01D', symbol: 'BOLD', decimals: 18 },
+  { address: '0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3', symbol: 'USDS', decimals: 18 },
+]
+
 export async function getPendingWithdrawals(addr) {
   const addrLower = addr.toLowerCase()
   const mediaAddr = document.body.dataset.media || ''
@@ -1451,24 +1461,44 @@ export async function getPendingWithdrawals(addr) {
   const mediaKey = mediaAddr ? `pending:${mediaAddr}:${addrLower}` : null
   let praxis = _getCached(praxisKey)
   let media = mediaKey ? _getCached(mediaKey) : null
+  let tokensCached = _getCached(`pending-tokens:${_PRAXIS_ADDR}:${addrLower}`)
 
-  if (praxis !== null && (media !== null || !mediaAddr)) {
-    return { praxis: BigInt(praxis), media: media !== null ? BigInt(media) : 0n }
+  if (praxis !== null && (media !== null || !mediaAddr) && tokensCached !== null) {
+    return {
+      praxis: BigInt(praxis),
+      media: media !== null ? BigInt(media) : 0n,
+      tokens: JSON.parse(tokensCached).map(t => ({ ...t, pending: BigInt(t.pending) })),
+    }
   }
 
-  // multicall both contracts
+  // multicall ETH pending (praxis + media) and per-token pending for the whitelist
   const pc = await getPublicClient()
   const calls = [{ address: _PRAXIS_ADDR, abi: _PENDING_ABI, functionName: 'pendingWithdrawals', args: [addr] }]
   if (mediaAddr) calls.push({ address: mediaAddr, abi: _PENDING_ABI, functionName: 'pendingWithdrawals', args: [addr] })
+  const tokenCallStart = calls.length
+  for (const t of _TOKEN_PENDING_WHITELIST) {
+    calls.push({ address: _PRAXIS_ADDR, abi: _PENDING_ABI, functionName: 'pendingTokenWithdrawals', args: [t.address, addr] })
+  }
 
   const results = await pc.multicall({ contracts: calls, allowFailure: true })
   const praxisVal = results[0].status === 'success' ? results[0].result : 0n
   const mediaVal = mediaAddr && results[1]?.status === 'success' ? results[1].result : 0n
 
+  const tokens = []
+  for (let i = 0; i < _TOKEN_PENDING_WHITELIST.length; i++) {
+    const t = _TOKEN_PENDING_WHITELIST[i]
+    const r = results[tokenCallStart + i]
+    const pending = r?.status === 'success' ? r.result : 0n
+    if (pending > 0n) tokens.push({ ...t, pending })
+  }
+
   _setCache(praxisKey, praxisVal.toString(), _TTL.short)
   if (mediaKey) _setCache(mediaKey, mediaVal.toString(), _TTL.short)
+  _setCache(`pending-tokens:${_PRAXIS_ADDR}:${addrLower}`,
+    JSON.stringify(tokens.map(t => ({ ...t, pending: t.pending.toString() }))),
+    _TTL.short)
 
-  return { praxis: praxisVal, media: mediaVal }
+  return { praxis: praxisVal, media: mediaVal, tokens }
 }
 
 // --- Block/mute users (local, localStorage-based) ---

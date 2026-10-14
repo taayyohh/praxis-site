@@ -500,7 +500,7 @@ async function initVault() {
       fetchChainBalances(addr).catch(() => [{ chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: 0n }]),
       getBoldBalanceMainnet(addr).catch(() => 0n),
       getStabilityDeposits(addr).catch(() => ({ total: 0n, pools: [] })),
-      getPendingWithdrawals(addr).catch(() => ({ praxis: 0n, media: 0n })),
+      getPendingWithdrawals(addr).catch(() => ({ praxis: 0n, media: 0n, tokens: [] })),
       fetchEarned(addrLower).catch(() => ({ mediaSales: [], mediaTotal: 0n, projectEarnings: 0n, projectItems: [] })),
       fetchContributed(addrLower).catch(() => ({ fundingTotal: 0n, fundingItems: [], purchaseTotal: 0n, purchaseItems: [] })),
       getTicketPendingWithdrawals(addr).catch(() => 0n),
@@ -1492,19 +1492,31 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
 
   // --- Unclaimed callout ---
   // A single line of green attention when there's money to claim.
-  if (totalUnclaimed > 0n) {
+  // Per-token ERC20 earnings (BOLD, USDS) accrue separately from ETH
+  // and need their own claim buttons — a Claim projects call drains the
+  // ETH bucket, but a BOLD-funded project credits the artist in BOLD.
+  const tokenPending = (unclaimed.tokens || []).filter(t => t.pending > 0n)
+  const hasAnyUnclaimed = totalUnclaimed > 0n || tokenPending.length > 0
+  if (hasAnyUnclaimed) {
     html += `<section class="vault-unclaimed vault-unclaimed-inline">`
     html += `<span class="vault-unclaimed-line">you have <strong>${formatPriceFiatPrimary(totalUnclaimed, ethPrices)}</strong> unclaimed`
     const detailParts = []
     if (unclaimed.media > 0n) detailParts.push(`${formatPriceFiatPrimary(unclaimed.media, ethPrices)} media`)
     if (unclaimed.praxis > 0n) detailParts.push(`${formatPriceFiatPrimary(unclaimed.praxis, ethPrices)} projects`)
     if (ticketUnclaimed > 0n) detailParts.push(`${formatPriceFiatPrimary(ticketUnclaimed, ethPrices)} tickets`)
+    for (const t of tokenPending) {
+      const human = Number(t.pending) / Math.pow(10, t.decimals)
+      detailParts.push(`${human.toFixed(2)} ${t.symbol}`)
+    }
     if (detailParts.length > 0) html += ` <span style="color:var(--dim)">· ${detailParts.join(' · ')}</span>`
     html += `</span>`
     html += `<div class="vault-unclaimed-verbs">`
     if (unclaimed.media > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="media">claim media</button>`
     if (unclaimed.praxis > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="projects">claim projects</button>`
     if (ticketUnclaimed > 0n) html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="tickets">claim tickets</button>`
+    for (const t of tokenPending) {
+      html += `<button type="button" class="vault-verb earnings-claim-btn" data-source="token" data-token="${t.address}" data-token-symbol="${t.symbol}">claim ${t.symbol}</button>`
+    }
     html += `</div>`
     html += `<p id="earnings-claim-status" class="vault-unclaimed-status"></p>`
     html += `</section>`
@@ -1662,7 +1674,12 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
             if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
           } else if (btn.dataset.source === 'tickets') {
             await withdrawTicketEarnings()
+          } else if (btn.dataset.source === 'token') {
+            // Per-ERC20 claim: Safe drains pendingTokenWithdrawals[token][safe].
+            const hash = await safeClaimFrom({ safeAddress: _orgVaultAddr, target: PRAXIS_ADDR, functionName: 'claimFunds', token: btn.dataset.token })
+            if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
           } else {
+            // ETH bucket (address(0)).
             const hash = await safeClaimFrom({ safeAddress: _orgVaultAddr, target: PRAXIS_ADDR, functionName: 'claimFunds' })
             if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
           }
@@ -1672,6 +1689,11 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
           await pc.waitForTransactionReceipt({ hash })
         } else if (btn.dataset.source === 'tickets') {
           await withdrawTicketEarnings()
+        } else if (btn.dataset.source === 'token') {
+          // Per-ERC20 claim for a solo wallet: claimFunds(tokenAddr).
+          const hash = await wc.writeContract({ address: PRAXIS_ADDR, abi: PRAXIS_ABI, functionName: 'claimFunds', args: [btn.dataset.token], account: claimAccount })
+          if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
+          await pc.waitForTransactionReceipt({ hash })
         } else {
           const hash = await wc.writeContract({ address: PRAXIS_ADDR, abi: PRAXIS_ABI, functionName: 'claimFunds', args: ['0x0000000000000000000000000000000000000000'], account: claimAccount })
           if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
