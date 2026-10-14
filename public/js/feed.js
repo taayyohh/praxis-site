@@ -322,23 +322,38 @@ async function loadFeed(myAddr, blogAddr) {
     statusEl.textContent = ''
     renderCachedFeed(cached.feedItems, cached.domainMap, postsEl)
 
-    // Background freshness check — lightweight: compare latest global post timestamp
-    // Uses cached follow list from the feed cache itself (no extra getAllFollows call)
-    // Skip if a loadFeed is already in flight (avoids redundant 6-query cascade)
-    {
-      ;(async () => {
-        try {
-          const authors = cached.authors || [myAddr]
-          const latestData = await query(`query FeedFresh($authors: [String!]!) { blogPosts(where: { author_in: $authors }, orderBy: "timestamp", orderDirection: "desc", limit: 1) { items { ${F.postSummary} } } }`, { authors: authors.slice(0, 50) })
-          const latestTs = latestData.blogPosts?.items?.[0]?.timestamp
-          const cachedTs = cached.feedItems?.find(i => i.type === 'post')?.data?.timestamp
-          if (latestTs && cachedTs && Number(latestTs) > Number(cachedTs)) {
-            invalidate('feed:')
-            loadFeed(myAddr, blogAddr)
-          }
-        } catch {}
-      })()
-    }
+    // Background freshness check — compare the latest activity timestamp
+    // of ANY type (purchase, listed, follow, post, …) against the newest
+    // item in the cache. Comparing only blog posts missed purchase churn:
+    // a server-side merge-logic change (batch grouping, display tweaks)
+    // wouldn't surface until the user wrote a new blog post. Now we hit
+    // the materialized /api/feed/timeline endpoint — single request, cheap
+    // — and diff against the cached head.
+    ;(async () => {
+      try {
+        const res = await fetch('/api/feed/timeline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addr: myAddr, limit: 1 }),
+        })
+        if (!res.ok) return
+        const latest = await res.json()
+        const latestItem = (latest.items || [])[0]
+        const latestTs = latestItem?.timestamp
+        const cachedHead = cached.feedItems?.[0]
+        const cachedTs = cachedHead?.timestamp
+        // Trigger a refresh if the server has a newer item OR the newest
+        // cached item's shape has drifted (count/items length moved — the
+        // server merge might have combined things that were split before).
+        const stale = (latestTs && cachedTs && Number(latestTs) !== Number(cachedTs)) ||
+          (latestItem?.data?.count !== undefined && cachedHead?.data?.count !== undefined &&
+           Number(latestItem.data.count) !== Number(cachedHead.data.count))
+        if (stale) {
+          invalidate('feed:')
+          loadFeed(myAddr, blogAddr)
+        }
+      } catch {}
+    })()
 
     _feedLoadInFlight = false
     return
