@@ -795,7 +795,10 @@ async function initProjectDetail() {
     })
     document.getElementById('action-finalize')?.addEventListener('click', () => execAction('finalizeProject', [BigInt(projectId)]))
     document.getElementById('action-dispute')?.addEventListener('click', () => execAction('dispute', [BigInt(projectId)]))
-    document.getElementById('action-claim')?.addEventListener('click', () => execAction('claimFunds', []))
+    // Pass fundingToken so collaborators collecting from an ERC20 project
+    // drain pendingTokenWithdrawals[token][user] instead of the ETH bucket.
+    document.getElementById('action-claim')?.addEventListener('click', () =>
+      execAction('claimFunds', [p?.fundingToken || '0x0000000000000000000000000000000000000000']))
     document.getElementById('action-refund')?.addEventListener('click', () => execAction('claimRefund', [BigInt(projectId)]))
     document.getElementById('action-withdraw')?.addEventListener('click', () => {
       if (!confirm('withdraw your funding? you will receive a full refund.')) return
@@ -952,6 +955,27 @@ async function initProjectDetail() {
         const qty = BigInt(Math.max(1, parseInt(qtyInput?.value) || 1))
         const totalValue = price * qty
         const statusEl = document.getElementById('action-status')
+
+        const fundingToken = (p?.fundingToken || '0x0000000000000000000000000000000000000000').toLowerCase()
+        const isErc20 = fundingToken !== '0x0000000000000000000000000000000000000000'
+
+        if (isErc20) {
+          // ERC20 projects: 2-tx approve + fund via fund-erc20.js. msg.value
+          // MUST be zero or the contract reverts WrongPayment.
+          try {
+            const { fundProjectTier } = await import('/js/fund-erc20.js')
+            await fundProjectTier(
+              { id: projectId, fundingToken, tierPrice: price },
+              tierId,
+              qty,
+              (msg) => { if (statusEl) statusEl.textContent = msg },
+            )
+            if (statusEl) statusEl.textContent = 'funded'
+          } catch (e) {
+            if (statusEl) statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${e.shortMessage || e.message}`
+          }
+          return
+        }
 
         const funded = await ensureFundsForPurchase(totalValue, statusEl)
         if (!funded) return

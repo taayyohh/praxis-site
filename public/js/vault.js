@@ -832,6 +832,107 @@ async function swapEthToBold(addr, path, onStatus, bridgedAmount = 0n) {
   return { hash, amountOut }
 }
 
+// Swap USDC -> target ERC20 (BOLD, USDS, etc) on Optimism via Uniswap V3.
+// Mirrors swapEthToBold's pattern but routes on Optimism (chain 10) instead
+// of mainnet. Called from stripe-fund.js after USDC lands on Optimism via
+// Relay bridge from Base.
+//
+// Tries direct USDC/<token> pools at fee tiers [500, 3000, 10000] via
+// QuoterV2; picks the first that quotes a non-zero amount. If none quote
+// directly, throws — caller may fall back to multi-hop later.
+//
+// Uniswap V3 contracts on Optimism share the deterministic addresses:
+//   SwapRouter02:  0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45  (= UNISWAP_ROUTER)
+//   QuoterV2:      0x61fFE014bA17989E743c5F6cB21bF9697530B21e  (= UNISWAP_QUOTER)
+//
+// Returns { hash, amountOut } — exact token delta from before/after
+// balanceOf snapshots on the destination token.
+export async function swapUsdcToToken(addr, usdcAmount, destToken, onStatus) {
+  const { createPublicClient, createWalletClient, http, optimism } = await import('./vendor.js')
+  const { USDC_OPTIMISM, rpcUrlFor } = await import('./chains.js')
+
+  if (!usdcAmount || usdcAmount <= 0n) throw new Error('swapUsdcToToken: zero amount')
+  if (!destToken || !/^0x[0-9a-fA-F]{40}$/.test(destToken)) throw new Error('swapUsdcToToken: bad destToken')
+  const destLower = destToken.toLowerCase()
+  if (destLower === USDC_OPTIMISM.toLowerCase()) {
+    throw new Error('swapUsdcToToken: destToken is USDC — no swap needed')
+  }
+
+  const rpcUrl = rpcUrlFor(10)
+  const chainDef = { ...optimism, rpcUrls: { ...optimism.rpcUrls, default: { http: [rpcUrl] } } }
+  const pc = createPublicClient({ chain: chainDef, transport: http(rpcUrl) })
+
+  onStatus?.('quoting swap...')
+  // Try direct USDC/<token> pools at 0.05%, 0.3%, 1%. Pick first that quotes.
+  const FEE_TIERS = [500, 3000, 10000]
+  let bestQuote = null
+  let bestPath = null
+  for (const fee of FEE_TIERS) {
+    const path = encodeV3Path([USDC_OPTIMISM, destToken], [fee])
+    try {
+      const { result } = await pc.simulateContract({
+        address: UNISWAP_QUOTER,
+        abi: UNISWAP_QUOTER_ABI,
+        functionName: 'quoteExactInput',
+        args: [path, usdcAmount],
+      })
+      const amountOut = result[0]
+      if (amountOut > 0n && (!bestQuote || amountOut > bestQuote)) {
+        bestQuote = amountOut
+        bestPath = path
+      }
+    } catch { /* this fee tier has no pool or no liquidity — try next */ }
+  }
+  if (!bestQuote || !bestPath) {
+    throw new Error(`no Uniswap V3 USDC/${destToken.slice(0,6)} pool found on Optimism`)
+  }
+
+  // 5% slippage buffer. BOLD/USDC and USDS/USDC on Optimism are both thin
+  // relative to mainnet so pricing can shift noticeably on $500+ swaps.
+  const minOut = (bestQuote * 95n) / 100n
+
+  await window.ensureAuthorized?.()
+  const embeddedAcct = window.getEmbeddedAccount?.()
+  if (!embeddedAcct) throw new Error('wallet not available')
+  const wc = createWalletClient({ chain: chainDef, account: embeddedAcct, transport: http(rpcUrl) })
+
+  // Approve USDC → SwapRouter02 if needed.
+  onStatus?.('checking approval...')
+  const allowance = await pc.readContract({
+    address: USDC_OPTIMISM, abi: ERC20_APPROVE_ABI, functionName: 'allowance',
+    args: [addr, UNISWAP_ROUTER],
+  })
+  if (allowance < usdcAmount) {
+    onStatus?.('approving USDC for swap...')
+    const approveTx = await wc.writeContract({
+      address: USDC_OPTIMISM, abi: ERC20_APPROVE_ABI, functionName: 'approve',
+      args: [UNISWAP_ROUTER, usdcAmount], account: embeddedAcct,
+    })
+    await pc.waitForTransactionReceipt({ hash: approveTx, timeout: 120_000 })
+  }
+
+  // Snapshot destToken balance before/after to measure exact delta.
+  const before = await pc.readContract({
+    address: destToken, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr],
+  }).catch(() => 0n)
+
+  onStatus?.('confirm swap...')
+  const hash = await wc.writeContract({
+    address: UNISWAP_ROUTER, abi: UNISWAP_ROUTER_ABI, functionName: 'exactInput',
+    args: [{ path: bestPath, recipient: addr, amountIn: usdcAmount, amountOutMinimum: minOut }],
+    account: embeddedAcct,
+  })
+  onStatus?.('swap submitted...')
+  await pc.waitForTransactionReceipt({ hash, timeout: 180_000 })
+
+  const after = await pc.readContract({
+    address: destToken, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr],
+  }).catch(() => 0n)
+  const amountOut = after > before ? after - before : 0n
+  onStatus?.('swap complete')
+  return { hash, amountOut }
+}
+
 async function depositToStabilityPool(spAddress, boldAmount, addr, onStatus) {
   const { createWalletClient, createPublicClient, custom, http, mainnet } = await import('./vendor.js')
 
@@ -1572,7 +1673,7 @@ function renderVault(el, { ethBalance, chainBalances, boldBalance, spDeposits, u
         } else if (btn.dataset.source === 'tickets') {
           await withdrawTicketEarnings()
         } else {
-          const hash = await wc.writeContract({ address: PRAXIS_ADDR, abi: PRAXIS_ABI, functionName: 'claimFunds', args: [], account: claimAccount })
+          const hash = await wc.writeContract({ address: PRAXIS_ADDR, abi: PRAXIS_ABI, functionName: 'claimFunds', args: ['0x0000000000000000000000000000000000000000'], account: claimAccount })
           if (status) status.textContent = `tx: ${hash.slice(0, 14)}...`
           await pc.waitForTransactionReceipt({ hash })
         }

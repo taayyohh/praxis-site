@@ -123,30 +123,93 @@ export function formatPriceFiatOnly(wei, prices) {
 //   html += `<span data-eth-wei="${wei}">${ethStr} ETH</span>`
 //   enhanceEthLabels(containerEl)
 export async function enhanceEthLabels(rootEl) {
-  const root = rootEl || document
-  const targets = root.querySelectorAll('[data-eth-wei]:not([data-fiat-applied])')
-  if (!targets.length) return
-  const prices = await getEthPrices()
-  if (!prices) return
-  const currency = getUserCurrency()
-  const rate = prices[currency]
-  if (!rate) return
-  for (const el of targets) {
-    const wei = el.dataset.ethWei
-    if (!wei) continue
-    const ethNum = Number(wei) / 1e18
-    if (ethNum === 0) { el.dataset.fiatApplied = '1'; continue }
-    const fiatAmount = ethNum * rate
-    const fiatStr = fiatAmount < 0.01 ? `<${formatFiat(0.01, currency)}` : `~${formatFiat(fiatAmount, currency)}`
-    if (el.dataset.fiatPrimary) {
-      // Fiat-first: show fiat as the main label
-      el.innerHTML = fiatStr.replace(/^~/, '')
-    } else {
-      const existing = el.innerHTML.replace(/\s*<span class="fiat-approx">.*?<\/span>\s*$/i, '')
-      el.innerHTML = `${existing} <span class="fiat-approx" style="color:var(--dim);font-size:0.85em">(${fiatStr})</span>`
+  // Preserves the historical name/behaviour (data-eth-wei) AND picks
+  // up the newer ERC20 shape (data-token-amount + data-token-address)
+  // in one pass so every call site stops at this one function.
+  return enhanceTokenLabels(rootEl)
+}
+
+// Token-aware fiat enhancer. Handles two attribute pairs on an
+// element:
+//   [data-eth-wei]                       — ETH, uses getEthPrices() rate.
+//   [data-token-amount] [data-token-address] [data-token-decimals?]
+//                                        — any ERC20, uses the server
+//                                          token-price oracle (Fork D)
+//                                          with a per-token fallback.
+// Both honour [data-fiat-primary] to render the fiat as the main
+// label instead of a dim trailing (~$X). An ETH value emitted as
+// data-eth-wei still works unchanged.
+const _tokenRateCache = new Map() // "addr::currency" → { rate, ts }
+const _TOKEN_RATE_TTL_MS = 30_000
+async function _getTokenRate(addr, currency) {
+  const key = `${(addr || '').toLowerCase()}::${currency}`
+  const cached = _tokenRateCache.get(key)
+  if (cached && Date.now() - cached.ts < _TOKEN_RATE_TTL_MS) return cached.rate
+  try {
+    const res = await fetch(`/api/token-price?token=${encodeURIComponent(addr)}&currency=${encodeURIComponent(currency)}`)
+    if (res.ok) {
+      const d = await res.json()
+      if (d && Number.isFinite(d.price) && d.price > 0) {
+        _tokenRateCache.set(key, { rate: d.price, ts: Date.now() })
+        return d.price
+      }
     }
-    el.dataset.fiatApplied = '1'
+  } catch {}
+  // Stale fallback for the pre-Fork-D window: BOLD + USDS peg at 1.00
+  // in USD. Returns 0 otherwise so the caller leaves the label alone.
+  const stableSymbols = new Set(['0x03569cc076654f82679c4ba2124d64774781b01d', '0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3'])
+  if (stableSymbols.has(String(addr || '').toLowerCase()) && currency === 'usd') return 1.0
+  return 0
+}
+
+export async function enhanceTokenLabels(rootEl) {
+  const root = rootEl || document
+  const ethTargets = root.querySelectorAll('[data-eth-wei]:not([data-fiat-applied])')
+  const tokenTargets = root.querySelectorAll('[data-token-amount]:not([data-fiat-applied])')
+  if (!ethTargets.length && !tokenTargets.length) return
+  const currency = getUserCurrency()
+
+  // ETH path — unchanged behaviour.
+  if (ethTargets.length) {
+    const prices = await getEthPrices()
+    const ethRate = prices?.[currency]
+    if (ethRate) {
+      for (const el of ethTargets) {
+        const wei = el.dataset.ethWei
+        if (!wei) continue
+        const ethNum = Number(wei) / 1e18
+        if (ethNum === 0) { el.dataset.fiatApplied = '1'; continue }
+        const fiatAmount = ethNum * ethRate
+        _writeFiatLabel(el, fiatAmount, currency)
+      }
+    }
   }
+
+  // ERC20 path.
+  for (const el of tokenTargets) {
+    const amountStr = el.dataset.tokenAmount
+    const addr = el.dataset.tokenAddress
+    const decimals = parseInt(el.dataset.tokenDecimals || '18', 10)
+    if (!amountStr || !addr) continue
+    const rate = await _getTokenRate(addr, currency)
+    if (!rate) continue
+    let tokenNum
+    try { tokenNum = Number(BigInt(amountStr)) / (10 ** decimals) } catch { tokenNum = 0 }
+    if (!Number.isFinite(tokenNum) || tokenNum === 0) { el.dataset.fiatApplied = '1'; continue }
+    const fiatAmount = tokenNum * rate
+    _writeFiatLabel(el, fiatAmount, currency)
+  }
+}
+
+function _writeFiatLabel(el, fiatAmount, currency) {
+  const fiatStr = fiatAmount < 0.01 ? `<${formatFiat(0.01, currency)}` : `~${formatFiat(fiatAmount, currency)}`
+  if (el.dataset.fiatPrimary) {
+    el.innerHTML = fiatStr.replace(/^~/, '')
+  } else {
+    const existing = el.innerHTML.replace(/\s*<span class="fiat-approx">.*?<\/span>\s*$/i, '')
+    el.innerHTML = `${existing} <span class="fiat-approx" style="color:var(--dim);font-size:0.85em">(${fiatStr})</span>`
+  }
+  el.dataset.fiatApplied = '1'
 }
 
 // Wire a global listener so the enhancement refreshes when the currency changes,
@@ -156,7 +219,7 @@ if (typeof window !== 'undefined' && !window._ethFiatEnhanceBound) {
   window._ethFiatEnhanceBound = true
   window.addEventListener('currency-changed', () => {
     document.querySelectorAll('[data-fiat-applied]').forEach(el => { delete el.dataset.fiatApplied })
-    enhanceEthLabels()
+    enhanceTokenLabels()
   })
   // Debounced MutationObserver — batches node additions per animation frame.
   let _enhanceQueued = false

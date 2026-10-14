@@ -155,6 +155,30 @@ function _wireActions(anchor, projectId, project, praxisAddr) {
   async function fundTier(tierId, tierName, priceWei) {
     const userAddr = await requireUser('fund this project')
     if (!userAddr) return
+
+    const fundingToken = (project?.fundingToken || '0x0000000000000000000000000000000000000000').toLowerCase()
+    const isErc20 = fundingToken !== '0x0000000000000000000000000000000000000000'
+
+    if (isErc20) {
+      // ERC20 project: route through fund-erc20.js (approve + fund in 2 txs).
+      // The widget's ensureFundsForPurchase is ETH-balance-only, so skip it.
+      if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'preparing…' }
+      try {
+        const { fundProjectTier } = await import('/js/fund-erc20.js')
+        await fundProjectTier(
+          { id: projectId, fundingToken, tierPrice: BigInt(priceWei) },
+          BigInt(tierId),
+          1n,
+          (msg) => { if (statusEl) statusEl.textContent = msg },
+        )
+        if (statusEl) statusEl.textContent = `funded ${tierName} — reloading…`
+        setTimeout(() => location.reload(), 1800)
+      } catch (e) {
+        if (statusEl) statusEl.textContent = formatTxError(e)
+      }
+      return
+    }
+
     if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'preparing funds…' }
     const funded = await ensureFundsForPurchase(BigInt(priceWei), statusEl)
     if (!funded) return

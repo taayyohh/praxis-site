@@ -246,13 +246,21 @@ export function safeSupporterHandle(name, suffix = '') {
 }
 
 // Claim from a contract whose withdraw()/claim() reads msg.sender.
-// PraxisMedia.withdraw() and Praxis.claimFunds() both use this shape, so
-// the Safe becomes the recipient because it's msg.sender inside the inner
-// call.
-export async function safeClaimFrom({ safeAddress, target, functionName = 'withdraw' }) {
-  const abi = [{ name: functionName, type: 'function', inputs: [], outputs: [], stateMutability: 'nonpayable' }]
+// PraxisMedia.withdraw() takes no args; Praxis.claimFunds(address token)
+// takes a token address (address(0) for ETH, else ERC-20). The Safe is
+// msg.sender inside the inner call, so it becomes the recipient.
+export async function safeClaimFrom({ safeAddress, target, functionName = 'withdraw', token = null }) {
+  const needsTokenArg = functionName === 'claimFunds'
+  const abi = [{
+    name: functionName, type: 'function',
+    inputs: needsTokenArg ? [{ name: 'token', type: 'address' }] : [],
+    outputs: [], stateMutability: 'nonpayable',
+  }]
   const { encodeFunctionData } = await import('./vendor.js')
-  const callData = encodeFunctionData({ abi, functionName, args: [] })
+  const args = needsTokenArg
+    ? [token || '0x0000000000000000000000000000000000000000']
+    : []
+  const callData = encodeFunctionData({ abi, functionName, args })
   return execSafeTx({ safeAddress, target, callData })
 }
 

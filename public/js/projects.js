@@ -336,7 +336,9 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
           try {
             const claimAcct = await window.authorizedSigner?.(wallet)
           const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-            const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: claimAcct })
+            // claimFunds(address token) — pass address(0) to claim ETH earnings.
+            // Per-ERC20 earnings claim via pendingTokenWithdrawals + claimFunds(tokenAddr).
+            const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: ['0x0000000000000000000000000000000000000000'], account: claimAcct })
             cs.textContent = `tx: ${hash.slice(0, 14)}...`
             await publicClient.waitForTransactionReceipt({ hash })
             cs.textContent = t('projects.claimedReloading')
@@ -353,7 +355,7 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
           try {
             const cashAcct = await window.authorizedSigner?.(wallet)
           const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
-            const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: [], account: cashAcct })
+            const hash = await wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'claimFunds', args: ['0x0000000000000000000000000000000000000000'], account: cashAcct })
             await publicClient.waitForTransactionReceipt({ hash })
             cs.textContent = t('projects.claimedOfframp')
             window.location.href = '/cashout'
@@ -566,7 +568,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
         <div class="tier-supply">${remaining}</div>
         ${!soldOut ? `<div class="tier-actions">
           <input type="number" class="tier-qty" value="1" min="1" max="${tier.maxSupply > 0 ? tier.maxSupply - tier.sold : 99}" style="width:4ch;background:transparent;border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;text-align:center">
-          <button class="buy-btn collab-fund-btn" data-id="${p.id}" data-tier="${tier.tierId}" data-price="${tier.price}">${t('projects.fund')}</button>
+          <button class="buy-btn collab-fund-btn" data-id="${p.id}" data-tier="${tier.tierId}" data-price="${tier.price}" data-funding-token="${p.fundingToken || '0x0000000000000000000000000000000000000000'}">${t('projects.fund')}</button>
         </div>` : `<div style="color:#666;font-size:0.8em">${t('projects.soldOut')}</div>`}
       </div>`
     }).join('')}</div>`
@@ -677,14 +679,39 @@ function geocodeProjectCards(container) {
 function attachHandlers(container, hubAddress, publicClient) {
   container.querySelectorAll('.collab-fund-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await txAction(btn, hubAddress, publicClient, async (wc, acct) => {
-        const tierCard = btn.closest('.tier-card')
-        const tierId = BigInt(btn.dataset.tier || 0)
-        const price = BigInt(btn.dataset.price || 0)
-        const qtyInput = tierCard?.querySelector('.tier-qty')
-        const qty = BigInt(qtyInput?.value || 1)
-        return wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'fundTier', args: [BigInt(btn.dataset.id), tierId, qty], value: price * qty, account: acct })
-      })
+      const tierCard = btn.closest('.tier-card')
+      const tierId = BigInt(btn.dataset.tier || 0)
+      const price = BigInt(btn.dataset.price || 0)
+      const qtyInput = tierCard?.querySelector('.tier-qty')
+      const qty = BigInt(qtyInput?.value || 1)
+      const fundingToken = (btn.dataset.fundingToken || '0x0000000000000000000000000000000000000000').toLowerCase()
+      const isErc20 = fundingToken !== '0x0000000000000000000000000000000000000000'
+
+      if (isErc20) {
+        // ERC20 project: 2-tx approve + fund. msg.value must be 0 or contract reverts.
+        try {
+          btn.disabled = true
+          const originalText = btn.textContent
+          btn.textContent = 'funding…'
+          const { fundProjectTier } = await import('/js/fund-erc20.js')
+          await fundProjectTier(
+            { id: btn.dataset.id, fundingToken, tierPrice: price },
+            tierId,
+            qty,
+            (msg) => { btn.textContent = msg },
+          )
+          btn.textContent = 'funded'
+          setTimeout(() => { btn.textContent = originalText; btn.disabled = false }, 2000)
+        } catch (e) {
+          btn.disabled = false
+          btn.textContent = e.code === 4001 ? 'cancelled' : `error`
+          console.error('praxis fund-erc20:', e)
+        }
+      } else {
+        await txAction(btn, hubAddress, publicClient, async (wc, acct) =>
+          wc.writeContract({ address: hubAddress, abi: HUB_ABI, functionName: 'fundTier', args: [BigInt(btn.dataset.id), tierId, qty], value: price * qty, account: acct })
+        )
+      }
       // after funding, try to join the project group chat
       try {
         const projectId = btn.dataset.id
@@ -885,6 +912,14 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           <!-- FUNDING -->
           <div style="border-top:1px solid var(--border);padding-top:1.5em">
             <label class="project-label">funding</label>
+            <div class="field-group">
+              <select class="propose-funding-token project-input" id="propose-funding-token">
+                <option value="0x03569CC076654F82679C4BA2124D64774781B01D" selected>BOLD (recommended)</option>
+                <option value="0x0000000000000000000000000000000000000000">ETH</option>
+                <option value="0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3">USDS</option>
+              </select>
+              <label class="select-label">currency</label>
+            </div>
             <div class="field-group">
               <input type="date" id="propose-deadline" class="project-input" placeholder=" " style="color-scheme:dark">
               <label>deadline</label>
@@ -1922,20 +1957,34 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
   })
 
   // Tier prices are typed in the user's chosen fiat currency per
-  // CLAUDE.md's "Fiat Currency of Choice" rule. We cache the ETH→fiat
-  // rate once on form open and lock it; buyers always pay the ETH
-  // amount recorded on-chain, so later ETH price drift changes the
+  // CLAUDE.md's "Fiat Currency of Choice" rule. We cache the token→fiat
+  // rate once on form open and lock it; buyers always pay the token
+  // amount recorded on-chain, so later token price drift changes the
   // fiat value a buyer sees but never changes the artist's take.
   const _proposeCurrency = (getUserCurrency() || 'usd').toUpperCase()
-  let _proposeEthRate = 0 // ETH→fiat multiplier at form open
-  getEthPrices().then(p => {
-    _proposeEthRate = p?.[_proposeCurrency.toLowerCase()] || 0
+  let _proposeEthRate = 0 // token→fiat multiplier for the SELECTED funding token
+
+  async function _refreshTokenRate() {
+    const sel = document.getElementById('propose-funding-token')
+    const token = sel?.value || '0x0000000000000000000000000000000000000000'
+    try {
+      const { getTokenFiatRate } = await import('./fund-erc20.js')
+      _proposeEthRate = await getTokenFiatRate(token, _proposeCurrency.toLowerCase())
+    } catch (e) {
+      _proposeEthRate = 0
+    }
     document.querySelectorAll('.tier-price-label').forEach(l => { l.textContent = `price (${_proposeCurrency})` })
     document.querySelectorAll('.tier-price-input').forEach(refreshTierPriceHint)
     updateTierCalc()
-  }).catch(() => {})
+  }
+  _refreshTokenRate()
+  document.getElementById('propose-funding-token')?.addEventListener('change', _refreshTokenRate)
 
   function _fiatToEth(fiatAmount) {
+    // _proposeEthRate holds the SELECTED funding token's fiat rate
+    // regardless of the "Eth" name — kept named for diff legibility
+    // against the prior implementation. Returns token amount in
+    // token units (e.g. for USDS: 100 USD / 1.00 USDS/USD = 100 USDS).
     if (!_proposeEthRate || !fiatAmount) return 0
     return fiatAmount / _proposeEthRate
   }
@@ -1946,8 +1995,10 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     if (!hint) return
     const fiatAmount = parseFloat(input.value) || 0
     if (fiatAmount > 0 && _proposeEthRate) {
-      const eth = _fiatToEth(fiatAmount)
-      hint.textContent = `≈ ${eth.toFixed(4)} ETH`
+      const amount = _fiatToEth(fiatAmount)
+      const sel = document.getElementById('propose-funding-token')
+      const symbol = sel?.selectedOptions?.[0]?.text?.split(' ')[0] || 'TOKEN'
+      hint.textContent = `≈ ${amount.toFixed(4)} ${symbol}`
     } else {
       hint.textContent = ''
     }
@@ -1965,12 +2016,14 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const el = document.getElementById('tier-calc')
     if (!el) return
     if (totalFiat > 0 && _proposeEthRate) {
-      const totalEth = _fiatToEth(totalFiat)
-      const wei = BigInt(Math.round(totalEth * 1e18))
+      const totalTokens = _fiatToEth(totalFiat)
+      // Display precision — the exact base-unit value is computed at
+      // submit time against the selected token's decimals.
+      const sel = document.getElementById('propose-funding-token')
+      const symbol = sel?.selectedOptions?.[0]?.text?.split(' ')[0] || 'TOKEN'
       const fiatStr = new Intl.NumberFormat(undefined, { style: 'currency', currency: _proposeCurrency, maximumFractionDigits: 2 }).format(totalFiat)
-      el.innerHTML = `funding goal: <span style="color:var(--fg);font-weight:600">${fiatStr}</span> <span style="color:var(--dim)">(${totalEth.toFixed(4)} ETH)</span>`
+      el.innerHTML = `funding goal: <span style="color:var(--fg);font-weight:600">${fiatStr}</span> <span style="color:var(--dim)">(${totalTokens.toFixed(4)} ${symbol})</span>`
       el.style.color = 'var(--green, #4ade80)'
-      el.dataset.goalWei = String(wei)
     } else if (totalFiat > 0) {
       // Rate not loaded yet — show fiat only, no ETH conversion
       const fiatStr = new Intl.NumberFormat(undefined, { style: 'currency', currency: _proposeCurrency, maximumFractionDigits: 2 }).format(totalFiat)
@@ -2074,11 +2127,16 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
     const tierLocations = []
     const tierLocStrings = []
     // Tier prices are typed as fiat (per Fiat Currency of Choice rule).
-    // Convert fiat → ETH at submit using the ETH rate the form opened
-    // with. If the rate failed to load, refuse the submit so an org
-    // doesn't accidentally price a tier at an uncoverted ETH value.
+    // Convert fiat → funding-token at submit using the token→fiat rate
+    // the form opened with. If the rate failed to load, refuse the
+    // submit so a proposer doesn't accidentally price a tier at an
+    // unconverted value.
+    const fundingToken = (document.getElementById('propose-funding-token')?.value || '0x0000000000000000000000000000000000000000')
+    const { getTokenMetadata } = await import('./fund-erc20.js')
+    const _tokenMeta = await getTokenMetadata(fundingToken)
+    const _tokenDecimals = Number.isFinite(_tokenMeta?.decimals) ? _tokenMeta.decimals : 18
     if (!_proposeEthRate) {
-      ps.textContent = `can't fetch ETH/${_proposeCurrency} rate — try again in a sec`
+      ps.textContent = `can't fetch ${_tokenMeta?.symbol || 'token'}/${_proposeCurrency} rate — try again in a sec`
       return
     }
     for (const row of tierRows) {
@@ -2089,12 +2147,16 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       if (!name || !priceStr) continue
       const fiatAmount = parseFloat(priceStr) || 0
       if (fiatAmount <= 0) continue
-      const ethAmount = _fiatToEth(fiatAmount)
+      // fiat → token amount in whole token units
+      const tokenAmount = _fiatToEth(fiatAmount)
       tierNames.push(name)
-      // 10 decimals of precision is enough for a per-tier price —
-      // avoids the trailing 1e-18 noise parseEther creates when
-      // division leaves a non-terminating decimal.
-      tierPrices.push(parseEther(ethAmount.toFixed(10)))
+      // Multiply by 10**decimals via a decimal string to avoid float
+      // precision loss on non-18-decimal tokens. 10 decimals of
+      // precision is enough for a per-tier price.
+      const factor = 10 ** _tokenDecimals
+      // Round half-away-from-zero so a $100 USDS tier becomes exactly
+      // 100 * 10**18, not 100 * 10**18 - 1.
+      tierPrices.push(BigInt(Math.round(tokenAmount * factor)))
       tierSupplies.push(BigInt(supply))
       tierTransferable.push(transfer)
       const dateVal = row.querySelector('.tier-date-input')?.value
@@ -2253,20 +2315,20 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           ps.textContent = 'confirming as ' + (document.body.dataset.name || 'the org') + '…'
           const callData = encodeFunctionData({
             abi: HUB_ABI, functionName: 'proposeProject',
-            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
           })
           hash = await execSafeTx({ safeAddress: _siteWallet, target: hubAddress, callData })
         } else {
           hash = await wc.writeContract({
             address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
             account: proposeAcct,
           })
         }
       } else {
         hash = await wc.writeContract({
           address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-          args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps],
+          args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
           account: proposeAcct,
         })
       }
