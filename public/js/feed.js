@@ -263,7 +263,12 @@ function renderCachedFeed(feedItems, domainMap, postsEl) {
     if (seen.has(key)) return false
     seen.add(key)
     return true
-  }).map(i => renderItem(i, domainMap, resolve)).filter(Boolean).join('<div class="feed-separator">\u25C7</div>')
+  }).map(i => {
+    const html = renderItem(i, domainMap, resolve)
+    if (!html) return ''
+    const key = feedItemKey(i)
+    return `<div data-feed-key="${escapeHtml(key)}">${html}</div>`
+  }).filter(Boolean).join('<div class="feed-separator">\u25C7</div>')
 
   // Inject reply sections under their parent post cards. Each post card
   // has data-post-id="<id>". Replies are grouped in a scrollable mini-box
@@ -487,6 +492,47 @@ async function fetchNextFeedPages() {
     _feedSeenAdd(key)
     return true
   })
+
+  // Cross-page merge for album purchases + listings. Server merges within
+  // a single 50-item response, but a buyer's two on-chain purchaseBatch
+  // txs for the same album can land on different pages. Here we scan the
+  // items already rendered (_feedRenderedItems) for a matching batch key
+  // and fold the new page's items into it when we find a hit.
+  // Key: `${buyer}::${aliasName}::${albumPath.alias}::${albumPath.album}`
+  const _albumKey = (it) => {
+    const d = it?.data
+    if (!d?.albumPath || !d.aliasName) return null
+    const who = (d.buyer || d.artist || '').toLowerCase()
+    if (!who) return null
+    return `${who}::${d.aliasName}::${d.albumPath.alias}::${d.albumPath.album}`
+  }
+  const _foldAlbumBatch = (bucketType, incoming) => {
+    const key = _albumKey(incoming)
+    if (!key) return false
+    const existing = _feedRenderedItems.find(x => x.type === bucketType && _albumKey(x) === key)
+    if (!existing) return false
+    const seen = new Set((existing.data.items || []).map(x => String(x.mediaId)))
+    for (const sub of (incoming.data.items || [])) {
+      if (!seen.has(String(sub.mediaId))) existing.data.items.push(sub)
+    }
+    existing.data.count = existing.data.items.length
+    if (incoming.timestamp > existing.timestamp) existing.timestamp = incoming.timestamp
+    // Re-render the single card in place so the user sees the newly merged
+    // tracklist without reloading the whole feed.
+    try {
+      const card = document.querySelector(`[data-feed-key="${CSS.escape(feedItemKey(existing))}"]`)
+      if (card) {
+        const freshHtml = renderItem(existing, _feedDomainMap, addr => resolveDomain(_feedDomainMap, addr))
+        if (freshHtml) card.outerHTML = freshHtml
+      }
+    } catch {}
+    return true
+  }
+  items = items.filter(it => {
+    if (it.type === 'purchase-batch') return !_foldAlbumBatch('purchase-batch', it)
+    if (it.type === 'listed-batch') return !_foldAlbumBatch('listed-batch', it)
+    return true
+  })
   return items
 }
 
@@ -511,7 +557,12 @@ async function renderFeedBatch(items, postsEl) {
   postsEl.querySelector('#feed-sentinel')?.remove()
 
   const sep = '<div class="feed-separator">\u25C7</div>'
-  const html = items.map(i => renderItem(i, _feedDomainMap, resolve)).filter(Boolean).join(sep)
+  const html = items.map(i => {
+    const h = renderItem(i, _feedDomainMap, resolve)
+    if (!h) return ''
+    const key = feedItemKey(i)
+    return `<div data-feed-key="${escapeHtml(key)}">${h}</div>`
+  }).filter(Boolean).join(sep)
   // Add separator before new items if there's existing content
   const needsSep = postsEl.children.length > 0 && html
   postsEl.insertAdjacentHTML('beforeend', (needsSep ? sep : '') + html)
