@@ -531,6 +531,29 @@ async function fetchNextFeedPages() {
   items = items.filter(it => {
     if (it.type === 'purchase-batch') return !_foldAlbumBatch('purchase-batch', it)
     if (it.type === 'listed-batch') return !_foldAlbumBatch('listed-batch', it)
+    if (it.type === 'purchase') {
+      // Solo purchase of a track that belongs to an album — the server
+      // now attaches albumPath/aliasName when it resolves. Wrap the solo
+      // in a 1-item batch shape so _foldAlbumBatch can find the matching
+      // purchase-batch for the same (buyer, album) and merge this track
+      // in as a trailing item.
+      const d = it.data
+      if (!d?.albumPath || !d.aliasName) return true
+      const wrapped = {
+        type: 'purchase-batch',
+        timestamp: it.timestamp,
+        data: {
+          buyer: d.buyer, artist: d.artist,
+          aliasName: d.aliasName, albumPath: d.albumPath,
+          items: [{
+            mediaId: d.mediaId, title: d.title, price: d.price,
+            ipfsCid: d.ipfsCid, contentType: d.contentType, metadataCid: d.metadataCid,
+          }],
+          count: 1,
+        },
+      }
+      return !_foldAlbumBatch('purchase-batch', wrapped)
+    }
     return true
   })
   return items
