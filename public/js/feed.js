@@ -322,33 +322,30 @@ async function loadFeed(myAddr, blogAddr) {
     statusEl.textContent = ''
     renderCachedFeed(cached.feedItems, cached.domainMap, postsEl)
 
-    // Background freshness check — compare the latest activity timestamp
-    // of ANY type (purchase, listed, follow, post, …) against the newest
-    // item in the cache. Comparing only blog posts missed purchase churn:
-    // a server-side merge-logic change (batch grouping, display tweaks)
-    // wouldn't surface until the user wrote a new blog post. Now we hit
-    // the materialized /api/feed/timeline endpoint — single request, cheap
-    // — and diff against the cached head.
+    // Background freshness check — hash the top server items and compare
+    // against the top cached items. Any drift (new item, dropped item,
+    // changed batch count, timestamp shift) invalidates the cache.
+    // Comparing only the head missed server-side merge-logic changes that
+    // reshaped older items while the newest item stayed identical. Hashing
+    // the top 10 catches those too.
     ;(async () => {
       try {
+        const authors = (cached.authors || [myAddr]).slice(0, 100)
         const res = await fetch('/api/feed/timeline', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ addr: myAddr, limit: 1 }),
+          body: JSON.stringify({ authors, after: null }),
         })
         if (!res.ok) return
         const latest = await res.json()
-        const latestItem = (latest.items || [])[0]
-        const latestTs = latestItem?.timestamp
-        const cachedHead = cached.feedItems?.[0]
-        const cachedTs = cachedHead?.timestamp
-        // Trigger a refresh if the server has a newer item OR the newest
-        // cached item's shape has drifted (count/items length moved — the
-        // server merge might have combined things that were split before).
-        const stale = (latestTs && cachedTs && Number(latestTs) !== Number(cachedTs)) ||
-          (latestItem?.data?.count !== undefined && cachedHead?.data?.count !== undefined &&
-           Number(latestItem.data.count) !== Number(cachedHead.data.count))
-        if (stale) {
+        const stamp = (list) => (list || [])
+          .slice(0, 10)
+          .map(i => {
+            const d = i.data || {}
+            return `${i.type}:${i.timestamp}:${d.count ?? ''}:${(d.items || []).length}`
+          })
+          .join('|')
+        if (stamp(latest.items) !== stamp(cached.feedItems)) {
           invalidate('feed:')
           loadFeed(myAddr, blogAddr)
         }
@@ -409,7 +406,7 @@ async function loadFeed(myAddr, blogAddr) {
 
     // cache only the first page (max 50 items) to bound sessionStorage usage
     if (!hasMoreFeedPages()) {
-      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.short)
     }
 
     // set up IntersectionObserver for infinite scroll
@@ -565,7 +562,7 @@ function setupFeedObserver(postsEl, myAddr) {
       _feedObserver.disconnect()
       // cache only first page of feed items to bound sessionStorage usage
       const cacheKey = 'feed:' + myAddr.toLowerCase()
-      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+      setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.short)
       return
     }
 
@@ -590,7 +587,7 @@ function setupFeedObserver(postsEl, myAddr) {
       } else {
         _feedObserver.disconnect()
         const cacheKey = 'feed:' + myAddr.toLowerCase()
-        setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.medium)
+        setCache(cacheKey, { feedItems: _feedRenderedItems.slice(0, FEED_CACHE_MAX), domainMap: _feedDomainMap, authors: _feedAuthors }, TTL.short)
       }
     } catch (e) {
       console.warn('feed scroll error:', e)
