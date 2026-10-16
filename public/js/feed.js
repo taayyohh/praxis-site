@@ -325,7 +325,7 @@ async function loadFeed(myAddr, blogAddr) {
   // client-side shape change ships. Older entries become unreachable
   // because the key differs — no per-user clearing needed. Bump this
   // whenever the batch grouping, merge logic, or card schema changes.
-  const FEED_CACHE_VERSION = '2026-10-15-batch-merge'
+  const FEED_CACHE_VERSION = '2026-10-16-solo-album-fold'
   const cacheKey = `feed:${FEED_CACHE_VERSION}:${myAddr.toLowerCase()}`
   const cached = getCached(cacheKey)
   if (cached) {
