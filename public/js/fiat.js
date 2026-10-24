@@ -88,6 +88,52 @@ export function formatPriceSync(wei, prices) {
   return `${ethStr} ETH <span style="color:var(--dim)">(~${formatFiat(fiatAmount, currency)})</span>`
 }
 
+// Static token metadata — client-side fallback when the server didn't
+// enrich (e.g. a Ponder-backed query that skips enrichProjectToken).
+// Mirrors TOKEN_METADATA_STATIC in server.js. Lowercased addresses.
+const STATIC_TOKEN_META = {
+  '0x03569cc076654f82679c4ba2124d64774781b01d': { symbol: 'BOLD', decimals: 18 },
+  '0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3': { symbol: 'USDS', decimals: 18 },
+  '0x0b2c639c533813f4aa9d7837caf62653d097ff85': { symbol: 'USDC', decimals: 6 },
+}
+
+export function getTokenMeta(addr) {
+  return STATIC_TOKEN_META[(addr || '').toLowerCase()] || null
+}
+
+// Render a project-denominated amount — ETH uses formatPriceSync so the
+// existing ETH flow is byte-identical; ERC20-funded projects (BOLD, USDS,
+// etc.) use the token's symbol + decimals and emit a data-token-amount
+// span so the global enhancer appends the fiat approximation
+// asynchronously via /api/token-price. `project` ideally exposes
+// fundingTokenSymbol + fundingTokenDecimals (server attaches these via
+// enrichProjectToken for /api/project and /api/feed/timeline). If
+// missing (direct Ponder query), we fall back to STATIC_TOKEN_META by
+// token address so the common tokens still render correctly.
+export function formatProjectAmount(amount, project, prices) {
+  const addr = (project?.fundingToken || '0x0000000000000000000000000000000000000000').toLowerCase()
+  if (addr === '0x0000000000000000000000000000000000000000') {
+    return formatPriceSync(amount, prices)
+  }
+  const staticMeta = STATIC_TOKEN_META[addr]
+  const sym = project?.fundingTokenSymbol || staticMeta?.symbol || 'TOKEN'
+  const decimals = Number(project?.fundingTokenDecimals || staticMeta?.decimals || 18)
+  const amt = typeof amount === 'bigint' ? amount : BigInt(String(amount || 0))
+  const num = Number(amt) / (10 ** decimals)
+  // Precision ladder mirrors formatEthAmount: ≥0.01 gets up to 4 decimals,
+  // smaller amounts show enough to never collapse to "0".
+  let amtStr
+  if (num === 0) amtStr = '0'
+  else if (num >= 0.01) amtStr = num.toFixed(4).replace(/\.?0+$/, '')
+  else {
+    const str = num.toFixed(decimals).replace(/0+$/, '')
+    const match = str.match(/^0\.(0*)([1-9])/)
+    amtStr = match ? num.toFixed(match[1].length + 4).replace(/\.?0+$/, '') : str
+  }
+  // enhanceTokenLabels will append `(~$X)` once /api/token-price returns.
+  return `<span data-token-amount="${amt.toString()}" data-token-address="${addr}" data-token-decimals="${decimals}">${amtStr} ${sym}</span>`
+}
+
 // Fiat-primary format: shows fiat first, ETH as dim secondary
 // e.g. "~$7.97 (0.0035 ETH)" instead of "0.0035 ETH (~$7.97)"
 export function formatPriceFiatPrimary(wei, prices) {

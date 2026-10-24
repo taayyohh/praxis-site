@@ -5,7 +5,7 @@ import { query } from './ponder.js'
 import { escapeHtml, resolveAddresses, formatTxError, getPublicClient, formatEthAmount, registerPage, isBlocked, requireUser, getWalletProvider, parseEventMetadata, renderMarkdown, unpackLocation, slugify, resolveDomain, ensureFundsForPurchase, getProfilePic, getAuthToken, uploadToIpfs, resizeImageFile } from './utils.js'
 import { getTicketListingsForProject, listTicket, purchaseTicket, cancelTicketListing } from './tickets.js'
 import { t } from './i18n.js'
-import { getEthPrices, formatPriceSync } from './fiat.js'
+import { getEthPrices, formatPriceSync, formatProjectAmount } from './fiat.js'
 
 registerPage('project-detail-page', initProjectDetail)
 
@@ -250,8 +250,12 @@ async function initProjectDetail() {
 
     const [publicClient, ethPrices] = await Promise.all([getPublicClient(), getEthPrices().catch(() => null)])
 
-    const goalEth = formatPriceSync(p.fundingGoal, ethPrices)
-    const fundedEth = formatPriceSync(p.totalFunded, ethPrices)
+    // Goal + total funded are denominated in the project's fundingToken
+    // (ETH for the native path, any ERC20 for the token path). The helper
+    // keeps ETH formatting identical and switches to BOLD/USDS/etc. when
+    // the project set a non-zero fundingToken on propose.
+    const goalEth = formatProjectAmount(p.fundingGoal, p, ethPrices)
+    const fundedEth = formatProjectAmount(p.totalFunded, p, ethPrices)
     const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
     const typeName = p.projectType || 'other'
     const isEvent = typeName === 'show' || typeName === 'theater' || typeName === 'workshop'
@@ -308,7 +312,7 @@ async function initProjectDetail() {
 
     // ── TIERS ──
     const tiersHtml = (data.tiers?.items || []).map(tier => {
-      const priceEth = formatPriceSync(tier.price, ethPrices)
+      const priceEth = formatProjectAmount(tier.price, p, ethPrices)
       const isFreeRsvp = Number(tier.price) <= 1000
       const remaining = Number(tier.maxSupply) - Number(tier.sold)
       const badgeText = isEvent
@@ -353,7 +357,7 @@ async function initProjectDetail() {
     // ── FUNDERS ──
     const fundersHtml = data.fundings.items.slice(0, 20).map(f => {
       const domain = resolve(f.funder)
-      const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatPriceSync(f.amount, ethPrices)
+      const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatProjectAmount(f.amount, p, ethPrices)
       const dateStr = new Date(Number(f.timestamp) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       return `<div class="pd-row">
         <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(f.funder, 20)}<a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${esc(domain)}</a></span>
@@ -391,7 +395,7 @@ async function initProjectDetail() {
 
       const releasedCount = milestones.filter(m => m.status === 2).length
       const progressPct = msCount > 0 ? Math.round(releasedCount * 100 / msCount) : 0
-      const releasedEth = formatPriceSync(releasedWei, ethPrices)
+      const releasedEth = formatProjectAmount(releasedWei, p, ethPrices)
 
       milestonesHtml = `<div class="pd-glass">
         <div class="pd-section-title"><i class="ph ph-flag-checkered" style="margin-right:0.3ch"></i> milestones — ${releasedCount}/${msCount} released · ${releasedEth} distributed</div>
@@ -1065,7 +1069,7 @@ async function initProjectDetail() {
     document.getElementById('show-all-funders')?.addEventListener('click', function () {
       const allHtml = data.fundings.items.map(f => {
         const domain = resolve(f.funder)
-        const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatPriceSync(f.amount, ethPrices)
+        const amtLabel = formatEthAmount(f.amount) === '0' ? 'free' : formatProjectAmount(f.amount, p, ethPrices)
         const dateStr = new Date(Number(f.timestamp) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         return `<div class="pd-row">
           <span style="display:flex;align-items:center;gap:0.5ch">${profilePicHtml(f.funder, 20)}<a href="/network?artist=${f.funder.toLowerCase()}" style="color:var(--fg)">${esc(domain)}</a></span>

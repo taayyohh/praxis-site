@@ -6,7 +6,7 @@ import { escapeHtml, ensureWallet, resolveAddresses, formatTxError, getPublicCli
 import { t } from './i18n.js'
 import { getCached, setCache, TTL } from './cache.js'
 import { F } from './fragments.js'
-import { getEthPrices, formatPriceSync, getUserCurrency } from './fiat.js'
+import { getEthPrices, formatPriceSync, formatProjectAmount, getUserCurrency } from './fiat.js'
 
 const PROJECT_TYPE_PRESETS = ['show', 'film', 'theater', 'recording', 'workshop', 'installation']
 const STATUS_LABELS = [
@@ -113,6 +113,11 @@ async function init() {
         funders: funders[p.id] || [],
         tiers: tierData[p.id] || [],
         locationPacked: BigInt(p.location || 0),
+        // Pass through so projectCard can render in the project's own
+        // funding token (BOLD/USDS/etc). formatProjectAmount falls back
+        // to STATIC_TOKEN_META by address when symbol/decimals aren't
+        // enriched here (direct Ponder query path).
+        fundingToken: p.fundingToken || '0x0000000000000000000000000000000000000000',
       }))
     }
 
@@ -518,8 +523,11 @@ async function renderAll(projects, hubAddress, publicClient, resolve, domainToWa
 
 function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = null) {
   const pct = p.goal > 0n ? Number(p.funded * 10000n / p.goal) / 100 : 0
-  const goalEth = formatEther(p.goal)
-  const fundedEth = formatEther(p.funded)
+  // formatProjectAmount honours p.fundingToken — ETH flows unchanged;
+  // ERC20 projects (BOLD, USDS, …) render with the token's own symbol
+  // + decimals and auto-attach a fiat approximation.
+  const goalEth = formatProjectAmount(p.goal, p, ethPrices)
+  const fundedEth = formatProjectAmount(p.funded, p, ethPrices)
   const deadlineDate = new Date(p.deadline * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const isProposer = wallet && p.proposer.toLowerCase() === wallet
   const daysLeft = Math.max(0, Math.ceil((p.deadline * 1000 - Date.now()) / 86400000))
@@ -546,7 +554,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
   if (p.funders.length > 0) {
     const funderList = p.funders.map(f => {
       const domain = resolve(f.funder)
-      return `<span class="project-funder">${escapeHtml(domain)} <span style="color:#444">${formatPriceSync(f.amount, ethPrices)}</span></span>`
+      return `<span class="project-funder">${escapeHtml(domain)} <span style="color:#444">${formatProjectAmount(f.amount, p, ethPrices)}</span></span>`
     }).join('')
     fundersHtml = `<div class="project-funders"><span style="color:#666;font-size:0.8em">${t('projects.producer')}s:</span> ${funderList}</div>`
   }
@@ -558,7 +566,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
   let tiersHtml = ''
   if (p.status === 0 && p.tiers.length > 0) {
     tiersHtml = `<div class="project-tiers">${p.tiers.map(tier => {
-      const priceEth = formatPriceSync(tier.price, ethPrices)
+      const priceEth = formatProjectAmount(tier.price, p, ethPrices)
       const remaining = tier.maxSupply > 0 ? t('projects.left', { n: tier.maxSupply - tier.sold }) : t('projects.unlimited')
       const soldOut = tier.maxSupply > 0 && tier.sold >= tier.maxSupply
       const badge = tier.transferable ? `<span class="tier-badge tier-ticket">${t('projects.ticket')}</span>` : `<span class="tier-badge tier-producer">${t('projects.producer')}</span>`
@@ -620,7 +628,7 @@ function projectCard(p, wallet, resolve, confirmedIds = new Set(), ethPrices = n
 
       <div class="project-funding">
         <div class="project-funding-text">
-          <span data-eth-wei="${p.goal || '0'}">${fundedEth} / ${goalEth} ETH</span>
+          <span>${fundedEth} / ${goalEth}</span>
           <span style="color:#666">${pct.toFixed(0)}%</span>
         </div>
         ${progressBar}

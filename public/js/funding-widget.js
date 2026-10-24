@@ -7,7 +7,7 @@
 import { createWalletClient, custom, optimism } from './vendor.js'
 import { PRAXIS_ABI } from './contracts.js'
 import { getPublicClient, requireUser, getWalletProvider, formatTxError, ensureFundsForPurchase, escapeHtml, registerPage } from './utils.js'
-import { getEthPrices, formatPriceSync } from './fiat.js'
+import { getEthPrices, formatPriceSync, formatProjectAmount } from './fiat.js'
 
 const PROPOSED = 0, FUNDED = 1, CONFIRMED = 2, COMPLETING = 3, COMPLETED = 4, CANCELLED = 5
 const STATUS_LABELS = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
@@ -78,8 +78,8 @@ function _renderState(anchor, p, tiers, fundings, ethPrices) {
     if (el) el.innerHTML = html
   }
 
-  const goalEth = formatPriceSync(p.fundingGoal, ethPrices)
-  const raisedEth = formatPriceSync(p.totalFunded, ethPrices)
+  const goalEth = formatProjectAmount(p.fundingGoal, p, ethPrices)
+  const raisedEth = formatProjectAmount(p.totalFunded, p, ethPrices)
   const pct = Number(p.fundingGoal) > 0
     ? Math.min(100, Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)))
     : 0
@@ -95,8 +95,11 @@ function _renderState(anchor, p, tiers, fundings, ethPrices) {
 
   setText('title', p.title || '')
   setText('blurb', p.description || '')
-  setText('raised', raisedEth)
-  setText('goal', goalEth)
+  // raisedEth + goalEth may embed a <span data-token-amount> for ERC20
+  // projects so the fiat enhancer can light them up — use setHtml so the
+  // span survives.
+  setHtml('raised', raisedEth)
+  setHtml('goal', goalEth)
   setText('pct', pct + '%')
 
   const bar = anchor.querySelector('[data-hydrate="bar"]')
@@ -118,7 +121,7 @@ function _renderState(anchor, p, tiers, fundings, ethPrices) {
   const availTiers = tiers.filter(t => Number(t.sold || 0) < Number(t.supply || 0))
   if (availTiers.length && p.status <= FUNDED) {
     setHtml('tiers', availTiers.map(t => {
-      const price = formatPriceSync(String(t.price || '0'), ethPrices)
+      const price = formatProjectAmount(String(t.price || '0'), p, ethPrices)
       const sold = Number(t.sold || 0), supply = Number(t.supply || 0)
       const remaining = Math.max(0, supply - sold)
       return `<button type="button" class="funding-tier-btn" data-tier-id="${esc(String(t.id))}" data-price="${esc(String(t.price || '0'))}" data-tier-name="${esc(t.name || 'tier')}">

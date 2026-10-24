@@ -13,9 +13,9 @@ export const F = {
   supporter: 'id handle registeredAt followerCount followingCount',
 
   // project (from project table)
-  projectSummary: 'id proposer title projectType status fundingGoal totalFunded deadline createdAt location',
-  projectDetail: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt location disputeDeadline',
-  projectFull: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt revenueShareBps totalRevenue location disputeDeadline',
+  projectSummary: 'id proposer title projectType status fundingGoal totalFunded deadline createdAt location fundingToken',
+  projectDetail: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt location disputeDeadline fundingToken',
+  projectFull: 'id proposer title description projectType metadataCid status fundingGoal totalFunded deadline createdAt completedAt revenueShareBps totalRevenue location disputeDeadline fundingToken',
 
   // collaborator
   collaborator: 'projectId artist split',
