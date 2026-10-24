@@ -698,7 +698,10 @@ async function initProjectDetail() {
                 <p style="color:var(--muted);font-size:0.9em;margin:0">
                   Give this project its own domain — funding widget as hero, whatever modules you want below.
                 </p>
-                <button class="buy-btn pd-project-attach">attach a domain</button>
+                <div style="display:flex;gap:0.5ch">
+                  <button class="buy-btn pd-project-poster" style="font-size:0.85em">${posterCid ? 'change poster' : 'add poster'}</button>
+                  <button class="buy-btn pd-project-attach">attach a domain</button>
+                </div>
               </div>`}
         </div>`
       })() : ''}
