@@ -2322,6 +2322,30 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
       // the direct writeContract path.
       const _isOrgSite = !!document.body?.dataset?.orgId
       const _siteWallet = document.body?.dataset?.owner || ''
+      // Praxis.proposeProject takes a single ProposeProjectArgs tuple
+      // (the component order must match PRAXIS_ABI in contracts.js — viem
+      // encodes tuples positionally, so a field-name typo would silently
+      // ABI-encode the wrong slot). The empty [] in slot 13 is
+      // tierMetadataCids, intentionally unset for the baseline propose.
+      const proposeArgs = {
+        title, description: desc, projectType: typeStr, metadataCid,
+        collaborators: collabAddresses,
+        splits: splitValues.map(s => BigInt(s)),
+        fundingGoal: goalWei, deadline: BigInt(deadline),
+        tierNames, tierPrices,
+        tierMaxSupplies: tierSupplies,
+        tierTransferable,
+        tierMetadataCids: [],
+        tierEventDates, tierLocations,
+        revenueSharePercent: revShareBps,
+        location: locationPacked,
+        disputeWindowDays,
+        autoComplete,
+        confirmationMode,
+        milestoneDescriptions: milestoneDescs,
+        milestoneBps,
+        fundingToken,
+      }
       let hash
       if (_isOrgSite && _siteWallet && /^0x[0-9a-fA-F]{40}$/.test(_siteWallet)) {
         const { isSafeAddress, isSafeSigner, execSafeTx } = await import('./safe-org.js')
@@ -2332,20 +2356,20 @@ function _renderProposeInline(container, hubAddress, publicClient, domainToWalle
           ps.textContent = 'confirming as ' + (document.body.dataset.name || 'the org') + '…'
           const callData = encodeFunctionData({
             abi: HUB_ABI, functionName: 'proposeProject',
-            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
+            args: [proposeArgs],
           })
           hash = await execSafeTx({ safeAddress: _siteWallet, target: hubAddress, callData })
         } else {
           hash = await wc.writeContract({
             address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-            args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
+            args: [proposeArgs],
             account: proposeAcct,
           })
         }
       } else {
         hash = await wc.writeContract({
           address: hubAddress, abi: HUB_ABI, functionName: 'proposeProject',
-          args: [title, desc, typeStr, metadataCid, collabAddresses, splitValues.map(s => BigInt(s)), goalWei, BigInt(deadline), tierNames, tierPrices, tierSupplies, tierTransferable, [], tierEventDates, tierLocations, revShareBps, locationPacked, disputeWindowDays, autoComplete, confirmationMode, milestoneDescs, milestoneBps, fundingToken],
+          args: [proposeArgs],
           account: proposeAcct,
         })
       }
