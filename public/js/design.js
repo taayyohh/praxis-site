@@ -61,9 +61,74 @@ function renderCardSafely(label, fn) {
   </div>`
 }
 
+// Sandbox-mode opener dispatch. Each case opens the SAME modal the
+// production app uses — pay.js, media.js, projects.js — but their
+// internal RPC calls route through the fetch patch in sandbox.js so
+// anything they'd send to Optimism mainnet now goes to the anvil fork.
+async function openSandbox(kind, sandbox) {
+  if (!sandbox?.isSandbox?.()) {
+    console.warn('[sandbox] opener used without ?sandbox=1 — refusing')
+    return
+  }
+  const seed = sandbox.getSandboxSeed?.()
+  if (!seed) {
+    alert('sandbox not primed — run `node scripts/sandbox-seed.js` against a live anvil fork first.')
+    return
+  }
+  const { address: burner } = await sandbox.getSandboxWallet()
+  if (kind === 'sandbox-fund-eth') {
+    const mod = await import('./pay.js')
+    await mod.showFundingSheet(burner, BigInt(seed.showcaseProjectId || 1))
+  } else if (kind === 'sandbox-fund-erc20') {
+    const mod = await import('./pay.js')
+    // Same sheet — the ERC20 path lives behind the token-select inside.
+    await mod.showFundingSheet(burner, BigInt(seed.showcaseProjectId || 1))
+  } else if (kind === 'sandbox-buy-album') {
+    // The album buy UX lives on the artist's album page. Open it in a
+    // new tab so the catalog stays available for the next flow.
+    window.open(`/art?media=${encodeURIComponent(seed.showcaseMediaId || '1')}`, '_blank', 'noopener')
+  } else if (kind === 'sandbox-collect-single') {
+    window.open(`/art?media=${encodeURIComponent(seed.showcaseMediaId || '1')}`, '_blank', 'noopener')
+  } else if (kind === 'sandbox-propose') {
+    window.location.href = '/propose'
+  }
+}
+
+// Render a small status pane under the sandbox buttons: anvil url,
+// seed project / media ids, burner address. Pure read-only — useful
+// to confirm the operator primed the fork correctly before clicking.
+async function renderSandboxStatus(sandbox) {
+  const pane = document.getElementById('design-sandbox-status')
+  if (!pane) return
+  const seed = sandbox.getSandboxSeed?.()
+  if (!seed) {
+    pane.textContent = 'no seed found — run `node scripts/sandbox-seed.js` against your local anvil, then reload.'
+    return
+  }
+  let burner = '(minting…)'
+  try { burner = (await sandbox.getSandboxWallet()).address } catch (e) { burner = `(mint failed: ${e?.message || e})` }
+  pane.textContent = [
+    `anvil:   ${seed.anvilUrl || 'http://localhost:8545'}`,
+    `chain:   ${seed.chainId || 10}  fork block: ${seed.forkBlock || '(current)'}`,
+    `project: ${seed.showcaseProjectId}`,
+    `media:   ${seed.showcaseMediaId}`,
+    `usdc:    ${seed.usdcAddr}`,
+    `burner:  ${burner}`,
+  ].join('\n')
+}
+
 async function initDesign() {
   const el = document.getElementById('design-content')
   if (!el) return
+
+  // Sandbox mode (?sandbox=1) — flips a red top bar, patches fetch so
+  // every /api/rpc/* call hits a local anvil fork, mints a per-session
+  // burner wallet. Everything else below is unchanged.
+  let sandbox = null
+  try { sandbox = await import('./sandbox.js') } catch (e) { console.warn('sandbox import:', e) }
+  if (sandbox?.isSandbox?.()) {
+    try { await sandbox.initSandbox() } catch (e) { console.warn('sandbox init:', e) }
+  }
 
   // Import the real render surface — same functions the /network,
   // /projects, /supporter-home, and other feed-driven views call.
@@ -340,6 +405,24 @@ async function initDesign() {
           <button class="buy-btn" data-open="funding">funding sheet</button>
           <button class="buy-btn" data-open="onramp">onramp — buy with card</button>
           <button class="buy-btn" data-open="offramp">offramp — cash out (link)</button>
+        </div>
+
+        <!-- sandbox flows — visible only when ?sandbox=1 is set on the url -->
+        <div id="design-sandbox-section" style="display:none;margin-top:1.5em;padding-top:1em;border-top:1px dashed var(--border)">
+          <h3 style="margin:0 0 0.3em">sandbox flows</h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em">
+            click any flow — it opens the production modal, pointed at the local anvil fork.
+            no real value changes hands. a burner wallet is minted per session and funded
+            automatically. seed shown below is from <code>/api/sandbox-seed</code>.
+          </p>
+          <div class="design-btn-row">
+            <button class="buy-btn" data-open="sandbox-fund-eth">fund project (eth)</button>
+            <button class="buy-btn" data-open="sandbox-fund-erc20">fund project (erc20)</button>
+            <button class="buy-btn" data-open="sandbox-buy-album">buy album</button>
+            <button class="buy-btn" data-open="sandbox-collect-single">collect single</button>
+            <button class="buy-btn" data-open="sandbox-propose">propose project</button>
+          </div>
+          <pre id="design-sandbox-status" style="font-size:0.75em;color:var(--muted);background:var(--bg);padding:0.6em;border-radius:4px;margin:0.75em 0 0;white-space:pre-wrap;word-break:break-all">loading sandbox state…</pre>
         </div>
 
         <div class="design-block">
@@ -1049,9 +1132,7 @@ async function initDesign() {
   } catch {}
 
   // Modal openers — invoke the SAME functions production uses.
-  document.getElementById('design-modal-openers')?.addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('button[data-open]')
-    if (!btn) return
+  const dispatchOpener = async (btn) => {
     const kind = btn.dataset.open
     const addr = window.getWalletAddress?.() || '0x0000000000000000000000000000000000000dEaD'
     try {
@@ -1068,9 +1149,24 @@ async function initDesign() {
         const mod = await import('./ramp.js'); mod.showOnrampModal?.(addr)
       } else if (kind === 'offramp') {
         const mod = await import('./ramp.js'); mod.showOfframpModal?.(addr)
+      } else if (kind?.startsWith('sandbox-')) {
+        await openSandbox(kind, sandbox)
       }
     } catch (e) { console.warn('design catalog opener failed:', kind, e) }
+  }
+  document.getElementById('design-modal-openers')?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-open]')
+    if (btn) dispatchOpener(btn)
   })
+
+  // Reveal the sandbox section + render its status pane when ?sandbox=1
+  // is set. The section is hidden by default so the ordinary /design
+  // view is unchanged.
+  if (sandbox?.isSandbox?.()) {
+    const section = document.getElementById('design-sandbox-section')
+    if (section) section.style.display = ''
+    renderSandboxStatus(sandbox).catch(() => {})
+  }
 
   const openerCount = document.querySelectorAll('#design-modal-openers button[data-open]').length
   const blockCount = document.querySelectorAll('.design-block').length
