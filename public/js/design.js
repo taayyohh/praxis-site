@@ -91,6 +91,12 @@ async function openSandbox(kind, sandbox) {
     window.open(`/art?media=${encodeURIComponent(seed.showcaseMediaId || '1')}`, '_blank', 'noopener')
   } else if (kind === 'sandbox-propose') {
     window.location.href = '/propose'
+  } else if (kind === 'sandbox-compose-blog') {
+    // Opens /write — the compose page. On an artist site the publish
+    // writes directly to BlogRegistry as the owner; on an org site the
+    // same publish routes through Safe.execTransaction so the Safe is
+    // recorded as the author.
+    window.location.href = '/write'
   }
 }
 
@@ -421,6 +427,7 @@ async function initDesign() {
             <button class="buy-btn" data-open="sandbox-buy-album">buy album</button>
             <button class="buy-btn" data-open="sandbox-collect-single">collect single</button>
             <button class="buy-btn" data-open="sandbox-propose">propose project</button>
+            <button class="buy-btn" data-open="sandbox-compose-blog">compose blog post</button>
           </div>
           <pre id="design-sandbox-status" style="font-size:0.75em;color:var(--muted);background:var(--bg);padding:0.6em;border-radius:4px;margin:0.75em 0 0;white-space:pre-wrap;word-break:break-all">loading sandbox state…</pre>
         </div>

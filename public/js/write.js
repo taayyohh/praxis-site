@@ -265,7 +265,12 @@ async function submitPost() {
         parentLookup = 'error'
       }
       if (parentLookup === 'ok') {
-        const self = String(window.getWalletAddress() || '').toLowerCase()
+        // On an org site the on-chain author is the Safe (document.body
+        // dataset.owner), not the human signing. Compare against the site
+        // owner first; fall back to the connected wallet on artist sites.
+        const siteOwner = String(document.body?.dataset?.owner || '').toLowerCase()
+        const connected = String(window.getWalletAddress() || '').toLowerCase()
+        const self = siteOwner || connected
         if (parentAuthor && parentAuthor !== self) {
           statusEl.textContent = "you can only amend your own posts"
           return
@@ -288,13 +293,39 @@ async function submitPost() {
       chain: optimism,
       transport: custom(getWalletProvider()),
     })
-    const hash = await walletClient.writeContract({
-      address: blogAddr,
-      abi: BLOG_ABI,
-      functionName: useRef ? 'postWithRef' : 'post',
-      args: fnArgs,
-      account: currentAccount,
-    })
+
+    // Org sites post from the Safe (so the author recorded on-chain is the
+    // Safe, not the human signing). Mirrors the /propose flow in projects.js.
+    const _isOrgSite = !!document.body?.dataset?.orgId
+    const _siteWallet = document.body?.dataset?.owner || ''
+    let hash
+    if (_isOrgSite && _siteWallet && /^0x[0-9a-fA-F]{40}$/.test(_siteWallet)) {
+      const { isSafeAddress, isSafeSigner, execSafeTx } = await import('./safe-org.js')
+      const { encodeFunctionData } = await import('./vendor.js')
+      const isSafe = await isSafeAddress(_siteWallet)
+      const amSigner = isSafe && await isSafeSigner(_siteWallet, window.getWalletAddress())
+      if (isSafe && amSigner) {
+        statusEl.textContent = 'confirming as ' + (document.body.dataset.name || 'the org') + '…'
+        const callData = encodeFunctionData({
+          abi: BLOG_ABI,
+          functionName: useRef ? 'postWithRef' : 'post',
+          args: fnArgs,
+        })
+        hash = await execSafeTx({ safeAddress: _siteWallet, target: blogAddr, callData })
+      } else {
+        hash = await walletClient.writeContract({
+          address: blogAddr, abi: BLOG_ABI,
+          functionName: useRef ? 'postWithRef' : 'post',
+          args: fnArgs, account: currentAccount,
+        })
+      }
+    } else {
+      hash = await walletClient.writeContract({
+        address: blogAddr, abi: BLOG_ABI,
+        functionName: useRef ? 'postWithRef' : 'post',
+        args: fnArgs, account: currentAccount,
+      })
+    }
 
     statusEl.textContent = `tx: ${hash.slice(0, 14)}...`
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
