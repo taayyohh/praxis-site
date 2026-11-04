@@ -211,7 +211,7 @@ function renderAction(action, item, context) {
     case 'buy': {
       const pw = parsePrice(price)
       if (pw <= 0n) return ''
-      return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(item.mediaId || item.id))}" data-price="${esc(price)}" data-title="${esc(title)}">buy <span data-eth-wei="${esc(price)}" data-fiat-primary="true"></span></button>`
+      return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(item.mediaId || item.id))}" data-price="${esc(price)}" data-title="${esc(title)}">buy</button>`
     }
     case 'buy-album': {
       const buyables = (item.items || []).filter(it => parsePrice(it.price) > 0n)
@@ -219,7 +219,7 @@ function renderAction(action, item, context) {
       let total = 0n
       for (const it of buyables) total += parsePrice(it.price)
       const label = item.headline ? `${item.headline} (${buyables.length} items)` : `${buyables.length} items`
-      return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(buyables[0].mediaId))}" data-price="${esc(String(total))}" data-ids="${esc(buyables.map(it => it.mediaId).join(','))}" data-prices="${esc(buyables.map(it => it.price).join(','))}" data-title="${esc(label)}">buy album <span data-eth-wei="${esc(String(total))}" data-fiat-primary="true"></span></button>`
+      return `<button class="feed-buy-btn feed-card-btn green" data-media-id="${esc(String(buyables[0].mediaId))}" data-price="${esc(String(total))}" data-ids="${esc(buyables.map(it => it.mediaId).join(','))}" data-prices="${esc(buyables.map(it => it.price).join(','))}" data-title="${esc(label)}">buy album</button>`
     }
     case 'buy-ticket': {
       const pw = parsePrice(price)
@@ -297,7 +297,12 @@ function inferActions(item, category, state, context) {
 // ─── display name helper ───────────────────────────────────────────
 function displayName(addr, context, explicitName) {
   const resolve = context.resolve || (a => a)
-  return explicitName || getArtistName(addr) || resolve(addr)
+  const resolved = explicitName || getArtistName(addr) || resolve(addr)
+  // Never surface a raw 0x… address to user-facing text. If resolution
+  // failed, return empty so callers can suppress the author line
+  // instead of leaking crypto chrome.
+  if (typeof resolved === 'string' && /^0x[a-f0-9]{40}$/i.test(resolved.trim())) return ''
+  return resolved
 }
 
 // ─── header slot ───────────────────────────────────────────────────

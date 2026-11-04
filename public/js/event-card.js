@@ -138,14 +138,18 @@ const DESCRIPTORS = {
     href: PROJECT_HREF,
     actor: (d) => d.proposer,
     poster: (d) => d.posterCid,
-    phrase: (d, r) => {
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.proposer, r) },
+      { kind: 'label', text: 'confirmed' },
+      { kind: 'strong', text: d.title || 'a project' },
+    ],
+    // Collaborator count lives on its own body row, not inline with
+    // the attribution phrase — see event-card.js render path for the
+    // `body` slot. Keeping phrase single-noun keeps the eye on the
+    // actor + verb + object.
+    body: (d) => {
       const collab = d.collaboratorCount ? Number(d.collaboratorCount) : 0
-      return [
-        { kind: 'name', text: resolveName(d.proposer, r) },
-        { kind: 'label', text: 'confirmed' },
-        { kind: 'strong', text: d.title || 'a project' },
-        collab ? { kind: 'label', text: `· ${collab} collaborator${collab !== 1 ? 's' : ''}` } : null,
-      ].filter(Boolean)
+      return collab ? `<p class="event-card-body">${collab} collaborator${collab !== 1 ? 's' : ''}</p>` : ''
     },
   },
   'project-completing': {
