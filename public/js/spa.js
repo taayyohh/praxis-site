@@ -12,6 +12,11 @@ import('./dns-banner.js').catch(() => {})
 // feed.js. startBookmarkSync() is idempotent.
 import('./bookmarks-sync.js').then(m => m.startBookmarkSync()).catch(() => {})
 
+// Auto-upgrade every .praxis-modal-overlay with dialog semantics
+// (role, aria-labelledby, focus trap, Esc dismiss, focus restore).
+// Zero call-site churn — the module wires itself via MutationObserver.
+import('./modal-a11y.js').catch(() => {})
+
 const EXCLUDE_PATHS = ['/api/']
 
 // --- Dynamic module loading ---
