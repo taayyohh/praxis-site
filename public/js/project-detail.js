@@ -744,6 +744,17 @@ async function initProjectDetail() {
 
     // ── WIRE UP ACTIONS ──
 
+    // Explicit gas overrides for calls whose eth_estimateGas under-provisions
+    // the real on-chain path. claimCompletionInvites routes through
+    // Praxis.authGrantInvites → INVITES.grantInvites; the outer call wraps the
+    // inner one in try/catch (sponsored-invite UX), so an OOG on the inner
+    // SSTORE ships a status=1 receipt with zero invites granted (silent
+    // success / no grant). We over-provision to defeat the trap.
+    // See tests/fork-integration.test.js completion-invites section + commit
+    // 8ef6eb75. Also guarded by the contract-interactions.test.js trip-wire.
+    const GAS_OVERRIDES = {
+      claimCompletionInvites: 600_000n,
+    }
     async function execAction(fn, args, value, meta, { statusId = 'action-status', btnSelector = '.pd-glass .buy-btn' } = {}) {
       const statusEl = document.getElementById(statusId)
       const addr = window.getWalletAddress?.()
@@ -756,10 +767,12 @@ async function initProjectDetail() {
         const currentAccount = await window.authorizedSigner?.(addr)
           const walletClient = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
         const target = EXTENSIONS_FNS.has(fn) && extensionsAddr ? extensionsAddr : praxisAddr
+        const gasOverride = GAS_OVERRIDES[fn]
         const action = walletClient.writeContract({
           address: target, abi: PRAXIS_ABI,
           functionName: fn, args, account: currentAccount,
           ...(value ? { value } : {}),
+          ...(gasOverride ? { gas: gasOverride } : {}),
         })
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('transaction timed out')), 60000))
         const hash = await Promise.race([action, timeout])

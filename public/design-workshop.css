@@ -18,6 +18,12 @@
       · Text sized in rem/em so Dynamic Type works at 200% zoom.
     ────────────────────────────────────────────────────────────── */
 
+/*  Fonts — modernist-editorial pairing scoped to the catalog.
+    Zodiak is an editorial variable serif for display + titles;
+    Satoshi is a modernist variable sans for body, UI, numbers.
+    Hosted on Fontshare (Indian Type Foundry) — free, no account. */
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=zodiak@300,400,700&display=swap');
+
 /* ─────────── tokens — dark first (file only loads on /design) ────────── */
 :root {
   /*  surfaces — three steps so cards and sheets can stack without
@@ -50,27 +56,34 @@
   --dw-success: #30d158;        /* earned / confirmed / positive */
   --dw-success-soft: color-mix(in srgb, var(--dw-success) 16%, transparent);
 
-  /*  type stack — matches the existing praxis system font. */
-  --dw-font:    -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-                'Helvetica Neue', Arial, sans-serif;
-  --dw-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /*  type stack — modernist-editorial pairing. Zodiak is the
+      editorial variable serif for display / titles / prices;
+      Satoshi is the modernist variable sans for body + UI +
+      numbers (with tabular-nums). Both fallback through system
+      fonts so the catalog stays legible if Fontshare is cold. */
+  --dw-font:       'Satoshi', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+                   'Helvetica Neue', Arial, sans-serif;
+  --dw-font-serif: 'Zodiak', 'New York', 'Times New Roman', Georgia, serif;
+  --dw-font-mono:  ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /*  text styles — ported from Apple SF hierarchy. rem-based so
-      Dynamic Type scales the whole catalog proportionally. */
-  --dw-type-display:     700 2.75rem/1.1 var(--dw-font);
-  --dw-type-title-1:     600 2rem/1.15 var(--dw-font);
-  --dw-type-title-2:     600 1.5rem/1.2 var(--dw-font);
-  --dw-type-headline:    600 1.125rem/1.35 var(--dw-font);
-  --dw-type-body:        400 1rem/1.5 var(--dw-font);
+  /*  text styles — editorial display (Zodiak), modernist body
+      (Satoshi). rem-based so Dynamic Type scales the whole
+      catalog proportionally. Body lines are generous (1.5) for
+      long reads, titles tight (1.2) for display rhythm. */
+  --dw-type-display:     700 2.25rem/1.2  var(--dw-font-serif);
+  --dw-type-title-1:     700 1.75rem/1.22 var(--dw-font-serif);
+  --dw-type-title-2:     400 1.375rem/1.25 var(--dw-font-serif);
+  --dw-type-headline:    700 1.125rem/1.35 var(--dw-font);
+  --dw-type-body:        400 1rem/1.5     var(--dw-font);
   --dw-type-callout:     500 0.9375rem/1.45 var(--dw-font);
-  --dw-type-subheadline: 400 0.875rem/1.4 var(--dw-font);
+  --dw-type-subheadline: 400 0.9375rem/1.4 var(--dw-font);
   --dw-type-footnote:    400 0.8125rem/1.4 var(--dw-font);
-  --dw-type-caption:     400 0.75rem/1.35 var(--dw-font);
+  --dw-type-caption:     500 0.75rem/1.35 var(--dw-font);
 
-  --dw-tracking-display: -0.022em;
-  --dw-tracking-title:   -0.014em;
-  --dw-tracking-body:    -0.003em;
-  --dw-tracking-caption: 0;
+  --dw-tracking-display: -0.02em;
+  --dw-tracking-title:   -0.015em;
+  --dw-tracking-body:    0;
+  --dw-tracking-caption: 0.02em;
 
   /*  spacing scale — 4px base, doubling gently. */
   --dw-space-1: 0.25rem;
@@ -144,6 +157,41 @@
 /*  Scope — nothing here applies outside .design-page. */
 .design-page {
   --dw-page-max: 1040px;
+  font-family: var(--dw-font);
+  letter-spacing: var(--dw-tracking-body);
+  font-feature-settings: 'ss01', 'ss02';
+}
+
+/*  Editorial display — Zodiak takes the display + title role on
+    every catalog heading large enough to carry a serif. Scoped
+    to .design-page so no other surface sees it until promoted.
+    h3 and smaller stay Satoshi (headline tier and below). */
+.design-page h1,
+.design-page h2,
+.design-page .design-section-title,
+.design-page .dw-display,
+.design-page .dw-title-1,
+.design-page .dw-title-2,
+.design-page .dw-section-header h2,
+.design-page .dw-modal__title,
+.design-page .pd-tier-price,
+.design-page .pd-tier-name {
+  font-family: var(--dw-font-serif);
+  font-feature-settings: 'ss01', 'liga', 'calt';
+}
+.design-page h1 { letter-spacing: var(--dw-tracking-display); }
+.design-page h2 { letter-spacing: var(--dw-tracking-title); }
+.design-page h3 {
+  font-family: var(--dw-font);
+  letter-spacing: var(--dw-tracking-title);
+}
+
+/*  Numbers across the catalog — tabular where they count. */
+.design-page .dw-num,
+.design-page .pd-tier-price,
+.design-page .pd-tier-meta {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 /* ─────────── workshop catalog chrome ─────────── */
@@ -515,7 +563,7 @@
   padding: 0.2em 0.75ch;
   min-height: 24px;
   font: var(--dw-type-caption);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--dw-tracking-caption);
   color: var(--dw-fg-secondary);
   background: var(--dw-surface);
   border-radius: var(--dw-radius-full);
@@ -533,6 +581,93 @@
 .dw-chip--warn    { color: var(--dw-warn);    background: var(--dw-warn-soft);    border-color: transparent; }
 .dw-chip--danger  { color: var(--dw-danger);  background: var(--dw-danger-soft);  border-color: transparent; }
 .dw-chip--neutral { color: var(--dw-fg); background: var(--dw-surface-raised); border-color: transparent; }
+
+/*  Tappable pill chip — the tinted-accent interactive variant.
+    Replaces the old `method · wise` admin-rect look. Rounded,
+    accent-colored text on a 10% accent tint; ≥32px tall so the
+    label breathes, min 44px wide so the tap target survives.
+    Icon slot on the left (16px), optional. Rendered via <button>
+    for interactivity; <span> is also fine for static use. */
+.dw-chip-pill {
+  --_tint: var(--dw-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55ch;
+  padding: 0.4em 0.9em;
+  min-height: 32px;
+  min-width: 44px;
+  font: var(--dw-type-footnote);
+  font-weight: 500;
+  letter-spacing: var(--dw-tracking-body);
+  color: var(--_tint);
+  background: color-mix(in srgb, var(--_tint) 10%, transparent);
+  border: 0;
+  border-radius: var(--dw-radius-full);
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  font-family: var(--dw-font);
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dw-chip-pill {
+    transition:
+      background-color var(--dw-motion-fast) var(--dw-ease),
+      color var(--dw-motion-fast) var(--dw-ease),
+      transform var(--dw-motion-fast) var(--dw-ease);
+  }
+}
+.dw-chip-pill:hover {
+  background: color-mix(in srgb, var(--_tint) 16%, transparent);
+}
+.dw-chip-pill:active,
+.dw-chip-pill[aria-pressed='true'],
+.dw-chip-pill.is-active {
+  background: color-mix(in srgb, var(--_tint) 22%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dw-chip-pill:active { transform: scale(0.98); }
+}
+.dw-chip-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--dw-focus-ring);
+}
+.dw-chip-pill:disabled,
+.dw-chip-pill[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.dw-chip-pill__icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 1rem;
+  line-height: 1;
+}
+.dw-chip-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--dw-radius-full);
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.dw-chip-pill__sub {
+  color: color-mix(in srgb, var(--_tint) 65%, transparent);
+  font-weight: 400;
+  margin-left: 0.3ch;
+}
+
+/*  Tint variants — opt in per chip. Default is accent. */
+.dw-chip-pill--success { --_tint: var(--dw-success); }
+.dw-chip-pill--warn    { --_tint: var(--dw-warn); }
+.dw-chip-pill--danger  { --_tint: var(--dw-danger); }
+.dw-chip-pill--neutral { --_tint: var(--dw-fg-secondary); }
 
 /* ─────────── inputs + fields ─────────── */
 .dw-field {
@@ -1529,6 +1664,61 @@ body.dw-scroll-lock { overflow: hidden; }
     display: flex;
   }
 }
+
+/* ─────────── draft marker — quiet edge indicator ───────────
+   The old <code>draft</code> inside h3 rendered as a loud ALLCAPS
+   chip — same visual weight as the heading itself. Demoted here
+   to a left-edge accent bar on the whole block, so drafts scan by
+   peripheral vision instead of shouting. The <code>draft</code> text
+   stays in the DOM (semantic flag; Miles greps for it) but is
+   hidden visually. Added by design.js walking each .design-block
+   whose h3 contains <code>draft</code>. */
+.design-page .design-block.is-draft {
+  border-left: 3px solid var(--dw-accent);
+  padding-left: 0.75em;
+}
+.design-page .design-block.is-draft > h3 code { display: none; }
+/*  Same treatment for the workshop-prefix block type, just in case. */
+.design-page .dw-block.is-draft {
+  border-left: 3px solid var(--dw-accent);
+  padding-left: 0.75em;
+}
+.design-page .dw-block.is-draft > h3 code { display: none; }
+
+/* ─────────── tier badge — small accent indicator, not a block ───────────
+   Section 21 project lifecycle shipped with "PRODUCER" printed on all
+   three tier cards in a filled purple rectangle. Overridden here so
+   the badge becomes a small dot + label at footnote weight, matching
+   the tier name per row (supporter / credits / producer). Inline
+   styles in the markup had set background + color; those are cleared
+   in design.js so this class rule can take effect without !important
+   wars. */
+.design-page .pd-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45ch;
+  padding: 0;
+  margin: 0 0 0.2em;
+  background: transparent;
+  color: var(--dw-fg-secondary);
+  font: var(--dw-type-footnote);
+  letter-spacing: var(--dw-tracking-caption);
+  text-transform: none;
+  border-radius: 0;
+  line-height: 1;
+}
+.design-page .pd-tier-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--dw-radius-full);
+  background: var(--dw-fg-muted);
+  flex: 0 0 auto;
+}
+.design-page .pd-tier-badge[data-tier='supporter']::before { background: var(--dw-success); }
+.design-page .pd-tier-badge[data-tier='credits']::before   { background: var(--dw-warn); }
+.design-page .pd-tier-badge[data-tier='producer']::before  { background: var(--dw-accent); }
+.design-page .pd-tier-badge[data-tier='producer'] { color: var(--dw-fg); }
 
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {

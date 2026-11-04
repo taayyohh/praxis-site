@@ -245,6 +245,15 @@ async function initDesign() {
   const el = document.getElementById('design-content')
   if (!el) return
 
+  // Workshop scope — `#design-page` is the container's id, but every
+  // scoped selector in design-workshop.css keys on the matching class
+  // (`.design-page foo`). Mirror the id onto the class so the scope
+  // actually matches. Idempotent across SPA re-entries.
+  const pageEl = document.getElementById('design-page')
+  if (pageEl && !pageEl.classList.contains('design-page')) {
+    pageEl.classList.add('design-page')
+  }
+
   // Workshop stylesheet — scoped primitives + tokens live under
   // /design only. Injected at init time so the template shells
   // don't need a new hashed-CSS link. Idempotent.
@@ -2505,14 +2514,14 @@ async function initDesign() {
             in production. Labels are drafts, not shipped copy. The mock address
             <code>0x…dEaD</code> stands in when no wallet is connected.
           </p>
-          <div class="design-btn-row" id="design-vault-openers">
-            <button class="buy-btn" data-open="vault-send">send money</button>
-            <button class="buy-btn" data-open="vault-receive">receive money</button>
-            <button class="buy-btn" data-open="vault-swap">move between chains</button>
-            <button class="buy-btn" data-open="vault-purchase-confirm">confirm a purchase</button>
-            <button class="buy-btn" data-open="vault-funding">funding sheet</button>
-            <button class="buy-btn" data-open="vault-onramp">add funds from a card</button>
-            <button class="buy-btn" data-open="vault-offramp">cash out to a bank</button>
+          <div class="design-btn-row" id="design-vault-openers" style="display:flex;flex-wrap:wrap;gap:0.4em 0.5em">
+            <button class="dw-chip-pill" data-open="vault-send"><i class="dw-chip-pill__icon ph ph-paper-plane-tilt" aria-hidden="true"></i>send money</button>
+            <button class="dw-chip-pill" data-open="vault-receive"><i class="dw-chip-pill__icon ph ph-tray-arrow-down" aria-hidden="true"></i>receive money</button>
+            <button class="dw-chip-pill" data-open="vault-swap"><i class="dw-chip-pill__icon ph ph-arrows-left-right" aria-hidden="true"></i>move between chains</button>
+            <button class="dw-chip-pill" data-open="vault-purchase-confirm"><i class="dw-chip-pill__icon ph ph-check-circle" aria-hidden="true"></i>confirm a purchase</button>
+            <button class="dw-chip-pill" data-open="vault-funding"><i class="dw-chip-pill__icon ph ph-receipt" aria-hidden="true"></i>funding sheet</button>
+            <button class="dw-chip-pill" data-open="vault-onramp"><i class="dw-chip-pill__icon ph ph-credit-card" aria-hidden="true"></i>add funds from a card</button>
+            <button class="dw-chip-pill" data-open="vault-offramp"><i class="dw-chip-pill__icon ph ph-bank" aria-hidden="true"></i>cash out to a bank</button>
       <!-- ─────────── 16 · settings & CMS ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">16 · settings & CMS</h2>
@@ -3131,14 +3140,14 @@ async function initDesign() {
         </p>
 
         <div id="design-primitives-openers" style="display:flex;flex-wrap:wrap;gap:0.5em;margin-bottom:1.5em">
-          <button class="buy-btn" data-open="prim-toast-default">toast · default</button>
-          <button class="buy-btn" data-open="prim-toast-success">toast · success</button>
-          <button class="buy-btn" data-open="prim-toast-error">toast · error</button>
-          <button class="buy-btn" data-open="prim-toast-message">toast · message</button>
-          <button class="buy-btn" data-open="prim-modal">modal · dummy</button>
-          <button class="buy-btn" data-open="prim-sheet">bottom sheet · dummy</button>
-          <button class="buy-btn" data-open="prim-confirm">confirm · destructive</button>
-          <button class="buy-btn" data-open="prim-copy">copy to clipboard</button>
+          <button class="dw-chip-pill" data-open="prim-toast-default"><i class="dw-chip-pill__icon ph ph-chat-centered-text" aria-hidden="true"></i>toast</button>
+          <button class="dw-chip-pill dw-chip-pill--success" data-open="prim-toast-success"><i class="dw-chip-pill__icon ph ph-check-circle" aria-hidden="true"></i>success toast</button>
+          <button class="dw-chip-pill dw-chip-pill--danger" data-open="prim-toast-error"><i class="dw-chip-pill__icon ph ph-warning-circle" aria-hidden="true"></i>error toast</button>
+          <button class="dw-chip-pill" data-open="prim-toast-message"><i class="dw-chip-pill__icon ph ph-envelope-simple" aria-hidden="true"></i>message toast</button>
+          <button class="dw-chip-pill" data-open="prim-modal"><i class="dw-chip-pill__icon ph ph-square" aria-hidden="true"></i>modal</button>
+          <button class="dw-chip-pill" data-open="prim-sheet"><i class="dw-chip-pill__icon ph ph-arrow-line-up" aria-hidden="true"></i>bottom sheet</button>
+          <button class="dw-chip-pill dw-chip-pill--danger" data-open="prim-confirm"><i class="dw-chip-pill__icon ph ph-warning" aria-hidden="true"></i>destructive confirm</button>
+          <button class="dw-chip-pill" data-open="prim-copy"><i class="dw-chip-pill__icon ph ph-copy" aria-hidden="true"></i>copy to clipboard</button>
         </div>
 
         <!-- Toasts -->
@@ -3660,7 +3669,7 @@ async function initDesign() {
               <div class="pd-tier">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1em">
                   <div style="flex:1;min-width:0">
-                    <span class="pd-tier-badge" style="background:color-mix(in srgb, #a78bfa 15%, transparent);color:#a78bfa">producer</span>
+                    <span class="pd-tier-badge" data-tier="supporter">supporter</span>
                     <div class="pd-tier-name">supporter</div>
                   </div>
                   <div style="text-align:right;flex-shrink:0">
@@ -3674,13 +3683,13 @@ async function initDesign() {
                     <input type="number" class="fund-qty" value="1" min="1" max="32" readonly>
                     <button type="button" class="qty-plus">+</button>
                   </div>
-                  <button type="button" class="pd-tier-cta">fund</button>
+                  <button type="button" class="dw-btn dw-btn--ghost">fund</button>
                 </div>
               </div>
               <div class="pd-tier">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1em">
                   <div style="flex:1;min-width:0">
-                    <span class="pd-tier-badge" style="background:color-mix(in srgb, #a78bfa 15%, transparent);color:#a78bfa">producer</span>
+                    <span class="pd-tier-badge" data-tier="credits">credits</span>
                     <div class="pd-tier-name">credits</div>
                   </div>
                   <div style="text-align:right;flex-shrink:0">
@@ -3694,13 +3703,13 @@ async function initDesign() {
                     <input type="number" class="fund-qty" value="1" min="1" max="8" readonly>
                     <button type="button" class="qty-plus">+</button>
                   </div>
-                  <button type="button" class="pd-tier-cta">fund</button>
+                  <button type="button" class="dw-btn dw-btn--secondary">fund</button>
                 </div>
               </div>
               <div class="pd-tier">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1em">
                   <div style="flex:1;min-width:0">
-                    <span class="pd-tier-badge" style="background:color-mix(in srgb, #a78bfa 15%, transparent);color:#a78bfa">producer</span>
+                    <span class="pd-tier-badge" data-tier="producer">producer</span>
                     <div class="pd-tier-name">producer</div>
                   </div>
                   <div style="text-align:right;flex-shrink:0">
@@ -3714,7 +3723,7 @@ async function initDesign() {
                     <input type="number" class="fund-qty" value="1" min="1" max="7" readonly>
                     <button type="button" class="qty-plus">+</button>
                   </div>
-                  <button type="button" class="pd-tier-cta">fund</button>
+                  <button type="button" class="dw-btn dw-btn--primary">fund</button>
                 </div>
               </div>
             </div>
@@ -3809,17 +3818,17 @@ async function initDesign() {
           can see them without walking the whole thing.
         </p>
 
-        <div class="design-btn-row" id="design-money-openers">
-          <button class="buy-btn" data-open="money-method-wise">method · wise</button>
-          <button class="buy-btn" data-open="money-method-revolut">method · revolut</button>
-          <button class="buy-btn" data-open="money-method-cashapp">method · cash app</button>
-          <button class="buy-btn" data-open="money-method-venmo">method · venmo</button>
-          <button class="buy-btn" data-open="money-chain-1">chain · ethereum</button>
-          <button class="buy-btn" data-open="money-chain-10">chain · optimism</button>
-          <button class="buy-btn" data-open="money-chain-42161">chain · arbitrum</button>
-          <button class="buy-btn" data-open="money-chain-8453">chain · base</button>
-          <button class="buy-btn" data-open="money-chain-137">chain · polygon</button>
-          <button class="buy-btn" data-open="money-chain-324">chain · zksync</button>
+        <div class="design-btn-row" id="design-money-openers" style="display:flex;flex-wrap:wrap;gap:0.4em 0.5em">
+          <button class="dw-chip-pill" data-open="money-method-wise"><i class="dw-chip-pill__icon ph ph-globe-hemisphere-west" aria-hidden="true"></i>wise</button>
+          <button class="dw-chip-pill" data-open="money-method-revolut"><i class="dw-chip-pill__icon ph ph-credit-card" aria-hidden="true"></i>revolut</button>
+          <button class="dw-chip-pill" data-open="money-method-cashapp"><i class="dw-chip-pill__icon ph ph-currency-dollar" aria-hidden="true"></i>cash app</button>
+          <button class="dw-chip-pill" data-open="money-method-venmo"><i class="dw-chip-pill__icon ph ph-currency-dollar" aria-hidden="true"></i>venmo</button>
+          <button class="dw-chip-pill" data-open="money-chain-1"><span class="dw-chip-pill__dot" aria-hidden="true"></span>ethereum</button>
+          <button class="dw-chip-pill" data-open="money-chain-10"><span class="dw-chip-pill__dot" aria-hidden="true"></span>optimism</button>
+          <button class="dw-chip-pill" data-open="money-chain-42161"><span class="dw-chip-pill__dot" aria-hidden="true"></span>arbitrum</button>
+          <button class="dw-chip-pill" data-open="money-chain-8453"><span class="dw-chip-pill__dot" aria-hidden="true"></span>base</button>
+          <button class="dw-chip-pill" data-open="money-chain-137"><span class="dw-chip-pill__dot" aria-hidden="true"></span>polygon</button>
+          <button class="dw-chip-pill" data-open="money-chain-324"><span class="dw-chip-pill__dot" aria-hidden="true"></span>zksync</button>
         </div>
 
         <!-- method picker tiles -->
@@ -4601,8 +4610,8 @@ async function initDesign() {
           <button class="buy-btn" data-open="art-audio">audio</button>
           <button class="buy-btn" data-open="art-writing">writing</button>
           <button class="buy-btn" data-open="art-onchain">owned view</button>
-          <button class="buy-btn" data-open="art-cross-album">collab · album</button>
-          <button class="buy-btn" data-open="art-cross-item">collab · item</button>
+          <button class="buy-btn" data-open="art-cross-album">collab album</button>
+          <button class="buy-btn" data-open="art-cross-item">collab item</button>
           <button class="buy-btn" data-open="art-vanity">vanity edition</button>
           <button class="buy-btn" data-open="art-blogpost">a full post</button>
           <button class="buy-btn" data-open="art-history">post history</button>
@@ -6694,6 +6703,26 @@ function initCatalogNav(root) {
     }
   }
   document.addEventListener('keydown', keyHandler)
+
+  // Draft marker demote — walk every .design-block / .dw-block whose
+  // h3 contains <code>draft</code> and flag it with .is-draft. The CSS
+  // then draws a quiet left-edge accent bar and hides the old uppercase
+  // DRAFT chip inline. The <code>draft</code> stays in the DOM so Miles
+  // can still grep for it; it just stops shouting. Idempotent.
+  try {
+    const blocks = document.querySelectorAll('.design-page .design-block, .design-page .dw-block')
+    blocks.forEach(block => {
+      const h3 = block.querySelector(':scope > h3')
+      if (!h3) return
+      const codes = h3.querySelectorAll('code')
+      for (const c of codes) {
+        if ((c.textContent || '').trim().toLowerCase() === 'draft') {
+          block.classList.add('is-draft')
+          break
+        }
+      }
+    })
+  } catch (e) { console.warn('[catalog] draft marker walk failed', e) }
 
   // Honor URL hash on load. Deferred so the heavy sections below have
   // a chance to hydrate (feed cards, module slots) before we jump.
