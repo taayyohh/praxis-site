@@ -300,8 +300,14 @@ function displayName(addr, context, explicitName) {
   const resolved = explicitName || getArtistName(addr) || resolve(addr)
   // Never surface a raw 0x… address to user-facing text. If resolution
   // failed, return empty so callers can suppress the author line
-  // instead of leaking crypto chrome.
-  if (typeof resolved === 'string' && /^0x[a-f0-9]{40}$/i.test(resolved.trim())) return ''
+  // instead of leaking crypto chrome. Guards both the full 40-char
+  // form and the ellipsized short form (0x46db…0725) that upstream
+  // resolvers (e.g. the design-catalog mockResolve, some row-layout
+  // paths) hand back when they can't map an address to a domain.
+  if (typeof resolved !== 'string') return resolved
+  const trimmed = resolved.trim()
+  if (/^0x[a-f0-9]{40}$/i.test(trimmed)) return ''
+  if (/^0x[a-f0-9]{4,6}…[a-f0-9]{4}$/i.test(trimmed)) return ''
   return resolved
 }
 
