@@ -28,6 +28,121 @@ import { registerPage, escapeHtml, inlineAvatar } from './utils.js'
 
 registerPage('design-page', initDesign)
 
+// ─── catalog sidebar — grouped jump nav ──────────────────────────────
+// 25 sections is too many to scroll. The sidebar groups them into six
+// categories so Miles can review one surface family at a time. All
+// sections stay in the DOM — the sidebar jumps + the URL hash follow.
+// Labels use Miles's existing section h2 text (number prefix stripped);
+// nothing invented in the nav strings.
+const CATALOG_SECTION_IDS = {
+  '1': 'sec-foundation',
+  '2': 'sec-buttons',
+  '3': 'sec-money-modals',
+  '4': 'sec-feed-cards',
+  '5': 'sec-media',
+  '6': 'sec-vault',
+  '7': 'sec-navigation',
+  '8': 'sec-playback',
+  '9': 'sec-status-states',
+  '10': 'sec-orgs',
+  '11': 'sec-modules',
+  '12': 'sec-notifications',
+  '13': 'sec-states-errors',
+  '14': 'sec-auth',
+  '15': 'sec-vault-money',
+  '16': 'sec-settings',
+  '17': 'sec-messages',
+  '18': 'sec-primitives',
+  '19': 'sec-making-writing',
+  '20': 'sec-money-inout',
+  '21': 'sec-projects',
+  '22': 'sec-network',
+  '23': 'sec-art-post',
+  '24': 'sec-templates-player',
+}
+
+const CATALOG_CATEGORIES = [
+  {
+    title: 'foundation',
+    items: [
+      { id: 'dw-workshop-root', label: 'workshop' },
+      { id: 'sec-foundation', label: 'foundation' },
+      { id: 'sec-buttons', label: 'buttons + inputs' },
+    ],
+  },
+  {
+    title: 'content cards',
+    items: [
+      { id: 'sec-feed-cards', label: 'feed event cards' },
+      { id: 'sec-media', label: 'media + collection' },
+      { id: 'sec-art-post', label: 'art + post detail' },
+    ],
+  },
+  {
+    title: 'chrome',
+    items: [
+      { id: 'sec-navigation', label: 'navigation' },
+      { id: 'sec-playback', label: 'media playback' },
+      { id: 'sec-notifications', label: 'notifications' },
+    ],
+  },
+  {
+    title: 'money + accounts',
+    items: [
+      { id: 'sec-money-modals', label: 'money modals' },
+      { id: 'sec-vault', label: 'vault surfaces' },
+      { id: 'sec-orgs', label: 'organizations' },
+      { id: 'sec-auth', label: 'auth + accounts' },
+      { id: 'sec-vault-money', label: 'vault + money' },
+      { id: 'sec-settings', label: 'settings + CMS' },
+      { id: 'sec-money-inout', label: 'money in + out' },
+    ],
+  },
+  {
+    title: 'collaborative',
+    items: [
+      { id: 'sec-modules', label: 'modules' },
+      { id: 'sec-messages', label: 'messages' },
+      { id: 'sec-making-writing', label: 'making + writing' },
+      { id: 'sec-projects', label: 'project lifecycle' },
+      { id: 'sec-network', label: 'network + profile' },
+      { id: 'sec-templates-player', label: 'templates + player' },
+    ],
+  },
+  {
+    title: 'states + primitives',
+    items: [
+      { id: 'sec-status-states', label: 'status states' },
+      { id: 'sec-states-errors', label: 'states + errors' },
+      { id: 'sec-primitives', label: 'primitives + chrome' },
+    ],
+  },
+]
+
+function renderCatalogNav(categories) {
+  const groups = categories.map(cat => {
+    const items = cat.items.map(it => `
+            <a class="dw-catalog-nav__item"
+               href="#${escapeHtml(it.id)}"
+               data-dw-nav-target="${escapeHtml(it.id)}">${escapeHtml(it.label)}</a>`).join('')
+    return `
+          <div class="dw-catalog-nav__group">
+            <div class="dw-catalog-nav__group-label">${escapeHtml(cat.title)}</div>${items}
+          </div>`
+  }).join('')
+  return `
+      <aside class="dw-catalog-nav" id="dw-catalog-nav">
+        <button type="button" class="dw-catalog-nav__trigger"
+                aria-expanded="false" aria-controls="dw-catalog-nav__list">
+          <span>sections</span>
+          <span class="dw-catalog-nav__trigger-caret" aria-hidden="true">▾</span>
+        </button>
+        <nav class="dw-catalog-nav__list" id="dw-catalog-nav__list"
+             role="navigation" aria-label="design sections">${groups}
+        </nav>
+      </aside>`
+}
+
 // Mock addresses (deterministic hex — never resolves to a real artist).
 const A_ADDR = '0x1111111111111111111111111111111111111111'
 const B_ADDR = '0x2222222222222222222222222222222222222222'
@@ -386,7 +501,9 @@ async function initDesign() {
   }
 
   el.innerHTML = `
-    <div class="design-catalog">
+    <div class="design-catalog dw-catalog-layout">
+      ${renderCatalogNav(CATALOG_CATEGORIES)}
+      <div class="dw-catalog-main">
       <header class="design-lead">
         <div class="design-eyebrow">praxis · living UI catalog</div>
         <h1>every component, on one page</h1>
@@ -5359,8 +5476,12 @@ async function initDesign() {
           CLAUDE.md → "Design Catalog — /design (MUST UPDATE)".
         </p>
       </footer>
+      </div>
     </div>
   `
+
+  // Wire the sidebar: jumps, URL hash sync, arrow-key nav, mobile drawer.
+  try { initCatalogNav(el) } catch (e) { console.warn('[catalog nav] init failed', e) }
 
   // Live QR in the ticket pass mini so it isn't just a hollow box.
   try {
@@ -6430,4 +6551,159 @@ CUT TO:`
   const feedCardCount = document.querySelectorAll('.design-cards-grid > .design-block').length
   const countEl = document.getElementById('design-audit-count')
   if (countEl) countEl.textContent = `${openerCount} modal openers · ${blockCount - feedCardCount} primitives · ${feedCardCount} feed cards`
+}
+
+// ─── catalog sidebar wiring ──────────────────────────────────────────
+// Click → smooth scroll + hash update. IntersectionObserver → highlight
+// as the user scrolls. Arrow keys → cycle sections (not when typing).
+// Honors prefers-reduced-motion and URL hash on load. Scoped to the
+// catalog page — no listener outlives this view.
+function initCatalogNav(root) {
+  const nav = root.querySelector('#dw-catalog-nav')
+  if (!nav) return
+
+  // Attach stable IDs to the 24 existing sections by matching the
+  // number prefix in their h2 ("3 · money modals" → sec-money-modals).
+  // Idempotent — only assigns when the section has no id yet.
+  root.querySelectorAll('.design-section').forEach(sec => {
+    if (sec.id) return
+    const title = sec.querySelector('.design-section-title')?.textContent || ''
+    const num = title.match(/^\s*(\d+)/)?.[1]
+    if (num && CATALOG_SECTION_IDS[num]) sec.id = CATALOG_SECTION_IDS[num]
+  })
+
+  const items = Array.from(nav.querySelectorAll('.dw-catalog-nav__item'))
+  const targets = items
+    .map(a => ({ id: a.dataset.dwNavTarget, link: a, el: document.getElementById(a.dataset.dwNavTarget) }))
+    .filter(t => t.el)
+
+  const reducedMotion = () =>
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  const setActive = (id) => {
+    for (const a of items) {
+      if (a.dataset.dwNavTarget === id) a.setAttribute('aria-current', 'true')
+      else a.removeAttribute('aria-current')
+    }
+    try {
+      const nextHash = id ? `#${id}` : ''
+      if (location.hash !== nextHash) {
+        // Replace, don't push — one stack entry per visit, not per section.
+        history.replaceState(null, '', nextHash || location.pathname + location.search)
+      }
+    } catch {}
+  }
+
+  const scrollToId = (id) => {
+    const target = document.getElementById(id)
+    if (!target) return
+    const behavior = reducedMotion() ? 'auto' : 'smooth'
+    target.scrollIntoView({ behavior, block: 'start' })
+  }
+
+  // Mobile drawer open/close.
+  const trigger = nav.querySelector('.dw-catalog-nav__trigger')
+  const openDrawer = () => {
+    nav.classList.add('is-open')
+    trigger?.setAttribute('aria-expanded', 'true')
+  }
+  const closeDrawer = () => {
+    nav.classList.remove('is-open')
+    trigger?.setAttribute('aria-expanded', 'false')
+  }
+  trigger?.addEventListener('click', () => {
+    if (nav.classList.contains('is-open')) closeDrawer()
+    else openDrawer()
+  })
+  // Close drawer when clicking outside the sidebar (mobile only).
+  document.addEventListener('click', (ev) => {
+    if (!nav.classList.contains('is-open')) return
+    if (nav.contains(ev.target)) return
+    closeDrawer()
+  })
+
+  // Sidebar click: jump + set active + close drawer.
+  nav.addEventListener('click', (ev) => {
+    const a = ev.target.closest('.dw-catalog-nav__item')
+    if (!a) return
+    const id = a.dataset.dwNavTarget
+    if (!id || !document.getElementById(id)) return
+    ev.preventDefault()
+    scrollToId(id)
+    setActive(id)
+    closeDrawer()
+  })
+
+  // Scroll-driven active state. Band sits between 45% and 50% of the
+  // viewport so the "active" entry is whatever the reader's eye is on.
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting)
+    if (!visible.length) return
+    visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+    const id = visible[0].target.id
+    if (id) setActive(id)
+  }, {
+    rootMargin: '-45% 0px -50% 0px',
+    threshold: 0,
+  })
+  for (const t of targets) observer.observe(t.el)
+
+  // Keyboard: arrow keys cycle sections; ? opens help. Scoped: ignored
+  // when focus is in an editable surface. Self-cleans on SPA navigate.
+  const isInEditable = (el) => {
+    if (!el) return false
+    const tag = el.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+  }
+  const findActiveIndex = () => {
+    const cur = location.hash.slice(1)
+    const idx = targets.findIndex(t => t.id === cur)
+    return idx === -1 ? 0 : idx
+  }
+  const keyHandler = async (ev) => {
+    // If the catalog is no longer in the DOM (SPA navigated away),
+    // detach ourselves — one-shot cleanup, no leaking listeners.
+    if (!document.getElementById('dw-catalog-nav')) {
+      document.removeEventListener('keydown', keyHandler)
+      observer.disconnect()
+      return
+    }
+    if (isInEditable(document.activeElement)) return
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault()
+      const delta = ev.key === 'ArrowDown' ? 1 : -1
+      const next = Math.max(0, Math.min(targets.length - 1, findActiveIndex() + delta))
+      const target = targets[next]
+      if (target) {
+        scrollToId(target.id)
+        setActive(target.id)
+      }
+    } else if (ev.key === '?') {
+      ev.preventDefault()
+      try {
+        const DW = await import('./design-workshop.js')
+        DW.openDwModal({
+          kind: 'modal',
+          title: 'keyboard shortcuts',
+          body: 'arrow down — next section. arrow up — previous. enter — follow the current link. ? — open this help. esc — close any dialog.',
+          confirmLabel: 'got it',
+          cancelLabel: 'close',
+        })
+      } catch (e) { console.warn('[catalog nav] help overlay failed', e) }
+    }
+  }
+  document.addEventListener('keydown', keyHandler)
+
+  // Honor URL hash on load. Deferred so the heavy sections below have
+  // a chance to hydrate (feed cards, module slots) before we jump.
+  const initialHash = location.hash.slice(1)
+  if (initialHash && document.getElementById(initialHash)) {
+    setTimeout(() => {
+      scrollToId(initialHash)
+      setActive(initialHash)
+    }, 250)
+  } else if (targets.length) {
+    setActive(targets[0].id)
+  }
 }
