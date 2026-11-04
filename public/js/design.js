@@ -26,11 +26,6 @@
 
 import { registerPage, escapeHtml, inlineAvatar } from './utils.js'
 
-// The catalog hosts a modal dummy opener; pulling modal-a11y here
-// guarantees the catalog page gets the a11y upgrade even if it is
-// loaded outside the SPA boot path.
-import('./modal-a11y.js').catch(() => {})
-
 registerPage('design-page', initDesign)
 
 // Mock addresses (deterministic hex — never resolves to a real artist).
@@ -134,6 +129,22 @@ async function renderSandboxStatus(sandbox) {
 async function initDesign() {
   const el = document.getElementById('design-content')
   if (!el) return
+
+  // Workshop stylesheet — scoped primitives + tokens live under
+  // /design only. Injected at init time so the template shells
+  // don't need a new hashed-CSS link. Idempotent.
+  if (!document.querySelector('link[data-dw-workshop]')) {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = '/design-workshop.css'
+    link.setAttribute('data-dw-workshop', '1')
+    document.head.appendChild(link)
+  }
+  // Workshop a11y helpers for .dw-modal / .dw-sheet / .dw-toast. Loaded
+  // here so no non-catalog page imports it. Errors in the import are
+  // non-fatal — the rest of the catalog still renders.
+  let DW = {}
+  try { DW = await import('./design-workshop.js') } catch (e) { console.warn('design-workshop import:', e) }
 
   // Sandbox mode (?sandbox=1) — flips a red top bar, patches fetch so
   // every /api/rpc/* call hits a local anvil fork, mints a per-session
@@ -387,6 +398,653 @@ async function initDesign() {
         </p>
       </header>
 
+      <!-- ─────────── 0 · workshop (NEW — scoped to /design) ─────────── -->
+      <div id="dw-workshop-root" class="dw-workshop">
+        <nav class="dw-jump" aria-label="workshop jump">
+          <div class="dw-jump__inner">
+            <a href="#dw-tokens">tokens</a>
+            <a href="#dw-type">type</a>
+            <a href="#dw-buttons">buttons</a>
+            <a href="#dw-chips">chips</a>
+            <a href="#dw-fields">fields</a>
+            <a href="#dw-modals">modals</a>
+            <a href="#dw-toasts">toasts</a>
+            <a href="#dw-skeletons">skeletons</a>
+            <a href="#dw-tabs">tabs</a>
+            <a href="#dw-progress">progress</a>
+            <a href="#dw-avatars">avatars</a>
+            <a href="#dw-overlays">overlays</a>
+            <a href="#dw-pagination">pagination</a>
+            <a href="#dw-cards">cards</a>
+            <a href="#dw-states">states</a>
+          </div>
+        </nav>
+
+        <header class="dw-workshop-lead">
+          <div class="dw-eyebrow">workshop · scoped to /design</div>
+          <h1 class="dw-display">a quieter set of parts</h1>
+          <p class="dw-lead-sub">
+            Every primitive below is prefixed <code class="dw-mono">.dw-</code>
+            and lives in <code class="dw-mono">/design-workshop.css</code> —
+            nothing here leaks to any other page. The intent is calm, legible
+            parts for musicians, playwrights, filmmakers. Nothing to prove,
+            nothing to shout. Where a retired class is still carrying weight
+            elsewhere, you'll see it alongside the workshop version below.
+          </p>
+        </header>
+
+        <!-- ─── 0a · tokens ─── -->
+        <section class="dw-section" id="dw-tokens">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">foundation</div>
+            <h2 class="dw-title-1">tokens</h2>
+            <p class="dw-lead-sub">
+              A three-tone text hierarchy, three semantic accents, one
+              hairline. No decorative fourth color. All values scoped
+              to the catalog page.
+            </p>
+          </div>
+
+          <div class="dw-block">
+            <h3>surfaces</h3>
+            <div class="dw-swatches">
+              <div class="dw-swatch dw-swatch--bordered" style="background:var(--dw-bg);color:var(--dw-fg)">--dw-bg</div>
+              <div class="dw-swatch" style="background:var(--dw-surface);color:var(--dw-fg)">--dw-surface</div>
+              <div class="dw-swatch" style="background:var(--dw-surface-raised);color:var(--dw-fg)">--dw-surface-raised</div>
+              <div class="dw-swatch" style="background:var(--dw-overlay);color:#fff">--dw-overlay</div>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>text + lines</h3>
+            <div class="dw-swatches">
+              <div class="dw-swatch" style="background:var(--dw-fg);color:var(--dw-bg)">--dw-fg</div>
+              <div class="dw-swatch" style="background:var(--dw-fg-secondary);color:var(--dw-bg)">--dw-fg-secondary</div>
+              <div class="dw-swatch" style="background:var(--dw-fg-muted);color:var(--dw-bg)">--dw-fg-muted</div>
+              <div class="dw-swatch dw-swatch--bordered" style="background:var(--dw-separator);color:var(--dw-fg)">--dw-separator</div>
+              <div class="dw-swatch dw-swatch--bordered" style="background:var(--dw-separator-strong);color:var(--dw-fg)">--dw-separator-strong</div>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>semantic</h3>
+            <div class="dw-swatches">
+              <div class="dw-swatch" style="background:var(--dw-accent);color:var(--dw-fg-on-accent)">--dw-accent</div>
+              <div class="dw-swatch" style="background:var(--dw-success);color:#000">--dw-success</div>
+              <div class="dw-swatch" style="background:var(--dw-warn);color:#000">--dw-warn</div>
+              <div class="dw-swatch" style="background:var(--dw-danger);color:#fff">--dw-danger</div>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>spacing · radius · motion</h3>
+            <table class="dw-token-table">
+              <thead><tr><th>token</th><th>value</th><th>use</th></tr></thead>
+              <tbody>
+                <tr><td>--dw-space-1</td><td>0.25rem</td><td>icon gap</td></tr>
+                <tr><td>--dw-space-2</td><td>0.5rem</td><td>tight stack</td></tr>
+                <tr><td>--dw-space-3</td><td>0.75rem</td><td>row gap</td></tr>
+                <tr><td>--dw-space-4</td><td>1rem</td><td>default pad</td></tr>
+                <tr><td>--dw-space-5</td><td>1.5rem</td><td>block gap</td></tr>
+                <tr><td>--dw-space-6</td><td>2rem</td><td>card inset</td></tr>
+                <tr><td>--dw-space-7</td><td>3rem</td><td>section gap</td></tr>
+                <tr><td>--dw-space-8</td><td>4rem</td><td>page gutter</td></tr>
+                <tr><td>--dw-radius-xs</td><td>4px</td><td>chips, tiny</td></tr>
+                <tr><td>--dw-radius-sm</td><td>8px</td><td>inputs</td></tr>
+                <tr><td>--dw-radius-md</td><td>12px</td><td>cards</td></tr>
+                <tr><td>--dw-radius-lg</td><td>20px</td><td>modals, sheets</td></tr>
+                <tr><td>--dw-radius-full</td><td>999px</td><td>buttons, dots</td></tr>
+                <tr><td>--dw-motion-fast</td><td>120ms</td><td>hover, press</td></tr>
+                <tr><td>--dw-motion-base</td><td>200ms</td><td>fade, lift</td></tr>
+                <tr><td>--dw-motion-slow</td><td>320ms</td><td>sheet, dialog in</td></tr>
+                <tr><td>--dw-tap</td><td>44px</td><td>min tap target</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ─── 0b · type ─── -->
+        <section class="dw-section" id="dw-type">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">foundation</div>
+            <h2 class="dw-title-1">type scale</h2>
+            <p class="dw-lead-sub">
+              Ported from Apple SF hierarchy, kept in rem so Dynamic
+              Type works at 200% browser zoom. Numbers always tabular.
+            </p>
+          </div>
+          <div class="dw-block">
+            <div class="dw-stack">
+              <div class="dw-display">the whole display · 2.75rem</div>
+              <div class="dw-title-1">title 1 · 2rem · for section leads</div>
+              <div class="dw-title-2">title 2 · 1.5rem · for subsections</div>
+              <div class="dw-headline">headline · 1.125rem · block headings</div>
+              <div class="dw-body">body · 1rem · paragraph default sits here</div>
+              <div class="dw-callout">callout · 0.9375rem · emphasis within body</div>
+              <div class="dw-subheadline">subheadline · 0.875rem · section meta</div>
+              <div class="dw-footnote">footnote · 0.8125rem · captions, deltas</div>
+              <div class="dw-caption">caption · 0.75rem · uppercase eyebrows</div>
+              <div class="dw-num" style="font:var(--dw-type-title-1);letter-spacing:-0.02em">$1,247.80</div>
+              <div class="dw-mono dw-footnote">0x504906571293819d40cb89573e9d974ec2851746</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0c · buttons ─── -->
+        <section class="dw-section" id="dw-buttons">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">buttons</h2>
+            <p class="dw-lead-sub">
+              One focal action per surface. Every variant below meets
+              44pt tap and the focus-visible ring. Tab through the
+              row — you should see the ring, not an outline.
+            </p>
+          </div>
+
+          <div class="dw-compare">
+            <div class="dw-compare__frame">
+              <span class="dw-compare__label">retired</span>
+              <div class="dw-row">
+                <button class="vault-save-btn" style="width:auto;padding:0.75em 1.5em">primary · vault-save-btn</button>
+                <button class="buy-btn">buy-btn</button>
+                <button class="feed-card-btn green">feed-card-btn</button>
+                <button class="vault-recv-copy"><i class="ph ph-copy"></i> ghost</button>
+              </div>
+            </div>
+            <div class="dw-compare__frame">
+              <span class="dw-compare__label dw-compare__label--workshop">workshop</span>
+              <div class="dw-row">
+                <button class="dw-btn dw-btn--primary">approve</button>
+                <button class="dw-btn dw-btn--secondary">preview</button>
+                <button class="dw-btn dw-btn--ghost">close</button>
+                <button class="dw-btn dw-btn--quiet">skip</button>
+                <button class="dw-btn dw-btn--danger">remove draft</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>sizes</h3>
+            <div class="dw-row">
+              <button class="dw-btn dw-btn--primary dw-btn--sm">small</button>
+              <button class="dw-btn dw-btn--primary dw-btn--md">medium</button>
+              <button class="dw-btn dw-btn--primary dw-btn--lg">large</button>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>icon + block + states</h3>
+            <div class="dw-row">
+              <button class="dw-btn dw-btn--secondary dw-btn--icon" aria-label="copy">
+                <i class="ph ph-copy" aria-hidden="true"></i>
+              </button>
+              <button class="dw-btn dw-btn--secondary dw-btn--icon dw-btn--sm" aria-label="more">
+                <i class="ph ph-dots-three" aria-hidden="true"></i>
+              </button>
+              <button class="dw-btn dw-btn--primary" data-loading="true">approving</button>
+              <button class="dw-btn dw-btn--primary" disabled>disabled</button>
+            </div>
+            <div class="dw-block__stage" style="margin-top:var(--dw-space-3);max-width:360px">
+              <button class="dw-btn dw-btn--primary dw-btn--block dw-btn--lg">publish this post</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0d · chips ─── -->
+        <section class="dw-section" id="dw-chips">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">chips</h2>
+            <p class="dw-lead-sub">
+              Shape-plus-color signal — the dot carries meaning so
+              color isn't the only cue.
+            </p>
+          </div>
+          <div class="dw-block">
+            <div class="dw-row">
+              <span class="dw-chip"><span class="dw-chip__dot"></span>default</span>
+              <span class="dw-chip dw-chip--neutral"><span class="dw-chip__dot"></span>neutral</span>
+              <span class="dw-chip dw-chip--success"><span class="dw-chip__dot"></span>earned · $18.05</span>
+              <span class="dw-chip dw-chip--warn"><span class="dw-chip__dot"></span>catching up</span>
+              <span class="dw-chip dw-chip--danger"><span class="dw-chip__dot"></span>this didn't go through</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0e · fields ─── -->
+        <section class="dw-section" id="dw-fields">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">fields</h2>
+            <p class="dw-lead-sub">
+              Label stays above the input. Help sits below and reserves
+              its own height, so error text never pushes the submit button.
+            </p>
+          </div>
+
+          <div class="dw-block" style="max-width:420px">
+            <div class="dw-stack">
+              <div class="dw-field">
+                <label class="dw-label" for="dw-demo-name">your name</label>
+                <input class="dw-input" id="dw-demo-name" type="text" placeholder="the name your audience knows">
+                <p class="dw-help">visible on your posts and your profile.</p>
+              </div>
+              <div class="dw-field">
+                <label class="dw-label" for="dw-demo-handle">handle</label>
+                <input class="dw-input" id="dw-demo-handle" type="text" value="nina" aria-invalid="true">
+                <p class="dw-help dw-help--error">that handle is already taken.</p>
+              </div>
+              <div class="dw-field">
+                <label class="dw-label" for="dw-demo-bio">bio <span class="dw-draft">draft</span></label>
+                <textarea class="dw-textarea" id="dw-demo-bio" placeholder="a few lines about the work"></textarea>
+                <p class="dw-help">160 characters or less.</p>
+              </div>
+              <div class="dw-field">
+                <label class="dw-label" for="dw-demo-select">your currency</label>
+                <select class="dw-select" id="dw-demo-select">
+                  <option>USD</option>
+                  <option>EUR</option>
+                  <option>GBP</option>
+                  <option>JPY</option>
+                  <option>NGN</option>
+                </select>
+              </div>
+              <div class="dw-stack" style="gap:var(--dw-space-2)">
+                <label class="dw-checkbox">
+                  <input type="checkbox" checked><span class="dw-checkbox__box"></span>
+                  <span>email me when someone joins</span>
+                </label>
+                <label class="dw-checkbox">
+                  <input type="checkbox"><span class="dw-checkbox__box"></span>
+                  <span>also when they bookmark a post</span>
+                </label>
+              </div>
+              <div class="dw-stack" style="gap:var(--dw-space-2)">
+                <label class="dw-radio">
+                  <input type="radio" name="dw-vis" checked><span class="dw-radio__box"></span>
+                  <span>public</span>
+                </label>
+                <label class="dw-radio">
+                  <input type="radio" name="dw-vis"><span class="dw-radio__box"></span>
+                  <span>supporters only</span>
+                </label>
+              </div>
+              <label class="dw-switch">
+                <input type="checkbox" checked>
+                <span class="dw-switch__track"><span class="dw-switch__thumb"></span></span>
+                <span>Face ID before sending</span>
+              </label>
+              <div class="dw-row">
+                <div class="dw-segmented" role="tablist" aria-label="view">
+                  <button class="dw-segmented__option is-selected" role="tab" aria-selected="true">list</button>
+                  <button class="dw-segmented__option" role="tab" aria-selected="false">grid</button>
+                  <button class="dw-segmented__option" role="tab" aria-selected="false">graph</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0f · modals + sheets ─── -->
+        <section class="dw-section" id="dw-modals">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">modals, sheets, confirms</h2>
+            <p class="dw-lead-sub">
+              Each opens a real dw-modal with focus trap, Esc dismiss,
+              body scroll lock, and an aria-labelledby binding. Below
+              480px the modal docks as a bottom sheet.
+            </p>
+          </div>
+          <div class="dw-block" id="dw-modal-openers">
+            <div class="dw-row">
+              <button class="dw-btn dw-btn--secondary" data-dw-open="modal"
+                data-dw-title="name this draft"
+                data-dw-body="you can change it later."
+                data-dw-confirm="save">open modal</button>
+              <button class="dw-btn dw-btn--secondary" data-dw-open="sheet"
+                data-dw-title="share this post"
+                data-dw-body="pick where this lands.">open sheet</button>
+              <button class="dw-btn dw-btn--secondary" data-dw-open="confirm"
+                data-dw-title="delete this draft"
+                data-dw-body="this can't be undone.">destructive confirm</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0g · toasts ─── -->
+        <section class="dw-section" id="dw-toasts">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">toasts</h2>
+            <p class="dw-lead-sub">
+              Short, honest states. Default uses role=status;
+              error uses role=alert so VoiceOver interrupts.
+            </p>
+          </div>
+          <div class="dw-block" id="dw-modal-openers-toast">
+            <div class="dw-row">
+              <button class="dw-btn dw-btn--secondary" data-dw-open="toast"
+                data-dw-text="your post was published">default</button>
+              <button class="dw-btn dw-btn--secondary" data-dw-open="toast"
+                data-dw-variant="success"
+                data-dw-text="invite sent">success</button>
+              <button class="dw-btn dw-btn--secondary" data-dw-open="toast"
+                data-dw-variant="error"
+                data-dw-text="this didn't go through">error</button>
+              <button class="dw-btn dw-btn--secondary" data-dw-open="toast"
+                data-dw-variant="message"
+                data-dw-text="new message from nappynina">message</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0h · skeletons ─── -->
+        <section class="dw-section" id="dw-skeletons">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">skeletons</h2>
+            <p class="dw-lead-sub">
+              Reserve the final height so content doesn't push headers
+              around when it lands.
+            </p>
+          </div>
+          <div class="dw-block">
+            <div class="dw-stack dw-skeleton--pulse" style="max-width:420px">
+              <span class="dw-skeleton dw-skeleton--block"></span>
+              <span class="dw-skeleton dw-skeleton--title"></span>
+              <span class="dw-skeleton dw-skeleton-text"></span>
+              <span class="dw-skeleton dw-skeleton-text"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0i · tabs ─── -->
+        <section class="dw-section" id="dw-tabs">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">tabs</h2>
+          </div>
+          <div class="dw-block" id="dw-tabs-stage">
+            <div class="dw-tabs" role="tablist" aria-label="catalog view">
+              <button class="dw-tab is-active" role="tab" aria-selected="true">everything</button>
+              <button class="dw-tab" role="tab" aria-selected="false">music</button>
+              <button class="dw-tab" role="tab" aria-selected="false">writing</button>
+              <button class="dw-tab" role="tab" aria-selected="false">film</button>
+              <button class="dw-tab" role="tab" aria-selected="false">gallery</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0j · progress ─── -->
+        <section class="dw-section" id="dw-progress">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">progress</h2>
+          </div>
+          <div class="dw-block" style="max-width:420px">
+            <div class="dw-stack">
+              <div>
+                <div class="dw-footnote" style="display:flex;justify-content:space-between;margin-bottom:var(--dw-space-1)">
+                  <span class="dw-num">$720 raised</span>
+                  <span class="dw-num" style="color:var(--dw-fg-secondary)">36% of $2,000</span>
+                </div>
+                <span class="dw-progress"><span class="dw-progress__bar dw-num" style="width:36%;background:var(--dw-success)"></span></span>
+              </div>
+              <div>
+                <div class="dw-footnote" style="margin-bottom:var(--dw-space-1);color:var(--dw-fg-secondary)">we're catching up on new activity</div>
+                <span class="dw-progress dw-progress--indeterminate"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0k · avatars ─── -->
+        <section class="dw-section" id="dw-avatars">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">avatars</h2>
+          </div>
+          <div class="dw-block">
+            <div class="dw-row">
+              <span class="dw-avatar dw-avatar--sm" aria-label="nina">n</span>
+              <span class="dw-avatar dw-avatar--md" aria-label="miles">m</span>
+              <span class="dw-avatar dw-avatar--lg" aria-label="black matter">b</span>
+              <span class="dw-avatar dw-avatar--xl" aria-label="practice records">p</span>
+            </div>
+            <div style="margin-top:var(--dw-space-4)">
+              <span class="dw-avatar-stack">
+                <span class="dw-avatar dw-avatar--md">a</span>
+                <span class="dw-avatar dw-avatar--md">b</span>
+                <span class="dw-avatar dw-avatar--md">c</span>
+                <span class="dw-avatar dw-avatar--md">d</span>
+              </span>
+              <span class="dw-footnote dw-num" style="margin-left:var(--dw-space-2);color:var(--dw-fg-secondary)">+12 more</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0l · overlays (divider, tooltip, popover, dropdown) ─── -->
+        <section class="dw-section" id="dw-overlays">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">overlays + separators</h2>
+          </div>
+
+          <div class="dw-block">
+            <h3>divider</h3>
+            <hr class="dw-divider">
+            <hr class="dw-divider dw-divider--labeled" data-label="or"><div class="dw-divider dw-divider--labeled">or</div>
+          </div>
+
+          <div class="dw-block">
+            <h3>tooltip</h3>
+            <div class="dw-row">
+              <span class="dw-tooltip" tabindex="0">
+                <button class="dw-btn dw-btn--secondary dw-btn--icon" aria-label="copy address">
+                  <i class="ph ph-copy" aria-hidden="true"></i>
+                </button>
+                <span class="dw-tooltip__bubble" role="tooltip">copy your address</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="dw-block" style="position:relative;min-height:220px">
+            <h3>popover</h3>
+            <div class="dw-popover" style="position:relative;max-width:280px">
+              <div class="dw-headline" style="margin-bottom:var(--dw-space-2)">why am i seeing this?</div>
+              <p class="dw-footnote" style="color:var(--dw-fg-secondary);margin:0">
+                this comes from someone you follow. open their profile to see more.
+              </p>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>dropdown</h3>
+            <div class="dw-dropdown is-open" style="position:relative;min-height:220px">
+              <button class="dw-btn dw-btn--secondary">your account</button>
+              <ul class="dw-dropdown__menu" role="menu">
+                <li><button class="dw-dropdown__item" role="menuitem">your portfolio</button></li>
+                <li><button class="dw-dropdown__item" role="menuitem">your settings</button></li>
+                <li><button class="dw-dropdown__item" role="menuitem">export your account</button></li>
+                <li><button class="dw-dropdown__item dw-dropdown__item--danger" role="menuitem">sign out</button></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 0m · pagination + load more ─── -->
+        <section class="dw-section" id="dw-pagination">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">primitive</div>
+            <h2 class="dw-title-1">pagination + load more</h2>
+          </div>
+          <div class="dw-block">
+            <nav class="dw-pagination" aria-label="pagination">
+              <button class="dw-pagination__page" aria-label="previous">‹</button>
+              <button class="dw-pagination__page" aria-current="page">1</button>
+              <button class="dw-pagination__page">2</button>
+              <button class="dw-pagination__page">3</button>
+              <button class="dw-pagination__page" aria-label="next">›</button>
+            </nav>
+          </div>
+          <div class="dw-block" style="max-width:420px">
+            <button class="dw-load-more">show earlier posts</button>
+          </div>
+        </section>
+
+        <!-- ─── 0n · cards ─── -->
+        <section class="dw-section" id="dw-cards">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">composite</div>
+            <h2 class="dw-title-1">cards</h2>
+            <p class="dw-lead-sub">
+              One focal action per card. 1:1 artwork for media, 16:9
+              for events. State overlays sit absolute over the artwork
+              so the layout never shifts when state changes.
+            </p>
+          </div>
+
+          <div class="dw-block">
+            <h3>media cards + state overlays</h3>
+            <div class="dw-grid-sm">
+              <article class="dw-card dw-card--media">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#2a2a2a,#111)"></div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">End Credits</span>
+                  <span class="dw-card__meta"><span class="dw-avatar dw-avatar--sm">n</span>nappynina.com</span>
+                  <span class="dw-card__price dw-num">$8.00</span>
+                  <div class="dw-card__actions">
+                    <button class="dw-btn dw-btn--primary dw-btn--sm dw-btn--block">collect</button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="dw-card dw-card--media">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#4a2a2a,#1a0a0a)">
+                  <span class="dw-card__state dw-card__state--limited">
+                    <span class="dw-chip__dot" aria-hidden="true"></span>only 13 left
+                  </span>
+                </div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">Live at Elsewhere</span>
+                  <span class="dw-card__meta">Mar 12 · doors 8pm</span>
+                  <span class="dw-card__price dw-num">$15.00</span>
+                  <div class="dw-card__actions">
+                    <button class="dw-btn dw-btn--primary dw-btn--sm dw-btn--block">reserve a seat</button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="dw-card dw-card--media">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#2a2a4a,#0a0a1a)">
+                  <span class="dw-card__state dw-card__state--sold-out">
+                    <span class="dw-chip__dot" aria-hidden="true"></span>sold out
+                  </span>
+                </div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">Second Line</span>
+                  <span class="dw-card__meta">nappynina.com</span>
+                  <span class="dw-card__price dw-num">—</span>
+                  <div class="dw-card__actions">
+                    <button class="dw-btn dw-btn--secondary dw-btn--sm dw-btn--block" disabled>sold out</button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="dw-card dw-card--media dw-card--delisted">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#333,#111)">
+                  <span class="dw-card__state dw-card__state--delisted">
+                    <span class="dw-chip__dot" aria-hidden="true"></span>no longer listed
+                  </span>
+                </div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">Study No. 3</span>
+                  <span class="dw-card__meta">milesxb.bio</span>
+                </div>
+              </article>
+
+              <article class="dw-card dw-card--media">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#1f3a2f,#0a1a10)">
+                  <span class="dw-card__state dw-card__state--gated">
+                    <span class="dw-chip__dot" aria-hidden="true"></span>unlocks with ticket #12345
+                  </span>
+                </div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">Backlot · rehearsal cut</span>
+                  <span class="dw-card__meta">blackmatter.world</span>
+                  <div class="dw-card__actions">
+                    <button class="dw-btn dw-btn--secondary dw-btn--sm dw-btn--block">unlock</button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="dw-card dw-card--media">
+                <div class="dw-card__artwork" style="background:linear-gradient(135deg,#1a1a1a,#060606)">
+                  <span class="dw-card__state dw-card__state--upcoming">
+                    <span class="dw-chip__dot" aria-hidden="true"></span>opens in 14 days
+                  </span>
+                </div>
+                <div class="dw-card__body">
+                  <span class="dw-card__title">A Reading of Coriolanus</span>
+                  <span class="dw-card__meta">milesxb.bio</span>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="dw-block">
+            <h3>event card · 16:9</h3>
+            <article class="dw-card dw-card--event" style="max-width:420px">
+              <div class="dw-card__artwork" style="background:linear-gradient(120deg,#7c3aed,#db2777)">
+                <span class="dw-card__state dw-card__state--live">
+                  <span class="dw-chip__dot" aria-hidden="true"></span>live now
+                </span>
+              </div>
+              <div class="dw-card__body" style="gap:var(--dw-space-2)">
+                <span class="dw-card__title">that guy · a short film</span>
+                <span class="dw-card__meta">by <span style="color:var(--dw-accent)">milesxb.bio</span></span>
+                <span class="dw-footnote" style="color:var(--dw-fg-secondary);margin-top:var(--dw-space-1)">A 16-minute cut, two takes, premiering tonight.</span>
+                <div class="dw-card__actions">
+                  <button class="dw-btn dw-btn--primary dw-btn--sm">watch</button>
+                  <button class="dw-btn dw-btn--secondary dw-btn--sm">share</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- ─── 0o · states ─── -->
+        <section class="dw-section" id="dw-states">
+          <div class="dw-section-header">
+            <div class="dw-eyebrow">composite</div>
+            <h2 class="dw-title-1">empty · error · loading</h2>
+            <p class="dw-lead-sub">
+              Honest states. No marketing voice, no hype. "this didn't
+              go through" over a tracking code.
+            </p>
+          </div>
+          <div class="dw-block" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--dw-space-4)">
+            <div class="dw-empty">
+              <div class="dw-empty__title">no posts yet <span class="dw-draft">draft</span></div>
+              <p class="dw-empty__body">when you publish, it lands here first.</p>
+              <button class="dw-btn dw-btn--primary dw-btn--sm">start a post</button>
+            </div>
+            <div class="dw-error">
+              <div class="dw-error__title">this didn't go through</div>
+              <p class="dw-error__body">the network dropped on the way out. try again.</p>
+              <button class="dw-btn dw-btn--secondary dw-btn--sm">try again</button>
+            </div>
+            <div class="dw-loading">
+              <div class="dw-loading__title dw-headline">we're catching up</div>
+              <span class="dw-progress dw-progress--indeterminate" style="max-width:220px"></span>
+              <p class="dw-footnote" style="color:var(--dw-fg-secondary)">new activity should land in a moment.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <!-- ─────────── 1 · foundation ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">1 · foundation</h2>
@@ -401,95 +1059,30 @@ async function initDesign() {
             <div class="design-swatch" style="background:var(--accent);color:var(--bg)"><span>--accent</span></div>
             <div class="design-swatch" style="background:var(--border);color:var(--fg)"><span>--border</span></div>
             <div class="design-swatch" style="background:var(--green);color:var(--bg)"><span>--green</span></div>
-            <div class="design-swatch" style="background:var(--red);color:var(--bg)"><span>--red</span></div>
           </div>
         </div>
 
         <div class="design-block">
-          <h3>type scale — apple sf hierarchy, in rem</h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.75em;max-width:60ch">
-            Ten steps, named by role. Every text-carrying class in the
-            app reaches for one of these — a Dynamic-Type pass lifts
-            the whole page without touching call sites.
-          </p>
+          <h3>typography</h3>
           <div class="design-type-row">
-            <div style="font-size:var(--type-display);line-height:var(--leading-tight);letter-spacing:var(--tracking-tight)">display — 2.4rem</div>
-            <div style="font-size:var(--type-title-1);line-height:var(--leading-tight);letter-spacing:var(--tracking-tight)">title-1 — 1.9rem</div>
-            <div style="font-size:var(--type-title-2);line-height:var(--leading-tight)">title-2 — 1.5rem</div>
-            <div style="font-size:var(--type-title-3);line-height:var(--leading-normal)">title-3 — 1.25rem</div>
-            <div style="font-size:var(--type-headline);font-weight:600">headline — 1.0625rem</div>
-            <div style="font-size:var(--type-body)">body — 1rem (default)</div>
-            <div style="font-size:var(--type-callout)">callout — 0.9375rem</div>
-            <div style="font-size:var(--type-subheadline);color:var(--muted)">subheadline — 0.875rem</div>
-            <div style="font-size:var(--type-footnote);color:var(--dim)">footnote — 0.8125rem</div>
-            <div style="font-size:var(--type-caption);color:var(--dim);text-transform:uppercase;letter-spacing:var(--tracking-wide)">caption — 0.75rem</div>
-            <p style="margin:0.5em 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--type-footnote)">monospace 0x46db…6725</p>
+            <h1 style="margin:0;font-size:2em">h1 · display</h1>
+            <h2 style="margin:0;font-size:1.4em">h2 · section title</h2>
+            <h3 style="margin:0;font-size:1.1em">h3 · block heading</h3>
+            <p style="margin:0">body text — sits at the reader's default size for the artist tenant.</p>
+            <p style="margin:0;color:var(--dim);font-size:0.9em">dim — captions + secondary meta</p>
+            <p style="margin:0;color:var(--muted);font-size:0.85em">muted — hint copy</p>
+            <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.85em">monospace 0x46db55ad42da6ba3c29a3c1522ebbf8e16960725</p>
           </div>
         </div>
 
         <div class="design-block">
-          <h3>spacing scale — 4px rhythm <code>new</code></h3>
-          <div style="display:flex;flex-direction:column;gap:var(--space-2)">
-            ${[1,2,3,4,5,6,7,8].map(n => `
-              <div style="display:flex;align-items:center;gap:var(--space-4)">
-                <span style="color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:var(--type-footnote);min-width:8ch">--space-${n}</span>
-                <span style="display:inline-block;height:12px;background:var(--fg);width:var(--space-${n})"></span>
-                <span style="color:var(--dim);font-size:var(--type-footnote);font-variant-numeric:tabular-nums">${[4,8,12,16,24,32,48,64][n-1]}px</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>radius scale <code>new</code></h3>
-          <div class="design-btn-row">
-            <span style="padding:var(--space-3) var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:var(--type-footnote);color:var(--muted)">--radius-sm · 6px</span>
-            <span style="padding:var(--space-3) var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:var(--type-footnote);color:var(--muted)">--radius-md · 10px</span>
-            <span style="padding:var(--space-3) var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);font-size:var(--type-footnote);color:var(--muted)">--radius-lg · 16px</span>
-            <span style="padding:var(--space-3) var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:var(--type-footnote);color:var(--muted)">--radius-pill · 999px</span>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>motion tokens <code>new</code></h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.5em;max-width:60ch">
-            Every animation and transition reads from these. Honors
-            <code>prefers-reduced-motion</code> globally — strip-all
-            rule sits in <code>style.css</code>'s root block.
-          </p>
-          <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-1);color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:var(--type-footnote)">
-            <li>--motion-fast · 140ms · micro-interactions (hover, press)</li>
-            <li>--motion-base · 220ms · modal fade, sheet slide</li>
-            <li>--motion-slow · 320ms · dialog scale-in</li>
-            <li>--ease-standard · cubic-bezier(0.22, 1, 0.36, 1)</li>
-            <li>--ease-exit · cubic-bezier(0.4, 0, 1, 1)</li>
-          </ul>
-        </div>
-
-        <div class="design-block">
-          <h3>chip primitive <code>new</code></h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.5em">
-            <code>.chip</code> + modifiers. Replaces the one-off badge /
-            pill / profile-chip / group-chip fleet over Phase 2 —
-            those keep working until each surface opts in.
-          </p>
-          <div class="design-btn-row">
-            <span class="chip">neutral</span>
-            <span class="chip chip--accent"><span class="chip__dot"></span>accent</span>
-            <span class="chip chip--success"><span class="chip__dot"></span>earned · $18.05</span>
-            <span class="chip chip--danger"><span class="chip__dot"></span>must act</span>
-            <span class="chip chip--ghost">ghost label</span>
-            <span class="chip chip--sm">small</span>
-            <button type="button" class="chip chip--interactive">tappable · 44pt</button>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>legacy chips + badges (still shipped)</h3>
+          <h3>chips + badges</h3>
           <div class="design-btn-row">
             <span class="vault-lead-chip"><span class="vault-lead-chip-key">earned</span> <span style="color:var(--green)">$18.05</span></span>
             <span class="vault-lead-chip"><span class="vault-lead-chip-key">spent</span> $24.25</span>
             <span style="padding:0.15em 0.6ch;border-radius:4px;background:color-mix(in srgb,var(--fg) 6%,transparent);color:var(--dim);font-size:0.72em;text-transform:uppercase;letter-spacing:0.12em">pill · uppercase</span>
+            <span style="padding:0.15em 0.5ch;background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green);border-radius:3px;font-size:0.72em;text-transform:uppercase;letter-spacing:0.1em">badge · confirmed</span>
+            <span style="padding:0.15em 0.5ch;background:color-mix(in srgb,#ef4444 20%,transparent);color:#ef4444;border-radius:3px;font-size:0.72em;text-transform:uppercase;letter-spacing:0.1em">badge · disputed</span>
           </div>
         </div>
       </section>
@@ -499,62 +1092,16 @@ async function initDesign() {
         <h2 class="design-section-title">2 · buttons + inputs</h2>
 
         <div class="design-block">
-          <h3>button primitive — .btn + modifiers <code>new</code></h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.75em;max-width:60ch">
-            One primitive, four roles. 44pt minimum tap target,
-            focus-visible ring sacred, motion wrapped. The legacy
-            <code>.buy-btn</code> below is an alias for
-            <code>.btn.btn--primary</code> so all 346 call sites keep
-            working — new code should prefer <code>.btn</code>.
-          </p>
+          <h3>buttons</h3>
           <div class="design-btn-row">
-            <button type="button" class="btn btn--primary">primary</button>
-            <button type="button" class="btn btn--secondary">secondary</button>
-            <button type="button" class="btn btn--ghost">ghost</button>
-            <button type="button" class="btn btn--danger">danger</button>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>button — sizes</h3>
-          <div class="design-btn-row">
-            <button type="button" class="btn btn--primary btn--compact">compact</button>
-            <button type="button" class="btn btn--primary">default</button>
-            <button type="button" class="btn btn--primary btn--block" style="max-width:360px">block (full-width)</button>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>button — states</h3>
-          <div class="design-btn-row">
-            <button type="button" class="btn btn--primary">resting</button>
-            <button type="button" class="btn btn--primary" disabled>disabled</button>
-            <button type="button" class="btn btn--primary btn--loading">loading</button>
-            <button type="button" class="btn btn--secondary btn--loading">loading · secondary</button>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>button — with icon + label</h3>
-          <div class="design-btn-row">
-            <button type="button" class="btn btn--primary"><i class="ph ph-check" aria-hidden="true"></i><span>confirm</span></button>
-            <button type="button" class="btn btn--secondary"><i class="ph ph-copy" aria-hidden="true"></i><span>copy link</span></button>
-            <button type="button" class="btn btn--ghost"><i class="ph ph-arrow-left" aria-hidden="true"></i><span>back</span></button>
-            <button type="button" class="btn btn--icon btn--secondary" aria-label="more"><i class="ph ph-dots-three" aria-hidden="true"></i></button>
-          </div>
-        </div>
-
-        <div class="design-block">
-          <h3>legacy buttons — still shipped</h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.5em">
-            Kept for continuity; prefer <code>.btn</code> in new work.
-          </p>
-          <div class="design-btn-row">
-            <button class="buy-btn">.buy-btn (alias of .btn.btn--primary)</button>
-            <button class="feed-card-btn green">feed-card-btn · green</button>
+            <button class="vault-save-btn" style="width:auto;padding:0.75em 1.5em">primary — vault-save-btn</button>
+            <button class="buy-btn">buy-btn</button>
+            <button class="feed-card-btn green">feed-card-btn · green (buy)</button>
             <button class="feed-card-btn">feed-card-btn · neutral</button>
             <button class="vault-verb">vault-verb</button>
-            <button class="vault-save-btn" style="width:auto;padding:0.75em 1.5em">vault-save-btn</button>
+            <button class="vault-recv-copy"><i class="ph ph-copy"></i> ghost · vault-recv-copy</button>
+            <button class="vault-save-btn vault-save-btn-done" style="width:auto;padding:0.75em 1.5em"><i class="ph ph-check"></i> success · btn-done</button>
+            <button class="vault-save-btn" disabled style="width:auto;padding:0.75em 1.5em">disabled</button>
           </div>
         </div>
 
@@ -569,17 +1116,11 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>inputs — .project-input + validation <code>new</code></h3>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0 0 0.5em;max-width:60ch">
-            Placeholder uses <code>--muted</code> (≈6.3:1 contrast,
-            clears WCAG AA). Invalid state pairs color with a 3px
-            left-rule so color is not the only signal — set
-            <code>aria-invalid="true"</code> on the field.
-          </p>
+          <h3>inputs</h3>
           <div class="design-input-row">
-            <input type="text" class="project-input" placeholder="a short title" style="max-width:24ch">
-            <input type="text" class="project-input" value="Live at Elsewhere" aria-invalid="true" style="max-width:24ch">
-            <input type="text" class="project-input" placeholder="disabled" disabled style="max-width:16ch">
+            <input type="text" class="project-input" placeholder="project-input" style="max-width:24ch">
+            <input type="text" class="vault-save-to-input" placeholder="vault-save-to-input" style="max-width:24ch">
+            <input type="text" class="vault-save-amount-input" placeholder="0.00" style="max-width:12ch">
           </div>
         </div>
       </section>
@@ -2473,14 +3014,14 @@ async function initDesign() {
         </p>
 
         <div id="design-primitives-openers" style="display:flex;flex-wrap:wrap;gap:0.5em;margin-bottom:1.5em">
-          <button type="button" class="btn btn--secondary" data-open="prim-toast-default">toast · default</button>
-          <button type="button" class="btn btn--secondary" data-open="prim-toast-success">toast · success</button>
-          <button type="button" class="btn btn--secondary" data-open="prim-toast-error">toast · error</button>
-          <button type="button" class="btn btn--secondary" data-open="prim-toast-message">toast · message</button>
-          <button type="button" class="btn btn--primary" data-open="prim-modal">modal · dummy</button>
-          <button type="button" class="btn btn--primary" data-open="prim-sheet">bottom sheet · dummy</button>
-          <button type="button" class="btn btn--danger" data-open="prim-confirm">confirm · destructive</button>
-          <button type="button" class="btn btn--ghost" data-open="prim-copy">copy to clipboard</button>
+          <button class="buy-btn" data-open="prim-toast-default">toast · default</button>
+          <button class="buy-btn" data-open="prim-toast-success">toast · success</button>
+          <button class="buy-btn" data-open="prim-toast-error">toast · error</button>
+          <button class="buy-btn" data-open="prim-toast-message">toast · message</button>
+          <button class="buy-btn" data-open="prim-modal">modal · dummy</button>
+          <button class="buy-btn" data-open="prim-sheet">bottom sheet · dummy</button>
+          <button class="buy-btn" data-open="prim-confirm">confirm · destructive</button>
+          <button class="buy-btn" data-open="prim-copy">copy to clipboard</button>
         </div>
 
         <!-- Toasts -->
@@ -2547,39 +3088,24 @@ async function initDesign() {
 
         <!-- Modal shells -->
         <div class="design-block">
-          <h3>modal shell — overlay + dialog (praxis-modal-*)</h3>
-          <p style="color:var(--dim);font-size:var(--type-footnote);margin:0 0 0.5em;max-width:60ch">
-            <code>.praxis-modal-overlay</code> + <code>.praxis-modal-dialog</code>. Auto-upgraded by
-            <code>modal-a11y.js</code> on insert: <code>role="dialog"</code>,
-            <code>aria-labelledby</code> wired to the first heading,
-            focus trap, Esc dismiss, body-scroll-lock, focus restored
-            to the opener on close. Mobile <code>&lt;768px</code>
-            anchors it to the bottom edge with a drag affordance.
+          <h3>modal shell — overlay + dialog (praxis-modal-*) <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            <code>.praxis-modal-overlay</code> + <code>.praxis-modal-dialog</code>. Backdrop blur, scale-in. Click the opener; click outside or the x to close.
           </p>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0">
-            Opt-outs: <code>data-no-esc</code>, <code>data-no-trap</code>,
-            <code>data-labelledby="#id"</code> to point at an external heading.
-          </p>
+          <p style="color:var(--muted);font-size:0.85em;margin:0">example body: "name this draft. you can change it later."</p>
         </div>
         <div class="design-block">
-          <h3>bottom sheet — same shell, anchored low</h3>
-          <p style="color:var(--dim);font-size:var(--type-footnote);margin:0 0 0.5em;max-width:60ch">
-            Same shell. Below 768px, every <code>.praxis-modal-dialog</code>
-            becomes a bottom sheet with a 36×4 grabber, safe-area
-            padding (<code>env(safe-area-inset-bottom)</code>), and a
-            top radius of <code>--radius-lg</code>. One-handed by
-            design.
+          <h3>bottom sheet — same shell, anchored low <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            Same overlay, dialog pinned to the bottom edge for one-handed phone use. Full-width rail with a grab affordance.
           </p>
         </div>
         <div class="design-block">
           <h3>confirm — destructive variant <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:var(--type-footnote);margin:0 0 0.5em;max-width:60ch">
-            Pairs the shell with a <code>.btn.btn--danger</code> primary
-            and a <code>.btn.btn--ghost</code> cancel. Danger sits to the
-            right — the quiet button is the escape hatch, not the
-            headline.
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            Red-accent primary. Used for delete, remove, unfollow. Cancel is the quiet button; the destructive button sits to the right.
           </p>
-          <p style="color:var(--muted);font-size:var(--type-footnote);margin:0">example body: "delete this draft. this can't be undone."</p>
+          <p style="color:var(--muted);font-size:0.85em;margin:0">example body: "delete this draft. this can't be undone."</p>
         </div>
 
         <!-- Form controls -->
@@ -5074,14 +5600,7 @@ async function initDesign() {
         const { toast } = await import('./toast.js'); toast.message('new message from nappynina')
       } else if (kind === 'prim-modal' || kind === 'prim-sheet' || kind === 'prim-confirm') {
         // Dummy modal shell — vanilla .praxis-modal-overlay / .praxis-modal-dialog.
-        // Not calling any real opener; this is the primitive itself,
-        // demo-only. modal-a11y.js auto-upgrades the overlay with
-        // role="dialog", aria-labelledby → the <h3>, focus trap, Esc
-        // dismiss, body scroll lock. We still own the close handler
-        // for the buttons inside; dispatchEvent of praxis:modal-close
-        // is what modal-a11y.js fires, and because our markup carries
-        // [data-prim-close] controls, its default handler clicks the
-        // first one (which triggers the handler below).
+        // Not calling any real opener; this is the primitive itself, demo-only.
         const overlay = document.createElement('div')
         overlay.className = 'praxis-modal-overlay'
         const isSheet = kind === 'prim-sheet'
@@ -5092,28 +5611,28 @@ async function initDesign() {
         if (isSheet) {
           dialog.style.width = '100%'
           dialog.style.maxWidth = '640px'
-          dialog.style.borderRadius = 'var(--radius-lg) var(--radius-lg) 0 0'
+          dialog.style.borderRadius = '16px 16px 0 0'
           dialog.style.margin = '0 auto'
         }
-        dialog.style.position = 'relative'
         const close = () => {
           overlay.classList.add('is-closing')
           setTimeout(() => overlay.remove(), 220)
         }
-        // Copy marked `draft` per the voice contract. Miles's pass may rewrite.
-        const title = isConfirm ? 'delete this draft' : 'name this draft'
+        const title = isConfirm ? 'delete this draft' : isSheet ? 'name this draft' : 'name this draft'
         const body = isConfirm
           ? "this can't be undone."
           : 'you can change it later.'
         dialog.innerHTML = `
-          <h3 style="margin:0 var(--tap-target) 0.5em 0">${escapeHtml(title)}</h3>
-          <button type="button" class="praxis-modal-close" aria-label="close" data-prim-close><i class="ph ph-x" aria-hidden="true"></i></button>
-          <p style="color:var(--muted);margin:0 0 var(--space-5)">${escapeHtml(body)}</p>
-          <div style="display:flex;justify-content:flex-end;gap:var(--space-2);flex-wrap:wrap">
-            <button type="button" class="btn btn--ghost" data-prim-close>cancel</button>
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:1ch;margin-bottom:0.75em">
+            <h3 style="margin:0">${escapeHtml(title)}</h3>
+            <button type="button" aria-label="close" data-prim-close style="background:transparent;border:0;color:var(--muted);font-size:1.4em;line-height:1;cursor:pointer;padding:0 0.2em">x</button>
+          </div>
+          <p style="color:var(--muted);margin:0 0 1.25em">${escapeHtml(body)}</p>
+          <div style="display:flex;justify-content:flex-end;gap:0.6ch">
+            <button type="button" class="buy-btn" data-prim-close style="background:transparent;border:1px solid var(--border);color:var(--fg)">cancel</button>
             ${isConfirm
-              ? '<button type="button" class="btn btn--danger" data-prim-close>delete</button>'
-              : '<button type="button" class="btn btn--primary" data-prim-close>save</button>'}
+              ? '<button type="button" class="buy-btn" data-prim-close style="background:#e24a4a;border-color:#e24a4a;color:#fff">delete</button>'
+              : '<button type="button" class="buy-btn" data-prim-close>save</button>'}
           </div>
         `
         overlay.appendChild(dialog)
@@ -5259,6 +5778,12 @@ async function initDesign() {
     const btn = ev.target.closest('button[data-open]')
     if (btn) dispatchOpener(btn)
   })
+
+  // Workshop openers — scoped to the #dw-workshop-root. Clicks on
+  // button[data-dw-open] inside the workshop open a .dw-modal /
+  // .dw-sheet / .dw-confirm or fire a .dw-toast via design-workshop.js.
+  // Never touches any modal or toast outside the workshop surface.
+  try { DW.wireDwOpeners?.(document.getElementById('dw-workshop-root') || document) } catch (e) { console.warn('wireDwOpeners:', e) }
   document.getElementById('design-org-openers')?.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-open]')
     if (btn) dispatchOpener(btn)

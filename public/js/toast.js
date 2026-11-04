@@ -21,17 +21,8 @@ function createToast(message, opts = {}) {
 
   const el = document.createElement('div')
   el.className = `toast-item toast-${type}`
-  // Errors speak over whatever VoiceOver is announcing; other toasts
-  // wait their turn. "Color is not the only signal" — the left-rule
-  // + the role pair together so a screen reader + a color-blind
-  // reader both get the signal.
-  if (type === 'error') {
-    el.setAttribute('role', 'alert')
-    el.setAttribute('aria-live', 'assertive')
-  } else {
-    el.setAttribute('role', 'status')
-    el.setAttribute('aria-live', 'polite')
-  }
+  el.setAttribute('role', 'status')
+  el.setAttribute('aria-live', 'polite')
 
   if (html) {
     el.innerHTML = message
