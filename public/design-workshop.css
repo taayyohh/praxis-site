@@ -18,11 +18,15 @@
       · Text sized in rem/em so Dynamic Type works at 200% zoom.
     ────────────────────────────────────────────────────────────── */
 
-/*  Fonts — modernist-editorial pairing scoped to the catalog.
-    Zodiak is an editorial variable serif for display + titles;
-    Satoshi is a modernist variable sans for body, UI, numbers.
-    Hosted on Fontshare (Indian Type Foundry) — free, no account. */
-@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=zodiak@300,400,700&display=swap');
+/*  Fonts — one voice. Switzer is the sole typeface, used from
+    caption to display. Helvetica-adjacent, variable, humane.
+    Space Mono carries metadata — numbers, chain ids, timestamps,
+    draft marks. Hierarchy comes from scale + weight, never from
+    font switching.
+    Switzer via Fontshare (Indian Type Foundry) — free, no account.
+    Space Mono via Google Fonts — free. */
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 
 /* ─────────── tokens — dark first (file only loads on /design) ────────── */
 :root {
@@ -56,44 +60,49 @@
   --dw-success: #30d158;        /* earned / confirmed / positive */
   --dw-success-soft: color-mix(in srgb, var(--dw-success) 16%, transparent);
 
-  /*  type stack — modernist-editorial pairing. Zodiak is the
-      editorial variable serif for display / titles / prices;
-      Satoshi is the modernist variable sans for body + UI +
-      numbers (with tabular-nums). Both fallback through system
-      fonts so the catalog stays legible if Fontshare is cold. */
-  --dw-font:       'Satoshi', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-                   'Helvetica Neue', Arial, sans-serif;
-  --dw-font-serif: 'Zodiak', 'New York', 'Times New Roman', Georgia, serif;
-  --dw-font-mono:  ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /*  type stack — one voice. Switzer everywhere; Space Mono for
+      metadata (numbers, dates, chain ids, section folios). Both
+      fall back through system fonts so the catalog stays legible
+      if the CDN is cold. `--dw-font-serif` is retained as an alias
+      of `--dw-font` so legacy rules don't need to be pruned to the
+      bone — everything resolves to the same sans. */
+  --dw-font:       'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+                   'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --dw-font-serif: var(--dw-font);
+  --dw-font-mono:  'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /*  text styles — editorial display (Zodiak), modernist body
-      (Satoshi). rem-based so Dynamic Type scales the whole
-      catalog proportionally. Body lines are generous (1.5) for
-      long reads, titles tight (1.2) for display rhythm. */
-  --dw-type-display:     700 2.25rem/1.2  var(--dw-font-serif);
-  --dw-type-title-1:     700 1.75rem/1.22 var(--dw-font-serif);
-  --dw-type-title-2:     400 1.375rem/1.25 var(--dw-font-serif);
-  --dw-type-headline:    700 1.125rem/1.35 var(--dw-font);
-  --dw-type-body:        400 1rem/1.5     var(--dw-font);
-  --dw-type-callout:     500 0.9375rem/1.45 var(--dw-font);
-  --dw-type-subheadline: 400 0.9375rem/1.4 var(--dw-font);
-  --dw-type-footnote:    400 0.8125rem/1.4 var(--dw-font);
-  --dw-type-caption:     500 0.75rem/1.35 var(--dw-font);
+  /*  text styles — dramatic scale, crushed line-heights, tight
+      tracking. Hierarchy from scale + weight, not font switching.
+      Numbers get tabular-nums baked into .dw-mono and metadata. */
+  --dw-type-display:     600 clamp(2.75rem, 5vw, 4.5rem)/0.95 var(--dw-font);
+  --dw-type-title-1:     500 clamp(1.75rem, 3vw, 2.5rem)/1    var(--dw-font);
+  --dw-type-title-2:     500 clamp(1.25rem, 2vw, 1.5rem)/1.15 var(--dw-font);
+  --dw-type-headline:    500 1rem/1.35       var(--dw-font);
+  --dw-type-body:        400 1rem/1.55       var(--dw-font);
+  --dw-type-callout:     400 0.9375rem/1.5   var(--dw-font);
+  --dw-type-subheadline: 400 0.9375rem/1.45  var(--dw-font);
+  --dw-type-footnote:    400 0.8125rem/1.4   var(--dw-font);
+  --dw-type-caption:     400 0.75rem/1.35    var(--dw-font);
+  --dw-type-mono:        400 0.8125rem/1.4   var(--dw-font-mono);
+  --dw-type-metadata:    400 0.8125rem/1.4   var(--dw-font-mono);
 
-  --dw-tracking-display: -0.02em;
-  --dw-tracking-title:   -0.015em;
+  --dw-tracking-display: -0.03em;
+  --dw-tracking-title:   -0.02em;
+  --dw-tracking-title-2: -0.015em;
   --dw-tracking-body:    0;
-  --dw-tracking-caption: 0.02em;
+  --dw-tracking-caption: 0.015em;
 
-  /*  spacing scale — 4px base, doubling gently. */
-  --dw-space-1: 0.25rem;
-  --dw-space-2: 0.5rem;
-  --dw-space-3: 0.75rem;
-  --dw-space-4: 1rem;
-  --dw-space-5: 1.5rem;
-  --dw-space-6: 2rem;
-  --dw-space-7: 3rem;
-  --dw-space-8: 4rem;
+  /*  spacing scale — ×1.5 of the previous values. Whitespace is
+      the primary material; the whole catalog should feel like a
+      book, not a web form. */
+  --dw-space-1: 0.375rem;
+  --dw-space-2: 0.75rem;
+  --dw-space-3: 1.125rem;
+  --dw-space-4: 1.5rem;
+  --dw-space-5: 2.25rem;
+  --dw-space-6: 3rem;
+  --dw-space-7: 4.5rem;
+  --dw-space-8: 6rem;
 
   /*  radius — small to full. Apple-ish continuous curves via
       border-radius alone (browsers interpolate well enough). */
@@ -162,12 +171,12 @@
   font-feature-settings: 'ss01', 'ss02';
 }
 
-/*  Editorial display — Zodiak takes the display + title role on
-    every catalog heading large enough to carry a serif. Scoped
-    to .design-page so no other surface sees it until promoted.
-    h3 and smaller stay Satoshi (headline tier and below). */
+/*  Headings — one typeface, hierarchy by scale + weight. Every
+    heading in the catalog resolves to Switzer. No font switching.
+    Lowercase is the default; tracking pulls tight as size grows. */
 .design-page h1,
 .design-page h2,
+.design-page h3,
 .design-page .design-section-title,
 .design-page .dw-display,
 .design-page .dw-title-1,
@@ -176,14 +185,20 @@
 .design-page .dw-modal__title,
 .design-page .pd-tier-price,
 .design-page .pd-tier-name {
-  font-family: var(--dw-font-serif);
-  font-feature-settings: 'ss01', 'liga', 'calt';
-}
-.design-page h1 { letter-spacing: var(--dw-tracking-display); }
-.design-page h2 { letter-spacing: var(--dw-tracking-title); }
-.design-page h3 {
   font-family: var(--dw-font);
+  font-feature-settings: 'ss01', 'ss02', 'cv11';
+  text-transform: none;
+}
+.design-page h1 {
+  font: var(--dw-type-display);
+  letter-spacing: var(--dw-tracking-display);
+}
+.design-page h2 {
   letter-spacing: var(--dw-tracking-title);
+}
+.design-page h3 {
+  letter-spacing: var(--dw-tracking-title-2);
+  font-weight: 500;
 }
 
 /*  Numbers across the catalog — tabular where they count. */
@@ -210,14 +225,16 @@
 .dw-workshop a:hover { text-decoration-color: currentColor; }
 
 .dw-workshop-lead {
-  padding: var(--dw-space-7) 0 var(--dw-space-6);
+  padding: var(--dw-space-8) 0 var(--dw-space-7);
   border-bottom: 1px solid var(--dw-separator);
-  margin-bottom: var(--dw-space-7);
+  margin-bottom: var(--dw-space-8);
 }
+/*  Eyebrows become editorial folio marks — small mono numbers, no
+    allcaps shouting, no background tint. */
 .dw-eyebrow {
-  font: var(--dw-type-caption);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: var(--dw-type-metadata);
+  letter-spacing: 0.04em;
+  text-transform: none;
   color: var(--dw-fg-muted);
   margin-bottom: var(--dw-space-3);
 }
@@ -225,17 +242,17 @@
   font: var(--dw-type-display);
   letter-spacing: var(--dw-tracking-display);
   color: var(--dw-fg);
-  margin: 0 0 var(--dw-space-3);
+  margin: 0 0 var(--dw-space-4);
 }
 .dw-title-1 { font: var(--dw-type-title-1); letter-spacing: var(--dw-tracking-title); color: var(--dw-fg); }
-.dw-title-2 { font: var(--dw-type-title-2); letter-spacing: var(--dw-tracking-title); color: var(--dw-fg); }
-.dw-headline { font: var(--dw-type-headline); letter-spacing: var(--dw-tracking-title); color: var(--dw-fg); }
+.dw-title-2 { font: var(--dw-type-title-2); letter-spacing: var(--dw-tracking-title-2); color: var(--dw-fg); }
+.dw-headline { font: var(--dw-type-headline); letter-spacing: 0; color: var(--dw-fg); }
 .dw-body { font: var(--dw-type-body); color: var(--dw-fg); }
 .dw-callout { font: var(--dw-type-callout); color: var(--dw-fg); }
 .dw-subheadline { font: var(--dw-type-subheadline); color: var(--dw-fg-secondary); }
 .dw-footnote { font: var(--dw-type-footnote); color: var(--dw-fg-secondary); }
 .dw-caption { font: var(--dw-type-caption); color: var(--dw-fg-muted); letter-spacing: var(--dw-tracking-caption); }
-.dw-mono { font-family: var(--dw-font-mono); }
+.dw-mono { font-family: var(--dw-font-mono); font-variant-numeric: tabular-nums; }
 .dw-num  { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
 .dw-lead-sub {
@@ -582,31 +599,37 @@
 .dw-chip--danger  { color: var(--dw-danger);  background: var(--dw-danger-soft);  border-color: transparent; }
 .dw-chip--neutral { color: var(--dw-fg); background: var(--dw-surface-raised); border-color: transparent; }
 
-/*  Tappable pill chip — the tinted-accent interactive variant.
-    Replaces the old `method · wise` admin-rect look. Rounded,
-    accent-colored text on a 10% accent tint; ≥32px tall so the
-    label breathes, min 44px wide so the tap target survives.
-    Icon slot on the left (16px), optional. Rendered via <button>
-    for interactivity; <span> is also fine for static use. */
+/*  Chip pill — demoted to a plain editorial text link. No tint,
+    no fill, no radius, no icon. Just the lowercased label; a
+    hairline underline appears on hover + focus. 44pt tap target is
+    preserved via vertical padding, not via a visible shape.
+    Keeps the old class names so existing markup in design.js
+    doesn't need to change on every callsite — but the look is
+    now one voice. Status variants (success / warn / danger) carry
+    tone through color alone, no background.
+
+    Legacy `.dw-chip-pill__icon` is hidden so any residual phosphor
+    glyph inside an opener disappears — labels are text. */
 .dw-chip-pill {
-  --_tint: var(--dw-accent);
+  --_tint: var(--dw-fg-secondary);
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55ch;
-  padding: 0.4em 0.9em;
-  min-height: 32px;
-  min-width: 44px;
-  font: var(--dw-type-footnote);
-  font-weight: 500;
-  letter-spacing: var(--dw-tracking-body);
+  align-items: baseline;
+  gap: 0;
+  padding: var(--dw-space-2) 0;
+  margin: 0 var(--dw-space-3) 0 0;
+  min-height: var(--dw-tap);
+  font: var(--dw-type-body);
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--_tint);
-  background: color-mix(in srgb, var(--_tint) 10%, transparent);
+  background: transparent;
   border: 0;
-  border-radius: var(--dw-radius-full);
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
   cursor: pointer;
   user-select: none;
   text-decoration: none;
+  text-transform: lowercase;
   font-family: var(--dw-font);
   font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
@@ -614,60 +637,65 @@
 @media (prefers-reduced-motion: no-preference) {
   .dw-chip-pill {
     transition:
-      background-color var(--dw-motion-fast) var(--dw-ease),
       color var(--dw-motion-fast) var(--dw-ease),
-      transform var(--dw-motion-fast) var(--dw-ease);
+      border-color var(--dw-motion-fast) var(--dw-ease),
+      opacity var(--dw-motion-fast) var(--dw-ease);
   }
 }
 .dw-chip-pill:hover {
-  background: color-mix(in srgb, var(--_tint) 16%, transparent);
+  color: var(--dw-fg);
+  border-bottom-color: color-mix(in srgb, var(--dw-fg) 40%, transparent);
 }
 .dw-chip-pill:active,
 .dw-chip-pill[aria-pressed='true'],
 .dw-chip-pill.is-active {
-  background: color-mix(in srgb, var(--_tint) 22%, transparent);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .dw-chip-pill:active { transform: scale(0.98); }
+  color: var(--dw-fg);
+  border-bottom-color: var(--dw-fg);
 }
 .dw-chip-pill:focus-visible {
   outline: none;
-  box-shadow: var(--dw-focus-ring);
+  border-bottom-color: var(--dw-fg);
+  box-shadow: 0 2px 0 0 var(--dw-fg);
 }
 .dw-chip-pill:disabled,
 .dw-chip-pill[aria-disabled='true'] {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
 }
-.dw-chip-pill__icon {
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  font-size: 1rem;
-  line-height: 1;
-}
-.dw-chip-pill__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--dw-radius-full);
-  background: currentColor;
-  flex: 0 0 auto;
-}
+/*  Hide legacy icon + dot slots — labels are text now. */
+.dw-chip-pill__icon,
+.dw-chip-pill__dot { display: none; }
 .dw-chip-pill__sub {
-  color: color-mix(in srgb, var(--_tint) 65%, transparent);
+  color: var(--dw-fg-muted);
   font-weight: 400;
-  margin-left: 0.3ch;
+  margin-left: 0.4ch;
 }
 
-/*  Tint variants — opt in per chip. Default is accent. */
-.dw-chip-pill--success { --_tint: var(--dw-success); }
-.dw-chip-pill--warn    { --_tint: var(--dw-warn); }
-.dw-chip-pill--danger  { --_tint: var(--dw-danger); }
+/*  Status variants — tone through color, never background. */
+.dw-chip-pill--success { --_tint: var(--dw-fg); }
+.dw-chip-pill--success:hover { color: var(--dw-success); border-bottom-color: color-mix(in srgb, var(--dw-success) 50%, transparent); }
+.dw-chip-pill--warn    { --_tint: var(--dw-fg); }
+.dw-chip-pill--warn:hover { color: var(--dw-warn); border-bottom-color: color-mix(in srgb, var(--dw-warn) 50%, transparent); }
+.dw-chip-pill--danger  { --_tint: var(--dw-fg); }
+.dw-chip-pill--danger:hover { color: var(--dw-danger); border-bottom-color: color-mix(in srgb, var(--dw-danger) 50%, transparent); }
 .dw-chip-pill--neutral { --_tint: var(--dw-fg-secondary); }
+
+/*  Opener rows become a single editorial line — lowercase labels,
+    separated by generous whitespace, no backgrounds. Container-
+    agnostic by walking from the id-anchored groups in design.js. */
+.design-page #design-vault-openers,
+.design-page #design-primitives-openers,
+.design-page #design-money-openers {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--dw-space-4);
+  row-gap: var(--dw-space-2);
+  align-items: baseline;
+  padding: var(--dw-space-2) 0 var(--dw-space-5);
+  border-top: 0;
+  background: transparent;
+}
 
 /* ─────────── inputs + fields ─────────── */
 .dw-field {
@@ -1531,7 +1559,7 @@ body.dw-scroll-lock { overflow: hidden; }
 .dw-catalog-main {
   display: flex;
   flex-direction: column;
-  gap: 2.5em;
+  gap: 0;
   min-width: 0;
 }
 
@@ -1665,60 +1693,244 @@ body.dw-scroll-lock { overflow: hidden; }
   }
 }
 
-/* ─────────── draft marker — quiet edge indicator ───────────
-   The old <code>draft</code> inside h3 rendered as a loud ALLCAPS
-   chip — same visual weight as the heading itself. Demoted here
-   to a left-edge accent bar on the whole block, so drafts scan by
-   peripheral vision instead of shouting. The <code>draft</code> text
-   stays in the DOM (semantic flag; Miles greps for it) but is
-   hidden visually. Added by design.js walking each .design-block
-   whose h3 contains <code>draft</code>. */
-.design-page .design-block.is-draft {
-  border-left: 3px solid var(--dw-accent);
-  padding-left: 0.75em;
-}
-.design-page .design-block.is-draft > h3 code { display: none; }
-/*  Same treatment for the workshop-prefix block type, just in case. */
+/* ─────────── draft marker — hairline edge + inline mono prefix ───────────
+   Two signals, both quiet: a 1px accent-at-60% edge on the block,
+   and the greppable <code>draft</code> swapped out visually for a
+   mono `[ draft ]` prefix inside the h3 at 0.7em / opacity 0.5.
+   Peripheral + textural, still recognisable. The <code>draft</code>
+   element itself stays in the DOM so Miles can grep; the ::before
+   draws the visible text. Added by design.js walking each
+   .design-block / .dw-block whose h3 contains <code>draft</code>. */
+.design-page .design-block.is-draft,
 .design-page .dw-block.is-draft {
-  border-left: 3px solid var(--dw-accent);
-  padding-left: 0.75em;
+  border-left: 1px solid color-mix(in srgb, var(--dw-accent) 60%, transparent);
+  padding-left: var(--dw-space-3);
 }
+.design-page .design-block.is-draft > h3 code,
 .design-page .dw-block.is-draft > h3 code { display: none; }
+.design-page .design-block.is-draft > h3::before,
+.design-page .dw-block.is-draft > h3::before {
+  content: '[ draft ]';
+  font-family: var(--dw-font-mono);
+  font-size: 0.7em;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: inherit;
+  opacity: 0.5;
+  margin-right: 0.75ch;
+}
 
-/* ─────────── tier badge — small accent indicator, not a block ───────────
+/* ─────────── tier badge — tiny mono tag, no color fill ───────────
    Section 21 project lifecycle shipped with "PRODUCER" printed on all
-   three tier cards in a filled purple rectangle. Overridden here so
-   the badge becomes a small dot + label at footnote weight, matching
-   the tier name per row (supporter / credits / producer). Inline
-   styles in the markup had set background + color; those are cleared
-   in design.js so this class rule can take effect without !important
-   wars. */
+   three tier cards in a filled purple rectangle. Demoted here to a
+   mono lowercase tag sitting under the tier name — no dot, no fill,
+   no border. Inline styles in the markup had set background + color;
+   those are cleared in design.js so this class rule takes effect
+   without !important wars. */
 .design-page .pd-tier-badge {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--dw-fg-muted);
+  font: var(--dw-type-metadata);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  border-radius: 0;
+  line-height: 1.2;
+}
+.design-page .pd-tier-badge::before { content: none; }
+.design-page .pd-tier-badge[data-tier='producer'] { color: var(--dw-fg-secondary); }
+
+/* ─────────── editorial layer — section + block hairlines ───────────
+   Scoped overrides for the catalog's own section/block chrome.
+   Sections become page-length hairlines with 4.5rem of air; blocks
+   lose their fills and sit as unrelated columns of text + air. */
+.design-page .design-section {
+  padding-top: var(--dw-space-7);
+  margin-top: var(--dw-space-7);
+  border-top: 1px solid color-mix(in srgb, var(--dw-fg) 10%, transparent);
+  background: transparent;
+  gap: var(--dw-space-4);
+}
+.design-page .design-section:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: var(--dw-space-5);
+}
+.design-page .design-section-title {
+  font: var(--dw-type-title-1);
+  font-weight: 500;
+  letter-spacing: var(--dw-tracking-title);
+  color: var(--dw-fg);
+  text-transform: none;
+  margin: 0 0 var(--dw-space-3);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.design-page .design-block {
+  padding: var(--dw-space-4) 0 var(--dw-space-5);
+  background: transparent;
+  border: 0;
+  gap: var(--dw-space-3);
+}
+.design-page .design-block > h3 {
+  font: var(--dw-type-title-2);
+  font-weight: 500;
+  letter-spacing: var(--dw-tracking-title-2);
+  color: var(--dw-fg);
+  text-transform: none;
+  margin: 0 0 var(--dw-space-2);
+}
+.design-page .design-block > p {
+  font: var(--dw-type-body);
+  color: var(--dw-fg-secondary);
+  max-width: 62ch;
+  margin: 0 0 var(--dw-space-3);
+}
+
+/* Workshop-prefix sections mirror the same pass. */
+.design-page .dw-section {
+  padding: var(--dw-space-7) 0;
+  border-top: 1px solid color-mix(in srgb, var(--dw-fg) 10%, transparent);
+  background: transparent;
+}
+.design-page .dw-section:first-of-type { border-top: 0; }
+.design-page .dw-section-header {
+  margin-bottom: var(--dw-space-5);
+}
+.design-page .dw-section-header h2 {
+  font: var(--dw-type-title-1);
+  letter-spacing: var(--dw-tracking-title);
+  color: var(--dw-fg);
+  font-weight: 500;
+}
+.design-page .dw-block {
+  padding: var(--dw-space-4) 0 var(--dw-space-5);
+  border-top: 0;
+  background: transparent;
+}
+
+/* ─────────── tier card — type-first ───────────
+   Strip borders and fills; the three tiers sit on hairlines
+   between each other. Name (title-2), price (display), supporters
+   count (mono footnote). Producer keeps the one accent-filled
+   rectangular button; supporter + credits drop to underlined text
+   links. */
+.design-page .pd-glass {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.design-page .pd-section-title {
+  font: var(--dw-type-metadata);
+  color: var(--dw-fg-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  padding: var(--dw-space-3) 0;
+  margin: 0;
+}
+.design-page .pd-section-title i.ph { display: none; }
+.design-page .pd-tier {
+  padding: var(--dw-space-5) 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--dw-fg) 10%, transparent);
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dw-space-4);
+}
+.design-page .pd-tier:last-child { border-bottom: 0; }
+.design-page .pd-tier-name {
+  font: var(--dw-type-title-2);
+  font-weight: 500;
+  letter-spacing: var(--dw-tracking-title-2);
+  color: var(--dw-fg);
+  text-transform: lowercase;
+}
+.design-page .pd-tier-price {
+  font: var(--dw-type-display);
+  font-weight: 500;
+  letter-spacing: var(--dw-tracking-display);
+  color: var(--dw-fg);
+  line-height: 0.95;
+}
+.design-page .pd-tier-meta {
+  font: var(--dw-type-metadata);
+  color: var(--dw-fg-muted);
+  letter-spacing: 0.02em;
+  margin-top: var(--dw-space-2);
+}
+.design-page .pd-tier-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--dw-space-4);
+}
+.design-page .pd-qty-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 0.45ch;
-  padding: 0;
-  margin: 0 0 0.2em;
+  gap: var(--dw-space-3);
+}
+.design-page .pd-qty-stepper .qty-minus,
+.design-page .pd-qty-stepper .qty-plus {
   background: transparent;
-  color: var(--dw-fg-secondary);
-  font: var(--dw-type-footnote);
-  letter-spacing: var(--dw-tracking-caption);
-  text-transform: none;
-  border-radius: 0;
+  border: 0;
+  color: var(--dw-fg);
+  font-family: var(--dw-font);
+  font-size: 1.1rem;
   line-height: 1;
+  padding: 0 var(--dw-space-1);
+  cursor: pointer;
+  min-height: 32px;
 }
-.design-page .pd-tier-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: var(--dw-radius-full);
-  background: var(--dw-fg-muted);
-  flex: 0 0 auto;
+.design-page .pd-qty-stepper .fund-qty {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--dw-separator);
+  color: var(--dw-fg);
+  font: var(--dw-type-body);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  width: 3ch;
+  padding: var(--dw-space-1) 0;
 }
-.design-page .pd-tier-badge[data-tier='supporter']::before { background: var(--dw-success); }
-.design-page .pd-tier-badge[data-tier='credits']::before   { background: var(--dw-warn); }
-.design-page .pd-tier-badge[data-tier='producer']::before  { background: var(--dw-accent); }
-.design-page .pd-tier-badge[data-tier='producer'] { color: var(--dw-fg); }
+/*  CTA pass per tier: supporter + credits become underlined text,
+    producer keeps the focal accent-filled rectangle (radius ~3px). */
+.design-page .pd-tier .dw-btn--ghost,
+.design-page .pd-tier .dw-btn--secondary {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--dw-fg);
+  color: var(--dw-fg);
+  border-radius: 0;
+  padding: var(--dw-space-2) 0;
+  min-height: auto;
+  font: var(--dw-type-body);
+  letter-spacing: 0;
+  box-shadow: none;
+}
+.design-page .pd-tier .dw-btn--ghost:hover,
+.design-page .pd-tier .dw-btn--secondary:hover {
+  background: transparent;
+  color: var(--dw-fg);
+  border-bottom-color: var(--dw-fg);
+  opacity: 0.7;
+}
+.design-page .pd-tier .dw-btn--primary {
+  border-radius: 3px;
+  padding: var(--dw-space-3) var(--dw-space-5);
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+/*  Tier container — clean up the inline-padded wrapper around the
+    section title so the first hairline is flush. */
+.design-page #design-proj-tiers .design-card-frame > .pd-glass {
+  padding: 0 !important;
+}
 
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {
