@@ -547,6 +547,7 @@ function renderMeta(item, category, state, context) {
     parts.push(`${esc(String(item.totalMinted ?? 0))} of ${esc(String(item.maxSupply))}`)
   }
   if (context.subtype) parts.push(esc(context.subtype))
+  else if (item.subtype) parts.push(esc(item.subtype))
   if (item.superseded || state === 'superseded') {
     const href = item.activeListingId ? `/art?media=${encodeURIComponent(item.activeListingId)}` : null
     parts.push(href

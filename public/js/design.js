@@ -476,6 +476,10 @@ async function initDesign() {
       mediaId: '109', title: 'Live at Elsewhere', artist: A_ADDR,
       price: '15000000000000000', contentType: 'application/octet-stream',
       kind: 'ticket', maxSupply: '100', totalMinted: '87',
+      // Show date lives in the meta line so limited/sold-out/ended ticket
+      // cards keep the "when" signal even when no state overlay carries a
+      // countdown. renderMeta surfaces `subtype` as a meta part.
+      subtype: 'mar 12',
     },
     uniCredential: {
       mediaId: '110', title: 'Contributor — Live at Elsewhere',
