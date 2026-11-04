@@ -2517,6 +2517,153 @@ body.dw-scroll-lock { overflow: hidden; }
   display: block;
 }
 
+/*  Phase 10b — fatter + warmer row. .dw-event--fat opts the Phase 10a
+    primitives into a more tactile rhythm: 80px min-height (up from
+    ~56px), 1.25rem × 1.5rem padding, 16px radius (up from 8px), a 3px
+    inset tone edge (up from 2px, still 60% opacity), 40px avatars (up
+    from 32px), 56px media thumb with 12px radius so the inner tile
+    reads chunky but softer than the row's 16px (never sharper), a
+    40px rounded mode-badge primitive that fills the left slot for
+    infra/admin events without people or media, 1.0625rem phrase type
+    with a 0.5-weight nudge on verbs, 0.8125rem timestamp still at
+    phrase tail (not detached), and a 1px translateY lift on hover
+    with a 3% fg-tint background wash. The pattern Miles called
+    "kawaii" — chunky, soft, approachable, friendly — stays restrained:
+    one left-slot per row, one phrase, one timestamp, never a badge
+    AND an avatar. */
+.design-page .dw-event--fat {
+  min-height: 80px;
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  gap: 1rem;
+  transition:
+    transform var(--dw-motion-base) var(--dw-ease),
+    background var(--dw-motion-base) var(--dw-ease);
+}
+.design-page .dw-event--fat:hover {
+  background: color-mix(in srgb, var(--dw-fg) 3%, var(--dw-surface));
+  transform: translateY(-1px);
+}
+.design-page .dw-event--fat.dw-event--tone-green {
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--dw-success) 60%, transparent);
+}
+.design-page .dw-event--fat.dw-event--tone-red {
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--dw-danger) 60%, transparent);
+}
+.design-page .dw-event--fat.dw-event--tone-warn {
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--dw-warn) 60%, transparent);
+}
+.design-page .dw-event--fat.dw-event--tone-accent {
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--dw-accent) 60%, transparent);
+}
+
+/*  40px avatars + 12px monogram type. Stack overlap grows to -10px
+    so the second circle still bites into the first with the new
+    heavier perimeter. The outer ring stays matched to surface so a
+    hover-state surface-raised row still clears the ring correctly. */
+.design-page .dw-event--fat .dw-event-avatar {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 1rem;
+}
+.design-page .dw-event--fat .dw-event-avatars .dw-event-avatar + .dw-event-avatar {
+  margin-left: -10px;
+}
+
+/*  56px media thumb, 12px radius so the inner tile sits as a chunky
+    softly-rounded rectangle inside the 16px row — never sharper than
+    its container. 96×56 for 16:9 media (video, project posters when
+    the source is widescreen). */
+.design-page .dw-event--fat .dw-event-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+}
+.design-page .dw-event--fat .dw-event-thumb--wide {
+  width: 96px;
+  height: 56px;
+}
+
+/*  Mode badge — 40px rounded tinted circle that fills the left slot
+    for events without people or media (domain-registered, project-
+    cancelled, project-disputed, project-timed-out, org-site-
+    registered, blog-posted, library-added, org-created). The
+    friendly sticker-like moment Miles asked for — a tinted puck
+    with the existing Phosphor glyph centered in it. Tint carries
+    meaning:
+      neutral — infrastructure / content moments (blog-posted,
+                library-added)
+      red     — disputes + cancels (project-cancelled, project-
+                disputed)
+      amber   — attention without urgency (project-timed-out)
+      green   — earnings / completed (reserved for future
+                badge-shape wins — tone-row stays green either way)
+      accent  — identity-registry moments (domain-registered,
+                org-created, org-site-registered)
+    The glyph uses ph-fill when the library carries a filled
+    variant, otherwise the regular stroke — every badge-group event
+    in event-card.js today already picks a glyph that reads chunky
+    enough at 1.125rem. */
+.design-page .dw-event-badge {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--dw-radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--dw-fg) 10%, transparent);
+  color: var(--dw-fg);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+.design-page .dw-event-badge--neutral { background: color-mix(in srgb, var(--dw-fg) 10%, transparent); color: var(--dw-fg); }
+.design-page .dw-event-badge--red     { background: color-mix(in srgb, var(--dw-danger) 15%, transparent); color: var(--dw-danger); }
+.design-page .dw-event-badge--green   { background: color-mix(in srgb, var(--dw-success) 15%, transparent); color: var(--dw-success); }
+.design-page .dw-event-badge--amber   { background: color-mix(in srgb, var(--dw-warn) 18%, transparent); color: var(--dw-warn); }
+.design-page .dw-event-badge--accent  { background: color-mix(in srgb, var(--dw-accent) 14%, transparent); color: var(--dw-fg); }
+
+/*  Fatter phrase — Chillax 600 for names + strong nouns at
+    1.0625rem, Switzer 500 at the same size for verbs with
+    opacity 0.65 (still clears WCAG AA against --dw-surface in
+    dark; verified against #a1a1a6 fg-secondary mapped through the
+    opacity layer). Timestamp mono at 0.8125rem stays at the phrase
+    tail, not in a detached column — the sentence reads
+    left-to-right, the way a thinker reads an observation. */
+.design-page .dw-event--fat .dw-event-phrase {
+  font-size: 1.0625rem;
+  gap: 0 0.5ch;
+}
+.design-page .dw-event--fat .dw-event-name,
+.design-page .dw-event--fat .dw-event-strong {
+  font-size: 1.0625rem;
+}
+.design-page .dw-event--fat .dw-event-verb {
+  font-weight: 500;
+  opacity: 0.65;
+}
+.design-page .dw-event--fat .dw-event-amount {
+  font-weight: 500;
+  font-size: 1.0625rem;
+}
+.design-page .dw-event--fat .dw-event-time {
+  font-size: 0.8125rem;
+  margin-left: 0.5ch;
+}
+
+/*  Reduced motion — the fat row's background wash stays (it's
+    informational, not decorative), but the translate lift stops.
+    Base .dw-event transition already killed in the §9 reduced-motion
+    block below; the hover transform override belongs here with its
+    class. */
+@media (prefers-reduced-motion: reduce) {
+  .design-page .dw-event--fat:hover { transform: none; }
+}
+
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {
   .dw-modal__overlay,
