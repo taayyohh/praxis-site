@@ -1362,6 +1362,143 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>event line, image-forward — side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            The compact line in its retired shape (left) opens with a
+            generic phosphor pictogram and a detached corner
+            timestamp. The proposed shape (right) puts identity first
+            — a 32px actor avatar, a second avatar stacked -8px into
+            it when the phrase references a related party, and a
+            48px media thumbnail on the right when the event carries
+            a poster. Monogram fallback for missing avatars: the
+            handle's first letter in a tinted circle, seeded by
+            letter mod 6 so the same handle always lands on the same
+            tint. Tone keeps meaning via a 2px left-edge hairline
+            (green = earned, red = must-act) — no colored pictogram.
+            Strategy: markup rewrite (not CSS pseudo-elements) since
+            the proposed shape needs real <code>&lt;img&gt;</code>
+            nodes with distinct sources and per-avatar tap targets.
+            Full renderer additions listed in the phase 10b plan at
+            the head of <code>event-card.js</code>.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:980px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div style="display:flex;flex-direction:column;gap:0.5em">
+                ${renderCardSafely('follow', () => E.renderEventCard?.(m.uniEvFollow, { resolve: mockResolve }))}
+                ${renderCardSafely('joined-audience', () => E.renderEventCard?.(m.uniEvJoined, { resolve: mockResolve }))}
+                ${renderCardSafely('referral-earned', () => E.renderEventCard?.(m.uniEvReferral, { resolve: mockResolve }))}
+                ${renderCardSafely('tip-sent', () => E.renderEventCard?.(m.uniEvTip, { resolve: mockResolve }))}
+                ${renderCardSafely('collected', () => E.renderEventCard?.({ type: 'tip-sent', sender: B_ADDR, recipient: A_ADDR, amount: '2000000000000000', timestamp: now - 1800 }, { resolve: mockResolve }))}
+                ${renderCardSafely('project-confirmed', () => E.renderEventCard?.(m.uniEvProjectConfirmed, { resolve: mockResolve }))}
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> intended hierarchy</div>
+              <div style="display:flex;flex-direction:column;gap:0.5em">
+
+                <!-- follow — two people, no media. actor + related avatars stacked. -->
+                <a class="dw-event" href="https://nappynina.com">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-2" aria-label="blackmatter.world avatar">b</span>
+                    <span class="dw-event-avatar dw-event-avatar--mono-3" aria-label="nappynina.com avatar">n</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">blackmatter.world</span>
+                      <span class="dw-event-verb">followed</span>
+                      <span class="dw-event-name">nappynina.com</span>
+                      <time class="dw-event-time" datetime="PT1H">1h</time>
+                    </div>
+                  </div>
+                </a>
+
+                <!-- joined-audience — one person joining the network. no related party, no media. -->
+                <a class="dw-event" href="https://blackmatter.world">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-2" aria-label="blackmatter.world avatar">b</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">blackmatter.world</span>
+                      <span class="dw-event-verb">joined the network</span>
+                      <time class="dw-event-time" datetime="P1D">1d</time>
+                    </div>
+                  </div>
+                </a>
+
+                <!-- referral-earned — two people (referred + referrer), no media. -->
+                <a class="dw-event" href="https://blackmatter.world">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-2" aria-label="blackmatter.world avatar">b</span>
+                    <span class="dw-event-avatar dw-event-avatar--mono-3" aria-label="nappynina.com avatar">n</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">blackmatter.world</span>
+                      <span class="dw-event-verb">was invited by</span>
+                      <span class="dw-event-name">nappynina.com</span>
+                      <time class="dw-event-time" datetime="PT12H">12h</time>
+                    </div>
+                  </div>
+                </a>
+
+                <!-- tip-sent — two people + optional media thumb when the tip references a work. -->
+                <a class="dw-event dw-event--tone-green" href="https://nappynina.com">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-2" aria-label="blackmatter.world avatar">b</span>
+                    <span class="dw-event-avatar dw-event-avatar--mono-3" aria-label="nappynina.com avatar">n</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">blackmatter.world</span>
+                      <span class="dw-event-verb">tipped</span>
+                      <span class="dw-event-name">nappynina.com</span>
+                      <span class="dw-event-amount">$0.0096</span>
+                      <time class="dw-event-time" datetime="PT20M">20m</time>
+                    </div>
+                  </div>
+                </a>
+
+                <!-- collected — one person + 48px square media thumb. -->
+                <a class="dw-event dw-event--tone-green" href="/art?media=1">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-2" aria-label="blackmatter.world avatar">b</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">blackmatter.world</span>
+                      <span class="dw-event-verb">collected</span>
+                      <span class="dw-event-strong">End Credits</span>
+                      <span class="dw-event-amount">$3.84</span>
+                      <time class="dw-event-time" datetime="PT30M">30m</time>
+                    </div>
+                  </div>
+                  <span class="dw-event-thumb" aria-hidden="true" style="background:linear-gradient(135deg,#2a2a2a,#111)"></span>
+                </a>
+
+                <!-- project-confirmed — one person + 48px square project poster thumb. -->
+                <a class="dw-event dw-event--tone-green" href="/project?id=10">
+                  <div class="dw-event-avatars">
+                    <span class="dw-event-avatar dw-event-avatar--mono-3" aria-label="nappynina.com avatar">n</span>
+                  </div>
+                  <div class="dw-event-body">
+                    <div class="dw-event-phrase">
+                      <span class="dw-event-name">nappynina.com</span>
+                      <span class="dw-event-verb">confirmed</span>
+                      <span class="dw-event-strong">Live at Elsewhere</span>
+                      <time class="dw-event-time" datetime="P7D">7d</time>
+                    </div>
+                  </div>
+                  <span class="dw-event-thumb" aria-hidden="true" style="background:linear-gradient(135deg,#3a2a1a,#120a04)"></span>
+                </a>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>universal EventCard, banner</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             Richer rendering when the event deserves a hero — project

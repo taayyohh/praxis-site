@@ -2329,6 +2329,194 @@ body.dw-scroll-lock { overflow: hidden; }
   opacity: 1;
 }
 
+/*  9) Image-forward event line — phase 10a proposal. The retired
+       line layout (public/js/event-card.js) opens with a generic
+       phosphor icon (ph-user-plus / ph-sparkle / ph-gift / ph-heart),
+       then a flat text phrase, then a detached timestamp. The eye has
+       nowhere to land. The proposed primitives below put identity
+       first: a 32px actor avatar on the left, a second avatar stacked
+       beneath it when the phrase references a second person, and a
+       48px media thumbnail on the right when the event carries a
+       poster. Icons retire. Tone keeps meaning via a 2px left-edge
+       hairline (green = earned, red = must-act) instead of a colored
+       pictogram. All primitives are class-prefixed .dw-event-* and
+       scoped to /design so the retired renderer still runs in
+       production until phase 10b promotes the markup into
+       event-card.js. */
+.design-page .dw-event {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--dw-space-3);
+  padding: var(--dw-space-3) var(--dw-space-4);
+  min-height: var(--dw-tap);
+  border-radius: var(--dw-radius-md);
+  background: var(--dw-surface);
+  text-decoration: none;
+  color: inherit;
+  transition: background var(--dw-motion-fast) ease;
+  position: relative;
+}
+.design-page .dw-event:hover {
+  background: var(--dw-surface-raised);
+}
+.design-page .dw-event:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+.design-page .dw-event--tone-green {
+  box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--dw-success) 60%, transparent);
+}
+.design-page .dw-event--tone-red {
+  box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--dw-danger) 60%, transparent);
+}
+
+/*  Avatar stack — one or two 32px circles. The second circle
+    nudges -8px into the first so the pair reads as a related
+    party, not two separate signatures. Monogram fallback is a
+    tinted circle with the handle's first letter in Switzer 600,
+    one of six brand-neutral hues seeded from the letter so the
+    same handle always lands on the same tint. The hue's alpha
+    is low enough that two stacked monograms stay legible against
+    each other in both themes. */
+.design-page .dw-event-avatars {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.design-page .dw-event-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--dw-radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--dw-separator);
+  color: var(--dw-fg);
+  font: 600 0.875rem/1 var(--dw-font);
+  text-transform: lowercase;
+  flex-shrink: 0;
+  text-decoration: none;
+  /*  Each avatar is its own tap target (routes to the actor's or
+      related party's domain). 32px visual, full 44pt hit via a
+      centered expansion — so visual rhythm stays tight while
+      hands stay accurate. */
+  position: relative;
+  min-width: 32px;
+  min-height: 32px;
+}
+.design-page .dw-event-avatar::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+}
+.design-page .dw-event-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.design-page .dw-event-avatars .dw-event-avatar + .dw-event-avatar {
+  margin-left: -8px;
+  box-shadow: 0 0 0 2px var(--dw-surface);
+}
+.design-page .dw-event:hover .dw-event-avatars .dw-event-avatar + .dw-event-avatar {
+  box-shadow: 0 0 0 2px var(--dw-surface-raised);
+}
+/*  Six monogram tints — low-saturation, bg-blended, works in dark
+    theme. Mapped letter -> tint elsewhere (markup picks the class
+    by first-letter mod 6). Keeps visual variety when two
+    monograms stack. */
+.design-page .dw-event-avatar--mono-1 { background: color-mix(in srgb, #7aa2ff 22%, var(--dw-separator)); }
+.design-page .dw-event-avatar--mono-2 { background: color-mix(in srgb, #ff8aa5 22%, var(--dw-separator)); }
+.design-page .dw-event-avatar--mono-3 { background: color-mix(in srgb, #9eead1 22%, var(--dw-separator)); }
+.design-page .dw-event-avatar--mono-4 { background: color-mix(in srgb, #f0c674 22%, var(--dw-separator)); }
+.design-page .dw-event-avatar--mono-5 { background: color-mix(in srgb, #c78cff 22%, var(--dw-separator)); }
+.design-page .dw-event-avatar--mono-6 { background: color-mix(in srgb, #9adfff 22%, var(--dw-separator)); }
+
+/*  Phrase — actor + verb + object, with the timestamp flowing at
+    the tail so the eye reads the sentence left-to-right instead
+    of hopping to a detached corner column. Chillax 600 for the
+    two proper nouns, Switzer 400 muted for the verb. On narrow
+    rows the phrase wraps gracefully — no overflow, no truncated
+    names. */
+.design-page .dw-event-body {
+  min-width: 0;
+}
+.design-page .dw-event-phrase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4ch;
+  font: 400 1rem/1.4 var(--dw-font);
+  color: var(--dw-fg-secondary);
+}
+.design-page .dw-event-name {
+  font-family: var(--dw-font-display);
+  font-weight: 600;
+  color: var(--dw-fg);
+  text-decoration: none;
+  letter-spacing: var(--dw-tracking-title);
+}
+.design-page .dw-event-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.design-page .dw-event-strong {
+  font-family: var(--dw-font-display);
+  font-weight: 600;
+  color: var(--dw-fg);
+  letter-spacing: var(--dw-tracking-title);
+  text-decoration: none;
+}
+.design-page .dw-event-strong:hover { text-decoration: underline; text-underline-offset: 2px; }
+.design-page .dw-event-verb {
+  color: var(--dw-fg-muted);
+  font-family: var(--dw-font);
+  font-weight: 400;
+}
+.design-page .dw-event-amount {
+  font-family: var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--dw-fg);
+  font-weight: 400;
+}
+.design-page .dw-event--tone-green .dw-event-amount { color: var(--dw-success); }
+.design-page .dw-event-time {
+  font-family: var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--dw-fg-muted);
+  margin-left: 0.4ch;
+}
+
+/*  Thumbnail — 48px image on the right when the event carries a
+    poster (collect, listed, tipped-on-work, project-confirmed,
+    revenue-distributed). Square aspect for images / audio,
+    16:9 for video. Clickable — routes to the referenced work or
+    project. Hidden entirely when no poster is present so events
+    without media keep their clean two-column rhythm. */
+.design-page .dw-event-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--dw-radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--dw-separator);
+  display: block;
+  text-decoration: none;
+}
+.design-page .dw-event-thumb--wide {
+  width: 64px;
+  height: 36px;
+}
+.design-page .dw-event-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {
   .dw-modal__overlay,
@@ -2349,6 +2537,8 @@ body.dw-scroll-lock { overflow: hidden; }
   .design-page .pd-tier a,
   .design-page .message-bubble a,
   .design-page .notification a,
+  .design-page .dw-event,
+  .design-page .dw-event a,
   .design-page .pd-tier .dw-btn--ghost,
   .design-page .pd-tier .dw-btn--secondary {
     transition: none;
