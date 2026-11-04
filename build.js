@@ -845,6 +845,7 @@ if (distDir === 'dist') {
 } else {
   // Per-artist build: copy fresh CSS + JS (shared assets change frequently)
   try { cpSync('public/style.css', join(distDir, 'style.css')) } catch {}
+  try { cpSync('public/design-workshop.css', join(distDir, 'design-workshop.css')) } catch {}
   try { cpSync(join('public', 'js'), join(distDir, 'js'), { recursive: true }) } catch {}
 }
 

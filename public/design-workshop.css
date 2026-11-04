@@ -19,17 +19,19 @@
     ────────────────────────────────────────────────────────────── */
 
 /*  Fonts — two voices, surgically assigned. Switzer is the body
-    voice from caption through title-2 and every ui surface. Bespoke
-    Sans is the architectural grotesk reserved for display, h1,
+    voice from caption through title-2 and every ui surface. Cabinet
+    Grotesk is the editorial display face reserved for display, h1,
     title-1, section titles and tier prices — the oversized
-    editorial moments. More mass per glyph than Clash Display;
-    Monument-Grotesk-adjacent, Acne / Our Legacy / Helmut Lang feel.
-    Space Mono carries metadata: numbers, chain ids, timestamps,
-    draft marks. Hierarchy still comes from scale + weight, never
-    from font switching inside a reading column. Switzer + Bespoke
-    Sans via Fontshare (Indian Type Foundry) — free, no account.
-    Space Mono via Google Fonts — free. */
-@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,900&f[]=bespoke-sans@500,700,800&display=swap');
+    moments. Pointed terminals, tighter apertures, geometric bones
+    with specific glyph decisions baked in: character through shape,
+    not mass. Are.na / Perfect magazine / Dover Street Market
+    register, not impact-font shoutiness. Space Mono carries
+    metadata: numbers, chain ids, timestamps, draft marks. Hierarchy
+    still comes from scale + weight, never from font switching
+    inside a reading column. Switzer + Cabinet Grotesk via Fontshare
+    (Indian Type Foundry) — free, no account. Space Mono via Google
+    Fonts — free. */
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,900&f[]=cabinet-grotesk@400,500,600,700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 
 /* ─────────── tokens — dark first (file only loads on /design) ────────── */
@@ -64,24 +66,26 @@
   --dw-success: #30d158;        /* earned / confirmed / positive */
   --dw-success-soft: color-mix(in srgb, var(--dw-success) 16%, transparent);
 
-  /*  type stack — Switzer body voice, Bespoke Sans for the
-      architectural headers, Space Mono for metadata. Each falls
-      back through system fonts so the catalog stays legible if the
-      CDN is cold. `--dw-font-serif` is retained as an alias of
+  /*  type stack — Switzer body voice, Cabinet Grotesk for the
+      editorial headers, Space Mono for metadata. Each falls back
+      through system fonts so the catalog stays legible if the CDN
+      is cold. `--dw-font-serif` is retained as an alias of
       `--dw-font` so legacy rules don't need pruning. */
   --dw-font:         'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
                      'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --dw-font-display: 'Bespoke Sans', 'Switzer', -apple-system, BlinkMacSystemFont,
+  --dw-font-display: 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont,
                      'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --dw-font-serif:   var(--dw-font);
   --dw-font-mono:    'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /*  text styles — display / title-1 are oversized and crushed,
-      everything from title-2 down stays restrained. Hierarchy from
-      scale + weight, not font-family switching inside the body.
-      Numbers get tabular-nums baked into .dw-mono and metadata. */
-  --dw-type-display:     800 clamp(3.5rem, 7vw, 6.5rem)/0.88 var(--dw-font-display);
-  --dw-type-title-1:     800 clamp(2.5rem, 4vw, 3.5rem)/0.95 var(--dw-font-display);
+  /*  text styles — display / title-1 are oversized but restrained
+      in weight: character through the face's glyph shapes, not
+      through mass. Everything from title-2 down stays restrained.
+      Hierarchy from scale + weight, not font-family switching
+      inside the body. Numbers get tabular-nums baked into .dw-mono
+      and metadata. */
+  --dw-type-display:     500 clamp(3.5rem, 7vw, 6.5rem)/0.95 var(--dw-font-display);
+  --dw-type-title-1:     600 clamp(2.5rem, 4vw, 3.5rem)/1    var(--dw-font-display);
   --dw-type-title-2:     500 clamp(1.25rem, 2vw, 1.5rem)/1.15 var(--dw-font);
   --dw-type-headline:    500 1rem/1.35       var(--dw-font);
   --dw-type-body:        400 1rem/1.55       var(--dw-font);
@@ -92,8 +96,8 @@
   --dw-type-mono:        400 0.8125rem/1.4   var(--dw-font-mono);
   --dw-type-metadata:    400 0.8125rem/1.4   var(--dw-font-mono);
 
-  --dw-tracking-display: -0.04em;
-  --dw-tracking-title:   -0.025em;
+  --dw-tracking-display: -0.025em;
+  --dw-tracking-title:   -0.015em;
   --dw-tracking-title-2: -0.015em;
   --dw-tracking-body:    0;
   --dw-tracking-caption: 0.015em;
@@ -179,11 +183,12 @@
 
 /*  Headings — two typefaces, drawn along the editorial fault line.
     Display, title-1, section titles and the tier-card price sit in
-    Bespoke Sans — architectural grotesk, oversized, crushed,
-    pumped to 800 so the mass reads as the first signal.
-    Everything from title-2 down stays in Switzer so the body
-    columns read as one voice. Lowercase by default; tracking pulls
-    tight as size grows. */
+    Cabinet Grotesk — character through glyph shape, not mass.
+    Display holds at 500, title-1 at 600, price at 600; the face
+    carries the editorial register without shouting. Everything
+    from title-2 down stays in Switzer so the body columns read as
+    one voice. Lowercase by default; tracking stays tight but not
+    crushed as size grows. */
 .design-page h1,
 .design-page .design-section-title,
 .design-page .dw-display,
@@ -1787,7 +1792,7 @@ body.dw-scroll-lock { overflow: hidden; }
 }
 .design-page .design-section-title {
   font: var(--dw-type-title-1);
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: var(--dw-tracking-title);
   color: var(--dw-fg);
   text-transform: none;
@@ -1830,7 +1835,7 @@ body.dw-scroll-lock { overflow: hidden; }
   font: var(--dw-type-title-1);
   letter-spacing: var(--dw-tracking-title);
   color: var(--dw-fg);
-  font-weight: 800;
+  font-weight: 600;
 }
 .design-page .dw-block {
   padding: var(--dw-space-4) 0 var(--dw-space-5);
@@ -1879,7 +1884,7 @@ body.dw-scroll-lock { overflow: hidden; }
 }
 .design-page .pd-tier-price {
   font: var(--dw-type-display);
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: var(--dw-tracking-display);
   color: var(--dw-fg);
   line-height: 0.95;
