@@ -2132,6 +2132,149 @@ body.dw-scroll-lock { overflow: hidden; }
   text-decoration: none;
 }
 
+/*  ─────────── card hierarchy pass (workshop-scoped) ───────────
+    Miles sent a screenshot of a media card reading:
+      thumb → "blackmatter.world listed" → "0xb4ca…376c" →
+      "Real Tea" → "$9.68" → "buy $9.68"
+    Four problems, all here: hex wallet leakage, three stacked
+    identifiers with no primary noun, price doubled, and the
+    catalog's h3 `kind · value` eyebrow pattern that phase 3
+    retired elsewhere. Workshop css fixes all four behind
+    `.design-page`. Proposed side-by-side markup for the four
+    canonical media variants + the retired comparison lives in
+    the catalog itself (design.js § 5). Global renderer fix is a
+    separate pass once Miles signs off — see the audit doc for
+    the three functions that need patching.
+    ──────────────────────────────────────────────────────────── */
+
+/*  1) Hex-wallet leakage: the author sub-line below the header
+       renders an unresolved-wallet fallback whenever
+       `renderTitle()` can't find an alias and `mockResolve()`
+       drops to its `0x…` short form. When the card already has
+       a header row (listed / collected / posted / contributed /
+       proposed cards), the author line is redundant attribution
+       anyway. Hide it under the workshop; promote the title to
+       title-2. The header still carries the "who + verb". */
+.design-page .media-card:has(.media-card-header) .media-card-author {
+  display: none;
+}
+/*  Workshop-only override when there IS no header — guards
+    against a mono-hex string sneaking through. Not a perfect
+    guard (CSS can't regex a text node) but when the resolve
+    succeeds, the real domain renders at full opacity; when it
+    falls back to the hex pattern, the row's letter-spacing
+    gives the mono string visual weight — which is exactly what
+    we don't want. Dropping the row's opacity keeps the fallback
+    legible for debugging while removing it from the primary
+    reading hierarchy. */
+.design-page .media-card:not(:has(.media-card-header)) .media-card-author {
+  color: var(--dw-fg-muted);
+}
+
+/*  2) Title promotion: the title currently reads at 0.95em in
+       a dim-ish weight. With the author line hidden, the title
+       deserves to be the primary noun. Title-2 size, 500 weight,
+       tight tracking. Keeps tabular-ish presentation. */
+.design-page .media-card-title {
+  font-family: var(--dw-font);
+  font-size: 1.125rem;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--dw-fg);
+}
+
+/*  3) Header demotion: once the title owns the primary slot,
+       the header reads as eyebrow attribution — mono footnote,
+       muted. Avatar stays inline. Verb muted, actor one notch
+       up. Keeps the row readable without competing. */
+.design-page .media-card-header {
+  font-family: var(--dw-font);
+  font-size: 0.8125rem;
+  color: var(--dw-fg-muted);
+  line-height: 1.3;
+  gap: 0.5ch;
+  margin-bottom: 0.4em;
+}
+.design-page .media-card-header-actor {
+  color: var(--dw-fg-secondary);
+  font-weight: 500;
+}
+.design-page .media-card-header-verb {
+  color: var(--dw-fg-muted);
+}
+
+/*  4) Price de-duplication: `renderAction('buy')` emits
+       `buy <span data-eth-wei>…</span>`, which the fiat.js
+       runtime fills with `$9.68`. `renderMeta` ALSO renders
+       `$9.68` in a dedicated row directly above. One home per
+       value — keep the meta row (it's the tabular-nums home),
+       strip the inline price span from the button so the
+       button reads a clean verb. Covers buy + buy-album +
+       buy-ticket + the album track buy pill. */
+.design-page .feed-buy-btn [data-eth-wei],
+.design-page .feed-buy-btn [data-fiat-primary],
+.design-page .media-card-track-buy [data-eth-wei],
+.design-page .media-card-track-buy [data-fiat-primary] {
+  display: none;
+}
+/*  A track-buy pill emits only the price span (no verb text),
+    so zeroing out the span would leave an empty pill. Hide the
+    whole pill in workshop scope; the "buy album" action row
+    carries the one home for the money. */
+.design-page .media-card-track .media-card-track-buy {
+  display: none;
+}
+
+/*  5) Purchase-card double-price: when the header renders
+       "miles collected for $0.82", the meta row shouldn't
+       restate the number. :has() lets us catch this cleanly. */
+.design-page .media-card:has(.media-card-header-price) .media-card-meta [data-eth-wei] {
+  display: none;
+}
+.design-page .media-card:has(.media-card-header-price) .media-card-meta [data-fiat-primary] {
+  display: none;
+}
+
+/*  6) Catalog h3 labels across sections 4 + 5 ship as
+       `kind · value · verb` ("audio · listed · buy",
+       "horizontal · feed collected"). Phase 3 killed this in
+       chip + meta rows elsewhere; the catalog's own labels are
+       the last holdout. Retype as a mono footnote eyebrow,
+       muted, letter-spacing wider so the `·` reads as a soft
+       separator rather than a bullet. Scoped to `.design-page`
+       so no other page's h3 is touched. */
+.design-page .design-section .design-block > h3 {
+  font-family: var(--dw-font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--dw-fg-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.75em;
+  line-height: 1.4;
+}
+.design-page .design-section .design-block > h3 code {
+  font-family: var(--dw-font-mono);
+  background: var(--dw-separator);
+  color: var(--dw-fg-secondary);
+  padding: 0.1em 0.5ch;
+  border-radius: var(--dw-radius-xs);
+  font-size: 0.95em;
+}
+
+/*  7) The small "proposed" badge next to the h3 in the
+       side-by-side comparison blocks. Reads as a verb, not a
+       decoration. */
+.design-page .design-section .design-block > h3 code.proposed-tag {
+  background: color-mix(in srgb, var(--dw-success) 18%, transparent);
+  color: var(--dw-success);
+}
+.design-page .design-section .design-block > h3 code.retired-tag {
+  background: color-mix(in srgb, var(--dw-danger) 14%, transparent);
+  color: var(--dw-danger);
+}
+
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {
   .dw-modal__overlay,

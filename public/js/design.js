@@ -1391,10 +1391,40 @@ async function initDesign() {
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             Feed-shaped project card still rendered by renderProjectCard in
             feed-cards.js — the funding progress bar + status pill aren't
-            covered by the universal MediaCard yet.
+            covered by the universal MediaCard yet. Retired byline reads
+            <code>${'$'}{domain} · ${'$'}{deadline} · ${'$'}{projectType}</code> — three
+            dot-separated fragments. Proposed collapses to <code>by ${'$'}{domain}</code>
+            with deadline on a hairline and the type dropped.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:1fr;max-width:620px">
             ${renderCardSafely('project card', () => F.renderProjectCard?.(m.projectCard, mockResolve))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>project card · feed · side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Same payload, hierarchy intended: title · by ${'$'}{proposer}
+            · progress · hairline footnote for deadline. Project
+            type drops out — the status pill is enough.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr;gap:1em;max-width:620px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code></div>
+              <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">
+                <div style="padding:1.5em 1.75em">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em;gap:1ch">
+                    <span style="color:var(--fg);font-weight:500;font-size:1.2em;line-height:1.25;letter-spacing:-0.01em">Live at Elsewhere</span>
+                    <span style="font-size:0.72em;color:#4ade80;flex-shrink:0;font-family:var(--dw-font-mono);letter-spacing:0.04em">funded</span>
+                  </div>
+                  <div style="font-size:0.825em;color:var(--dim);line-height:1.5">by <span style="color:var(--fg)">nappynina.com</span></div>
+                  <div style="margin-top:1.25em">
+                    <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:50%"></div></div>
+                    <div style="font-size:0.75em;color:var(--muted);margin-top:0.5em;font-family:var(--dw-font-mono);letter-spacing:0.04em;display:flex;gap:1.5ch"><span>50% funded</span><span style="color:var(--dim)">2 days in</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1409,6 +1439,10 @@ async function initDesign() {
             Default for single-item cards — audio singles, images,
             documents, 3D, interactive, tickets, credentials. 1:1 art
             + title + meta + actions. See public/js/media-card.js.
+            Workshop css drops the hex-wallet fallback row, promotes
+            the title, and strips the inline price from the buy
+            button (meta row carries the money). Compare the retired
+            and proposed variants below.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
             ${renderCardSafely('audio · listed · buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
@@ -1421,10 +1455,97 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
+          <h3>media card · side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Audio listing · retired left, proposed right. Proposed
+            drops the author fallback row, promotes the title to
+            title-2, and runs a single-verb <code>collect</code>
+            button with the price living in its one home (the meta
+            row above). Same rule applies across every square /
+            wide / portrait variant — the same css rules handle them.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:620px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame">
+                ${renderCardSafely('audio listed buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> intended hierarchy</div>
+              <div class="design-card-frame">
+                <div class="media-card media-card--square media-card--cat-audio" style="max-width:240px">
+                  <a class="media-card-art" href="#" onclick="return false" style="background:linear-gradient(135deg,#2a2a2a,#111)"></a>
+                  <div class="media-card-info">
+                    <div class="media-card-header">
+                      <span class="media-card-header-actor">nappynina.com</span>
+                      <span class="media-card-header-verb">listed</span>
+                    </div>
+                    <a class="media-card-title" href="#" onclick="return false">End Credits</a>
+                    <div class="media-card-meta"><span>$1.92</span></div>
+                    <div class="media-card-actions">
+                      <button class="feed-card-btn green">collect</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
           <h3>universal MediaCard · wide layout (video)</h3>
-          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">16:9 artwork for video + live.</p>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            16:9 artwork for video + live. This is the surface
+            Miles screenshotted — hex wallet below the header,
+            doubled price between meta + button, catalog h3 as
+            <code>kind · value · verb</code>. Workshop css fixes
+            all three for the live-renderer variant; the proposed
+            side-by-side below shows the intended hierarchy.
+          </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
             ${renderCardSafely('video · listed', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>video card · side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Miles's screenshot card. Left: live renderer with the
+            four issues — hex wallet, stacked identifiers, doubled
+            price, dot-separator eyebrow. Right: intended
+            hierarchy — title first, artist as subheadline, price
+            as meta, one verb (<code>collect</code>) as the
+            button. The workshop css already hides the hex row +
+            doubled price on the left card; this side-by-side is
+            the fully rewritten shape for Miles to sign off.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:720px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame">
+                ${renderCardSafely('video listed', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> intended hierarchy</div>
+              <div class="design-card-frame">
+                <div class="media-card media-card--wide media-card--cat-video">
+                  <a class="media-card-art" href="#" onclick="return false" style="background:linear-gradient(135deg,#1a1a2a,#060612)"></a>
+                  <div class="media-card-info">
+                    <div class="media-card-header">
+                      <span class="media-card-header-actor">blackmatter.world</span>
+                      <span class="media-card-header-verb">listed</span>
+                    </div>
+                    <a class="media-card-title" href="#" onclick="return false">Real Tea</a>
+                    <div class="media-card-meta"><span>$9.68</span></div>
+                    <div class="media-card-actions">
+                      <button class="feed-card-btn green">collect</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1498,6 +1619,41 @@ async function initDesign() {
               <div style="padding:0.6em 0.8em">
                 <div style="color:var(--fg);font-weight:600;font-size:0.95em">Backlot</div>
                 <div style="color:var(--dim);font-size:0.8em">blackmatter.world · video</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>collection album card · side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            The retired byline reads <code>nappynina.com · album
+            (5)</code> — the classic <code>kind · value</code> join
+            phase 3 killed elsewhere. The thumbnail already shows
+            the kind (music notes glyph), so the "album" word is
+            redundant. Proposed: title · artist, with the count on
+            a hairline below.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:520px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code></div>
+              <div class="collection-card collection-album-card collection-item">
+                <div style="background:color-mix(in srgb,var(--fg) 4%,transparent);height:150px;display:flex;align-items:center;justify-content:center"><i class="ph ph-music-notes" style="font-size:2.5em;color:var(--muted)"></i></div>
+                <div style="padding:0.6em 0.8em">
+                  <div style="color:var(--fg);font-weight:600;font-size:0.95em">End Credits</div>
+                  <div style="color:var(--dim);font-size:0.8em">nappynina.com · album (5)</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code></div>
+              <div class="collection-card collection-album-card collection-item">
+                <div style="background:color-mix(in srgb,var(--fg) 4%,transparent);height:150px;display:flex;align-items:center;justify-content:center"><i class="ph ph-music-notes" style="font-size:2.5em;color:var(--muted)"></i></div>
+                <div style="padding:0.6em 0.8em">
+                  <div style="color:var(--fg);font-weight:500;font-size:1em;letter-spacing:-0.01em">End Credits</div>
+                  <div style="color:var(--dim);font-size:0.8em;margin-top:0.1em">nappynina.com</div>
+                  <div style="color:var(--muted);font-size:0.72em;margin-top:0.4em;font-family:var(--dw-font-mono);letter-spacing:0.04em">5 tracks</div>
+                </div>
               </div>
             </div>
           </div>
@@ -1709,6 +1865,43 @@ async function initDesign() {
             <div class="library-item-tags">
               <span class="library-tag">theory</span>
               <span class="library-tag">reading</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>library item · side-by-side <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            Retired card renders two attribution rows — the
+            author and the contributor — competing for the same
+            tier. Proposed: one byline (<code>by X · added by
+            Y</code>), tags demoted to a mono hairline.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:720px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code></div>
+              <div class="library-item" style="cursor:pointer">
+                <div class="library-item-header">
+                  <span class="library-item-title">The Practice of Everyday Life</span>
+                  <span class="library-item-date">Sep 8</span>
+                </div>
+                <div class="library-item-meta">
+                  <span class="library-item-author">Michel de Certeau</span>
+                  <span class="library-item-contributor">added by <a>miles</a></span>
+                </div>
+                <div class="library-item-tags">
+                  <span class="library-tag">theory</span>
+                  <span class="library-tag">reading</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code></div>
+              <div class="library-item" style="cursor:pointer">
+                <div style="color:var(--fg);font-weight:500;font-size:1em;letter-spacing:-0.01em;line-height:1.3">The Practice of Everyday Life</div>
+                <div style="color:var(--dim);font-size:0.825em;margin-top:0.2em">Michel de Certeau</div>
+                <div style="color:var(--muted);font-size:0.75em;margin-top:0.5em;font-family:var(--dw-font-mono);letter-spacing:0.04em">added by miles · sep 8 · theory, reading</div>
+              </div>
             </div>
           </div>
         </div>
