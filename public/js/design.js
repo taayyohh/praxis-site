@@ -2317,7 +2317,7 @@ async function initDesign() {
               </div>
               <a href="#" style="font-size:0.75em;color:var(--accent);text-decoration:none">open settings</a>
             </div>
-            <div style="font-size:0.8em;color:var(--muted)">roster: 3 members · 1 pending invite</div>
+            <div style="font-size:0.8em;color:var(--muted)">roster: 3 members, 1 pending invite</div>
           </div>
         </div>
 
@@ -2635,7 +2635,7 @@ async function initDesign() {
         <div class="design-btn-row" id="design-auth-openers">
           <button class="buy-btn" data-open="auth-unlock">unlock prompt</button>
           <button class="buy-btn" data-open="auth-create">create account</button>
-          <button class="buy-btn" data-open="auth-recovery-reveal">recovery phrase · reveal</button>
+          <button class="buy-btn" data-open="auth-recovery-reveal">recovery phrase — reveal</button>
           <button class="buy-btn" data-open="auth-recovery">recover from phrase</button>
           <button class="buy-btn" data-open="auth-signin">sign in</button>
           <button class="buy-btn" data-open="auth-change-password">change passphrase</button>
@@ -2655,7 +2655,7 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>recovery phrase · reveal (one-time) <code>draft</code></h3>
+          <h3>recovery phrase — reveal (one-time) <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em"><em>Shows once, right after an account is created. Twelve words — if the person loses their passphrase, these are the only way back in. Opener passes a mock phrase + 0x…dEaD address. embedded-wallet.js:1200.</em></p>
         </div>
 
@@ -2819,7 +2819,7 @@ async function initDesign() {
           <button class="buy-btn" data-open="msg-page">open /messages</button>
           <button class="buy-btn" data-open="msg-new">start a new chat</button>
           <button class="buy-btn" data-open="msg-new-group">start a group</button>
-          <button class="buy-btn" data-open="msg-chat-menu">chat menu (rename · leave · archive)</button>
+          <button class="buy-btn" data-open="msg-chat-menu">chat menu (rename, leave, archive)</button>
           <button class="buy-btn" data-open="msg-emoji">emoji picker</button>
           <button class="buy-btn" data-open="msg-toast">new message toast</button>
           <button class="buy-btn" data-open="msg-typing">play the typing indicator</button>
@@ -2871,7 +2871,7 @@ async function initDesign() {
           <h3>biometric — on (settings card)</h3>
           <p style="color:var(--dim);font-size:0.85em"><em>After the person enrolls — unlocking and approvals require their device biometric.</em></p>
           <div id="design-auth-bio-on-slot" style="max-width:520px;margin-top:0.5em"></div>
-          <h3>full dashboard · live <code>renderVault</code> <code>draft</code></h3>
+          <h3>full dashboard — live <code>renderVault</code> <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             The vault page's complete surface, rendered inline into the slot below
             against a dense fixture. If <code>renderVault</code> is exposed from
@@ -2980,7 +2980,7 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>chat menu — rename · leave · archive <code>draft</code></h3>
+          <h3>chat menu — rename, leave, archive <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             no chat-level menu is shipped today — leaving happens from the
             members panel (<code>members-leave-btn</code>, messages.js:4437),
@@ -3069,7 +3069,7 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>attachment · image preview (messages.js:2945)</h3>
+          <h3>attachment — image preview (messages.js:2945)</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             an image embed in a bubble — rendered when a message body
             holds <code>[image:name](url)</code>. the bubble loses its
@@ -3107,9 +3107,9 @@ async function initDesign() {
                 <span class="vault-act-figure-secondary">$1,750.00</span>
               </div>
               <div class="vault-act-yield">
-                earning <span style="color:var(--green)">$3.42/mo</span> · $41.00/yr projected
+                earning <span style="color:var(--green)">$3.42/mo</span> — $41.00/yr projected
               </div>
-              <div class="vault-act-sub">500.00 earning yield · 1,250.00 liquid</div>
+              <div class="vault-act-sub">500.00 earning yield, 1,250.00 liquid</div>
             </section>
           </div>
         </div>
@@ -3126,7 +3126,7 @@ async function initDesign() {
               <div class="vault-pool-line vault-pool-line-4col vault-pool-line-active">
                 <span class="vault-pool-line-name-you">
                   <span class="vault-pool-line-dot"></span>
-                  <span><span class="vault-pool-line-name-main">ETH</span><span class="vault-pool-line-you-sub">you · 500.00 BOLD</span></span>
+                  <span><span class="vault-pool-line-name-main">ETH</span><span class="vault-pool-line-you-sub">you — 500.00 BOLD</span></span>
                 </span>
                 <span class="vault-pool-line-apr">8.2%</span>
                 <span class="vault-pool-line-apr" style="color:var(--dim)">7.9%</span>
@@ -3148,7 +3148,7 @@ async function initDesign() {
                 <span>rates updated 2m ago</span>
                 <button type="button" class="vault-pool-meta-toggle" aria-expanded="false">how this works ↓</button>
               </div>
-          <h3>attachment · video preview (messages.js:2953)</h3>
+          <h3>attachment — video preview (messages.js:2953)</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             same shape as an image, with native <code>controls</code> on
             the video. poster frame comes from <code>/api/video-thumb</code>.
@@ -3181,12 +3181,12 @@ async function initDesign() {
                 <span class="vault-act-figure-main">$155.40</span>
                 <span class="vault-act-figure-secondary">0.042 ETH</span>
               </div>
-              <div class="vault-act-sub">one place is holding it for you · pull it in</div>
+              <div class="vault-act-sub">one place is holding it for you — pull it in</div>
               <div class="vault-lead-verbs" style="margin-top:0.75em">
                 <button type="button" class="vault-verb">pull earnings</button>
               </div>
             </section>
-          <h3>attachment · link preview (messages.js:2974)</h3>
+          <h3>attachment — link preview (messages.js:2974)</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             a praxis domain url becomes a card — <code>/og/index.png</code>
             on top, the domain under it. any other url renders as a plain
@@ -3270,7 +3270,7 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>filter chips — unread · groups · DMs <code>draft</code></h3>
+          <h3>filter chips — unread, groups, DMs <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             not shipped today — the sidebar separates mutuals from
             requests (messages.js:2343) but has no top-row filter chips.
@@ -3673,7 +3673,7 @@ async function initDesign() {
           below are static snapshots of <code>project-detail.js</code>; the
           renderers run their own page, so the catalog can't call them live.
           Any invented copy is marked <code>draft</code> in the block header.
-          Mock project: <em>draft project</em> · goal $10,000 · $6,400 raised · 42 contributors · 30 days left.
+          Mock project: <em>draft project</em> — goal $10,000, $6,400 raised, 42 contributors, 30 days left.
         </p>
 
         <div class="design-btn-row" id="design-proj-openers">
@@ -3704,7 +3704,7 @@ async function initDesign() {
               <span style="color:#c0c0c0;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">proposed</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">almost there · $3,600 to go</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">almost there — $3,600 to go</div>
             <div class="pd-glass">
               <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
                 <div>
@@ -3735,7 +3735,7 @@ async function initDesign() {
               <span style="color:#4ade80;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">funded</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">funded · $10,000 from 42 contributors</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">funded — $10,000 from 42 contributors</div>
             <div class="pd-glass">
               <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
                 <div>
@@ -3767,7 +3767,7 @@ async function initDesign() {
               <span style="color:#fbbf24;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">completing</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">delivered · thank you</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">delivered — thank you</div>
             <div class="pd-glass">
               <div style="padding:0.75em;border:1px solid rgba(251,191,36,0.2);border-radius:8px;background:rgba(251,191,36,0.04);margin-bottom:1em;display:flex;align-items:center;gap:0.75em">
                 <i class="ph ph-warning" style="color:#fbbf24;font-size:1.2em;flex-shrink:0"></i>
@@ -3790,7 +3790,7 @@ async function initDesign() {
               <span style="color:#a78bfa;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">completed</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">finalized · everyone's paid</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">finalized — everyone's paid</div>
             <div class="pd-glass">
               <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions</div>
               <div style="display:flex;gap:0.5em;flex-wrap:wrap">
@@ -3813,7 +3813,7 @@ async function initDesign() {
               <span style="color:#ef4444;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">disputed</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">a backer raised a challenge · we're sorting it</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">a backer raised a challenge — we're sorting it</div>
             <div class="pd-glass">
               <div style="padding:0.75em;border:1px solid rgba(239,68,68,0.2);border-radius:8px;background:rgba(239,68,68,0.04);display:flex;align-items:center;gap:0.75em">
                 <i class="ph ph-warning" style="color:#ef4444;font-size:1.2em;flex-shrink:0"></i>
@@ -3837,7 +3837,7 @@ async function initDesign() {
               <span style="color:#666;font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;margin-left:1ch">cancelled</span>
             </div>
             <h1 style="color:var(--accent);font-size:1.4em;font-weight:normal;margin:0 0 0.25em">draft project</h1>
-            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">cancelled · refunds available</div>
+            <div style="color:var(--muted);font-size:0.85em;margin-bottom:1em">cancelled — refunds available</div>
             <div class="pd-glass">
               <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions</div>
               <div style="display:flex;gap:0.5em;flex-wrap:wrap">
@@ -3940,14 +3940,14 @@ async function initDesign() {
                     <span style="display:flex;align-items:center;gap:0.5ch">${inlineAvatar('0x1111111111111111111111111111111111111111', 20)}<a href="#" style="color:var(--fg);font-size:0.85em;font-weight:500">nappynina.com</a></span>
                     <time style="color:var(--dim);font-size:0.8em">nov 3</time>
                   </div>
-                  <div style="color:var(--fg);font-size:0.9em;line-height:1.65">excited for this one · in for a producer tier</div>
+                  <div style="color:var(--fg);font-size:0.9em;line-height:1.65">excited for this one — in for a producer tier</div>
                   <div class="comment-replies">
                     <div style="margin-left:2ch;padding:0.6em 0;border-top:1px solid var(--border)">
                       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25em">
                         <span style="display:flex;align-items:center;gap:0.5ch">${inlineAvatar('0x3333333333333333333333333333333333333333', 18)}<a href="#" style="color:var(--fg);font-size:0.8em;font-weight:500">milesxb.bio</a></span>
                         <time style="color:var(--dim);font-size:0.75em">nov 3</time>
                       </div>
-                      <div style="color:var(--fg);font-size:0.88em;line-height:1.6">thank you · credits by january</div>
+                      <div style="color:var(--fg);font-size:0.88em;line-height:1.6">thank you — credits by january</div>
                     </div>
                   </div>
                 </div>
@@ -4109,7 +4109,7 @@ async function initDesign() {
                 <h1 class="post-page-title">draft title</h1>
                 <div class="post-page-meta">
                   <a href="#">milesxb.bio</a>
-                  <span style="color:var(--dim)"> · </span>
+                  <span style="color:var(--dim)"> — </span>
                   <a href="#" style="color:var(--dim)">back</a>
                 </div>
               </header>
@@ -4119,7 +4119,7 @@ async function initDesign() {
                   <span style="font-size:0.8em;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em">original</span>
                   <time style="color:var(--dim);font-size:0.8em">march 27, 10:14 pm</time>
                 </div>
-                <h3 style="margin-bottom:0.5em">draft title · first pass</h3>
+                <h3 style="margin-bottom:0.5em">draft title — first pass</h3>
                 <div class="post-page-body" style="font-size:0.95em">draft body — miles's first pass.</div>
               </div>
               <div style="border:1px solid var(--border);padding:1.25em;margin-bottom:1em;opacity:0.7">
@@ -4127,7 +4127,7 @@ async function initDesign() {
                   <span style="font-size:0.8em;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em">amendment 1</span>
                   <time style="color:var(--dim);font-size:0.8em">march 28, 9:02 am</time>
                 </div>
-                <h3 style="margin-bottom:0.5em">draft title · second pass</h3>
+                <h3 style="margin-bottom:0.5em">draft title — second pass</h3>
                 <div class="post-page-body" style="font-size:0.95em">draft body — second pass, tighter phrasing.</div>
               </div>
               <div style="border:1px solid var(--accent);padding:1.25em;margin-bottom:1em">
@@ -4149,7 +4149,7 @@ async function initDesign() {
 
         <div class="design-btn-row" id="design-net-openers">
           <button class="buy-btn" data-open="net-invites">invites</button>
-          <button class="buy-btn" data-open="net-deploy-options">post-signup · what next</button>
+          <button class="buy-btn" data-open="net-deploy-options">post-signup — what next</button>
           <button class="buy-btn" data-open="net-block">block this person (destructive)</button>
           <button class="buy-btn" data-open="net-connections-followers">who follows you</button>
           <button class="buy-btn" data-open="net-connections-following">who you follow</button>
@@ -4246,7 +4246,7 @@ async function initDesign() {
             the left, their site preview above. network.js:325.
           </p>
           <div class="nc-item" style="max-width:420px;padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-            <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em">nappynina.com · site preview</div>
+            <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em">nappynina.com — site preview</div>
             <div class="nc-body" style="padding:0.5em 0.75ch">
               <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
                 <span class="nc-domain">nappynina.com</span>
@@ -4384,7 +4384,7 @@ async function initDesign() {
           </p>
           <div class="design-card-frame">
             <div class="pd-glass" style="margin-bottom:1em">
-              <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions · window open</div>
+              <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions — window open</div>
               <div style="padding:0.75em;border:1px solid rgba(251,191,36,0.2);border-radius:8px;background:rgba(251,191,36,0.04);margin-bottom:1em;display:flex;align-items:center;gap:0.75em">
                 <i class="ph ph-warning" style="color:#fbbf24;font-size:1.2em;flex-shrink:0"></i>
                 <span style="font-size:0.85em">dispute window <span style="color:var(--accent);font-weight:600">2d 14h 30m</span></span>
@@ -4394,7 +4394,7 @@ async function initDesign() {
               </div>
             </div>
             <div class="pd-glass">
-              <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions · window ended</div>
+              <div class="pd-section-title"><i class="ph ph-lightning" style="margin-right:0.3ch"></i> actions — window ended</div>
               <div style="padding:0.75em;border:1px solid rgba(251,191,36,0.2);border-radius:8px;background:rgba(251,191,36,0.04);margin-bottom:1em;display:flex;align-items:center;gap:0.75em">
                 <i class="ph ph-warning" style="color:#fbbf24;font-size:1.2em;flex-shrink:0"></i>
                 <span style="font-size:0.85em">dispute window <span style="color:var(--accent);font-weight:600">ended</span></span>
@@ -4465,7 +4465,7 @@ async function initDesign() {
           <h3>graph canvas chrome — the whole network as dots <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
             the force-directed view in <code>graph.js</code> — a canvas, a small status line,
-            and a legend reading "you · artists · audience" alongside. live canvas elided for
+            and a legend reading "you, artists, audience" alongside. live canvas elided for
             the catalog; the chrome + layout is the thing to see.
           </p>
           <div style="display:grid;grid-template-columns:1fr 160px;gap:1em;max-width:620px;align-items:start">
@@ -4689,14 +4689,14 @@ async function initDesign() {
             </div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:0.5em;border-top:1px dashed var(--border);margin-top:0.5em">
               <span style="color:var(--muted);font-size:0.78em">arrives on</span>
-              <span style="color:var(--fg);font-variant-numeric:normal">optimism · about 30s</span>
+              <span style="color:var(--fg);font-variant-numeric:normal">optimism — about 30s</span>
             </div>
           </div>
         </div>
 
         <!-- Move progress — three beats (shipped strings) -->
         <div class="design-block">
-          <h3>move · submitted <code>draft</code></h3>
+          <h3>move — submitted <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
             first beat — your signed tx is in a mainnet mempool, the
             source chain hasn't included it yet. live string at
@@ -4705,7 +4705,7 @@ async function initDesign() {
           <p style="color:var(--muted)">bridge submitted — waiting for confirmation...</p>
         </div>
         <div class="design-block">
-          <h3>move · confirmed <code>draft</code></h3>
+          <h3>move — confirmed <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
             second beat — source chain included it; relay is pushing to
             optimism. live string at relay-bridge.js:297.
@@ -4713,7 +4713,7 @@ async function initDesign() {
           <p style="color:var(--muted)">bridge confirmed — waiting for funds on Optimism...</p>
         </div>
         <div class="design-block">
-          <h3>move · ready <code>draft</code></h3>
+          <h3>move — ready <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
             third beat — the ETH is on optimism; the dock balance
             refreshes on the next event. live string at
@@ -4724,7 +4724,7 @@ async function initDesign() {
 
         <!-- Failure + safe-funds recovery (shipped strings) -->
         <div class="design-block">
-          <h3>move · failed <code>draft</code></h3>
+          <h3>move — failed <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
             relay-side failure during the swap+move step — nothing
             landed on optimism. live string at relay-bridge.js:641.
@@ -4732,7 +4732,7 @@ async function initDesign() {
           <p style="color:var(--muted)">swap + bridge failed</p>
         </div>
         <div class="design-block">
-          <h3>move · safe-funds recovery <code>draft</code></h3>
+          <h3>move — safe-funds recovery <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
             the usdc landed on base but the second leg didn't. live
             copy at ramp.js:2050 — tells you where the money sits and
@@ -4763,8 +4763,8 @@ async function initDesign() {
         <div class="design-block">
           <h3>profile — credentials strip <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            the inline row of role tags under a profile's header — "contributor · project title"
-            and "producer · project title" for every project they've worked on. probe attempts
+            the inline row of role tags under a profile's header — "contributor — project title"
+            and "producer — project title" for every project they've worked on. probe attempts
             <code>renderCredentials(contributor, producer)</code>, file-local in
             <code>profile.js:490</code>; snapshot stands in if the probe misses.
           </p>
@@ -5210,7 +5210,7 @@ async function initDesign() {
               <h1 class="post-page-title" style="margin:0 0 0.3em;font-size:1.6em;letter-spacing:-0.02em">draft title</h1>
               <div class="post-page-meta" style="color:var(--muted);font-size:0.9em">
                 <a href="#" onclick="return false" style="color:inherit">milesxb.bio</a>
-                <span style="color:var(--dim)"> · </span>
+                <span style="color:var(--dim)"> — </span>
                 <a href="#" onclick="return false" style="color:var(--dim)">back</a>
               </div>
             </header>
@@ -5507,7 +5507,7 @@ async function initDesign() {
                 </div>
                 <div class="funding-meta" style="font-size:0.8em;color:var(--muted)">
                   <span>42 backers</span>
-                  <span class="funding-meta-dot" style="color:var(--dim)"> · </span>
+                  <span class="funding-meta-dot" style="color:var(--dim)"> — </span>
                   <span>30 days left</span>
                 </div>
               </div>
@@ -5527,8 +5527,8 @@ async function initDesign() {
             the live <code>#global-player</code> markup from <code>player.js:9-139</code>,
             pulled inline with <code>position:static</code> so you can see the
             bar without scrolling. in prod it docks to the bottom of every
-            page. prev · play/pause · next · repeat · title · scrubber ·
-            elapsed/total · queue toggle.
+            page. prev, play/pause, next, repeat, title, scrubber,
+            elapsed/total, queue toggle.
           </p>
           <div id="design-player-bar-snapshot" style="position:static;height:48px;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;gap:1ch;padding:0 1.5ch;font-size:0.85em;color:var(--fg);max-width:720px">
             <div style="display:flex;align-items:center;gap:0.25ch;flex-shrink:0">
@@ -6752,7 +6752,7 @@ CUT TO:`
   const blockCount = document.querySelectorAll('.design-block').length
   const feedCardCount = document.querySelectorAll('.design-cards-grid > .design-block').length
   const countEl = document.getElementById('design-audit-count')
-  if (countEl) countEl.textContent = `${openerCount} modal openers · ${blockCount - feedCardCount} primitives · ${feedCardCount} feed cards`
+  if (countEl) countEl.textContent = `${openerCount} modal openers, ${blockCount - feedCardCount} primitives, ${feedCardCount} feed cards`
 }
 
 // ─── catalog sidebar wiring ──────────────────────────────────────────

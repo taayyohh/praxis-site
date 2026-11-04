@@ -554,7 +554,7 @@ function renderMeta(item, category, state, context) {
       : '<span class="media-card-meta-superseded">superseded</span>')
   }
   return parts.length
-    ? `<div class="media-card-meta">${parts.join(' · ')}</div>`
+    ? `<div class="media-card-meta">${parts.map(p => `<span class="media-card-meta-part">${p}</span>`).join('')}</div>`
     : ''
 }
 
