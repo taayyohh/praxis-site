@@ -10508,6 +10508,190 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .event-card-time { padding-left: 0.5em; }
 }
 
+/* --- fat + warm event row — phase 11b promotion ---
+ * Opt-in via renderEventCard(event, { fat: true }). The compact line
+ * stays the default so every caller that didn't flip stays the same.
+ * The fat shape is for touch-surfaces (feed, notifications) — chunkier,
+ * softer, approachable. 80px min-height, 16px radius, 1.25rem × 1.5rem
+ * padding, 40px avatars with -10px overlap stack, 56px media thumb at
+ * 12px radius (96×56 for widescreen), 40px tinted mode-badge puck for
+ * infra/admin events, 3px inset tone edge at 60% opacity, 1px hover lift
+ * over 200ms, 3% fg tint on hover. Reduced-motion drops the lift,
+ * keeps the tint.
+ */
+.event-card--fat {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  min-height: 80px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  transition:
+    transform 200ms ease,
+    background 200ms ease,
+    border-color 200ms ease;
+}
+.event-card--fat:hover {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  transform: translateY(-1px);
+}
+/* fat-specific tone edges — 3px inset instead of the compact row's
+ * border tint, so the tone lands as a quiet left hairline that reads
+ * before the phrase does. Overrides the compact tone border. */
+.event-card--fat.event-card--green {
+  border-color: var(--border);
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--green) 60%, transparent);
+}
+.event-card--fat.event-card--red {
+  border-color: var(--border);
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--red) 60%, transparent);
+}
+.event-card--fat.event-card--amber {
+  border-color: var(--border);
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--yellow) 60%, transparent);
+}
+.event-card--fat.event-card--accent {
+  border-color: var(--border);
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* The fat body inherits .event-card-inner for compat with the compact
+ * renderer path but flattens its padding — the fat row's padding lives
+ * on the outer grid. */
+.event-card--fat .event-card-inner,
+.event-card--fat .event-card-body-slot {
+  padding: 0;
+  min-width: 0;
+}
+
+/* Phrase — Switzer 500 verb at 1.0625rem, 0.65 opacity against the
+ * surface still clears WCAG AA. Names get the same size but
+ * weight 600. Timestamp stays at the phrase tail (not detached). */
+.event-card--fat .event-card-phrase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5ch;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  color: var(--fg);
+}
+.event-card--fat .event-card-name,
+.event-card--fat .event-card-strong {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+.event-card--fat .event-card-label {
+  font-weight: 500;
+  color: var(--fg);
+  opacity: 0.65;
+}
+.event-card--fat .event-card-amount {
+  font-weight: 500;
+  font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+}
+.event-card--fat .event-card-time {
+  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-left: 0.5ch;
+  /* fat row's time flows inline with the phrase — kill the
+   * compact layout's margin-left:auto + padding-left so it doesn't
+   * jump to a detached right column. */
+  padding-left: 0;
+}
+
+/* Avatar stack — 40px circles, -10px overlap so the second circle
+ * still bites into the first with the heavier perimeter. */
+.event-card-avatars {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.event-card--fat .event-card-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.event-card-avatars .event-card-avatar + .event-card-avatar {
+  margin-left: -10px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* Media thumb — 56px square, 12px radius so the inner tile sits
+ * softly rounded inside the 16px row (never sharper than its
+ * container). 96×56 wide variant for video / widescreen posters. */
+.event-card-thumb {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  display: block;
+}
+.event-card-thumb--wide {
+  width: 96px;
+  min-width: 96px;
+  height: 56px;
+}
+.event-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Mode badge — 40px tinted puck filling the left slot for events
+ * without people or media (domain-registered, project-cancelled,
+ * project-disputed, project-timed-out, org-site-registered,
+ * blog-posted, library-added, org-created). The Phosphor glyph
+ * centered in the puck; tint carries meaning. Green reserved for
+ * future wins — the row tone keeps earnings in view either way. */
+.event-card-badge {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.125rem;
+  line-height: 1;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--fg);
+}
+.event-card-badge--neutral { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.event-card-badge--red     { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
+.event-card-badge--green   { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
+.event-card-badge--amber   { background: color-mix(in srgb, var(--yellow) 18%, transparent); color: var(--yellow); }
+.event-card-badge--accent  { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); }
+
+/* Reduced motion — the hover tint stays (informational), the lift
+ * stops. */
+@media (prefers-reduced-motion: reduce) {
+  .event-card--fat { transition: background 200ms ease, border-color 200ms ease; }
+  .event-card--fat:hover { transform: none; }
+}
+
+@media (max-width: 600px) {
+  .event-card--fat {
+    padding: 1rem 1.15rem;
+    min-height: 72px;
+    gap: 0.85rem;
+  }
+  .event-card--fat .event-card-phrase { font-size: 1rem; }
+}
+
 /* --- universal media card --- */
 /* The one card family for every media surface — works grid,
  * collection grid+list, feed media + batch cards. See

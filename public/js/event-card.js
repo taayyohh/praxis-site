@@ -4,7 +4,7 @@
 // social, project-lifecycle, economic, membership, and infrastructure dimensions.
 //
 // Usage:
-//   renderEventCard(event, { layout, resolve, external, mutedTimestamp })
+//   renderEventCard(event, { layout, resolve, external, mutedTimestamp, fat })
 //
 // `event` shape (common fields; renderer is forgiving — any known alias works):
 //   { type, actor, target, amount, title, projectId, posterCid, timestamp,
@@ -17,6 +17,10 @@
 //   external: open links in new tab (default false)
 //   mutedTimestamp: show "·  3h ago" in meta row (default true)
 //   layout: 'line' | 'banner' | 'inline-reference' (default 'line')
+//   fat: opt-in to the phase 11b fat+warm line — 80px row, 40px avatars,
+//        56px media thumb, 40px tinted mode-badge puck. Touch-surfaces
+//        (feed + notifications) pass fat:true; every other caller stays
+//        on the compact line until its host surface opts in.
 
 import { escapeHtml as esc, getProfilePic, getArtistName, timeAgo } from './utils.js'
 
@@ -27,7 +31,26 @@ const resolveName = (addr, resolve, explicit) =>
 const avatarImg = (addr, pic, size = 28) => {
   const src = pic || getProfilePic(addr)
   if (!src) return ''
-  return `<img src="${esc(src)}" class="event-card-avatar" style="width:${size}px;height:${size}px" loading="lazy" onerror="this.style.display='none'">`
+  const name = getArtistName(addr) || ''
+  const alt = name ? `${name} avatar` : ''
+  return `<img src="${esc(src)}" class="event-card-avatar" style="width:${size}px;height:${size}px" alt="${esc(alt)}" loading="lazy" onerror="this.style.display='none'">`
+}
+
+// 40px tinted mode-badge puck — fills the fat row's left slot for
+// infra / admin events without people or media. The Phosphor glyph
+// the descriptor already carries, puck'd into the row so the
+// moment reads as an event, not a thin admin line.
+const badgeSpan = (tint, icon) =>
+  `<span class="event-card-badge event-card-badge--${esc(tint)}"><i class="ph ${esc(icon)}" aria-hidden="true"></i></span>`
+
+// 56px media thumb at 12px radius (or 96×56 wide for video). Used by
+// the fat line renderer when the descriptor advertises a poster CID
+// and the event carries one. Not an <a> — the row itself is the link.
+const thumbSpan = (cid, wide = false) => {
+  if (!cid) return ''
+  const src = `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(cid)}&w=240`
+  const cls = wide ? 'event-card-thumb event-card-thumb--wide' : 'event-card-thumb'
+  return `<span class="${cls}"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></span>`
 }
 
 const tenantHref = (domain) => {
@@ -95,6 +118,7 @@ const DESCRIPTORS = {
   'org-created': {
     icon: 'ph-users-three',
     tone: 'default',
+    badge: 'accent',
     href: (d) => d.domain ? tenantHref(d.domain) : '',
     actor: (d) => d.founder || d.actor,
     poster: (d) => d.posterCid,
@@ -179,6 +203,7 @@ const DESCRIPTORS = {
   'project-disputed': {
     icon: 'ph-warning',
     tone: 'red',
+    badge: 'red',
     href: PROJECT_HREF,
     actor: (d) => d.disputer,
     poster: (d) => d.posterCid,
@@ -191,6 +216,7 @@ const DESCRIPTORS = {
   'project-cancelled': {
     icon: 'ph-x-circle',
     tone: 'muted',
+    badge: 'red',
     href: PROJECT_HREF,
     actor: (d) => d.proposer,
     poster: (d) => d.posterCid,
@@ -203,6 +229,7 @@ const DESCRIPTORS = {
   'project-timed-out': {
     icon: 'ph-clock-countdown',
     tone: 'muted',
+    badge: 'amber',
     href: PROJECT_HREF,
     actor: (d) => d.proposer,
     poster: (d) => d.posterCid,
@@ -327,12 +354,58 @@ const DESCRIPTORS = {
   'domain-registered': {
     icon: 'ph-globe',
     tone: 'default',
+    badge: 'accent',
     href: (d) => tenantHref(d.domain),
     actor: (d) => d.actor,
     phrase: (d, r) => [
       { kind: 'name', text: resolveName(d.actor, r) },
       { kind: 'label', text: 'registered' },
       { kind: 'strong', text: d.domain || '' },
+    ],
+  },
+  // Blog-posted — someone published a new post. Phrasing lifted from the
+  // workshop fixture: "{actor} published {title}". The post is the strong
+  // noun; the actor is the name link.
+  'blog-posted': {
+    icon: 'ph-article',
+    tone: 'default',
+    badge: 'neutral',
+    href: (d) => d.postId ? `/post?id=${d.postId}` : '',
+    actor: (d) => d.author || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.author || d.actor, r) },
+      { kind: 'label', text: 'published' },
+      { kind: 'strong', text: d.title || '' },
+    ],
+  },
+  // Library-added — someone contributed a work to the shared library.
+  // Workshop phrasing: "{actor} added {title} to the library".
+  'library-added': {
+    icon: 'ph-books',
+    tone: 'default',
+    badge: 'neutral',
+    href: (d) => d.itemId ? `/library?item=${encodeURIComponent(d.itemId)}` : '/library',
+    actor: (d) => d.contributor || d.actor,
+    phrase: (d, r) => [
+      { kind: 'name', text: resolveName(d.contributor || d.actor, r) },
+      { kind: 'label', text: 'added' },
+      { kind: 'strong', text: d.title || '' },
+      { kind: 'label', text: 'to the library' },
+    ],
+  },
+  // Org-site-registered — an organization launched its own subdomain or
+  // custom domain. Workshop phrasing: "{org} launched a site at {domain}".
+  // The org is the strong noun; the domain is the name link.
+  'org-site-registered': {
+    icon: 'ph-storefront',
+    tone: 'default',
+    badge: 'accent',
+    href: (d) => tenantHref(d.domain),
+    actor: (d) => d.actor,
+    phrase: (d) => [
+      { kind: 'strong', text: d.orgName || d.name || 'an organization' },
+      { kind: 'label', text: 'launched a site at' },
+      { kind: 'name', text: d.domain || '' },
     ],
   },
   // Ticket market — the pre-universal cards (renderTicketListedCard /
@@ -426,11 +499,25 @@ function wrap(href, external, inner, cls, tone) {
   return `<div class="event-card ${cls}${toneCls}">${inner}</div>`
 }
 
+// Pick the row tone for the fat shape. If the descriptor advertises a
+// mode-badge color, the badge wins (accent for identity-registry moments,
+// red for cancels + disputes, amber for timeouts, neutral for content).
+// Otherwise fall back to the existing semantic tone so earned-value rows
+// keep their green edge and must-act rows keep their red one.
+function fatTone(desc) {
+  if (desc.badge === 'accent') return 'accent'
+  if (desc.badge === 'red') return 'red'
+  if (desc.badge === 'amber') return 'amber'
+  if (desc.badge === 'green') return 'green'
+  if (desc.badge === 'neutral') return 'default'
+  return desc.tone
+}
+
 export function renderEventCard(event, context = {}) {
   if (!event || !event.type) return ''
   const desc = DESCRIPTORS[event.type]
   if (!desc) return ''
-  const { resolve = () => '', external = false, mutedTimestamp = true, layout = 'line' } = context
+  const { resolve = () => '', external = false, mutedTimestamp = true, layout = 'line', fat = false } = context
   const href = typeof desc.href === 'function' ? desc.href(event, resolve) : (desc.href || '')
   const actor = typeof desc.actor === 'function' ? desc.actor(event) : null
   const phraseSegments = desc.phrase(event, resolve)
@@ -460,7 +547,30 @@ export function renderEventCard(event, context = {}) {
     return wrap(href, external, inner, 'event-card--banner', desc.tone)
   }
 
-  // 'line' (default)
+  // 'line' — fat is an opt-in modifier on this layout.
+  if (fat) {
+    // Left slot — badge takes precedence over avatar so mode-badge events
+    // read as events, not thin admin lines. No avatar <img> is emitted
+    // when a badge fills the slot.
+    const leftSlot = desc.badge
+      ? badgeSpan(desc.badge, desc.icon)
+      : (actor ? avatarImg(actor, event.profilePic, 40) : iconHtml)
+    // Right slot — 56px media thumb when the descriptor advertises a
+    // poster and the event carries one. Not an <a> (the row itself is
+    // the link). Wide variant kept available via descriptor opt-in.
+    const posterCid = desc.poster ? desc.poster(event) : null
+    const thumb = posterCid ? thumbSpan(posterCid, desc.thumbWide === true) : ''
+    const inner = `
+      ${leftSlot}
+      <div class="event-card-inner">
+        <div class="event-card-phrase">${phraseHtml}${timeHtml}</div>
+      </div>
+      ${thumb}
+    `
+    return wrap(href, external, inner, 'event-card--line event-card--fat', fatTone(desc))
+  }
+
+  // 'line' (default, compact)
   const avatar = actor ? avatarImg(actor, event.profilePic, 24) : ''
   const inner = `
     <div class="event-card-inner">

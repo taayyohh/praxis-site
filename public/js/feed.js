@@ -242,6 +242,10 @@ function renderItem(item, domainMap, resolve) {
     return renderEventCard({ ...item.data, type: descKey }, {
       resolve,
       layout: useBanner ? 'banner' : 'line',
+      // Phase 11b: flip the feed's line-layout events into the fat +
+      // warm shape. Banner events (project lifecycle hero rows) stay
+      // on their poster-above-headline rhythm.
+      fat: !useBanner,
     })
   }
   return ''
