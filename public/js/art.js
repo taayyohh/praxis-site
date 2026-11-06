@@ -462,16 +462,13 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     html += `<span data-album-buy-slot></span>`
   }
 
-  // Write-about — promoted first-class action. When there's a
-  // listed track we hand write.js a mediaId ref so the compose
-  // editor picks up a rich card; otherwise the button opens /write
-  // with a title prefill so writing about an unlisted album still
-  // has a path. Keeps .album-ref-btn hook so wireRefButtons sees it.
+  // Write-about — only shown for LISTED albums where at least one
+  // track has a mediaId we can reference on-chain. Unlisted work
+  // has no stable primary key for the ref footer to resolve, so
+  // offering a write button that silently drops the reference on
+  // publish would be misleading. No mediaId, no write.
   if (firstListedTrack) {
     html += `<button class="art-album-write album-ref-btn" type="button" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" data-ref-type="music" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> write</button>`
-  } else {
-    const writeHref = `/write?prefillTitle=${encodeURIComponent('on ' + (album.title || ''))}`
-    html += `<a class="art-album-write" href="${escapeHtml(writeHref)}" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> write</a>`
   }
 
   // Overflow — now carries only "add to queue" (write-about was
