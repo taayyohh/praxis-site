@@ -207,17 +207,25 @@ async function renderCrossArtistAlbum(params, loadingEl, contentEl) {
   const artistDomain = params.get('artist')
   const albumName = params.get('album')
   const aliasName = params.get('alias')
+  // Any match miss falls through to the SSR-hinted /music/<alias>/<album>
+  // path so a stale /art?album=… URL (e.g. a bookmark from before
+  // collection switched to vanity paths) still lands on the album
+  // inline instead of a dead-end "album not found".
+  const slugFallback = () => {
+    if (!aliasName || !albumName) return false
+    try { window.location.replace(`/music/${slugify(aliasName)}/${slugify(albumName)}`); return true } catch { return false }
+  }
   const site = await _fetchCrossArtistSite(artistDomain)
-  if (!site) { loadingEl.textContent = 'could not load artist site'; return }
+  if (!site) { if (!slugFallback()) loadingEl.textContent = 'could not load artist site'; return }
   const mod = (site.modules || []).find(m => m.type === 'music')
-  if (!mod) { loadingEl.textContent = 'this artist has no music module'; return }
+  if (!mod) { if (!slugFallback()) loadingEl.textContent = 'this artist has no music module'; return }
   const aliases = mod.data?.aliases || []
   const aliasIdx = aliases.findIndex(a => a.name === aliasName || slugify(a.name) === slugify(aliasName))
-  if (aliasIdx === -1) { loadingEl.textContent = 'artist alias not found'; return }
+  if (aliasIdx === -1) { if (!slugFallback()) loadingEl.textContent = 'artist alias not found'; return }
   const alias = aliases[aliasIdx]
   const albums = alias.albums || []
   const albumIdx = albums.findIndex(al => al.title === albumName || slugify(al.title) === slugify(albumName))
-  if (albumIdx === -1) { loadingEl.textContent = 'album not found'; return }
+  if (albumIdx === -1) { if (!slugFallback()) loadingEl.textContent = 'album not found'; return }
   loadingEl.style.display = 'none'
   renderMusicAlbum(contentEl, alias, albums[albumIdx], aliasIdx, albumIdx)
 }

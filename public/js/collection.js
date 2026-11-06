@@ -1017,11 +1017,13 @@ function renderMediaItems(mediaPurchases) {
     const info = _lruGet(_albumInfoCache, album.coverCid) || {}
     const albumName = info.name || `${sorted.length} tracks`
     const aliasName = info.aliasName || artistDomain
-    // Local-tenant detail link — carries album + alias + artist so /art
-    // can hydrate an in-house album detail page instead of bouncing to
-    // the source artist's own site.
+    // Same /music/<alias>/<album> path the feed emits. The server's SSR
+    // vanity handler injects a cross-album hint when the alias lives on
+    // another tenant, so refresh works everywhere and the match goes
+    // through canonical slugs instead of raw-title strings that can
+    // drift between cache and site.json.
     const albumLink = (info.aliasName && info.name)
-      ? `/art?media=${first.mediaId}&album=${encodeURIComponent(info.name)}&alias=${encodeURIComponent(info.aliasName)}&artist=${encodeURIComponent(artistDomain)}`
+      ? `/music/${slugify(info.aliasName)}/${slugify(info.name)}`
       : `/art?media=${first.mediaId}`
     const authorHref = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : null
 
