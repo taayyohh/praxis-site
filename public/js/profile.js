@@ -3,6 +3,7 @@
 import { F } from './fragments.js'
 import { query } from './ponder.js'
 import { escapeHtml, resolveAddresses, resolveDomain, isBlocked, blockUser, unblockUser, registerPage, getWalletProvider, renderMarkdown } from './utils.js'
+import { detailHrefFor } from './media-card.js'
 
 // pagination cursors per section
 let _credsCursor = null, _credsHasMore = false
@@ -257,7 +258,14 @@ async function showProfile(addr) {
       for (const m of visibleMedia.slice(0, 4)) {
         const thumb = m.metadataCid ? `/api/img?url=${encodeURIComponent('/api/ipfs-proxy/' + m.metadataCid)}&w=400` : ''
         const priceEth = m.price ? (Number(m.price) / 1e18) : 0
-        html += `<a href="/art?media=${m.id}" style="display:flex;align-items:center;gap:1ch;padding:0.75em;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--fg);transition:border-color 0.15s">
+        // Phase 15: profile activity rows link to a single media
+        // listing — tag it explicitly so detailHrefFor dispatches on
+        // kind rather than the field-shape heuristic.
+        const mKind = (m.contentType || '').startsWith('audio/') ? 'single-track'
+          : (m.contentType || '').startsWith('video/') ? 'video'
+          : (m.contentType || '').startsWith('image/') ? 'gallery-image'
+          : 'single-track'
+        html += `<a href="${escapeHtml(detailHrefFor({ ...m, kind: mKind, mediaId: m.id }))}" style="display:flex;align-items:center;gap:1ch;padding:0.75em;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--fg);transition:border-color 0.15s">
           ${thumb ? `<img src="${escapeHtml(thumb)}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''}
           <div style="min-width:0">
             <div style="font-size:0.9em;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(m.title)}</div>

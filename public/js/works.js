@@ -385,7 +385,15 @@ function renderListings(listings) {
     const totalMinted = Number(item.totalMinted || 0)
     const soldOut = maxSupply > 0 && totalMinted >= maxSupply
     const limited = !soldOut && maxSupply > 0
-    html += renderMediaCard(item, {
+    // Phase 15: tag each listing's kind so MediaCard dispatches
+    // explicitly instead of inferring from field presence.
+    const kind = item.kind || (type === 'audio' ? 'single-track'
+      : type === 'video' ? 'video'
+      : type === 'image' ? 'gallery-image'
+      : type === 'film' ? 'film-work'
+      : type === 'writing' || type === 'document' ? 'writing'
+      : 'single-track')
+    html += renderMediaCard({ ...item, kind }, {
       layout: category === 'video' ? 'wide' : 'square',
       category,
       state: soldOut ? 'sold-out' : (limited ? 'limited' : null),
@@ -506,7 +514,13 @@ function renderAlbumCard(mcid, items) {
     return max > 0 && minted >= max
   })
 
+  // Phase 15: tag the aggregate's kind. audio/image/video families
+  // each have their own top-level kind so MediaCard doesn't have to
+  // re-infer from items[].
+  const albumKind = groupCategory === 'image' ? 'gallery-image'
+    : (mtype === 'series' ? 'video' : 'album')
   const albumItem = {
+    kind: albumKind,
     mediaId: `album-${mcid}`,
     headline: albumName,
     title: albumName,
@@ -514,6 +528,9 @@ function renderAlbumCard(mcid, items) {
     metadataCid: mcid,
     count: items.length,
     items: items.map(it => ({
+      kind: groupCategory === 'image' ? 'gallery-image'
+        : groupCategory === 'video' ? 'video'
+        : 'single-track',
       mediaId: it.id,
       title: it.title || 'untitled',
       price: it.price,

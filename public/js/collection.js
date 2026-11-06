@@ -5,7 +5,7 @@ import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, renderMedia, getP
 import { t } from './i18n.js'
 import { getCollection, annotateRelistings } from './media.js'
 import { getCached, setCache, TTL } from './cache.js'
-import { renderMediaCard, renderMediaCardRow } from './media-card.js'
+import { renderMediaCard, renderMediaCardRow, detailHrefFor } from './media-card.js'
 // Side-effect: feed-cards.js registers the global .track-play-btn /
 // .album-play-btn delegation that the universal MediaCard relies on.
 import './feed-cards.js'
@@ -1017,17 +1017,10 @@ function renderMediaItems(mediaPurchases) {
     const info = _lruGet(_albumInfoCache, album.coverCid) || {}
     const albumName = info.name || `${sorted.length} tracks`
     const aliasName = info.aliasName || artistDomain
-    // Same /music/<alias>/<album> path the feed emits. The server's SSR
-    // vanity handler injects a cross-album hint when the alias lives on
-    // another tenant, so refresh works everywhere and the match goes
-    // through canonical slugs instead of raw-title strings that can
-    // drift between cache and site.json.
-    const albumLink = (info.aliasName && info.name)
-      ? `/music/${slugify(info.aliasName)}/${slugify(info.name)}`
-      : `/art?media=${first.mediaId}`
     const authorHref = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : null
 
     const albumItem = {
+      kind: 'album',
       mediaId: `album-${album.coverCid}`,
       title: albumName,
       headline: albumName,
@@ -1038,6 +1031,7 @@ function renderMediaItems(mediaPurchases) {
       items: sorted.map(p => {
         const m = _mediaDetails.get(p.mediaId) || {}
         return {
+          kind: 'single-track',
           mediaId: p.mediaId,
           title: m.title || `#${p.mediaId}`,
           price: m.price || '0',
@@ -1047,6 +1041,13 @@ function renderMediaItems(mediaPurchases) {
         }
       }),
     }
+    // Centralized detail-URL helper — same /music/<alias>/<album>
+    // shape the feed emits; server SSR injects a cross-artist hint on
+    // other tenants. Fallback is /art?media=<firstId> for in-flight
+    // payloads that don't yet have the alias + album name resolved.
+    const albumLink = detailHrefFor(albumItem) !== '#'
+      ? detailHrefFor(albumItem)
+      : `/art?media=${first.mediaId}`
     html += renderMediaCard(albumItem, {
       layout: 'album',
       category: 'audio',
@@ -1070,12 +1071,18 @@ function renderMediaItems(mediaPurchases) {
       : 'other'
     const category = collectionTypeToCategory(cachedType, media.contentType)
     const isSuperseded = media.superseded === true
+    // Centralized detail-URL helper. Superseded items redirect to the
+    // active listing that replaced them.
     const linkTo = isSuperseded && media.activeListingId
-      ? `/art?media=${media.activeListingId}`
-      : `/art?media=${purchase.mediaId}`
+      ? detailHrefFor({ mediaId: media.activeListingId })
+      : detailHrefFor({ mediaId: purchase.mediaId })
     const authorHref = artistDomain ? `/collection?artist=${encodeURIComponent(artistDomain)}` : null
 
     const singleItem = {
+      kind: category === 'image' ? 'gallery-image'
+        : category === 'video' ? 'video'
+        : category === 'document' ? 'writing'
+        : 'single-track',
       mediaId: purchase.mediaId,
       title: media.title || `#${purchase.mediaId}`,
       price: media.price || '0',

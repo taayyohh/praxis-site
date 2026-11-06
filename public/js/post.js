@@ -2,6 +2,7 @@
 import { F } from './fragments.js'
 import { query } from './ponder.js'
 import { escapeHtml, resolveAddresses, rewriteIpfsUrls, renderMarkdown, getPublicClient, registerPage, isBlocked , getWalletProvider, slugify, resolveDomain } from './utils.js'
+import { detailHrefFor } from './media-card.js'
 import { pushBookmarks } from './bookmarks-sync.js'
 import { t, whenReady as i18nReady } from './i18n.js'
 
@@ -295,7 +296,15 @@ async function initPost() {
       const contentType = String(mediaRef.contentType || '')
       const isAudioOrVideo = contentType.startsWith('audio/') || contentType.startsWith('video/')
       const mediaArtistDomain = domainMap[String(mediaRef.artist || '').toLowerCase()] || ''
-      const mediaHref = `/art?media=${encodeURIComponent(String(mediaRef.id))}`
+      // Centralized detail-URL helper — same shape every surface
+      // emits (collection, feed, works, profile …). mediaRef carries
+      // `id`, which detailHrefFor maps to /art?media=<id>. Phase 15:
+      // explicitly tag the kind from contentType.
+      const refKind = contentType.startsWith('audio/') ? 'single-track'
+        : contentType.startsWith('video/') ? 'video'
+        : contentType.startsWith('image/') ? 'gallery-image'
+        : 'writing'
+      const mediaHref = detailHrefFor({ ...mediaRef, kind: refKind, mediaId: mediaRef.id })
       refHtml = `<div class="post-reference post-reference--media">
         <div class="post-reference-label">${t('post.references') || 'references'}</div>
         <div class="feed-collected-card" style="margin:0.5em 0">

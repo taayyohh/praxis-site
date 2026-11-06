@@ -22,6 +22,26 @@
 // Every option has a reasonable inference from the item shape. The
 // caller passes only the ones they need to override. See /design
 // section 5 for every rendered variant.
+//
+// ─── item.kind — the explicit dispatch field ────────────────────
+// Historically MediaCard duck-typed what shape an item was by looking
+// at which fields it carried ("if aliasName && title → album"). That
+// greedy inference cost us a bug where a single track that happened
+// to carry both aliasName + title rendered as an album and routed to
+// /music/<alias>/<title> → "album not found" on refresh. Phase 15
+// adds an explicit kind every caller sets at the point the item is
+// built — the duck-typing stays as a safety fallback.
+//
+//   item.kind === 'album'           // multi-track music release, has items[]
+//   item.kind === 'single-track'    // one audio track, carries mediaId
+//   item.kind === 'gallery-image'   // single image listing
+//   item.kind === 'film-work'       // film with poster + credits
+//   item.kind === 'video'           // short video with inline player
+//   item.kind === 'podcast-episode' // audio with series context
+//   item.kind === 'writing'         // book / essay with a cover
+//   item.kind === 'library-item'    // shared knowledge-base entry
+//   item.kind === 'ticket'          // event / live ticket
+//   item.kind === 'credential'      // on-chain credential
 
 import {
   escapeHtml as esc,
@@ -108,11 +128,70 @@ function defaultLinkFor(item, context) {
 // Cross-artist resolution lives on the server: /music/<alias>/<album>
 // on an artist who doesn't own that alias gets tagged with a hint and
 // renderCrossArtistAlbum dispatches inline on the current tenant.
+//
+// Phase 15: skips any item that isn't explicitly `kind === 'album'`.
+// Pre-phase-15 items (no kind) fall back to the legacy heuristic —
+// an item with `items.length > 1` reads as an album. The point is
+// that a single-track item carrying aliasName + title no longer
+// greedily builds an album URL for itself.
 function albumSlugUrl(item) {
+  const explicit = item.kind === 'album'
+  const legacyLooksLikeAlbum = !item.kind && item.items && item.items.length > 1
+  if (!explicit && !legacyLooksLikeAlbum) return null
   const aName = item.albumPath?.aliasName || item.aliasName || ''
   const aTitle = item.albumPath?.albumTitle || item.headline || item.title || ''
   if (!aName || !aTitle) return null
   return `/music/${slugify(aName)}/${slugify(aTitle)}`
+}
+
+// ─── detail href (the one source of truth) ─────────────────────────
+// Every surface that links to a piece of media on this protocol routes
+// through here. Keeps the five media surfaces (collection, feed,
+// works, profile, supporter-home, post ref footers) from drifting on
+// their own URL shapes — a refresh of /art?album=foo&artist=bar that
+// used to 404 is exactly the kind of bug this centralizes away. Pass
+// the full item (never a bare id) + an optional context carrying a
+// cross-artist hint for non-music surfaces.
+//
+// Phase 15: dispatch on `item.kind` first; fall back to field-shape
+// heuristic for pre-phase-15 items.
+export function detailHrefFor(item, context = {}) {
+  if (!item) return '#'
+
+  // Dev-only breadcrumb when a caller forgets to label the item.
+  if (typeof process === 'undefined' && !item.kind) {
+    console.warn('MediaCard: item.kind missing — falling back to heuristic', item)
+  }
+
+  const idStr = item.mediaId != null ? String(item.mediaId) : ''
+  const isAlbumSentinel = idStr.startsWith('album-')
+  const aName = item.albumPath?.aliasName || item.aliasName || ''
+  const aTitle = item.albumPath?.albumTitle || item.headline || ''
+
+  // Album: /music/<aliasSlug>/<albumSlug>. Server SSR injects a
+  // cross-artist hint, art.js dispatches to renderCrossArtistAlbum
+  // when needed — same path from any tenant. Kind='album' or legacy
+  // shape with items.length > 1 both qualify.
+  const looksAlbum = item.kind === 'album'
+    || (!item.kind && item.items && item.items.length > 1)
+  if (looksAlbum && aName && (aTitle || item.title)) {
+    return `/music/${slugify(aName)}/${slugify(aTitle || item.title)}`
+  }
+
+  // Single media item with a real mediaId (not an album-* sentinel).
+  if (idStr && !isAlbumSentinel) {
+    return `/art?media=${encodeURIComponent(idStr)}`
+  }
+
+  // Non-music cross-artist fallback — /art?type=<t>&item=<slug>&artist=<domain>.
+  // renderCrossArtistItem picks these up in art.js.
+  if (context.crossArtistType && context.crossArtistDomain && item.slug) {
+    return `/art?type=${encodeURIComponent(context.crossArtistType)}&item=${encodeURIComponent(item.slug)}&artist=${encodeURIComponent(context.crossArtistDomain)}`
+  }
+
+  // Fallbacks for in-flight payloads that only carry an `id`.
+  if (item.id != null) return `/art?media=${encodeURIComponent(String(item.id))}`
+  return '#'
 }
 
 // ─── art fallback chain per category ───────────────────────────────
@@ -464,6 +543,29 @@ function renderArt(item, category, state, context) {
     return `<div class="media-card-art media-card-art--video video-lazy" data-src="${esc(videoSrc)}" data-title="${esc(item.title || 'untitled')}" data-poster="${esc(src)}">${artInner}${avatarHtml}<button class="media-card-play-overlay media-card-play-overlay--video" aria-label="play"><i class="ph ph-play"></i></button>${stateOverlay}</div>`
   }
 
+  // Audio album layout: center the cover on a blurred bloom of itself
+  // so the art column fills the full card height even when the
+  // tracklist is taller than the square cover. Reference aesthetic —
+  // Apple Music + Spotify album detail. The backdrop uses the same
+  // src as the cover so it reads as a halo, not a separate image.
+  // Image-bundle and video-series albums keep their existing mosaic /
+  // poster — this treatment is specific to audio albums.
+  // Phase 15: dispatch on kind first, then fall back to the legacy
+  // category+layout shape for pre-phase-15 items.
+  const isAudioAlbum = item.kind === 'album'
+    ? category === 'audio'
+    : (category === 'audio' && (context.layout === 'album' || (item.items && item.items.length > 1)))
+  if (isAudioAlbum) {
+    const coverSrc = src || thumbSrcFor(item, 'audio', 560)
+    const coverImg = coverSrc
+      ? `<img src="${esc(coverSrc)}" class="media-card-art-cover-centered" alt="${esc(item.title || '')}" loading="lazy" onerror="this.style.display='none'">`
+      : ''
+    const backdrop = coverSrc
+      ? `<div class="media-card-art-backdrop" style="background-image:url('${esc(coverSrc)}')"></div>`
+      : ''
+    return `<a class="media-card-art" href="${esc(link)}"${linkTarget}>${backdrop}${coverImg}${avatarHtml}${playOverlay}${stateOverlay}</a>`
+  }
+
   return `<a class="media-card-art" href="${esc(link)}"${linkTarget}>${artInner}${avatarHtml}${playOverlay}${stateOverlay}</a>`
 }
 
@@ -574,7 +676,15 @@ function renderActions(item, category, state, context) {
 // ─── title + aliasName ─────────────────────────────────────────────
 function renderTitle(item, context) {
   const title = item.headline || item.title || 'untitled'
-  const link = albumSlugUrl(item) || defaultLinkFor(item, context)
+  // Priority order:
+  //   1. caller's explicit linkTo (collection passes this for every item)
+  //   2. album-slug URL — but only when item.kind === 'album' or the
+  //      legacy shape heuristic (items.length > 1) still identifies one.
+  //      albumSlugUrl itself enforces that invariant now.
+  //   3. default /art?media=<id> fallback.
+  // This is defense in depth: caller linkTo wins, and albumSlugUrl
+  // can't greedy-build an album URL for a single anymore.
+  const link = context.linkTo || albumSlugUrl(item) || defaultLinkFor(item, context)
   const linkTarget = context.external ? ' target="_blank"' : ''
   const aliasName = item.albumPath?.aliasName || item.aliasName
   // Caller can override where the author line links to (e.g. the

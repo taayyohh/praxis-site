@@ -219,7 +219,17 @@ function renderItem(item, domainMap, resolve) {
     const ct = (d.contentType || '').toLowerCase()
     const isVideo = ct.startsWith('video/')
     const layout = isBatch ? 'album' : (isVideo ? 'wide' : 'horizontal')
-    return renderMediaCard(d, {
+    // Phase 15: tag the item's kind at the call site so MediaCard
+    // dispatches explicitly (no more duck-typing an album from the
+    // presence of aliasName + title). Server may already emit `kind`
+    // on timeline rows — honor it when present.
+    const kind = d.kind || (isBatch ? 'album'
+      : isVideo ? 'video'
+      : ct.startsWith('audio/') ? 'single-track'
+      : ct.startsWith('image/') ? 'gallery-image'
+      : ct === 'application/pdf' || ct.startsWith('text/') ? 'writing'
+      : 'single-track')
+    return renderMediaCard({ ...d, kind }, {
       layout,
       resolve,
       header: isPurchase ? { kind: 'collected', actor: d.buyer } : null,

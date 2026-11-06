@@ -2,6 +2,7 @@
 import { F } from './fragments.js'
 import { query } from './ponder.js'
 import { ipfsUrl, escapeHtml, resolveAddresses, resolveDomain, registerPage, slugify } from './utils.js'
+import { detailHrefFor } from './media-card.js'
 import { getCollection } from './media.js'
 
 const MEDIA_CACHE_MAX = 500
@@ -309,16 +310,26 @@ function renderAlbumTile(mcid, items) {
 
   const artistAddr = (firstMedia.artist || '').toLowerCase()
   const domain = cached?.domain || _domainMap.get(artistAddr)
-  const artistLink = domain
-    ? (cached?.aliasName && cached?.albumName
-      ? `https://${escapeHtml(domain)}/music/${slugify(cached.aliasName)}/${slugify(cached.albumName)}`
-      : `https://${escapeHtml(domain)}/art?media=${items[0].mediaId}`)
-    : '#'
+  // Centralized detail-URL helper. detailHrefFor returns a relative
+  // path; this surface points at the artist's own site, so we prepend
+  // the domain. Phase 15: tag the aggregate's kind so the helper
+  // dispatches on it rather than inferring.
+  const mtype = cached?.mediaType || 'album'
+  const relHref = detailHrefFor({
+    kind: mtype === 'collection' ? 'gallery-image'
+      : mtype === 'series' ? 'video'
+      : 'album',
+    mediaId: items[0].mediaId,
+    aliasName: cached?.aliasName,
+    headline: cached?.albumName,
+    title: cached?.albumName,
+    items: items.length > 1 ? items : undefined,
+  })
+  const artistLink = domain ? `https://${escapeHtml(domain)}${relHref}` : '#'
   const albumName = escapeHtml(cached?.albumName || firstMedia.title || 'untitled')
   const artistName = escapeHtml(cached?.artistName || domain || `${artistAddr.slice(0, 6)}...${artistAddr.slice(-4)}`)
   const itemCount = items.length
   const artUrl = cached?.artUrl || ''
-  const mtype = cached?.mediaType || 'album'
   const itemLabel = mtype === 'collection' ? `${itemCount} pieces` : mtype === 'series' ? `${itemCount} episodes` : `${itemCount} tracks`
 
   if (artUrl) {
@@ -360,7 +371,17 @@ function renderMasonryTile(purchase) {
 
   const artistAddr = (media.artist || '').toLowerCase()
   const domain = _domainMap.get(artistAddr)
-  const artistLink = domain ? `https://${escapeHtml(domain)}/art?media=${purchase.mediaId}` : '#'
+  const singleCt = String(media.contentType || '').toLowerCase()
+  // Centralized detail-URL helper — single item, so it lands on
+  // /art?media=<id>. Cross-tenant → prepend the artist's domain.
+  // Phase 15: tag the kind so the helper dispatches explicitly.
+  const singleKind = singleCt.startsWith('audio/') ? 'single-track'
+    : singleCt.startsWith('video/') ? 'video'
+    : singleCt.startsWith('image/') ? 'gallery-image'
+    : 'single-track'
+  const artistLink = domain
+    ? `https://${escapeHtml(domain)}${detailHrefFor({ kind: singleKind, mediaId: purchase.mediaId })}`
+    : '#'
   const title = escapeHtml(media.title || 'untitled')
   const artistName = domain || `${artistAddr.slice(0, 6)}...${artistAddr.slice(-4)}`
   const ct = (media.contentType || '').toLowerCase()
