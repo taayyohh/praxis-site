@@ -159,7 +159,10 @@ export function detailHrefFor(item, context = {}) {
   if (!item) return '#'
 
   // Dev-only breadcrumb when a caller forgets to label the item.
-  if (typeof process === 'undefined' && !item.kind) {
+  // `typeof process === 'undefined'` is always true in browsers, so the
+  // old guard fired in production on every unlabeled item. Gate on an
+  // explicit flag that only the /design catalog sets at init time.
+  if (typeof window !== 'undefined' && window.__PRAXIS_DEV__ && !item.kind) {
     console.warn('MediaCard: item.kind missing — falling back to heuristic', item)
   }
 

@@ -1101,7 +1101,13 @@ pipFrame.addEventListener('click', scrollBackToPip)
 
 // IntersectionObserver for every playable inline <video> on the page.
 // Single observer, re-used across SPA navigations.
+//
+// _trackedPipVideos (WeakSet) de-dupes observe() calls. _observedVideos
+// (Set) is the strong-ref list used by the SPA-navigate sweep below to
+// unobserve + release videos whose DOM nodes no longer exist — the
+// observer itself would otherwise pin them in memory.
 const _trackedPipVideos = new WeakSet()
+const _observedVideos = new Set()
 let _pipViewportObserver = null
 
 function _setupPipObserver() {
@@ -1122,6 +1128,7 @@ _setupPipObserver()
 function _trackPipVideo(v) {
   if (_trackedPipVideos.has(v)) return
   _trackedPipVideos.add(v)
+  _observedVideos.add(v)
   _pipViewportObserver.observe(v)
 
   // On play: pause other videos so we don't overlap, and if PiP is on a
@@ -1133,6 +1140,7 @@ function _trackPipVideo(v) {
     if (_pip && _pip.video !== v) exitPip(false)
     if (!_trackedPipVideos.has(v)) {
       _trackedPipVideos.add(v)
+      _observedVideos.add(v)
       _pipViewportObserver.observe(v)
     }
   })
@@ -1189,8 +1197,20 @@ window.addEventListener('spa-navigate', () => {
     // fire restore on a detached node. sourceUrl is already set.
     _pip.observer?.disconnect()
   }
+  // Prune observer refs for videos whose DOM node is gone. The
+  // IntersectionObserver holds strong refs to its targets, so without an
+  // explicit unobserve() SPA-destroyed <video>s stay pinned in memory
+  // (heap creep across every SPA hop). Leave the currently-playing PiP
+  // video alone — the player bar outlives SPA nav and we still track it.
+  for (const v of _observedVideos) {
+    if (v === _pip?.video) continue
+    if (!document.contains(v)) {
+      _pipViewportObserver.unobserve(v)
+      _observedVideos.delete(v)
+    }
+  }
   setTimeout(_scanPipVideos, 200)
-})
+}, { passive: true })
 
 // Back-compat: old call sites may still reference these.
 window._miniPlayerDismiss = () => { if (_pip) exitPip(true) }

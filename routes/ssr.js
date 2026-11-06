@@ -12,38 +12,79 @@ const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'wr
 // albums:Map<albumSlug, {title, art, year}> }. Lets /music/<alias>/<album>
 // on the wrong artist's domain render the owning artist's album inline,
 // via a hint the client picks up and dispatches to renderCrossArtistAlbum.
-// Built lazily on first miss, cached 5 minutes.
+//
+// Scalability: the index is persisted at write time by
+// scripts/sync-site-json.js (rebuildAliasIndex) as a single JSON file at
+// _ARTISTS_DIR/_alias-index.json. Read path does ONE readFile instead of
+// N (one per tenant). At 50K+ tenants the previous full-scan blocked the
+// event loop on every TTL miss — one file read scales to 1M. The 5-min
+// TTL is kept as a safety net in case the writer missed an update. If
+// _alias-index.json doesn't exist yet (first boot after upgrade), we do
+// a one-time full-scan to generate it, preserving current behavior until
+// the next site.json write regenerates.
 const _ARTISTS_DIR = process.env.ARTISTS_DIR || '/data/artists'
+const _ALIAS_INDEX_FILE = '_alias-index.json'
 const _CROSS_TTL_MS = 5 * 60 * 1000
 const _crossIndex = new Map()
 let _crossIndexTs = 0
 let _crossIndexBuilding = null
 
+async function _fullScanAliasIndex() {
+  // Fallback: one-time scan used only when the persisted index is missing.
+  // Normal operation reads _alias-index.json written by sync-site-json.js.
+  const next = new Map()
+  try {
+    const handles = await readdir(_ARTISTS_DIR)
+    await Promise.all(handles.map(async handle => {
+      try {
+        const raw = await readFile(join(_ARTISTS_DIR, handle, 'site.json'), 'utf8')
+        const site = JSON.parse(raw)
+        if (!site?.domain) return
+        const music = (site.modules || []).find(m => m.type === 'music')
+        for (const alias of (music?.data?.aliases || [])) {
+          const aliasSlug = slugify(alias.name || '')
+          if (!aliasSlug || next.has(aliasSlug)) continue
+          const albums = {}
+          for (const album of (alias.albums || [])) {
+            const slug = slugify(album.title || '')
+            if (slug) albums[slug] = { title: album.title, art: album.art, year: album.year }
+          }
+          next.set(aliasSlug, { domain: site.domain, aliasName: alias.name, albums })
+        }
+      } catch {}
+    }))
+  } catch {}
+  return next
+}
+
 async function _buildCrossIndex() {
   if (_crossIndexBuilding) return _crossIndexBuilding
   _crossIndexBuilding = (async () => {
-    const next = new Map()
+    let next = new Map()
     try {
-      const handles = await readdir(_ARTISTS_DIR)
-      await Promise.all(handles.map(async handle => {
-        try {
-          const raw = await readFile(join(_ARTISTS_DIR, handle, 'site.json'), 'utf8')
-          const site = JSON.parse(raw)
-          if (!site?.domain) return
-          const music = (site.modules || []).find(m => m.type === 'music')
-          for (const alias of (music?.data?.aliases || [])) {
-            const aliasSlug = slugify(alias.name || '')
-            if (!aliasSlug || next.has(aliasSlug)) continue
-            const albums = new Map()
-            for (const album of (alias.albums || [])) {
-              const slug = slugify(album.title || '')
-              if (slug) albums.set(slug, { title: album.title, art: album.art, year: album.year })
-            }
-            next.set(aliasSlug, { domain: site.domain, aliasName: alias.name, albums })
-          }
-        } catch {}
-      }))
-    } catch {}
+      // Primary path: single readFile on the pre-built index.
+      const raw = await readFile(join(_ARTISTS_DIR, _ALIAS_INDEX_FILE), 'utf8')
+      const data = JSON.parse(raw)
+      for (const [aliasSlug, entry] of Object.entries(data || {})) {
+        if (!entry || typeof entry !== 'object') continue
+        const albums = new Map()
+        for (const [slug, album] of Object.entries(entry.albums || {})) {
+          albums.set(slug, album)
+        }
+        next.set(aliasSlug, { domain: entry.domain, aliasName: entry.aliasName, albums })
+      }
+    } catch {
+      // Fallback: index file missing (first boot after upgrade) — do a
+      // one-time full scan. Writer regenerates on the next site.json write.
+      const scanned = await _fullScanAliasIndex()
+      for (const [aliasSlug, entry] of scanned) {
+        const albums = new Map()
+        for (const [slug, album] of Object.entries(entry.albums || {})) {
+          albums.set(slug, album)
+        }
+        next.set(aliasSlug, { domain: entry.domain, aliasName: entry.aliasName, albums })
+      }
+    }
     _crossIndex.clear()
     for (const [k, v] of next) _crossIndex.set(k, v)
     _crossIndexTs = Date.now()

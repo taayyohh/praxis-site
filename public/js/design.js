@@ -26,6 +26,11 @@
 
 import { registerPage, escapeHtml, inlineAvatar } from './utils.js'
 
+// The /design catalog is where we eyeball components; enable dev-only
+// shape-validation warnings (e.g. MediaCard logging missing item.kind)
+// only on this page so prod users never see the console noise.
+if (typeof window !== 'undefined') window.__PRAXIS_DEV__ = true
+
 registerPage('design-page', initDesign)
 
 // ─── catalog sidebar — grouped jump nav ──────────────────────────────
