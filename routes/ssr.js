@@ -425,6 +425,24 @@ export async function handleSsr(ctx) {
             crossHint = { domain: match.domain, aliasName: match.aliasName, albumTitle: match.title }
           }
         }
+        // Dead-alias rescue: stale URLs from before the Phase 15 kind refactor
+        // encoded single-track items as /music/<domain-slug>/<track-slug>.
+        // Those can never resolve to an album. If aliasSlug matches a known
+        // tenant's slugified domain, 301 redirect to that tenant's home so
+        // the viewer lands somewhere useful instead of "album not found".
+        if (!ogTitle) {
+          try {
+            const idx = await _buildCrossIndex()
+            for (const entry of idx.values()) {
+              const domainSlug = slugify(entry.domain)
+              if (domainSlug === aliasSlug && entry.domain !== site.domain) {
+                res.writeHead(301, { Location: `https://${entry.domain}` })
+                res.end()
+                return true
+              }
+            }
+          } catch {}
+        }
       } else if (mod?.data && type === 'gallery') {
         const slug = decodeURIComponent(segs[1])
         const img = (mod.data.images || []).find(i => slugify(i.title) === slug)
