@@ -65,7 +65,7 @@ html {
 }
 
 body {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 4em 3em 4em 3em;
   min-height: 100vh;
@@ -10072,7 +10072,7 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   justify-content: center;
   gap: 0.5ch;
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: 10px;
   font-family: inherit;
   font-weight: 500;
   font-size: 1rem;
@@ -10251,7 +10251,7 @@ a.art-album-track-title:hover {
   gap: 0.4ch;
   min-height: 32px;
   padding: 0 0.875rem;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--success, #30d158);
   border: 1px solid color-mix(in srgb, var(--success, #30d158) 60%, transparent);
@@ -10332,7 +10332,7 @@ a.art-album-track-title:hover {
   gap: 0.5ch;
   min-height: 36px;
   padding: 0 0.875rem;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
   background: transparent;
   color: var(--muted);
@@ -10528,7 +10528,7 @@ a.art-album-track-title:hover {
   gap: 0.55ch;
   min-height: 44px;
   padding: 0.6em 1.3ch;
-  border-radius: 999px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--fg);
@@ -10649,7 +10649,7 @@ a.art-album-track-title:hover {
   align-items: center;
   gap: 0.4ch;
   padding: 0.3em 1ch;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--muted);

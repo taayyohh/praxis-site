@@ -175,10 +175,14 @@ async function initPost() {
       }
     }
 
-    // Parallel: fetch amendments + parent post (if reply) in one round-trip
+    // Parallel: fetch amendments + parent post + media ref (if ref) in one round-trip.
+    // refType=3 is officially "reply to post" per BlogRegistry, but write.js
+    // reuses the same slot for media refs (write-about-this). Query both and
+    // prefer the media if it resolves — the mediaId won't collide with a
+    // blogPost id in practice, and if nothing matches we render nothing.
     const isReplyPost = post.refType > 0 && post.refType !== 5 && post.refId
     const isReply = isReplyPost && post.refType === 3
-    const [amendData, parentData] = await Promise.all([
+    const [amendData, parentData, mediaRefData] = await Promise.all([
       query(`
         query Amendments($refId: BigInt!) {
           blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
@@ -188,6 +192,9 @@ async function initPost() {
       `, { refId: postId }),
       isReply
         ? query(`query ParentPost($id: BigInt!) { blogPost(id: $id) { ${F.post} } }`, { id: String(post.refId) }).catch(() => null)
+        : Promise.resolve(null),
+      isReply
+        ? query(`query MediaRef($id: BigInt!) { mediaListing(id: $id) { ${F.mediaListingFull} } }`, { id: String(post.refId) }).catch(() => null)
         : Promise.resolve(null)
     ])
 
@@ -213,11 +220,16 @@ async function initPost() {
       return
     }
 
-    // Batch resolve: post author + parent author (if reply) in one call
-    const parent = parentData?.blogPost || null
+    // Media ref beats parent-quote for refType=3: if the id resolves in
+    // Media, the author meant "write about this track", not "reply to post".
+    const mediaRef = mediaRefData?.mediaListing || null
+    const parent = (!mediaRef && parentData?.blogPost) || null
     const addressesToResolve = [post.author]
     if (parent && parent.author.toLowerCase() !== post.author.toLowerCase()) {
       addressesToResolve.push(parent.author)
+    }
+    if (mediaRef && mediaRef.artist && mediaRef.artist.toLowerCase() !== post.author.toLowerCase()) {
+      addressesToResolve.push(mediaRef.artist)
     }
     const domainMap = await resolveAddresses(query, addressesToResolve).catch(() => ({}))
     const domain = domainMap[post.author.toLowerCase()] || `${post.author.slice(0, 6)}...${post.author.slice(-4)}`
@@ -271,9 +283,33 @@ async function initPost() {
       replySeparatorHtml = `<div class="post-reply-separator">\u21a9 reply by <a href="/network?artist=${post.author.toLowerCase()}" style="color:var(--muted)">${escapeHtml(domain)}</a></div>`
     }
 
-    // reference footer (skip for amendments — refType=5 is internal, skip for replies — shown above)
+    // reference footer (skip for amendments — refType=5 is internal; shown here for every other ref type)
     let refHtml = ''
-    if (isReplyPost && post.refType !== 3) {
+    if (mediaRef) {
+      // refType=3 that resolved to a media listing — render the same
+      // feed-collected-card shape /write renders in compose so what you
+      // see mid-write is what readers see at the bottom of the post.
+      const metaCid = mediaRef.metadataCid || mediaRef.ipfsCid || ''
+      const artSrc = metaCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(metaCid)}&w=120` : ''
+      const playSrc = mediaRef.ipfsCid ? `/api/ipfs-proxy/${encodeURIComponent(mediaRef.ipfsCid)}` : ''
+      const contentType = String(mediaRef.contentType || '')
+      const isAudioOrVideo = contentType.startsWith('audio/') || contentType.startsWith('video/')
+      const mediaArtistDomain = domainMap[String(mediaRef.artist || '').toLowerCase()] || ''
+      const mediaHref = `/art?media=${encodeURIComponent(String(mediaRef.id))}`
+      refHtml = `<div class="post-reference post-reference--media">
+        <div class="post-reference-label">${t('post.references') || 'references'}</div>
+        <div class="feed-collected-card" style="margin:0.5em 0">
+          <div class="feed-collected-art-wrap" style="width:72px;height:72px;flex-shrink:0">
+            ${artSrc ? `<img src="${escapeHtml(artSrc)}" alt="${escapeHtml(mediaRef.title || '')}" style="width:100%;height:100%;object-fit:cover">` : ''}
+            ${isAudioOrVideo && playSrc ? `<button class="track-play-btn feed-collected-play-overlay" data-track-src="${escapeHtml(playSrc)}" data-track-title="${escapeHtml(mediaRef.title || '')}" data-track-artist="${escapeHtml(mediaArtistDomain)}" aria-label="play"><i class="ph ph-play"></i></button>` : ''}
+          </div>
+          <div class="feed-collected-body" style="padding:0.5em 1ch">
+            <a href="${escapeHtml(mediaHref)}" class="feed-collected-title" style="font-weight:600;color:var(--fg);text-decoration:none">${escapeHtml(mediaRef.title || '')}</a>
+            ${mediaArtistDomain ? `<div class="feed-collected-artist" style="color:var(--muted);font-size:0.875em;margin-top:0.15em">${escapeHtml(mediaArtistDomain)}</div>` : ''}
+          </div>
+        </div>
+      </div>`
+    } else if (isReplyPost && post.refType !== 3) {
       const refLabels = { 1: 'project', 2: 'portfolio', 4: 'cites' }
       const label = refLabels[post.refType] || 'references'
 
