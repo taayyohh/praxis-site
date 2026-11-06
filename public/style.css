@@ -9951,14 +9951,14 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   margin: 0;
   font-family: inherit;
   font-weight: 700;
-  font-size: 2.75rem;
-  line-height: 1.05;
+  font-size: 2rem;
+  line-height: 1.1;
   letter-spacing: -0.02em;
   color: var(--fg);
   text-wrap: balance;
 }
 @media (max-width: 560px) {
-  .art-album-title { font-size: 2.125rem; }
+  .art-album-title { font-size: 1.625rem; }
 }
 
 /* Byline — artist name + tabular year, 0.75 opacity so the title
@@ -10145,26 +10145,39 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .art-album-tracklist {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  margin: 2.5rem 0 1.5rem;
+  gap: 0.125rem;
+  margin: 1.5rem 0 1.5rem;
   border-top: none; /* the row hover wash is the rhythm, not a hairline */
 }
 .art-album-track {
+  position: relative;
   display: grid;
   grid-template-columns: 3ch 1fr auto auto auto auto;
   align-items: center;
   gap: 1rem;
-  min-height: 64px;
-  padding: 0.5rem 1.5rem;
-  border-radius: 12px;
+  min-height: 48px;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
   transition:
-    background 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+    background 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .art-album-track:hover {
   background: color-mix(in srgb, var(--fg) 3%, transparent);
-  transform: translateY(-1px);
 }
+/* Now-playing row: 2px left accent bar + accent-colored title.
+   player.js adds .playing on the row whose data-track-src is live. */
+.art-album-track.playing {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.art-album-track.playing::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 10%; bottom: 10%;
+  width: 2px; border-radius: 1px;
+  background: var(--accent);
+}
+.art-album-track.playing .art-album-track-title,
+.art-album-track.playing .art-album-track-num { color: var(--accent); }
 @media (max-width: 560px) {
   .art-album-track {
     padding: 0.5rem 0.75rem;

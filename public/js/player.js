@@ -731,7 +731,7 @@ progressWrap.addEventListener('click', (e) => {
 
 function syncTrackButtons() {
   document.querySelectorAll('.track-play-btn[data-track-src]').forEach(btn => {
-    const row = btn.closest('.album-track')
+    const row = btn.closest('.album-track') || btn.closest('.art-album-track')
     if (btn.dataset.trackSrc === currentSrc && !audio.paused) {
       btn.innerHTML = '<i class="ph ph-pause"></i>'
       row?.classList.add('playing')

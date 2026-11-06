@@ -468,10 +468,10 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   // with a title prefill so writing about an unlisted album still
   // has a path. Keeps .album-ref-btn hook so wireRefButtons sees it.
   if (firstListedTrack) {
-    html += `<button class="art-album-write album-ref-btn" type="button" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" data-ref-type="music" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> ${t('music.writeAbout')}</button>`
+    html += `<button class="art-album-write album-ref-btn" type="button" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" data-ref-type="music" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> write</button>`
   } else {
     const writeHref = `/write?prefillTitle=${encodeURIComponent('on ' + (album.title || ''))}`
-    html += `<a class="art-album-write" href="${escapeHtml(writeHref)}" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> ${t('music.writeAbout')}</a>`
+    html += `<a class="art-album-write" href="${escapeHtml(writeHref)}" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> write</a>`
   }
 
   // Overflow — now carries only "add to queue" (write-about was
