@@ -1,11 +1,66 @@
 // SSR routes — server-side rendering for blog posts, art pages, project pages
 import { join } from 'path'
+import { readdir, readFile } from 'fs/promises'
 
 function slugify(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
 }
 
 const _VANITY_TYPES = new Set(['music', 'gallery', 'film', 'video', 'audio', 'writing', 'demos'])
+
+// Cross-artist music alias index: aliasSlug -> { domain, aliasName,
+// albums:Map<albumSlug, {title, art, year}> }. Lets /music/<alias>/<album>
+// on the wrong artist's domain render the owning artist's album inline,
+// via a hint the client picks up and dispatches to renderCrossArtistAlbum.
+// Built lazily on first miss, cached 5 minutes.
+const _ARTISTS_DIR = process.env.ARTISTS_DIR || '/data/artists'
+const _CROSS_TTL_MS = 5 * 60 * 1000
+const _crossIndex = new Map()
+let _crossIndexTs = 0
+let _crossIndexBuilding = null
+
+async function _buildCrossIndex() {
+  if (_crossIndexBuilding) return _crossIndexBuilding
+  _crossIndexBuilding = (async () => {
+    const next = new Map()
+    try {
+      const handles = await readdir(_ARTISTS_DIR)
+      await Promise.all(handles.map(async handle => {
+        try {
+          const raw = await readFile(join(_ARTISTS_DIR, handle, 'site.json'), 'utf8')
+          const site = JSON.parse(raw)
+          if (!site?.domain) return
+          const music = (site.modules || []).find(m => m.type === 'music')
+          for (const alias of (music?.data?.aliases || [])) {
+            const aliasSlug = slugify(alias.name || '')
+            if (!aliasSlug || next.has(aliasSlug)) continue
+            const albums = new Map()
+            for (const album of (alias.albums || [])) {
+              const slug = slugify(album.title || '')
+              if (slug) albums.set(slug, { title: album.title, art: album.art, year: album.year })
+            }
+            next.set(aliasSlug, { domain: site.domain, aliasName: alias.name, albums })
+          }
+        } catch {}
+      }))
+    } catch {}
+    _crossIndex.clear()
+    for (const [k, v] of next) _crossIndex.set(k, v)
+    _crossIndexTs = Date.now()
+    _crossIndexBuilding = null
+    return _crossIndex
+  })()
+  return _crossIndexBuilding
+}
+
+async function _crossLookupAlbum(aliasSlug, albumSlug) {
+  if (Date.now() - _crossIndexTs > _CROSS_TTL_MS) await _buildCrossIndex()
+  const entry = _crossIndex.get(aliasSlug)
+  if (!entry) return null
+  const album = albumSlug ? entry.albums.get(albumSlug) : null
+  if (albumSlug && !album) return null
+  return { domain: entry.domain, aliasName: entry.aliasName, ...(album || {}) }
+}
 
 /** @param {object} ctx @returns {Promise<boolean>} */
 export async function handleSsr(ctx) {
@@ -290,20 +345,35 @@ export async function handleSsr(ctx) {
       const mod = modules.find(m => m.type === type)
       let ogTitle, ogImage, ogDescription
 
-      if (mod?.data && type === 'music' && segs.length >= 3) {
+      let crossHint = null
+      if (type === 'music' && segs.length >= 3) {
         const aliasSlug = decodeURIComponent(segs[1])
         const albumSlug = decodeURIComponent(segs[2])
-        for (const alias of (mod.data.aliases || [])) {
-          if (slugify(alias.name) !== aliasSlug) continue
-          for (const album of (alias.albums || [])) {
-            if (slugify(album.title) === albumSlug) {
-              ogTitle = `${album.title} — ${alias.name || site.name}`
-              ogImage = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=1200&fmt=jpg` : null
-              ogDescription = `${alias.name || ''} (${album.year || ''})`
-              break
+        if (mod?.data) {
+          for (const alias of (mod.data.aliases || [])) {
+            if (slugify(alias.name) !== aliasSlug) continue
+            for (const album of (alias.albums || [])) {
+              if (slugify(album.title) === albumSlug) {
+                ogTitle = `${album.title} — ${alias.name || site.name}`
+                ogImage = album.art ? `/api/img?url=${encodeURIComponent(album.art)}&w=1200&fmt=jpg` : null
+                ogDescription = `${alias.name || ''} (${album.year || ''})`
+                break
+              }
             }
+            if (ogTitle) break
           }
-          if (ogTitle) break
+        }
+        // Cross-artist: current site doesn't own this alias. Tag the
+        // page with a hint that art.js dispatches to renderCrossArtistAlbum
+        // so the album renders inline on this tenant (no redirect).
+        if (!ogTitle) {
+          const match = await _crossLookupAlbum(aliasSlug, albumSlug)
+          if (match && match.domain !== site.domain) {
+            ogTitle = `${match.title} — ${match.aliasName}`
+            ogImage = match.art ? `/api/img?url=${encodeURIComponent(match.art)}&w=1200&fmt=jpg` : null
+            ogDescription = `${match.aliasName} (${match.year || ''})`
+            crossHint = { domain: match.domain, aliasName: match.aliasName, albumTitle: match.title }
+          }
         }
       } else if (mod?.data && type === 'gallery') {
         const slug = decodeURIComponent(segs[1])
@@ -337,9 +407,17 @@ export async function handleSsr(ctx) {
         if (cachedExists(artHtmlFile)) {
           let html = await getSsrTemplate(artHtmlFile)
           if (!html) { res.writeHead(500); res.end('template read error'); return true }
-          const canonical = `https://${site.domain}${path}`
-          const absImage = ogImage ? (ogImage.startsWith('http') ? ogImage : `https://${site.domain}${ogImage}`) : undefined
+          // Cross-artist pages canonicalize to the owning domain for SEO,
+          // so the album has one URL across the network. Local pages keep
+          // their own domain.
+          const canonicalHost = crossHint ? crossHint.domain : site.domain
+          const canonical = `https://${canonicalHost}${path}`
+          const absImage = ogImage ? (ogImage.startsWith('http') ? ogImage : `https://${canonicalHost}${ogImage}`) : undefined
           html = injectOgTags(html, { title: ogTitle, description: ogDescription, image: absImage, url: canonical })
+          if (crossHint) {
+            const hintAttr = escapeHtml(JSON.stringify(crossHint))
+            html = html.replace('</head>', `<meta name="praxis-cross-album" content="${hintAttr}">\n</head>`)
+          }
           const buf = Buffer.from(html)
           compressedSend(req, res, buf, 'text/html', { 'Cache-Control': 'public, max-age=10, must-revalidate' })
           return true

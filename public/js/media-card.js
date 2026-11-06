@@ -105,27 +105,14 @@ function defaultLinkFor(item, context) {
 // Returns a /music/<alias>/<album> URL when we have both parts, else
 // null. Server now emits aliasName/albumTitle authoritatively; falls
 // back to item.aliasName+headline for in-flight payloads.
-function albumSlugUrl(item, context) {
+// Cross-artist resolution lives on the server: /music/<alias>/<album>
+// on an artist who doesn't own that alias gets tagged with a hint and
+// renderCrossArtistAlbum dispatches inline on the current tenant.
+function albumSlugUrl(item) {
   const aName = item.albumPath?.aliasName || item.aliasName || ''
   const aTitle = item.albumPath?.albumTitle || item.headline || item.title || ''
   if (!aName || !aTitle) return null
-  const path = `/music/${slugify(aName)}/${slugify(aTitle)}`
-  return absolutizeIfCrossArtist(path, item.artist, context)
-}
-
-// A Nappy Nina collab shown in miles's feed emits a /music/nappy-nina/*
-// path that would resolve against miles's own domain, which has no such
-// alias. When the item's artist differs from the site owner, prefix the
-// path with that artist's domain so the click lands on the right site.
-function absolutizeIfCrossArtist(path, artistAddr, context) {
-  if (!path || !artistAddr || !context?.resolve) return path
-  const host = typeof window !== 'undefined' ? (window.location?.hostname || '') : ''
-  if (!host) return path
-  const domain = context.resolve(artistAddr)
-  if (!domain || typeof domain !== 'string') return path
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) return path
-  if (domain.toLowerCase() === host.toLowerCase()) return path
-  return `https://${domain}${path}`
+  return `/music/${slugify(aName)}/${slugify(aTitle)}`
 }
 
 // ─── art fallback chain per category ───────────────────────────────
@@ -494,11 +481,7 @@ function renderTracklist(item, context) {
   })
   const artist = displayName(item.artist, context)
   const trackLinks = (item.albumPath && item.albumPath.aliasName)
-    ? absolutizeIfCrossArtist(
-        `/music/${slugify(item.albumPath.aliasName)}/${slugify(item.albumPath.albumTitle || item.headline || '')}`,
-        item.artist,
-        context
-      )
+    ? `/music/${slugify(item.albumPath.aliasName)}/${slugify(item.albumPath.albumTitle || item.headline || '')}`
     : null
   const renderOne = (it, i) => {
     const cid = it.ipfsCid || ''
@@ -591,14 +574,14 @@ function renderActions(item, category, state, context) {
 // ─── title + aliasName ─────────────────────────────────────────────
 function renderTitle(item, context) {
   const title = item.headline || item.title || 'untitled'
-  const link = albumSlugUrl(item, context) || defaultLinkFor(item, context)
+  const link = albumSlugUrl(item) || defaultLinkFor(item, context)
   const linkTarget = context.external ? ' target="_blank"' : ''
   const aliasName = item.albumPath?.aliasName || item.aliasName
   // Caller can override where the author line links to (e.g. the
   // collection page routes to its own `/collection?artist=X` filter on
   // the current tenant rather than off to the artist's own site).
   const authorHref = context.authorHref
-    || (aliasName ? absolutizeIfCrossArtist(`/music/${slugify(aliasName)}`, item.artist, context) : null)
+    || (aliasName ? `/music/${slugify(aliasName)}` : null)
     || (item.artist && context.resolve ? ('https://' + context.resolve(item.artist)) : null)
   const authorText = aliasName || (item.artist ? displayName(item.artist, context) : '')
   const authorLine = authorText && !context.hideAuthor

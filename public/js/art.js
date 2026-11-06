@@ -81,10 +81,24 @@ async function initArt() {
     // item. When neither album nor type context is supplied we still
     // fall through to the on-chain single-media render so a bare
     // `?media=<id>&artist=<domain>` behaves like `?media=<id>` did.
+    // SSR tags the page with a cross-artist hint when a /music/alias/album
+    // URL lands on an artist who doesn't own that alias. Dispatch to the
+    // same cross-artist path collection cards already use so the album
+    // renders inline here (no redirect, no "album not found").
+    const crossMeta = document.querySelector('meta[name="praxis-cross-album"]')
     if (artist && album && params.get('alias')) {
       await renderCrossArtistAlbum(params, loadingEl, contentEl)
     } else if (artist && type && params.get('item')) {
       await renderCrossArtistItem(params, loadingEl, contentEl)
+    } else if (vanity && vanity.type === 'music' && crossMeta) {
+      try {
+        const hint = JSON.parse(crossMeta.content)
+        const p = new URLSearchParams()
+        p.set('artist', hint.domain)
+        p.set('alias', hint.aliasName)
+        p.set('album', hint.albumTitle)
+        await renderCrossArtistAlbum(p, loadingEl, contentEl)
+      } catch (e) { console.warn('cross-album hint parse failed:', e); await renderVanityItem(vanity, loadingEl, contentEl) }
     } else if (mediaId !== null) {
       await renderOnChainMedia(mediaId, loadingEl, contentEl)
     } else if (vanity) {
