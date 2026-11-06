@@ -1,4 +1,6 @@
-// Global persistent audio/video player — fixed bottom bar with unified queue
+// Global persistent omniplayer — fixed bottom bar with unified queue for
+// audio + video. One chrome handles tracks, video, lockscreen controls
+// (Media Session), and picture-in-picture when inline video scrolls off.
 // Exposes: window.playTrack(), window.pauseTrack(), window.isPlaying(), window.playVideo(), window.addToQueue()
 import { escapeHtml } from './utils.js'
 
@@ -119,6 +121,19 @@ timeEl.style.cssText = `
   white-space: nowrap; color: var(--muted); font-size: 0.85em; flex-shrink: 0;
 `
 
+// PiP video frame — slides in at left of title when an inline video
+// scrolls out of view (merged from mini-player.js). Clicking it scrolls
+// the viewer back to the source <video>; the frame is empty by default.
+const pipFrame = document.createElement('div')
+pipFrame.id = 'gp-pip-frame'
+pipFrame.setAttribute('aria-label', 'back to video')
+pipFrame.title = 'back to video'
+pipFrame.style.cssText = `
+  position: relative; width: 72px; height: 40px; flex-shrink: 0;
+  background: #000; border-radius: 3px; overflow: hidden; display: none;
+  cursor: pointer;
+`
+
 // Queue toggle button
 const queueBtn = document.createElement('button')
 queueBtn.id = 'gp-queue-btn'
@@ -132,6 +147,7 @@ queueBtn.style.cssText = `
 `
 
 bar.appendChild(controlsWrap)
+bar.appendChild(pipFrame)
 bar.appendChild(titleEl)
 bar.appendChild(progressWrap)
 bar.appendChild(timeEl)
@@ -584,7 +600,7 @@ function isPlaying() {
   return !audio.paused
 }
 
-async function playVideo(src, title, poster) {
+async function playVideo(src, title, poster, options = {}) {
   // pause audio if playing
   if (!audio.paused) audio.pause()
   activeMediaType = 'video'
@@ -599,6 +615,17 @@ async function playVideo(src, title, poster) {
     _queueIdx = 0
   }
   if (_queueOpen) renderQueueList()
+  updateMediaSession()
+
+  // pip: true — caller wants an already-playing inline <video> hoisted into
+  // the bar's PiP frame (used by the IntersectionObserver merged in below).
+  if (options.pip && options.sourceEl) {
+    enterPip(options.sourceEl)
+    showBar()
+    playBtn.innerHTML = '<i class="ph ph-pause"></i>'
+    _broadcastPlayerState('playing')
+    return
+  }
 
   // try to find an inline video on the page with this src and use it directly for PiP
   // this keeps video continuous (no separate hidden element)
@@ -827,7 +854,7 @@ video.addEventListener('timeupdate', updateVideoTime)
 video.addEventListener('loadedmetadata', updateVideoTime)
 video.addEventListener('durationchange', updateVideoTime)
 
-// Mini-player handles video overlay now (mini-player.js)
+// PiP (merged in below) handles the floating video overlay
 
 video.addEventListener('ended', () => {
   playBtn.innerHTML = '<i class="ph ph-play"></i>'
@@ -842,10 +869,10 @@ video.addEventListener('play', () => {
   if (activeMediaType === 'video') playBtn.innerHTML = '<i class="ph ph-pause"></i>'
 })
 
-// Find the current inline video element (for mini-player + bar controls)
+// Find the current inline video element (for PiP + bar controls)
 function _findActiveVideo() {
   if (currentSrc) {
-    // Look for inline video with this src (could be in mini-player container or in page)
+    // Look for inline video with this src (could be hoisted into the PiP frame or in page)
     const inline = document.querySelector(`video[src="${CSS.escape(currentSrc)}"]`)
     if (inline && inline !== video) return inline
   }
@@ -877,10 +904,10 @@ progressWrap.addEventListener('click', (e) => {
   updateVideoTime()
 }, true)
 
-// video-pip-btn delegation removed — mini-player.js handles floating video
+// video-pip-btn delegation removed — PiP is handled by the IntersectionObserver below
 
 // --- Click-to-load lazy video pattern ---
-// Creates an inline <video> element so mini-player.js can detect when it scrolls out of view
+// Creates an inline <video> element so the PiP IntersectionObserver below can detect scroll-out
 document.addEventListener('click', (e) => {
   // Video detail links must navigate — skip playback interception
   if (e.target.closest('.video-detail-link')) return
@@ -968,6 +995,208 @@ document.addEventListener('click', (e) => {
     if (icon) { icon.className = 'ph ph-check'; setTimeout(() => { icon.className = 'ph ph-plus' }, 800) }
   } catch {}
 })
+
+// ============================================================
+// PiP — picture-in-picture video (merged from mini-player.js)
+//
+// When a playing inline <video> scrolls out of view, hoist it
+// into the player bar's pipFrame. Clicking the frame scrolls
+// back to the source (or navigates back if the source page was
+// left). When the source placeholder returns to view, the video
+// is handed back to its original parent and keeps playing with
+// no reload or restart.
+// ============================================================
+
+let _pip = null // { video, placeholder, observer, sourceUrl, origStyle, origControls }
+
+function enterPip(videoEl) {
+  if (!videoEl || videoEl.closest('#global-player')) return
+  if (_pip) exitPip(false)
+  const parent = videoEl.parentElement
+  if (!parent) return
+
+  // placeholder preserves layout so the page doesn't reflow
+  const placeholder = document.createElement('div')
+  placeholder.className = 'gp-pip-placeholder'
+  placeholder.style.cssText = `width:${videoEl.offsetWidth}px;height:${videoEl.offsetHeight}px;`
+  parent.insertBefore(placeholder, videoEl)
+
+  const origStyle = videoEl.getAttribute('style') || ''
+  const origControls = videoEl.hasAttribute('controls')
+
+  // move video into the bar's pip frame
+  videoEl.setAttribute('style', 'width:100%;height:100%;object-fit:cover;display:block;')
+  videoEl.removeAttribute('controls')
+  pipFrame.innerHTML = ''
+  pipFrame.appendChild(videoEl)
+  pipFrame.style.display = 'block'
+
+  // observe placeholder — when it re-enters viewport, give the video back
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting && _pip) exitPip(false)
+    }
+  }, { threshold: 0.5 })
+  observer.observe(placeholder)
+
+  _pip = {
+    video: videoEl,
+    placeholder,
+    observer,
+    sourceUrl: location.pathname + location.search,
+    origStyle,
+    origControls,
+  }
+
+  // Mark as the active media so the bar's play/pause + scrubber control it
+  activeMediaType = 'video'
+  currentSrc = videoEl.currentSrc || videoEl.src || currentSrc
+  const inferredTitle = videoEl.getAttribute('title') || videoEl.dataset?.title
+  if (inferredTitle) currentTitle = inferredTitle
+  currentArtist = currentArtist || ''
+  updateTitle()
+  showBar()
+  playBtn.innerHTML = '<i class="ph ph-pause"></i>'
+  updateMediaSession()
+}
+
+function exitPip(shouldPause) {
+  if (!_pip) return
+  const { video: v, placeholder, observer, origStyle, origControls } = _pip
+  observer?.disconnect()
+  if (shouldPause) { try { v.pause() } catch {} }
+
+  // restore original styles + controls
+  if (origStyle) v.setAttribute('style', origStyle)
+  else v.removeAttribute('style')
+  if (origControls) v.setAttribute('controls', '')
+
+  // put video back in its original slot (if the placeholder is still around)
+  const parent = placeholder?.parentElement
+  if (parent) {
+    parent.insertBefore(v, placeholder)
+    placeholder.remove()
+  }
+  pipFrame.innerHTML = ''
+  pipFrame.style.display = 'none'
+  _pip = null
+}
+
+function scrollBackToPip() {
+  if (!_pip) return
+  // If the source placeholder is still in the DOM, scroll it into view —
+  // the IntersectionObserver will fire and exit PiP automatically.
+  if (_pip.placeholder?.isConnected) {
+    _pip.placeholder.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setTimeout(() => { if (_pip) exitPip(false) }, 600)
+  } else if (_pip.sourceUrl) {
+    // Placeholder is gone (user navigated away) — go back to the source page.
+    const url = _pip.sourceUrl
+    exitPip(false)
+    window.location.href = url
+  }
+}
+
+pipFrame.addEventListener('click', scrollBackToPip)
+
+// IntersectionObserver for every playable inline <video> on the page.
+// Single observer, re-used across SPA navigations.
+const _trackedPipVideos = new WeakSet()
+let _pipViewportObserver = null
+
+function _setupPipObserver() {
+  if (_pipViewportObserver) _pipViewportObserver.disconnect()
+  _pipViewportObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const v = entry.target
+      if (!entry.isIntersecting && !v.paused && !v.ended && !_pip) {
+        // Skip the hidden player.js video + anything inside the global bar.
+        if (v.closest('#global-player') || v.offsetWidth <= 1) continue
+        enterPip(v)
+      }
+    }
+  }, { threshold: 0.25 })
+}
+_setupPipObserver()
+
+function _trackPipVideo(v) {
+  if (_trackedPipVideos.has(v)) return
+  _trackedPipVideos.add(v)
+  _pipViewportObserver.observe(v)
+
+  // On play: pause other videos so we don't overlap, and if PiP is on a
+  // different video, surrender it.
+  v.addEventListener('play', () => {
+    document.querySelectorAll('video').forEach(other => {
+      if (other !== v && other !== video && !other.paused) other.pause()
+    })
+    if (_pip && _pip.video !== v) exitPip(false)
+    if (!_trackedPipVideos.has(v)) {
+      _trackedPipVideos.add(v)
+      _pipViewportObserver.observe(v)
+    }
+  })
+  v.addEventListener('pause', () => { if (_pip && _pip.video === v) exitPip(false) })
+  v.addEventListener('ended', () => { if (_pip && _pip.video === v) exitPip(false) })
+}
+
+function _scanPipVideos() {
+  document.querySelectorAll('video[controls]').forEach(v => {
+    if (v.offsetWidth <= 1 && v.offsetHeight <= 1) return
+    _trackPipVideo(v)
+  })
+}
+_scanPipVideos()
+
+// Before SPA nav: if an inline video is playing, grab it into PiP before
+// the DOM is destroyed so playback continues through the navigation.
+window.addEventListener('spa-before-navigate', () => {
+  if (_pip) return
+  const main = document.querySelector('main')
+  if (!main) return
+  const playing = main.querySelector('video')
+  if (playing && !playing.paused && !playing.closest('#global-player')) {
+    enterPip(playing)
+  }
+})
+
+// After SPA nav: rescan for new inline videos. The PiP overlay itself
+// persists — its placeholder is detached but sourceUrl remembers where
+// to send the viewer back.
+let _pipRescanQueued = false
+const _queuePipRescan = () => {
+  if (_pipRescanQueued) return
+  _pipRescanQueued = true
+  const runner = () => { _pipRescanQueued = false; _scanPipVideos() }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(runner, { timeout: 250 })
+  else requestAnimationFrame(runner)
+}
+const _pipBodyObserver = new MutationObserver(mutations => {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (node.nodeName === 'VIDEO' || (node.querySelectorAll && node.querySelectorAll('video[controls]').length)) {
+        _queuePipRescan()
+        return
+      }
+    }
+  }
+})
+_pipBodyObserver.observe(document.body, { childList: true, subtree: true })
+
+window.addEventListener('spa-navigate', () => {
+  if (_pip) {
+    // Placeholder is gone (page changed) — detach its observer so we don't
+    // fire restore on a detached node. sourceUrl is already set.
+    _pip.observer?.disconnect()
+  }
+  setTimeout(_scanPipVideos, 200)
+})
+
+// Back-compat: old call sites may still reference these.
+window._miniPlayerDismiss = () => { if (_pip) exitPip(true) }
+window._miniPlayerActive = () => !!_pip
+window._playerEnterPip = enterPip
+window._playerExitPip = exitPip
 
 // --- Cross-domain player sync ---
 // Pauses local playback when another Praxis site tab starts playing.

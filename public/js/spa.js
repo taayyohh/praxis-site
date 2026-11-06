@@ -181,7 +181,7 @@ async function navigate(url, pushState = true) {
     return
   }
 
-  // Let mini-player grab any playing video before the DOM is destroyed
+  // Let player.js PiP grab any playing video before the DOM is destroyed
   window.dispatchEvent(new CustomEvent('spa-before-navigate'))
 
   // Cache current page before navigating away (skip during popstate —

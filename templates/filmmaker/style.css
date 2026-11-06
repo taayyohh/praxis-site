@@ -123,7 +123,7 @@ body {
   color: var(--dim);
 }
 
-/* video-pip-btn removed — mini-player.js handles floating video */
+/* video-pip-btn removed — player.js PiP handles floating video */
 
 /* filmography / credits — festival program layout */
 .filmography-section {
@@ -260,7 +260,7 @@ main h3 {
   body {
     padding: 4em 1.5em 6em;
   }
-  /* video-pip-btn removed — mini-player.js handles floating video */
+  /* video-pip-btn removed — player.js PiP handles floating video */
 }
 
 @media (max-width: 600px) {

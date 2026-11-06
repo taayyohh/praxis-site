@@ -69,7 +69,7 @@ export async function handleSsr(ctx) {
     getSsrTemplate, compressedSend, escapeHtml, injectOgTags } = ctx
 
   // --- SSR for blog posts (SEO: crawlers see full content + dynamic OG tags) ---
-  if (path === '/post' && method === 'GET') {
+  if (path === '/post' && (method === 'GET' || method === 'HEAD')) {
     const postId = url.searchParams.get('id')
     if (postId) {
       try {
@@ -183,7 +183,7 @@ export async function handleSsr(ctx) {
   }
 
   // --- SSR for blog post vanity URLs: /post/<slug> ---
-  if (path.startsWith('/post/') && method === 'GET') {
+  if (path.startsWith('/post/') && (method === 'GET' || method === 'HEAD')) {
     const slug = decodeURIComponent(path.split('/')[2] || '')
     if (slug) {
       try {
@@ -277,7 +277,7 @@ export async function handleSsr(ctx) {
   }
 
   // --- SSR for art pages (SEO: album artwork as OG image) ---
-  if (path === '/art' && method === 'GET') {
+  if (path === '/art' && (method === 'GET' || method === 'HEAD')) {
     const type = url.searchParams.get('type')
     const aliasIdx = parseInt(url.searchParams.get('alias'))
     const albumIdx = parseInt(url.searchParams.get('album'))
@@ -337,7 +337,7 @@ export async function handleSsr(ctx) {
 
   // --- SSR for vanity media URLs: /music/alias/album, /gallery/slug, etc. ---
   const segs = path.split('/').filter(Boolean)
-  if (segs.length >= 2 && _VANITY_TYPES.has(segs[0]) && method === 'GET') {
+  if (segs.length >= 2 && _VANITY_TYPES.has(segs[0]) && (method === 'GET' || method === 'HEAD')) {
     try {
       const site = getSiteJson(SITE_JSON)
       const modules = site.modules || []
@@ -436,7 +436,7 @@ export async function handleSsr(ctx) {
   }
 
   // --- SSR for project/event vanity URLs: /project/<slug>, /event/<slug> ---
-  if ((path.startsWith('/project/') || path.startsWith('/event/')) && method === 'GET') {
+  if ((path.startsWith('/project/') || path.startsWith('/event/')) && (method === 'GET' || method === 'HEAD')) {
     const slug = decodeURIComponent(path.split('/')[2] || '')
     if (slug) {
       try {
@@ -476,7 +476,7 @@ export async function handleSsr(ctx) {
   }
 
   // --- SSR for project/event pages (SEO: dynamic OG for project details) ---
-  if ((path === '/project' || path === '/event') && method === 'GET') {
+  if ((path === '/project' || path === '/event') && (method === 'GET' || method === 'HEAD')) {
     const projectId = url.searchParams.get('id')
     if (projectId) {
       try {

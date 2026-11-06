@@ -5793,9 +5793,9 @@ async function initDesign() {
       <section class="design-section">
         <h2 class="design-section-title">24 · templates & player</h2>
         <p style="color:var(--dim);font-size:0.9em;margin:0 0 1em;max-width:60ch">
-          every template's distinctive top in one scroll, the persistent player
-          bar + queue, the mini-player that takes over on scroll, the funding
-          module slot that §11 was missing, and each module's empty state.
+          every template's distinctive top in one scroll, the persistent
+          omniplayer bar + queue + PiP video frame, the funding module slot
+          that §11 was missing, and each module's empty state.
           hero mocks use the real template classes; every invented label sits
           in a block flagged <code>draft</code>.
         </p>
@@ -6180,7 +6180,7 @@ async function initDesign() {
           </div>
         </div>
 
-        <!-- ─── player chrome (persistent bar + queue + mini-player) ─── -->
+        <!-- ─── omniplayer chrome (persistent bar + queue + PiP video) ─── -->
 
         <div class="design-block">
           <h3>persistent audio bar — full chrome</h3>
@@ -6269,19 +6269,29 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>mini-player — video chrome <code>draft</code></h3>
+          <h3>omniplayer PiP — inline video frame</h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            when a playing video scrolls out of view,
-            <code>mini-player.js</code> lifts it into a 300×169 overlay with a
-            thin top gradient, a back-to-video arrow, and a close. shown here
-            inline so the chrome is legible without triggering scroll.
+            when a playing inline video scrolls off, player.js hoists it into
+            the bar itself — a 72×40 frame at the left of the title. clicking
+            the frame scrolls the viewer back to the source <code>&lt;video&gt;</code>; pausing
+            via the bar pauses the inline element. one chrome for audio + video.
           </p>
-          <div class="mini-player-container" style="position:relative;width:300px;background:#000;border:1px solid var(--border);border-radius:4px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5)">
-            <div class="mini-player-controls" style="position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:4px;padding:4px;background:linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);z-index:2;opacity:1">
-              <button title="back to video" aria-label="back to video" style="background:rgba(0,0,0,0.5);border:none;color:#fff;font-size:1em;cursor:pointer;padding:4px;border-radius:2px;display:flex;align-items:center;justify-content:center;min-width:28px;min-height:28px"><i class="ph ph-arrow-square-up-left"></i></button>
-              <button title="close" aria-label="close mini player" style="background:rgba(0,0,0,0.5);border:none;color:#fff;font-size:1em;cursor:pointer;padding:4px;border-radius:2px;display:flex;align-items:center;justify-content:center;min-width:28px;min-height:28px"><i class="ph ph-x"></i></button>
+          <div style="display:flex;align-items:center;gap:1ch;padding:0 1.5ch;height:48px;max-width:720px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:0.85em">
+            <div style="display:flex;align-items:center;gap:0.25ch;flex-shrink:0;color:var(--muted)">
+              <i class="ph ph-skip-back"></i>
+              <i class="ph ph-pause" style="margin:0 0.3ch"></i>
+              <i class="ph ph-skip-forward"></i>
             </div>
-            <div style="width:100%;aspect-ratio:16/9;background:color-mix(in srgb, #fff 6%, #000)"></div>
+            <div style="position:relative;width:72px;height:40px;flex-shrink:0;background:#000;border-radius:3px;overflow:hidden;cursor:pointer" title="back to video" aria-label="back to video">
+              <div style="width:100%;height:100%;background:color-mix(in srgb, var(--accent) 20%, #000);display:flex;align-items:center;justify-content:center;color:#fff">
+                <i class="ph ph-film-strip" style="font-size:1.1em"></i>
+              </div>
+            </div>
+            <span style="color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">video title</span>
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:38%;background:var(--accent)"></div>
+            </div>
+            <span style="color:var(--muted);font-variant-numeric:tabular-nums">0:42 / 1:48</span>
           </div>
         </div>
 

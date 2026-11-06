@@ -825,7 +825,7 @@ function renderVideoItem(el, item) {
   // EMPHASIZE: motion (short-form). Video LEADS — the piece plays
   // first. Title, byline, duration, type sit below. Lazy poster
   // keeps TTI low; swap to real <video> on click is handled by the
-  // mini-player's IntersectionObserver in the existing wire-up.
+  // player.js's PiP IntersectionObserver in the existing wire-up.
   let html = ''
   const title = item.title || 'untitled'
   // Video hero — full-width lazy frame that swaps to <video> on click.
@@ -1125,6 +1125,22 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
     html += `<button id="art-buy-btn" class="feed-card-btn green" data-media-id="${escapeHtml(String(mediaId))}" data-price="${escapeHtml(price.toString())}">${priceNum > 0 ? t('art.buy') : t('art.collectFree')}</button>`
   }
 
+  // Write-about — promoted first-class action sibling to buy. mediaId
+  // is the native ref primary key, so this is the one renderer where
+  // the write-about link is unambiguously addressable. Type is
+  // inferred from the HEAD-fetched content-type so /write picks the
+  // right rich card shape.
+  let inferredType = ''
+  if (contentType.startsWith('audio/')) inferredType = 'audio'
+  else if (contentType.startsWith('video/')) inferredType = 'video'
+  else if (contentType.startsWith('image/')) inferredType = 'gallery'
+  else if (contentType.startsWith('application/pdf')) inferredType = 'writing'
+  const artistLabel = artistDomain
+  const coverCid = coverUrl || ''
+  const ipfsSrc = mediaUrl || ''
+  const writeItem = { mediaId, title }
+  html += writeAboutAction(writeItem, { title, artist: artistLabel, art: coverCid, src: ipfsSrc, type: inferredType })
+
   if (mediaUrl) {
     html += `<a href="${escapeHtml(mediaUrl)}" download="${escapeHtml(title)}" class="art-action-ghost"><i class="ph ph-download-simple"></i> download</a>`
   }
@@ -1188,6 +1204,10 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
   html += `<div id="art-publish-to-org" class="art-publish-to-org-slot"></div>`
 
   contentEl.innerHTML = html
+
+  // Wire the write-about pill so clicks hand write.js the mediaId
+  // ref. Same hook the other renderers use via wireRefButtons.
+  wireRefButtons(contentEl)
 
   // Hydrate the "publish to org" panel — self-hides for non-owners /
   // non-members. Also re-run on wallet-connect so a mid-page unlock
@@ -1274,7 +1294,7 @@ async function renderOnChainMedia(mediaId, loadingEl, contentEl) {
     }
   })
 
-  // Mini-player handles floating video overlay via IntersectionObserver (mini-player.js)
+  // Floating video overlay is handled by player.js's PiP IntersectionObserver (omniplayer)
 }
 
 // Wire buy buttons for local portfolio items on art detail pages

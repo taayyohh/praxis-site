@@ -119,15 +119,36 @@ const DESCRIPTORS = {
     icon: 'ph-users-three',
     tone: 'default',
     badge: 'accent',
-    href: (d) => d.domain ? tenantHref(d.domain) : '',
+    // Prefer the org's own tenant home when the emit carries a domain —
+    // that's a direct route to the org, not a detour through the founder.
+    href: (d) => d.domain ? `https://${d.domain}` : '',
     actor: (d) => d.founder || d.actor,
     poster: (d) => d.posterCid,
-    phrase: (d, r) => [
-      { kind: 'name', text: resolveName(d.founder || d.actor, r) },
-      { kind: 'label', text: 'created' },
-      { kind: 'strong', text: d.name || 'an organization' },
-    ],
-    body: (d) => d.description ? `<p class="event-card-body">${esc(d.description).slice(0, 200)}</p>` : '',
+    phrase: (d, r) => {
+      const founderName = resolveName(d.founder || d.actor, r)
+      const orgName = d.name || ''
+      const same = founderName && orgName && founderName.trim().toLowerCase() === orgName.trim().toLowerCase()
+      if (same) {
+        return [
+          { kind: 'name', text: founderName },
+          { kind: 'label', text: 'started a new organization' },
+        ]
+      }
+      return [
+        { kind: 'name', text: founderName },
+        { kind: 'label', text: 'created' },
+        { kind: 'strong', text: orgName || 'an organization' },
+      ]
+    },
+    // When the emit carries an org domain, surface it as an understated
+    // second line linking straight to the org. Falls back to description
+    // if no domain is present. Not a hero — a quiet pointer.
+    body: (d) => {
+      if (d.domain) {
+        return `<p class="event-card-body"><a href="https://${esc(d.domain)}">${esc(d.domain)}</a></p>`
+      }
+      return d.description ? `<p class="event-card-body">${esc(d.description).slice(0, 200)}</p>` : ''
+    },
   },
   'referral-earned': {
     icon: 'ph-gift',
@@ -560,10 +581,16 @@ export function renderEventCard(event, context = {}) {
     // the link). Wide variant kept available via descriptor opt-in.
     const posterCid = desc.poster ? desc.poster(event) : null
     const thumb = posterCid ? thumbSpan(posterCid, desc.thumbWide === true) : ''
+    // Optional body slot — a quiet second line under the phrase for
+    // descriptors that advertise one (org-created's tenant-home link,
+    // project-confirmed's collaborator count). Stays understated: the
+    // fat row's padding lives on the grid, the body inherits .event-card-body.
+    const bodyHtml = desc.body ? desc.body(event) : ''
     const inner = `
       ${leftSlot}
       <div class="event-card-inner">
         <div class="event-card-phrase">${phraseHtml}${timeHtml}</div>
+        ${bodyHtml}
       </div>
       ${thumb}
     `
