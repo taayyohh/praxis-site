@@ -390,9 +390,13 @@ async function loadCollection(addr, statusEl, contentEl) {
       <div class="collection-main">
         <div class="collection-main-header">
           <button id="collection-back" class="collection-back-btn"><i class="ph ph-arrow-left"></i></button>
-          <span id="collection-main-title">all</span>
+          <div class="collection-main-header-text">
+            <div class="collection-main-eyebrow">permanent collection</div>
+            <h1 id="collection-main-title" class="collection-main-title">the collection</h1>
+            <div class="collection-main-subhead" id="collection-main-subhead"></div>
+          </div>
         </div>
-        <p style="color:var(--dim);font-size:0.85em;max-width:55ch;margin:0 0 1.5em;line-height:1.5">your collection is <a href="https://vitalik.eth.limo/general/2022/01/26/soulbound.html" target="_blank" style="color:var(--accent)">soulbound</a> — permanently yours, can't be sold or transferred. every purchase, contribution, and collaboration lives here forever. <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank" style="color:var(--accent)">learn more</a></p>
+        <p class="collection-main-explainer">every purchase, contribution, and collaboration lives here forever. <a href="https://ourpraxis.network/how-it-works#soulbound" target="_blank">learn more</a></p>
         <div id="collection-main-content">${mainHtml}</div>
       </div>
     </div>`
@@ -418,6 +422,7 @@ async function loadCollection(addr, statusEl, contentEl) {
     _allMediaPurchases = [...mediaPurchases]
     _allCredentials = [...allCreds]
     _allSavedItems = [...savedItems]
+    updateCollectionSubhead()
 
     // saved items: posts navigate to post page, library items open media sheet
     contentEl.querySelectorAll('.collection-saved-item').forEach(el => {
@@ -586,6 +591,31 @@ function updateMediaSubFilterCounts(contentEl) {
 }
 
 // Render the artist sidebar from _artistMap
+// Catalog-style subhead under the "the collection" headline. Reads as
+// museum-catalogue counts, not a storefront filter result: "N works,
+// M artists" when all; "N works" when an artist is selected.
+function updateCollectionSubhead() {
+  const el = document.getElementById('collection-main-subhead')
+  if (!el) return
+  const purchases = _selectedArtist
+    ? _allMediaPurchases.filter(p => {
+        const media = _mediaDetails.get(p.mediaId)
+        return media?.artist?.toLowerCase() === _selectedArtist
+      })
+    : _allMediaPurchases
+  const workCount = purchases.length + (_selectedArtist
+    ? _allCredentials.filter(c => _projectMap.get(c.projectId)?.proposer?.toLowerCase() === _selectedArtist).length
+    : _allCredentials.length)
+  const artistCount = _selectedArtist ? 1 : _artistMap.size
+  if (!workCount && !artistCount) { el.textContent = ''; return }
+  const workLabel = workCount === 1 ? 'work' : 'works'
+  const artistLabel = artistCount === 1 ? 'artist' : 'artists'
+  const parts = []
+  if (workCount) parts.push(`${workCount} ${workLabel}`)
+  if (artistCount) parts.push(`${artistCount} ${artistLabel}`)
+  el.textContent = parts.join('   ')
+}
+
 function renderArtistSidebar() {
   const list = document.getElementById('collection-artist-list')
   if (!list) return
@@ -608,11 +638,15 @@ function renderArtistSidebar() {
       renderArtistSidebar()
       const contentEl = document.getElementById('collection-content')
       if (contentEl) renderFilteredCollection(contentEl)
-      // Update header title
+      // Update header title — artist view reads as a catalogue section,
+      // all-view keeps the "the collection" headline.
       const titleEl = document.getElementById('collection-main-title')
       if (titleEl) {
-        titleEl.textContent = _selectedArtist ? (_artistMap.get(_selectedArtist)?.domain || 'unknown') : 'all'
+        titleEl.textContent = _selectedArtist
+          ? (_artistMap.get(_selectedArtist)?.domain || 'unknown')
+          : 'the collection'
       }
+      updateCollectionSubhead()
       // Mobile: show main panel
       document.querySelector('.collection-container')?.classList.add('collection-active')
     })

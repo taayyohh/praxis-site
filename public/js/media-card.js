@@ -594,13 +594,18 @@ function renderTracklist(item, context) {
   const trackLinks = (item.albumPath && item.albumPath.aliasName)
     ? `/music/${slugify(item.albumPath.aliasName)}/${slugify(item.albumPath.albumTitle || item.headline || '')}`
     : null
+  const owned = context.owned === true
   const renderOne = (it, i) => {
     const cid = it.ipfsCid || ''
     const pw = parsePrice(it.price)
     const playBtn = cid
       ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" aria-label="play"><i class="ph ph-play"></i></button>`
       : ''
-    const buyBtn = pw > 0n
+    // Collection cards don't carry a buy affordance on tracks the viewer
+    // already owns — this is the "permanent collection" reading: once
+    // collected, the price goes quiet. The buy button only appears on
+    // marketplace/feed renders of the same card.
+    const buyBtn = !owned && pw > 0n
       ? `<button class="feed-buy-btn feed-card-btn green media-card-track-buy" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>`
       : ''
     const trackLink = trackLinks || `/art?media=${encodeURIComponent(it.mediaId)}`
@@ -640,7 +645,11 @@ function renderMeta(item, category, state, context) {
   const parts = []
   const price = item.price
   const pw = parsePrice(price)
-  if (!context.hidePrice) {
+  // "Permanent collection" reading: once collected, price goes quiet on the
+  // card. The item is in the collection; the current market price is
+  // irrelevant to its presence here. Marketplace/feed renders still show it.
+  const owned = context.owned === true
+  if (!context.hidePrice && !owned) {
     if (item.items && item.items.length > 1) {
       let total = 0n
       for (const it of item.items) total += parsePrice(it.price)

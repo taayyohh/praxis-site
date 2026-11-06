@@ -3463,14 +3463,60 @@ body:has(.collection-container) {
   padding: 1em 1.5em;
   min-width: 0;
 }
+/* Catalog header — "permanent collection" eyebrow + Chillax
+   display headline + tabular count subhead. Reads as museum
+   catalogue, not a filtered product listing. */
 .collection-main-header {
   display: flex;
-  align-items: center;
-  gap: 0.5ch;
-  margin-bottom: 1em;
-  font-size: 1.1em;
-  font-weight: 600;
+  align-items: flex-start;
+  gap: 0.75ch;
+  margin-bottom: 1.25rem;
 }
+.collection-main-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.collection-main-eyebrow {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.collection-main-title {
+  margin: 0;
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4vw, 3.75rem);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+.collection-main-subhead {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--dim);
+  letter-spacing: 0.01em;
+}
+.collection-main-explainer {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  max-width: 60ch;
+  margin: 0.25rem 0 1.75rem;
+  line-height: 1.5;
+}
+.collection-main-explainer a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.collection-main-explainer a:hover { color: var(--fg); }
 .collection-artist-item {
   padding: 0.6em 0.75em;
   cursor: pointer;
@@ -9972,15 +10018,25 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   background-repeat: no-repeat;
   filter: blur(96px) saturate(1.35);
   transform: scale(1.2);
-  opacity: 0.78;
+  opacity: 0.55;
 }
+/* Contrast guarantee: a layered dark wash sits between the blurred art
+   and the content, so text reads even when the tenant's --fg is close
+   to the album's dominant hue (e.g. an orange title over an orange
+   album). Weighted heavier on the meta column side (right) via a
+   horizontal gradient so the cover column still shows the art's color. */
 .art-album-backdrop::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 22% 38%, transparent 0%, rgba(0,0,0,0.25) 70%),
-    linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%);
+    linear-gradient(to right,
+      rgba(0,0,0,0.15) 0%,
+      rgba(0,0,0,0.5) 35%,
+      rgba(0,0,0,0.55) 100%),
+    linear-gradient(to bottom,
+      rgba(0,0,0,0.2) 0%,
+      rgba(0,0,0,0.35) 100%);
 }
 
 .art-album-cover {
