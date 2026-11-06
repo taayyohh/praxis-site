@@ -176,14 +176,23 @@ async function initPost() {
       }
     }
 
-    // Parallel: fetch amendments + parent post + media ref (if ref) in one round-trip.
-    // refType=3 is officially "reply to post" per BlogRegistry, but write.js
-    // reuses the same slot for media refs (write-about-this). Query both and
-    // prefer the media if it resolves — the mediaId won't collide with a
-    // blogPost id in practice, and if nothing matches we render nothing.
+    // Serialize the refType=3 lookup: try the media ref first, fall back
+    // to the blogPost parent only when media misses. refType=3 is officially
+    // "reply to post" per BlogRegistry, but write.js reuses the same slot
+    // for media refs (write-about-this), and the media case dominates in
+    // practice. Parallel-fetching both doubled Ponder load on the most
+    // common ref type; serializing halves the hit case. The media miss
+    // path pays one extra round-trip but matches the old total cost. The
+    // root-cause fix (new refType=6 for media) is a contract change — out
+    // of scope here.
     const isReplyPost = post.refType > 0 && post.refType !== 5 && post.refId
     const isReply = isReplyPost && post.refType === 3
-    const [amendData, parentData, mediaRefData] = await Promise.all([
+
+    const mediaRefData = isReply
+      ? await query(`query MediaRef($id: BigInt!) { mediaListing(id: $id) { ${F.mediaListingFull} } }`, { id: String(post.refId) }).catch(() => null)
+      : null
+
+    const [amendData, parentData] = await Promise.all([
       query(`
         query Amendments($refId: BigInt!) {
           blogPosts(where: { refType: 5, refId: $refId }, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
@@ -191,11 +200,8 @@ async function initPost() {
           }
         }
       `, { refId: postId }),
-      isReply
+      isReply && !mediaRefData?.mediaListing
         ? query(`query ParentPost($id: BigInt!) { blogPost(id: $id) { ${F.post} } }`, { id: String(post.refId) }).catch(() => null)
-        : Promise.resolve(null),
-      isReply
-        ? query(`query MediaRef($id: BigInt!) { mediaListing(id: $id) { ${F.mediaListingFull} } }`, { id: String(post.refId) }).catch(() => null)
         : Promise.resolve(null)
     ])
 

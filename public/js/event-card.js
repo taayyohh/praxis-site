@@ -61,6 +61,17 @@ const tenantHref = (domain) => {
   return `https://${domain}.ourpraxis.network`
 }
 
+// Hostname-shape guard for attacker-controlled on-chain data. Domains
+// come straight from Ponder-indexed events, so a signer with any
+// Praxis identity can emit "attacker.com/login?return=victim.com" as
+// their org domain and the full path/query would otherwise render as
+// a clickable URL in every viewer's feed. escapeHtml stops XSS, but
+// not phishing-shape injection. Lock the shape to RFC 1035-ish:
+// lowercase letters, digits, dots, hyphens; not starting or ending
+// with a dot. Rejects paths, query strings, schemes, whitespace.
+const isValidHost = (s) =>
+  typeof s === 'string' && /^[a-z0-9.-]+$/.test(s) && !s.startsWith('.') && !s.endsWith('.')
+
 const amountSpan = (wei) => {
   if (!wei || wei === '0') return ''
   return `<span class="event-card-amount" data-eth-wei="${esc(String(wei))}" data-fiat-primary="true"></span>`
@@ -121,7 +132,8 @@ const DESCRIPTORS = {
     badge: 'accent',
     // Prefer the org's own tenant home when the emit carries a domain —
     // that's a direct route to the org, not a detour through the founder.
-    href: (d) => d.domain ? `https://${d.domain}` : '',
+    // Hostname-shape guard: domain is attacker-controlled on-chain data.
+    href: (d) => isValidHost(d.domain) ? `https://${d.domain}` : '',
     actor: (d) => d.founder || d.actor,
     poster: (d) => d.posterCid,
     phrase: (d, r) => {
@@ -144,7 +156,7 @@ const DESCRIPTORS = {
     // second line linking straight to the org. Falls back to description
     // if no domain is present. Not a hero — a quiet pointer.
     body: (d) => {
-      if (d.domain) {
+      if (isValidHost(d.domain)) {
         return `<p class="event-card-body"><a href="https://${esc(d.domain)}">${esc(d.domain)}</a></p>`
       }
       return d.description ? `<p class="event-card-body">${esc(d.description).slice(0, 200)}</p>` : ''
