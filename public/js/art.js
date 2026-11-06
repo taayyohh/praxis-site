@@ -405,6 +405,15 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
 
   if (album.art) {
     const artUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=640`
+    // Atmospheric backdrop — the cover, heavy-blurred, bleeds behind
+    // the hero. A low-res source is plenty since it's blurred 72px.
+    // Injected as a --album-art CSS custom property so user-controlled
+    // URLs can't break out of url(): CSS custom props isolate values to
+    // the property's scope. JSON.stringify quotes the URL; escapeHtml
+    // handles the style attribute boundary.
+    const backdropUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=320`
+    const backdropStyle = `--album-art: url(${JSON.stringify(backdropUrl)})`
+    html += `<div class="art-album-backdrop" aria-hidden="true" style="${escapeHtml(backdropStyle)}"></div>`
     html += `<div class="art-album-cover"><img src="${escapeHtml(artUrl)}" alt="${escapeHtml(album.title || '')}" loading="lazy"></div>`
   } else {
     html += `<div class="art-album-cover" aria-hidden="true"></div>`
@@ -479,8 +488,8 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   if (albumQueueData) {
     html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
     html += `<button class="art-album-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
-    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
-    html += `<button class="album-queue-btn track-overflow-item" type="button" data-queue="${albumQueueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:2px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
+    html += `<button class="album-queue-btn track-overflow-item" type="button" data-queue="${albumQueueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
     html += `</div></div>`
   }
 
@@ -532,12 +541,12 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
       if (track.src || track.mediaId != null) {
         html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
         html += `<button class="art-album-track-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
-        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
+        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:2px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
         if (track.src) {
-          html += `<button class="track-queue-btn track-overflow-item" type="button" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title || '')}" data-artist="${escapeHtml(artistLabel)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+          html += `<button class="track-queue-btn track-overflow-item" type="button" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title || '')}" data-artist="${escapeHtml(artistLabel)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
         }
         if (track.mediaId != null) {
-          html += `<button class="track-ref-btn track-overflow-item" type="button" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" data-ref-type="music" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+          html += `<button class="track-ref-btn track-overflow-item" type="button" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" data-ref-type="music" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
         }
         html += `</div></div>`
       } else {

@@ -9908,27 +9908,75 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    editorial rhythm still carries via size/weight/tracking).
    ============================================================ */
 .art-album {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: 320px 1fr;
-  gap: 2rem;
+  gap: 2.5rem;
   align-items: start;
-  margin: 1.5rem 0 2.5rem;
+  margin: 1rem -1.5rem 2.5rem;
+  padding: 2.5rem 1.5rem 3rem;
+  border-radius: 4px;
 }
 @media (max-width: 720px) {
   .art-album {
     grid-template-columns: 1fr;
-    gap: 1.25rem;
+    gap: 1.5rem;
+    padding: 1.75rem 1rem 2rem;
+    margin: 1rem -1rem 2rem;
   }
 }
 
+/* Atmospheric backdrop — the cover art, blown up + heavy blur +
+   dimmed, bleeds behind the hero. Pulls character from the art
+   itself: every album looks different without per-album CSS. The
+   dark gradient wash in ::after keeps the title legible over a
+   bright cover. Clipping the blur to the hero's border-radius
+   lives on this element (not the parent) so the cover's drop
+   shadow isn't clipped alongside. */
+.art-album-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: 4px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.art-album-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: -80px;
+  background-image: var(--album-art);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(72px) saturate(1.25);
+  transform: scale(1.15);
+  opacity: 0.6;
+}
+.art-album-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 28% 42%, transparent 0%, rgba(0,0,0,0.35) 65%),
+    linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, color-mix(in srgb, var(--bg) 85%, transparent) 100%);
+}
+
 .art-album-cover {
+  position: relative;
+  z-index: 1;
   width: 320px;
   max-width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 16px;
+  border-radius: 2px;
   overflow: hidden;
   background: color-mix(in srgb, var(--fg) 6%, var(--bg));
   display: block;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent);
 }
 @media (max-width: 720px) {
   .art-album-cover { width: 100%; max-width: 360px; }
@@ -9949,16 +9997,19 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 
 .art-album-title {
   margin: 0;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 2.5rem;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  font-size: 3.5rem;
+  line-height: 1.0;
+  letter-spacing: -0.035em;
   color: var(--fg);
   text-wrap: balance;
 }
-@media (max-width: 560px) {
-  .art-album-title { font-size: 1.875rem; }
+@media (max-width: 720px) {
+  .art-album-title { font-size: 2.5rem; letter-spacing: -0.03em; }
+}
+@media (max-width: 480px) {
+  .art-album-title { font-size: 2rem; }
 }
 
 /* Byline — artist name + tabular year, 0.75 opacity so the title
@@ -10061,58 +10112,59 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5ch;
-  min-height: 44px;
-  border-radius: 10px;
+  gap: 0.6ch;
+  height: 44px;
+  border-radius: 2px;
   font-family: inherit;
   font-weight: 500;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   line-height: 1;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   cursor: pointer;
   transition:
-    background 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    color 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-color 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+    background 160ms cubic-bezier(0.32, 0.72, 0, 1),
+    color 160ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .art-album-play {
-  padding: 0 1.5rem;
+  padding: 0 1.75rem;
   background: var(--fg);
   color: var(--bg);
   border: 1px solid var(--fg);
   font-weight: 600;
+  letter-spacing: -0.005em;
 }
 .art-album-play:hover {
-  transform: translateY(-1px);
-  background: color-mix(in srgb, var(--fg) 92%, var(--accent));
+  background: color-mix(in srgb, var(--fg) 88%, var(--accent));
+  border-color: color-mix(in srgb, var(--fg) 88%, var(--accent));
 }
-.art-album-play .ph { font-size: 1.125rem; }
+.art-album-play .ph { font-size: 1rem; }
 .art-album-buy {
   padding: 0 1.25rem;
   background: transparent;
   color: var(--success, #30d158);
-  border: 1px solid color-mix(in srgb, var(--success, #30d158) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success, #30d158) 55%, transparent);
 }
 .art-album-buy:hover {
-  background: color-mix(in srgb, var(--success, #30d158) 18%, transparent);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--success, #30d158) 10%, transparent);
+  border-color: var(--success, #30d158);
 }
 .art-album-buy-price {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  margin-left: 0.3ch;
+  font-size: 0.875rem;
+  margin-left: 0.2ch;
 }
 .art-album-write {
-  padding: 0 1rem;
+  padding: 0 1.125rem;
   background: transparent;
   color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
 }
 .art-album-write:hover {
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
   color: var(--fg);
-  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 32%, transparent);
 }
 .art-album-write .ph { font-size: 1rem; }
 .art-album-more {
@@ -10121,12 +10173,13 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   padding: 0;
   background: transparent;
   color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
-  font-size: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  font-size: 1.125rem;
 }
 .art-album-more:hover {
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
   color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 32%, transparent);
 }
 
 /* Tracklist — fat/warm rhythm from phase 11. 64px row height,
@@ -10148,7 +10201,7 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   gap: 1rem;
   min-height: 48px;
   padding: 0.4rem 1rem;
-  border-radius: 8px;
+  border-radius: 0;
   transition:
     background 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -10228,8 +10281,8 @@ a.art-album-track-title:hover {
   min-width: 4ch;
 }
 .art-album-track-play {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -10237,8 +10290,8 @@ a.art-album-track-title:hover {
   border: none;
   color: var(--dim);
   cursor: pointer;
-  font-size: 1.25rem;
-  border-radius: 999px;
+  font-size: 1.125rem;
+  border-radius: 2px;
   font-family: inherit;
   transition: color 120ms ease, background 120ms ease;
 }
@@ -10253,34 +10306,35 @@ a.art-album-track-title:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.4ch;
-  min-height: 32px;
-  padding: 0 0.875rem;
-  border-radius: 8px;
+  min-height: 30px;
+  padding: 0 0.75rem;
+  border-radius: 2px;
   background: transparent;
   color: var(--success, #30d158);
-  border: 1px solid color-mix(in srgb, var(--success, #30d158) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success, #30d158) 45%, transparent);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
-  transition: background 200ms cubic-bezier(0.32, 0.72, 0, 1), color 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: background 160ms cubic-bezier(0.32, 0.72, 0, 1), color 160ms cubic-bezier(0.32, 0.72, 0, 1), border-color 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .art-album-track-buy:hover {
-  background: color-mix(in srgb, var(--success, #30d158) 18%, transparent);
+  background: color-mix(in srgb, var(--success, #30d158) 10%, transparent);
+  border-color: var(--success, #30d158);
 }
 .art-album-track-buy-price {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 .art-album-track-more {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   background: transparent;
   border: none;
   color: var(--dim);
   cursor: pointer;
-  font-size: 1.25rem;
-  border-radius: 999px;
+  font-size: 1.125rem;
+  border-radius: 2px;
   font-family: inherit;
   display: inline-flex;
   align-items: center;
