@@ -9866,7 +9866,8 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 
 /* Music album hero — cover-then-metadata columns that stack on
    mobile. The inline <style> block the render function used to
-   emit now lives here. */
+   emit now lives here. Legacy — still used by any external caller
+   that renders a music album without the phase-12 rewrite. */
 .art-album-hero {
   display: flex;
   gap: 2em;
@@ -9882,6 +9883,479 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   .art-album-hero { flex-direction: column; align-items: flex-start; gap: 1em; }
   .art-album-hero-cover { width: 100%; }
   .art-album-hero-cover img { width: 100%; display: block; }
+}
+
+/* ============================================================
+   Music album detail — phase 12
+   ------------------------------------------------------------
+   Promoted from .dw-album-* in /design. The hero pairs a 320px
+   square cover (16px radius) with a type stack: a 2.75rem display
+   title with tight tracking, a byline whose year renders in a
+   tabular-mono slot, an optional "with <artist>" collab line, and
+   a Space-Mono-register meta strip. Three first-class actions
+   in strict hierarchy — play (filled), buy (green outline),
+   write about this (ghost) — pulling write-about out of the ···
+   overflow because writing about work is the whole platform's
+   fulcrum, not a buried utility. Description sits in a left-
+   ruled pull-quote with a fade-out mask + "read more" expansion.
+   The tracklist graduates from a 2em spreadsheet into the phase
+   11 fat/warm rhythm: 64px rows, 12px radius hover wash, tabular
+   numbers, Switzer features inline. Collectors strip echoes the
+   group-3 avatar stack from phase 10; external platforms drop to
+   muted chips at the page tail — out of the hero. Everything
+   degrades to system fonts (Chillax/Switzer/Space Mono are
+   workshop-only until the global font cost is audited; the
+   editorial rhythm still carries via size/weight/tracking).
+   ============================================================ */
+.art-album {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2rem;
+  align-items: start;
+  margin: 1.5rem 0 2.5rem;
+}
+@media (max-width: 720px) {
+  .art-album {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.art-album-cover {
+  width: 320px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+  display: block;
+}
+@media (max-width: 720px) {
+  .art-album-cover { width: 100%; max-width: 360px; }
+}
+.art-album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.art-album-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.art-album-title {
+  margin: 0;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 2.75rem;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+@media (max-width: 560px) {
+  .art-album-title { font-size: 2.125rem; }
+}
+
+/* Byline — artist name + tabular year, 0.75 opacity so the title
+   stays the single editorial anchor. */
+.art-album-byline {
+  font-weight: 500;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  color: var(--fg);
+  opacity: 0.75;
+}
+.art-album-byline-artist {
+  color: inherit;
+  text-decoration: none;
+}
+.art-album-byline-artist:hover { text-decoration: underline; text-underline-offset: 2px; }
+.art-album-byline-year {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.5ch;
+  opacity: 0.85;
+}
+
+/* Collab attribution — routes to /collection?artist=<domain> so
+   the click stays on the current tenant. */
+.art-album-collab {
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.art-album-collab-artist {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 500;
+}
+.art-album-collab-artist:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Space-Mono-register meta strip — genre · tracks · release. */
+.art-album-metaline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75ch;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--dim);
+  letter-spacing: 0.015em;
+}
+.art-album-metaline > span + span::before {
+  content: '·';
+  margin-right: 0.75ch;
+  opacity: 0.6;
+}
+
+/* Description — editorial pull-quote. Capped at ~10 lines with a
+   fade-out mask; "read more" expands in place. No textarea-shaped
+   scroll box. */
+.art-album-description {
+  position: relative;
+  margin: 0.25rem 0 0.25rem;
+  padding: 0 0 0 1ch;
+  border-left: 2px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--fg);
+  max-height: calc(1.6em * 10);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+  white-space: pre-wrap;
+}
+.art-album-description.is-expanded {
+  max-height: none;
+  -webkit-mask-image: none;
+          mask-image: none;
+}
+.art-album-description-more {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: -0.25em;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  font-family: inherit;
+}
+.art-album-description-more:hover { color: var(--fg); }
+
+/* Hero CTA row — three first-class actions. 44px tap targets.
+   play is the filled primary, buy is a green outline, write-about
+   is ghost. Order matters: play → buy → write. */
+.art-album-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.art-album-play,
+.art-album-buy,
+.art-album-write,
+.art-album-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5ch;
+  min-height: 44px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    color 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.art-album-play {
+  padding: 0 1.5rem;
+  background: var(--fg);
+  color: var(--bg);
+  border: 1px solid var(--fg);
+  font-weight: 600;
+}
+.art-album-play:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--fg) 92%, var(--accent));
+}
+.art-album-play .ph { font-size: 1.125rem; }
+.art-album-buy {
+  padding: 0 1.25rem;
+  background: transparent;
+  color: var(--success, #30d158);
+  border: 1px solid color-mix(in srgb, var(--success, #30d158) 70%, transparent);
+}
+.art-album-buy:hover {
+  background: color-mix(in srgb, var(--success, #30d158) 18%, transparent);
+  transform: translateY(-1px);
+}
+.art-album-buy-price {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.3ch;
+}
+.art-album-write {
+  padding: 0 1rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+}
+.art-album-write:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+}
+.art-album-write .ph { font-size: 1rem; }
+.art-album-more {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  font-size: 1.25rem;
+}
+.art-album-more:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+
+/* Tracklist — fat/warm rhythm from phase 11. 64px row height,
+   12px radius on hover, 3% fg-tint wash. Columns stay single-row
+   on narrow widths by collapsing the per-track buy into the ···
+   overflow. */
+.art-album-tracklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 2.5rem 0 1.5rem;
+  border-top: none; /* the row hover wash is the rhythm, not a hairline */
+}
+.art-album-track {
+  display: grid;
+  grid-template-columns: 3ch 1fr auto auto auto auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 64px;
+  padding: 0.5rem 1.5rem;
+  border-radius: 12px;
+  transition:
+    background 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.art-album-track:hover {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  transform: translateY(-1px);
+}
+@media (max-width: 560px) {
+  .art-album-track {
+    padding: 0.5rem 0.75rem;
+    gap: 0.75rem;
+    grid-template-columns: 3ch 1fr auto auto;
+  }
+  .art-album-track .art-album-track-buy { display: none; }
+}
+.art-album-track-num {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dim);
+  text-align: right;
+}
+.art-album-track-title-cell {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4ch;
+}
+.art-album-track-title {
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+a.art-album-track-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.art-album-track-features {
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--muted);
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.art-album-track-duration {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--dim);
+  text-align: right;
+  min-width: 4ch;
+}
+.art-album-track-play {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 1.25rem;
+  border-radius: 999px;
+  font-family: inherit;
+  transition: color 120ms ease, background 120ms ease;
+}
+.art-album-track:hover .art-album-track-play,
+.art-album-track-play:hover {
+  color: var(--fg);
+}
+.art-album-track-play:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.art-album-track-buy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  min-height: 32px;
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--success, #30d158);
+  border: 1px solid color-mix(in srgb, var(--success, #30d158) 60%, transparent);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 200ms cubic-bezier(0.32, 0.72, 0, 1), color 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.art-album-track-buy:hover {
+  background: color-mix(in srgb, var(--success, #30d158) 18%, transparent);
+}
+.art-album-track-buy-price {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.art-album-track-more {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 1.25rem;
+  border-radius: 999px;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+.art-album-track:hover .art-album-track-more,
+.art-album-track-more:hover {
+  color: var(--fg);
+}
+.art-album-track-more:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+/* Collectors strip — "owned by <avatars> N collectors". Appears
+   only when the album has collectors on-chain. */
+.art-album-collectors {
+  margin: 1.5rem 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.art-album-collectors-label {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.art-album-collectors-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.art-album-collectors-count {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* External platforms — courtesy chips at the page tail. Out of
+   the hero, where they were competing with play. */
+.art-album-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.art-album-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  min-height: 36px;
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  background: transparent;
+  color: var(--muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: lowercase;
+  transition: color 200ms cubic-bezier(0.32, 0.72, 0, 1), border-color 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.art-album-chip:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+}
+.art-album-chip .ph { font-size: 0.875rem; opacity: 0.7; }
+
+@media (prefers-reduced-motion: reduce) {
+  .art-album-track:hover,
+  .art-album-play:hover,
+  .art-album-buy:hover,
+  .art-album-write:hover,
+  .art-album-chip:hover { transform: none; }
 }
 
 /* Repeated buy+ref row wrapper — extracted from six renderers. */
@@ -9930,6 +10404,281 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   aspect-ratio: 16 / 9;
   background: #111;
   overflow: hidden;
+}
+
+/* ============================================================
+   Phase 13 — /art detail polish (gallery, film, video, audio,
+   writing). Shared `.art-detail-*` primitives so every media
+   type reads as THAT type at a glance: oversized Chillax title,
+   Switzer byline, Space Mono metadata. Hero zone is 1rem gap
+   image/poster-left (or cover-left) and meta-right on desktop,
+   stacks on mobile. One actions row shape — write, buy, share,
+   and a per-type primary — all 44pt tap targets, aria-labels on
+   icon-only buttons. The retired `.art-*` primitives above stay
+   put for renderMusicAlbum + on-chain renderers; the new
+   `.art-detail-*` set coexists so this pass doesn't bulldoze
+   anything else.
+   ============================================================ */
+.art-detail-hero {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.art-detail-hero-media {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.art-detail-hero-media img,
+.art-detail-hero-media video {
+  display: block;
+  max-width: 100%;
+  border-radius: 16px;
+}
+.art-detail-hero-media--poster { width: min(320px, 45%); }
+.art-detail-hero-media--poster img { aspect-ratio: 2 / 3; object-fit: cover; max-height: 480px; width: 100%; }
+.art-detail-hero-media--cover-sq { width: min(320px, 45%); }
+.art-detail-hero-media--cover-sq img { aspect-ratio: 1 / 1; object-fit: cover; width: 100%; }
+.art-detail-hero-media--cover-tall { width: min(300px, 45%); }
+.art-detail-hero-media--cover-tall img { aspect-ratio: 3 / 4; object-fit: cover; max-height: 400px; width: 100%; }
+.art-detail-hero-media--gallery { width: min(720px, 60%); }
+.art-detail-hero-media--gallery img { max-height: 560px; height: auto; width: 100%; object-fit: contain; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.art-detail-hero-media--video { width: 100%; flex: 1 1 100%; }
+.art-detail-hero-media--video video { width: 100%; max-height: 560px; background: #000; }
+.art-detail-hero-meta {
+  flex: 1 1 320px;
+  min-width: 0;
+  padding-top: 0.25rem;
+}
+.art-detail-eyebrow {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  text-transform: lowercase;
+  margin-bottom: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6ch;
+  font-variant-numeric: tabular-nums;
+}
+.art-detail-title {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4.5vw, 2.75rem);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0 0 0.5rem;
+  color: var(--fg);
+}
+.art-detail-byline {
+  font-family: 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 500;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  color: var(--muted);
+  margin: 0 0 0.35rem;
+}
+.art-detail-byline a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 150ms; }
+.art-detail-byline a:hover { border-bottom-color: currentColor; }
+.art-detail-role {
+  font-family: 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  color: var(--fg);
+  margin: 0 0 0.5rem;
+}
+.art-detail-publisher {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--dim);
+  margin: 0 0 0.75rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.art-detail-meta-row {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5ch;
+  margin: 0.75rem 0 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.art-detail-meta-row > span { white-space: nowrap; }
+.art-detail-meta-row > span + span::before {
+  content: '';
+  display: inline-block;
+  width: 1ch;
+}
+.art-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6ch;
+  align-items: center;
+  margin: 1.25rem 0 0;
+}
+.art-detail-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55ch;
+  min-height: 44px;
+  padding: 0.6em 1.3ch;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1), background-color 200ms cubic-bezier(0.32, 0.72, 0, 1), border-color 200ms;
+}
+.art-detail-action i.ph { font-size: 1.05em; line-height: 1; }
+.art-detail-action:hover {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  transform: translateY(-1px);
+}
+.art-detail-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, var(--fg)) 45%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .art-detail-action { transition: background-color 120ms; }
+  .art-detail-action:hover { transform: none; }
+}
+.art-detail-action--primary {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: transparent;
+}
+.art-detail-action--primary:hover {
+  background: var(--fg);
+  opacity: 0.88;
+}
+.art-detail-action--buy {
+  background: var(--accent, #a78bfa);
+  color: var(--bg);
+  border-color: transparent;
+}
+.art-detail-action--buy:hover { background: var(--accent, #a78bfa); opacity: 0.88; }
+.art-detail-action--write { }
+.art-detail-action--share { }
+.art-detail-action--ghost {
+  color: var(--muted);
+  border-color: transparent;
+}
+.art-detail-action--ghost:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 2%, transparent); }
+
+.art-detail-description {
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1.65;
+  max-width: 68ch;
+  margin: 1.75rem 0;
+}
+.art-detail-section { margin: 1.5rem 0; }
+.art-detail-section-label {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  text-transform: lowercase;
+  margin: 0 0 0.6rem;
+}
+.art-detail-section-body {
+  color: var(--fg);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 68ch;
+}
+.art-detail-pullquote {
+  border-left: 2px solid color-mix(in srgb, var(--accent, var(--fg)) 50%, var(--border));
+  padding: 0.25rem 0 0.25rem 1.25ch;
+  margin: 1.5rem 0;
+  color: var(--fg);
+  font-style: italic;
+  font-size: 1rem;
+  line-height: 1.7;
+  max-width: 62ch;
+}
+.art-detail-pullquote--awards {
+  border-left-color: var(--green, var(--accent, #30d158));
+  color: var(--fg);
+  font-style: normal;
+  display: flex;
+  gap: 0.75ch;
+  align-items: flex-start;
+}
+.art-detail-pullquote--awards i.ph {
+  color: var(--green, var(--accent, #30d158));
+  font-size: 1.05em;
+  padding-top: 0.15em;
+  flex: 0 0 auto;
+}
+.art-detail-pullquote--excerpt {
+  font-style: normal;
+  position: relative;
+  padding-left: 1.75ch;
+}
+.art-detail-pullquote--excerpt::before {
+  content: '\201C';
+  position: absolute;
+  left: -0.35ch;
+  top: -0.2em;
+  color: color-mix(in srgb, var(--fg) 30%, transparent);
+  font-family: 'Chillax', 'Cabinet Grotesk', serif;
+  font-size: 2em;
+  line-height: 1;
+}
+.art-detail-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5ch;
+  margin: 0.75rem 0 0;
+}
+.art-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  padding: 0.3em 1ch;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  transition: color 150ms, border-color 150ms;
+}
+.art-detail-chip:hover { color: var(--fg); border-color: var(--fg); }
+.art-detail-type-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  text-transform: lowercase;
+}
+.art-detail-type-indicator i.ph { font-size: 0.95em; }
+
+/* Stack hero contents on narrow screens so the meta block falls
+   under the media rather than trying to share a column. */
+@media (max-width: 720px) {
+  .art-detail-hero { gap: 1.25rem; }
+  .art-detail-hero-media--poster,
+  .art-detail-hero-media--cover-sq,
+  .art-detail-hero-media--cover-tall,
+  .art-detail-hero-media--gallery { width: 100%; }
+  .art-detail-title { font-size: clamp(1.75rem, 7vw, 2.25rem); }
 }
 
 /* ============================================================

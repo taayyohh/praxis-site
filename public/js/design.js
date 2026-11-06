@@ -5206,12 +5206,13 @@ async function initDesign() {
 
         <!-- 1. full-page music album -->
         <div class="design-block" id="design-art-album-block">
-          <h3>full-page album <code>draft</code></h3>
+          <h3>full-page album <code class="retired-tag">retired</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
             <code>renderMusicAlbum(el, alias, album, aliasIdx, albumIdx)</code> at
-            <code>public/js/art.js:297</code> is file-local. cover on the left, meta on
-            the right, track list below. mirrors the live <code>.art-album-hero</code> +
-            <code>.art-tracklist</code> shape.
+            <code>public/js/art.js:311</code>. the shape Miles saw on
+            <a href="https://milesxb.bio/music/nappy-nina/sow-so" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">milesxb.bio/music/nappy-nina/sow-so</a> —
+            dense B&W cover, clamp-sized system title, muted byline, play and
+            buy at equal weight, write-about buried in the ··· overflow.
           </p>
           <div class="design-card-frame" style="max-width:720px">
             <div class="art-album-hero" style="display:flex;gap:1.25em;align-items:flex-start;flex-wrap:wrap;margin-bottom:1em">
@@ -5219,8 +5220,8 @@ async function initDesign() {
                 <div style="aspect-ratio:1/1;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">cover art</div>
               </div>
               <div class="art-album-hero-meta" style="flex:1;min-width:220px">
-                <h1 style="font-size:clamp(1.4em, 3vw, 2em);margin:0 0 0.3em;font-weight:700;letter-spacing:-0.02em">draft album</h1>
-                <div style="color:var(--muted);margin-bottom:1em;font-size:0.95em">by nappynina.com (2026)</div>
+                <h1 style="font-size:clamp(1.4em, 3vw, 2em);margin:0 0 0.3em;font-weight:700;letter-spacing:-0.02em">sow &amp; so</h1>
+                <div style="color:var(--muted);margin-bottom:1em;font-size:0.95em">by nappy nina &amp; swarvy (2026)</div>
                 <div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note about the album, in the artist's own words.</div>
                 <div style="display:flex;gap:0.5ch;align-items:center;flex-wrap:wrap">
                   <button class="album-play-btn feed-card-btn" type="button"><i class="ph ph-play"></i> play</button>
@@ -5255,114 +5256,383 @@ async function initDesign() {
           </div>
         </div>
 
-        <!-- 2. gallery image (lightbox hero) -->
+        <!-- 1b. full-page album, phase 12 — hero + fat tracklist + promoted write-about -->
+        <div class="design-block" id="design-art-album-fat-block">
+          <h3>full-page album, hero + fat tracklist <code class="proposed-tag">proposed</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em;max-width:62ch">
+            phase 12 pulls the album into the same editorial register the feed
+            lives in. cover at 320px/16px radius; chillax display title; mixed
+            switzer/space-mono byline; optional "with &lt;artist&gt;" collab line;
+            space-mono meta strip. three first-class actions —
+            <strong>play</strong> (filled dark), <strong>buy</strong> (green
+            outline), <strong>write about this</strong> (ghost, promoted out
+            of the ··· overflow). description sits in a left-ruled pull-quote
+            with a fade-out mask + "read more" expansion. the tracklist
+            inherits the phase 11 fat/warm rhythm — 64px rows, 12px radius
+            hover wash, chillax titles with features inline. collectors strip
+            at the tail; external platforms drop to muted chips below. see
+            §10 of <code>design-workshop.css</code> for the
+            <code>.dw-album-*</code> primitives; promotion to global
+            <code>.art-album-*</code> + <code>renderMusicAlbum</code> ships
+            in the same commit.
+          </p>
+          <div class="design-card-frame" style="max-width:860px">
+            <div class="dw-album">
+              <div class="dw-album-cover dw-album-cover--placeholder" aria-label="sow &amp; so cover">cover</div>
+              <div class="dw-album-meta">
+                <h1 class="dw-album-title">sow &amp; so</h1>
+                <div class="dw-album-byline">
+                  by <a class="dw-album-byline-artist" href="/collection?artist=nappynina.com">nappy nina &amp; swarvy</a><span class="dw-album-byline-year">2026</span>
+                </div>
+                <div class="dw-album-collab">with <a class="dw-album-collab-artist" href="/collection?artist=swarvy.bandcamp.com">swarvy</a></div>
+                <div class="dw-album-metaline">
+                  <span>hip-hop</span>
+                  <span>13 tracks</span>
+                  <span>released 2026-03-14</span>
+                </div>
+                <div class="dw-album-description">a short note in the artist's own words — the album described as a statement, in the register the writer uses when they're not performing. the fade-out mask hints at more below; the "read more" button opens the full passage in place.</div>
+                <button class="dw-album-description-more" type="button" aria-expanded="false">read more</button>
+                <div class="dw-album-actions">
+                  <button class="dw-album-play" type="button" aria-label="play album"><i class="ph ph-play-fill" aria-hidden="true"></i> play</button>
+                  <button class="dw-album-buy" type="button" aria-label="buy album for 0.002 ETH">
+                    <i class="ph ph-shopping-bag-open" aria-hidden="true"></i>
+                    buy
+                    <span class="dw-album-buy-price">0.002 ETH</span>
+                  </button>
+                  <button class="dw-album-write" type="button" aria-label="write about this album"><i class="ph ph-note-pencil" aria-hidden="true"></i> write about this</button>
+                  <button class="dw-album-more" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="dw-album-tracklist">
+              ${[
+                { n: 1,  title: 'headlights',           ft: '',                      dur: '2:47', price: '0.0003 ETH' },
+                { n: 2,  title: 'sow & so',             ft: ', ft. swarvy',          dur: '3:18', price: '0.0003 ETH' },
+                { n: 3,  title: 'brown sugar barbacoa', ft: '',                      dur: '2:55', price: '0.0003 ETH' },
+                { n: 4,  title: 'water signs',          ft: ', ft. pink siifu',      dur: '3:41', price: '0.0003 ETH' },
+                { n: 5,  title: 'interlude — radio off',ft: '',                      dur: '0:48', price: '0.0003 ETH' },
+                { n: 6,  title: 'root work',            ft: '',                      dur: '3:12', price: '0.0003 ETH' },
+                { n: 7,  title: 'auntie’s couch',  ft: ', ft. nitty scott',     dur: '3:33', price: '0.0003 ETH' },
+                { n: 8,  title: 'low stakes',           ft: '',                      dur: '2:59', price: '0.0003 ETH' },
+                { n: 9,  title: 'dog ear',              ft: '',                      dur: '2:22', price: '0.0003 ETH' },
+                { n: 10, title: 'how it should be',     ft: ', ft. akua',            dur: '4:04', price: '0.0003 ETH' },
+                { n: 11, title: 'the long way',         ft: '',                      dur: '3:28', price: '0.0003 ETH' },
+                { n: 12, title: 'back-porch coda',      ft: '',                      dur: '2:15', price: '0.0003 ETH' },
+                { n: 13, title: 'sow & so (reprise)',   ft: ', ft. swarvy',          dur: '1:52', price: '0.0003 ETH' },
+              ].map(t => `
+                <div class="dw-album-track">
+                  <span class="dw-album-track-num">${t.n}</span>
+                  <span class="dw-album-track-title-cell">
+                    <a class="dw-album-track-title" href="#">${t.title}</a>${t.ft ? `<span class="dw-album-track-features">${t.ft}</span>` : ''}
+                  </span>
+                  <span class="dw-album-track-duration">${t.dur}</span>
+                  <button class="dw-album-track-play" type="button" aria-label="play ${t.title}"><i class="ph ph-play" aria-hidden="true"></i></button>
+                  <button class="dw-album-track-buy" type="button" aria-label="buy ${t.title} for ${t.price}">buy <span class="dw-album-track-buy-price">${t.price}</span></button>
+                  <button class="dw-album-track-more" type="button" aria-label="more actions for ${t.title}" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>
+                </div>`).join('')}
+            </div>
+
+            <div class="dw-album-collectors">
+              <span class="dw-album-collectors-label">owned by</span>
+              <div class="dw-album-collectors-row">
+                <div class="dw-event-avatars" aria-hidden="true">
+                  <span class="dw-event-avatar dw-event-avatar--mono-1">b</span>
+                  <span class="dw-event-avatar dw-event-avatar--mono-3">m</span>
+                  <span class="dw-event-avatar dw-event-avatar--mono-5">p</span>
+                </div>
+                <span class="dw-album-collectors-count">12 collectors</span>
+              </div>
+            </div>
+
+            <div class="dw-album-links">
+              <a class="dw-album-chip" href="#" rel="noopener noreferrer"><span>bandcamp</span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>
+              <a class="dw-album-chip" href="#" rel="noopener noreferrer"><span>spotify</span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>
+              <a class="dw-album-chip" href="#" rel="noopener noreferrer"><span>soundcloud</span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. gallery image — phase 13 retired / proposed -->
         <div class="design-block" id="design-art-gallery-block">
-          <h3>gallery image <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+          <h3>gallery image <code class="proposed-tag">proposed</code> <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em;max-width:68ch">
             <code>renderGalleryImage(el, image, idx)</code> at
-            <code>public/js/art.js:539</code> is file-local. the only art view
-            where the image is uncropped — <code>.art-cover-full</code> removes
-            the usual 400px cover cap.
+            <code>public/js/art.js:553</code>. phase 13 lands the image LEFT at
+            native aspect (max 560px tall), title + metadata RIGHT. Chillax 700
+            title, Switzer byline, Space Mono metadata with whitespace gaps (no
+            dot separators). write-about-this is promoted to a hero pill next
+            to buy and share — the three network-benefit moves sit together.
+            awards render as a trophy pull-quote; the external "view in person"
+            link lands as a chip row below.
           </p>
-          <div class="design-card-frame" style="max-width:720px">
-            <div class="art-cover art-cover-full" style="margin-bottom:1em">
-              <div style="aspect-ratio:3/2;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">the image</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:1000px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame" style="max-width:420px">
+                <div class="art-cover art-cover-full" style="margin-bottom:1em">
+                  <div style="aspect-ratio:3/2;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">the image</div>
+                </div>
+                <h1 class="art-title" style="margin:0 0 0.3em">draft piece</h1>
+                <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">oil on canvas -- 2026 -- series one -- 60 x 80 cm -- new york</div>
+                <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note placed under the piece, in the artist's own words.</div>
+                <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
+                  <button class="track-buy-btn feed-card-btn green" type="button">buy 0.01 ETH</button>
+                  <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+                </div>
+              </div>
             </div>
-            <h1 class="art-title" style="margin:0 0 0.3em">draft piece</h1>
-            <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">oil on canvas -- 2026 -- series one -- 60 x 80 cm -- new york</div>
-            <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note placed under the piece, in the artist's own words.</div>
-            <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
-              <button class="track-buy-btn feed-card-btn green" type="button">buy 0.01 ETH</button>
-              <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> phase 13</div>
+              <div class="design-card-frame" style="max-width:720px">
+                <div class="art-detail-hero">
+                  <div class="art-detail-hero-media art-detail-hero-media--gallery">
+                    <div style="aspect-ratio:3/2;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:16px">the image</div>
+                  </div>
+                  <div class="art-detail-hero-meta">
+                    <div class="art-detail-eyebrow"><i class="ph ph-image" aria-hidden="true"></i><span>oil on canvas</span></div>
+                    <h1 class="art-detail-title">draft piece</h1>
+                    <div class="art-detail-byline">by nappynina.com</div>
+                    <div class="art-detail-meta-row"><span>2026</span><span>60 x 80 cm</span><span>series one</span><span>new york</span></div>
+                    <div class="art-detail-actions">
+                      <button class="art-detail-action art-detail-action--write" type="button" aria-label="write about this"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>
+                      <button class="art-detail-action art-detail-action--share" type="button" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>
+                      <button class="art-detail-action art-detail-action--buy" type="button"><i class="ph ph-plus" aria-hidden="true"></i><span>buy</span> 0.01 ETH</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="art-detail-description">a short note placed under the piece, in the artist's own words.</div>
+                <div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>honored at the 2026 emerging artists prize</span></div>
+                <div class="art-detail-chip-row">
+                  <a class="art-detail-chip" href="#" onclick="return false"><i class="ph ph-arrow-up-right" aria-hidden="true"></i><span>view in person</span></a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 3. film work -->
+        <!-- 3. film work — phase 13 retired / proposed -->
         <div class="design-block" id="design-art-film-block">
-          <h3>film work <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            <code>renderFilmWork(el, work)</code> at <code>public/js/art.js:577</code>
-            is file-local. poster on top, meta line, then the player on click.
+          <h3>film work <code class="proposed-tag">proposed</code> <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em;max-width:68ch">
+            <code>renderFilmWork(el, work)</code> at <code>public/js/art.js:607</code>.
+            phase 13 puts the poster LEFT (2:3, max-height 480px) and credits
+            RIGHT. byline reads "dir. &lt;director&gt;" + year the way a film
+            credit reads. role (actor / writer) sits on its own line in Switzer
+            500 when the viewer's relationship to the piece isn't director.
+            watch is the primary action when a stream is attached; write and
+            share join the hero row. cast renders as a labeled section; awards
+            become a trophy pull-quote.
           </p>
-          <div class="design-card-frame" style="max-width:720px">
-            <div class="art-cover" style="margin-bottom:1em">
-              <div style="aspect-ratio:2/3;max-width:260px;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">poster</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:1000px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame" style="max-width:420px">
+                <div class="art-cover" style="margin-bottom:1em">
+                  <div style="aspect-ratio:2/3;max-width:220px;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">poster</div>
+                </div>
+                <h1 class="art-title" style="margin:0 0 0.3em">draft film</h1>
+                <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">director -- dir. a colleague -- 2026 -- 92 min -- a festival</div>
+                <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:0.75em">a short logline.</div>
+                <div class="art-meta-secondary" style="color:var(--dim);font-size:0.85em;margin-bottom:1em">cast: a short list</div>
+                <div style="display:flex;gap:0.5ch;align-items:center">
+                  <button class="track-buy-btn feed-card-btn green" type="button">buy 0.005 ETH</button>
+                  <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+                </div>
+              </div>
             </div>
-            <h1 class="art-title" style="margin:0 0 0.3em">draft film</h1>
-            <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">director -- dir. a colleague -- 2026 -- 92 min -- a festival</div>
-            <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:0.75em">a short logline — one sentence, the piece in plain words.</div>
-            <div class="art-meta-secondary" style="color:var(--dim);font-size:0.85em;margin-bottom:1em">cast: a short list</div>
-            <div style="display:flex;gap:0.5ch;align-items:center;margin-bottom:1em">
-              <button class="track-buy-btn feed-card-btn green" type="button">buy 0.005 ETH</button>
-              <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> phase 13</div>
+              <div class="design-card-frame" style="max-width:720px">
+                <div class="art-detail-hero">
+                  <div class="art-detail-hero-media art-detail-hero-media--poster">
+                    <div style="aspect-ratio:2/3;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:16px">poster</div>
+                  </div>
+                  <div class="art-detail-hero-meta">
+                    <div class="art-detail-eyebrow"><i class="ph ph-film-slate" aria-hidden="true"></i><span>film</span></div>
+                    <h1 class="art-detail-title">draft film</h1>
+                    <div class="art-detail-byline">dir. a colleague  2026</div>
+                    <div class="art-detail-role">actor</div>
+                    <div class="art-detail-meta-row"><span>92 min</span><span>english</span><span>a festival</span></div>
+                    <div class="art-detail-actions">
+                      <a class="art-detail-action art-detail-action--primary" href="#" onclick="return false"><i class="ph ph-play-fill" aria-hidden="true"></i><span>watch</span></a>
+                      <button class="art-detail-action art-detail-action--write" type="button" aria-label="write about this"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>
+                      <button class="art-detail-action art-detail-action--share" type="button" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>
+                      <button class="art-detail-action art-detail-action--buy" type="button"><i class="ph ph-plus" aria-hidden="true"></i><span>buy</span> 0.005 ETH</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="art-detail-description">a short logline — one sentence, the piece in plain words.</div>
+                <div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>official selection, 2026 locarno</span></div>
+                <div class="art-detail-section">
+                  <div class="art-detail-section-label">with</div>
+                  <div class="art-detail-section-body">a short list of the cast — commas, not bullets.</div>
+                </div>
+              </div>
             </div>
-            <div class="art-video-lazy-frame" style="aspect-ratio:16/9;background:#000;display:grid;place-items:center;color:#aaa;font-size:0.8em;border-radius:4px">play</div>
           </div>
         </div>
 
-        <!-- 4. video item -->
+        <!-- 4. video item — phase 13 retired / proposed -->
         <div class="design-block" id="design-art-video-block">
-          <h3>video item <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            <code>renderVideoItem(el, item)</code> at <code>public/js/art.js:621</code>
-            is file-local. title first, buy row second, player third — the poster
-            frame reserves 16:9 so a click-to-play swap doesn't shift the layout.
+          <h3>video item <code class="proposed-tag">proposed</code> <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em;max-width:68ch">
+            <code>renderVideoItem(el, item)</code> at <code>public/js/art.js:669</code>.
+            phase 13 lets the video LEAD — the player sits full-width at the top
+            (16:9 reserved, 16px radius). title, byline, duration, type sit below
+            in the editorial rhythm. the type eyebrow (music video / short film
+            / documentary) reads at a glance; actions row carries write + share
+            + buy.
           </p>
-          <div class="design-card-frame" style="max-width:720px">
-            <h1 class="art-title" style="margin:0 0 0.3em">draft video</h1>
-            <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">2026 -- with a colleague</div>
-            <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note on the piece, in the artist's own words.</div>
-            <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center;margin-bottom:1em">
-              <button class="track-buy-btn feed-card-btn green" type="button">buy 0.003 ETH</button>
-              <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:1000px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame" style="max-width:420px">
+                <h1 class="art-title" style="margin:0 0 0.3em">draft video</h1>
+                <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">2026 -- with a colleague</div>
+                <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note.</div>
+                <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center;margin-bottom:1em">
+                  <button class="track-buy-btn feed-card-btn green" type="button">buy 0.003 ETH</button>
+                  <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+                </div>
+                <div class="video-lazy art-video-lazy-frame" style="aspect-ratio:16/9;background:#000;display:grid;place-items:center;color:#aaa;font-size:0.8em;border-radius:4px">play</div>
+              </div>
             </div>
-            <div class="video-lazy art-video-lazy-frame" style="aspect-ratio:16/9;background:#000;display:grid;place-items:center;color:#aaa;font-size:0.8em;border-radius:4px">play</div>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> phase 13</div>
+              <div class="design-card-frame" style="max-width:720px">
+                <div class="art-detail-hero" style="margin-bottom:1.25rem">
+                  <div class="art-detail-hero-media art-detail-hero-media--video">
+                    <div class="art-video-lazy-frame" style="border-radius:16px;aspect-ratio:16/9;background:#000;display:grid;place-items:center;color:#aaa;font-size:0.8em">
+                      <i class="ph ph-play-fill" aria-hidden="true" style="color:var(--muted);font-size:2em"></i>
+                    </div>
+                  </div>
+                </div>
+                <div class="art-detail-eyebrow"><i class="ph ph-video" aria-hidden="true"></i><span>music video</span></div>
+                <h1 class="art-detail-title">draft video</h1>
+                <div class="art-detail-byline">blackmatter.world  with a colleague</div>
+                <div class="art-detail-meta-row"><span>3:42</span><span>2026</span></div>
+                <div class="art-detail-actions">
+                  <button class="art-detail-action art-detail-action--write" type="button" aria-label="write about this"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>
+                  <button class="art-detail-action art-detail-action--share" type="button" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>
+                  <button class="art-detail-action art-detail-action--buy" type="button"><i class="ph ph-plus" aria-hidden="true"></i><span>buy</span> 0.003 ETH</button>
+                </div>
+                <div class="art-detail-description">a short note on the piece, in the artist's own words.</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- 5. audio item -->
+        <!-- 5. audio item — phase 13 retired / proposed -->
         <div class="design-block" id="design-art-audio-block">
-          <h3>audio item <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            <code>renderAudioItem(el, item, idx)</code> at <code>public/js/art.js:664</code>
-            is file-local. a single piece — podcast, voice note, standalone track.
-            the play button hooks the persistent player via <code>.track-play-btn</code>.
+          <h3>audio item <code class="proposed-tag">proposed</code> <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em;max-width:68ch">
+            <code>renderAudioItem(el, item, idx)</code> at <code>public/js/art.js:736</code>.
+            phase 13 lets the cover live LEFT at 320px square when the piece
+            carries art; play is the primary action in the hero row, add-to-queue
+            sits next to it. type eyebrow (podcast / single / mixtape) reads at
+            a glance in Space Mono. write, share, and buy join the actions row.
           </p>
-          <div class="design-card-frame" style="max-width:520px">
-            <h1 class="art-title" style="margin:0 0 0.3em">draft audio</h1>
-            <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">2026 -- nappynina.com</div>
-            <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note on the piece, in the artist's own words.</div>
-            <div style="margin-bottom:1em">
-              <button class="track-play-btn" type="button" style="background:none;border:1px solid var(--border);color:var(--fg);padding:0.4em 1ch;border-radius:6px"><i class="ph ph-play"></i> play</button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:1000px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame" style="max-width:420px">
+                <h1 class="art-title" style="margin:0 0 0.3em">draft audio</h1>
+                <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.5em">2026 -- nappynina.com</div>
+                <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note.</div>
+                <div style="margin-bottom:1em">
+                  <button class="track-play-btn" type="button" style="background:none;border:1px solid var(--border);color:var(--fg);padding:0.4em 1ch;border-radius:6px"><i class="ph ph-play"></i> play</button>
+                </div>
+                <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
+                  <button class="track-buy-btn feed-card-btn green" type="button">buy 0.001 ETH</button>
+                  <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+                </div>
+              </div>
             </div>
-            <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
-              <button class="track-buy-btn feed-card-btn green" type="button">buy 0.001 ETH</button>
-              <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> phase 13</div>
+              <div class="design-card-frame" style="max-width:720px">
+                <div class="art-detail-hero">
+                  <div class="art-detail-hero-media art-detail-hero-media--cover-sq">
+                    <div style="aspect-ratio:1/1;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:16px">cover</div>
+                  </div>
+                  <div class="art-detail-hero-meta">
+                    <div class="art-detail-eyebrow"><i class="ph ph-waveform" aria-hidden="true"></i><span>podcast</span></div>
+                    <h1 class="art-detail-title">draft audio</h1>
+                    <div class="art-detail-byline">by nappynina.com</div>
+                    <div class="art-detail-publisher">the long walk  ep. 12</div>
+                    <div class="art-detail-meta-row"><span>42:18</span><span>2026</span><span>english</span></div>
+                    <div class="art-detail-actions">
+                      <button class="art-detail-action art-detail-action--primary" type="button"><i class="ph ph-play-fill" aria-hidden="true"></i><span>play</span></button>
+                      <button class="art-detail-action" type="button" aria-label="add to queue"><i class="ph ph-plus" aria-hidden="true"></i><span>queue</span></button>
+                      <button class="art-detail-action art-detail-action--write" type="button" aria-label="write about this"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>
+                      <button class="art-detail-action art-detail-action--share" type="button" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>
+                      <button class="art-detail-action art-detail-action--buy" type="button"><i class="ph ph-plus" aria-hidden="true"></i><span>buy</span> 0.001 ETH</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="art-detail-description">a short note on the piece, in the artist's own words.</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 6. writing item -->
+        <!-- 6. writing item — phase 13 retired / proposed -->
         <div class="design-block" id="design-art-writing-block">
-          <h3>writing item <code>draft</code></h3>
-          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+          <h3>writing item <code class="proposed-tag">proposed</code> <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em;max-width:68ch">
             <code>renderWritingItem(el, item, idx)</code> at
-            <code>public/js/art.js:687</code> is file-local. a book, essay or
-            script — the cover is optional, the excerpt lives below the meta.
+            <code>public/js/art.js:802</code>. phase 13 puts the cover LEFT (3:4,
+            max 400px tall), title block RIGHT. byline "by &lt;author&gt;",
+            publisher in Space Mono, form / ISBN / pages in a tabular metadata
+            row. read is the primary action (writing is the one type where read
+            earns the primary slot), write-about-this is promoted — this is
+            the type most likely to be referenced in /write. excerpt reads as
+            a pull-quote with a leading quotation glyph.
           </p>
-          <div class="design-card-frame" style="max-width:520px">
-            <div class="art-cover" style="margin-bottom:1em">
-              <div style="aspect-ratio:2/3;max-width:200px;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">cover</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:1000px">
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
+              <div class="design-card-frame" style="max-width:420px">
+                <div class="art-cover" style="margin-bottom:1em">
+                  <div style="aspect-ratio:2/3;max-width:180px;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:4px">cover</div>
+                </div>
+                <h1 class="art-title" style="margin:0 0 0.3em">draft piece</h1>
+                <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.3em">a journal -- a publisher -- 2026 -- [en]</div>
+                <div class="art-meta-secondary" style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">ISBN 000-0-000-00000-0 -- 180 pages -- essay</div>
+                <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note.</div>
+                <div class="art-excerpt" style="color:var(--muted);font-size:0.9em;line-height:1.7;border-left:2px solid var(--border);padding-left:1ch;margin-bottom:1em">a short excerpt.</div>
+                <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
+                  <button class="track-buy-btn feed-card-btn green" type="button">buy 0.004 ETH</button>
+                  <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+                </div>
+              </div>
             </div>
-            <h1 class="art-title" style="margin:0 0 0.3em">draft piece</h1>
-            <div class="art-meta" style="color:var(--muted);font-size:0.9em;margin-bottom:0.3em">a journal -- a publisher -- 2026 -- [en]</div>
-            <div class="art-meta-secondary" style="color:var(--dim);font-size:0.85em;margin-bottom:0.75em">ISBN 000-0-000-00000-0 -- 180 pages -- essay</div>
-            <div class="art-description" style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em">a short note on the piece, in the artist's own words.</div>
-            <div class="art-excerpt" style="color:var(--muted);font-size:0.9em;line-height:1.7;border-left:2px solid var(--border);padding-left:1ch;margin-bottom:1em">a short excerpt sits here — a paragraph or two of the opening.</div>
-            <div class="art-action-row" style="display:flex;gap:0.5ch;align-items:center">
-              <button class="track-buy-btn feed-card-btn green" type="button">buy 0.004 ETH</button>
-              <button class="buy-btn" type="button" style="font-size:0.8em;padding:0.3em 1ch"><i class="ph ph-note-pencil"></i> write about</button>
+            <div>
+              <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="proposed-tag">proposed</code> phase 13</div>
+              <div class="design-card-frame" style="max-width:720px">
+                <div class="art-detail-hero">
+                  <div class="art-detail-hero-media art-detail-hero-media--cover-tall">
+                    <div style="aspect-ratio:3/4;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em;border-radius:16px">cover</div>
+                  </div>
+                  <div class="art-detail-hero-meta">
+                    <div class="art-detail-eyebrow"><i class="ph ph-book-open" aria-hidden="true"></i><span>essay</span></div>
+                    <h1 class="art-detail-title">draft piece</h1>
+                    <div class="art-detail-byline">by nappynina.com</div>
+                    <div class="art-detail-publisher">a journal  a publisher</div>
+                    <div class="art-detail-meta-row"><span>2026</span><span>en</span><span>ISBN 000-0-000-00000-0</span><span>180 pages</span></div>
+                    <div class="art-detail-actions">
+                      <a class="art-detail-action art-detail-action--primary" href="#" onclick="return false"><i class="ph ph-book-open" aria-hidden="true"></i><span>read</span></a>
+                      <button class="art-detail-action art-detail-action--write" type="button" aria-label="write about this"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>
+                      <button class="art-detail-action art-detail-action--share" type="button" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>
+                      <button class="art-detail-action art-detail-action--buy" type="button"><i class="ph ph-plus" aria-hidden="true"></i><span>buy</span> 0.004 ETH</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="art-detail-pullquote art-detail-pullquote--excerpt">a short excerpt sits here — a paragraph or two of the opening. the leading quotation mark is a Chillax glyph; the border carries the accent.</div>
+                <div class="art-detail-description">a short note on the piece, in the artist's own words.</div>
+                <div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>longlisted for the 2026 whiting foundation prize</span></div>
+              </div>
             </div>
           </div>
         </div>

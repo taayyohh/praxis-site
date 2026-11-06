@@ -2664,6 +2664,582 @@ body.dw-scroll-lock { overflow: hidden; }
   .design-page .dw-event--fat:hover { transform: none; }
 }
 
+/*  10) Album detail — phase 12 proposal. The retired hero
+       (public/js/art.js:311) pairs a 300px cover with a clamp-sized
+       <h1> in system weight, a muted byline, a muted description that
+       scrolls inside a 12em textarea-shaped box, and three buttons —
+       play, buy, overflow — all at equal visual weight. Everything
+       is inline-styled, nothing shares language with the fat event
+       rows in the feed, and the "write about this" affordance is
+       buried in the ··· overflow. The proposed primitives below
+       hoist the album into the same editorial register the feed
+       lives in: Chillax display title at 2.75rem, Switzer byline
+       with a tabular-mono year, an optional "with <artist>" collab
+       line, a Space Mono meta strip (genre · year · release), and
+       three first-class actions in a strict hierarchy —
+       play (filled dark), buy (green outline → fill on hover),
+       write about (ghost). The description sits in a left-ruled
+       pull-quote with a fade-out mask + "read more" expansion; the
+       overflow only keeps "add to queue" because write-about is
+       the editorial fulcrum of the whole platform and no longer
+       belongs in a kebab menu.
+
+       The tracklist graduates from 2em spreadsheet rows to the
+       Phase 11 fat/warm rhythm: 64px row height, 1.25rem × 1.5rem
+       padding, 12px radius on hover, 3% fg-tint wash, Chillax 600
+       track titles with features inline at Switzer 400 muted, mono
+       tabular numbers for track-num + duration, and a 44pt play
+       hit target. Per-track buy stays a compact green pill; the
+       per-track write-about + queue live in the row's ··· overflow
+       (promotion stays album-level only). Below the tracks, an
+       "owned by" strip echoes the group-3 avatar stack from Phase
+       10, and external platforms (Spotify / Bandcamp / SoundCloud)
+       drop into a muted chip row at the page tail — out of the
+       hero, where they were competing with play.
+
+       Everything is .dw-album-* and scoped to /design. Promotion
+       to global .art-album-* + renderMusicAlbum is phase 12b. */
+.design-page .dw-album {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2rem;
+  align-items: start;
+  margin-bottom: 2.5rem;
+}
+@media (max-width: 720px) {
+  .design-page .dw-album {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+/*  Cover — 320px square at 16px radius. Image fills; alt text
+    carries the album title for screen readers. On mobile the
+    cover stretches to full column width but caps at 360px so a
+    tablet-in-portrait doesn't turn the hero into an all-cover
+    wall. */
+.design-page .dw-album-cover {
+  width: 320px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--dw-separator);
+  display: block;
+}
+@media (max-width: 720px) {
+  .design-page .dw-album-cover {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+.design-page .dw-album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.design-page .dw-album-cover--placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--dw-fg-muted);
+  font: 400 0.8125rem/1 var(--dw-font-mono);
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--dw-fg) 6%, var(--dw-surface)),
+    color-mix(in srgb, var(--dw-fg) 2%, var(--dw-surface)));
+}
+
+/*  Meta column — vertical rhythm from title down through byline,
+    collab, metaline, description, actions. Each block owns its
+    own margin so the hero reads as a stack of discrete facts
+    rather than a wall of running prose. */
+.design-page .dw-album-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.design-page .dw-album-title {
+  margin: 0;
+  font: 700 2.75rem/1.05 var(--dw-font-display);
+  letter-spacing: -0.02em;
+  color: var(--dw-fg);
+  /*  Album titles ship with punctuation that reads editorial
+      (ampersands, em-dashes, slashes). Kerning gets the same tight
+      track as the display scale; wrap stays tight at the colon or
+      ampersand so an "x & y" title doesn't split mid-conjunction. */
+  text-wrap: balance;
+}
+@media (max-width: 560px) {
+  .design-page .dw-album-title { font-size: 2.125rem; }
+}
+
+/*  Byline — artist name in Switzer 500, year in Space Mono tabular,
+    separated by a soft em-space (U+2003) so the pair reads as one
+    byline, not two columns. Both at 0.75 opacity so the title
+    stays the single editorial anchor. */
+.design-page .dw-album-byline {
+  font: 500 1.0625rem/1.4 var(--dw-font);
+  color: var(--dw-fg);
+  opacity: 0.75;
+}
+.design-page .dw-album-byline-artist {
+  color: inherit;
+  text-decoration: none;
+}
+.design-page .dw-album-byline-artist:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.design-page .dw-album-byline-year {
+  font-family: var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.5ch;
+  opacity: 0.85;
+}
+
+/*  Collab attribution — "with <artist>". Switzer 400, muted. Links
+    through to /collection?artist=<domain> so the click stays on
+    the current tenant instead of jumping off. */
+.design-page .dw-album-collab {
+  font: 400 1rem/1.4 var(--dw-font);
+  color: var(--dw-fg-secondary);
+}
+.design-page .dw-album-collab-artist {
+  color: var(--dw-fg);
+  text-decoration: none;
+  font-weight: 500;
+}
+.design-page .dw-album-collab-artist:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/*  Meta strip — genre · year · release. Space Mono 400 0.8125rem,
+    muted, separators are soft middle-dots. Each span is optional;
+    the dot auto-hides when the adjacent span is absent via
+    :has(+ span). */
+.design-page .dw-album-metaline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75ch;
+  font: 400 0.8125rem/1.4 var(--dw-font-mono);
+  color: var(--dw-fg-muted);
+  letter-spacing: 0.015em;
+}
+.design-page .dw-album-metaline > span + span::before {
+  content: '·';
+  margin-right: 0.75ch;
+  opacity: 0.6;
+}
+
+/*  Description — an editorial pull-quote. Left rule in muted border,
+    1ch indent, Switzer 400 at 1rem with generous line-height. Caps
+    at ~10 lines with a fade-out mask; a "read more" button expands
+    in place. The mask fades the final 2.5em into transparent so
+    the cut-off never looks like a crash. */
+.design-page .dw-album-description {
+  position: relative;
+  margin: 0.25rem 0 0.25rem;
+  padding: 0 0 0 1ch;
+  border-left: 2px solid var(--dw-separator-strong);
+  font: 400 1rem/1.6 var(--dw-font);
+  color: var(--dw-fg);
+  max-height: calc(1.6em * 10);
+  overflow: hidden;
+  /*  Fade the final 2.5em so the clip reads as a pulled page, not
+      a cropped <textarea>. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+}
+.design-page .dw-album-description--expanded {
+  max-height: none;
+  -webkit-mask-image: none;
+          mask-image: none;
+}
+.design-page .dw-album-description-more {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: -0.25em;
+  color: var(--dw-fg-secondary);
+  font: 500 0.875rem/1.4 var(--dw-font);
+  cursor: pointer;
+  text-align: left;
+  min-height: var(--dw-tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+}
+.design-page .dw-album-description-more:hover { color: var(--dw-fg); }
+.design-page .dw-album-description-more:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+
+/*  Hero CTA row — three first-class actions in strict hierarchy.
+    Play is the filled primary (dark fg, big pill). Buy is green
+    outline → fill on hover (tabular price). Write about is ghost
+    (icon + label, secondary weight). The ··· overflow retains
+    "add to queue" only; write-about is promoted out of there so
+    the editorial fulcrum of the platform stops being a kebab
+    item. 44px min-height on every control; 1ch gap between
+    buttons; wraps gracefully on mobile. */
+.design-page .dw-album-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.design-page .dw-album-play,
+.design-page .dw-album-buy,
+.design-page .dw-album-write,
+.design-page .dw-album-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5ch;
+  min-height: 44px;
+  border-radius: var(--dw-radius-full);
+  font: 500 1rem/1 var(--dw-font-display);
+  letter-spacing: var(--dw-tracking-title);
+  cursor: pointer;
+  transition:
+    background var(--dw-motion-base) var(--dw-ease),
+    color var(--dw-motion-base) var(--dw-ease),
+    border-color var(--dw-motion-base) var(--dw-ease),
+    transform var(--dw-motion-base) var(--dw-ease);
+  font-family: var(--dw-font-display);
+}
+.design-page .dw-album-play:focus-visible,
+.design-page .dw-album-buy:focus-visible,
+.design-page .dw-album-write:focus-visible,
+.design-page .dw-album-more:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+
+/*  Play — the primary. Filled bone against the dark stage, 1.5rem
+    horizontal padding so the icon + label breathe. A small hover
+    lift to match the Phase 11 event row rhythm. */
+.design-page .dw-album-play {
+  padding: 0 1.5rem;
+  background: var(--dw-fg);
+  color: var(--dw-fg-on-accent);
+  border: 1px solid var(--dw-fg);
+  font-weight: 600;
+}
+.design-page .dw-album-play:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--dw-fg) 92%, var(--dw-accent));
+}
+.design-page .dw-album-play .ph { font-size: 1.125rem; }
+
+/*  Buy — green outline → fill on hover. Price is Space Mono tabular
+    so prices across the catalog line up when stacked vertically. */
+.design-page .dw-album-buy {
+  padding: 0 1.25rem;
+  background: transparent;
+  color: var(--dw-success);
+  border: 1px solid color-mix(in srgb, var(--dw-success) 70%, transparent);
+  font-weight: 500;
+}
+.design-page .dw-album-buy:hover {
+  background: color-mix(in srgb, var(--dw-success) 18%, transparent);
+  color: var(--dw-success);
+  transform: translateY(-1px);
+}
+.design-page .dw-album-buy-price {
+  font-family: var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  margin-left: 0.3ch;
+}
+
+/*  Write-about — ghost tertiary. Visible but quieter than play +
+    buy. icon + label; the icon keeps the existing ph-note-pencil
+    so Miles's muscle memory carries. */
+.design-page .dw-album-write {
+  padding: 0 1rem;
+  background: transparent;
+  color: var(--dw-fg-secondary);
+  border: 1px solid var(--dw-separator-strong);
+  font-weight: 500;
+}
+.design-page .dw-album-write:hover {
+  background: color-mix(in srgb, var(--dw-fg) 6%, transparent);
+  color: var(--dw-fg);
+  border-color: color-mix(in srgb, var(--dw-fg) 28%, transparent);
+}
+.design-page .dw-album-write .ph { font-size: 1rem; }
+
+/*  Overflow (···) — square 44×44 ghost button for the queue action
+    that didn't warrant promotion. Keeps the same shape as the
+    track-level overflow below so the two overflows read as a
+    pair. */
+.design-page .dw-album-more {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--dw-fg-secondary);
+  border: 1px solid var(--dw-separator-strong);
+  font-size: 1.25rem;
+}
+.design-page .dw-album-more:hover {
+  background: color-mix(in srgb, var(--dw-fg) 6%, transparent);
+  color: var(--dw-fg);
+}
+
+/*  Tracklist — fat/warm rhythm from Phase 11 applied to tracks.
+    64px min-height, 1.25rem × 1.5rem padding, 12px radius on
+    hover, 3% fg-tint wash. Columns: num | title | duration |
+    play | buy | ···. Features/credits slot inside the title cell
+    as ", ft. <artist>" at Switzer 400 0.65 opacity. No borders
+    between rows — the hover wash is the rhythm. */
+.design-page .dw-album-tracklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 2.5rem 0 1.5rem;
+}
+
+.design-page .dw-album-track {
+  display: grid;
+  grid-template-columns: 3ch 1fr auto auto auto auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 64px;
+  padding: 0.5rem 1.5rem;
+  border-radius: 12px;
+  transition:
+    background var(--dw-motion-base) var(--dw-ease),
+    transform var(--dw-motion-base) var(--dw-ease);
+}
+.design-page .dw-album-track:hover {
+  background: color-mix(in srgb, var(--dw-fg) 3%, transparent);
+  transform: translateY(-1px);
+}
+@media (max-width: 560px) {
+  .design-page .dw-album-track {
+    padding: 0.5rem 0.75rem;
+    gap: 0.75rem;
+    grid-template-columns: 3ch 1fr auto auto;
+  }
+  /*  On narrow widths, buy + ··· collapse into the ··· so the
+      tracklist stays single-row. The retired version wrapped at
+      4-5 cells, breaking the vertical rhythm. */
+  .design-page .dw-album-track .dw-album-track-buy { display: none; }
+}
+
+.design-page .dw-album-track-num {
+  font: 500 0.875rem/1 var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--dw-fg-muted);
+  text-align: right;
+}
+
+/*  Title cell — Chillax 600 at 1.0625rem for the title, Switzer
+    400 muted for the ", ft. <artist>" credits that slot inline
+    after. Truncates with ellipsis so a long collab line doesn't
+    push the duration off-screen. */
+.design-page .dw-album-track-title-cell {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4ch;
+}
+.design-page .dw-album-track-title {
+  font: 600 1.0625rem/1.3 var(--dw-font-display);
+  letter-spacing: var(--dw-tracking-title);
+  color: var(--dw-fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.design-page a.dw-album-track-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.design-page .dw-album-track-features {
+  font: 400 1rem/1.4 var(--dw-font);
+  color: var(--dw-fg-secondary);
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.design-page .dw-album-track-duration {
+  font: 400 0.8125rem/1 var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--dw-fg-muted);
+  text-align: right;
+  min-width: 4ch;
+}
+
+/*  Row-level play — 44×44 square. Dim at rest; fg on row hover so
+    the whole row reads as the hit, not a tiny icon. */
+.design-page .dw-album-track-play {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--dw-fg-muted);
+  cursor: pointer;
+  font-size: 1.25rem;
+  border-radius: var(--dw-radius-full);
+  transition: color var(--dw-motion-fast) ease, background var(--dw-motion-fast) ease;
+}
+.design-page .dw-album-track:hover .dw-album-track-play,
+.design-page .dw-album-track-play:hover {
+  color: var(--dw-fg);
+}
+.design-page .dw-album-track-play:hover {
+  background: color-mix(in srgb, var(--dw-fg) 10%, transparent);
+}
+.design-page .dw-album-track-play:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+
+/*  Compact buy pill. Same green tone as the hero buy but trimmer —
+    the hero buy is the album-level affordance; the per-track buy is
+    a smaller companion. Mono tabular price for vertical alignment. */
+.design-page .dw-album-track-buy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  min-height: 32px;
+  padding: 0 0.875rem;
+  border-radius: var(--dw-radius-full);
+  background: transparent;
+  color: var(--dw-success);
+  border: 1px solid color-mix(in srgb, var(--dw-success) 60%, transparent);
+  font: 500 0.8125rem/1 var(--dw-font);
+  cursor: pointer;
+  transition: background var(--dw-motion-base) var(--dw-ease), color var(--dw-motion-base) var(--dw-ease);
+}
+.design-page .dw-album-track-buy:hover {
+  background: color-mix(in srgb, var(--dw-success) 18%, transparent);
+}
+.design-page .dw-album-track-buy-price {
+  font-family: var(--dw-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.design-page .dw-album-track-buy:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+
+/*  Per-track overflow — same square 44pt as the album-level one.
+    The menu inside keeps "add to queue" + "write about this
+    track" (track-level write-about stays secondary; only the
+    album-level one is promoted to a first-class action). */
+.design-page .dw-album-track-more {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--dw-fg-muted);
+  cursor: pointer;
+  font-size: 1.25rem;
+  border-radius: var(--dw-radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--dw-motion-fast) ease, background var(--dw-motion-fast) ease;
+}
+.design-page .dw-album-track:hover .dw-album-track-more,
+.design-page .dw-album-track-more:hover {
+  color: var(--dw-fg);
+}
+.design-page .dw-album-track-more:hover {
+  background: color-mix(in srgb, var(--dw-fg) 10%, transparent);
+}
+.design-page .dw-album-track-more:focus-visible {
+  outline: 2px solid var(--dw-accent);
+  outline-offset: 2px;
+}
+
+/*  Collectors strip — editorial "owned by" row, echoing the group-3
+    avatar stack from Phase 10. Appears only when the album has
+    collectors. Small all-caps label sits above a left-aligned
+    avatar stack + "N collectors" count. */
+.design-page .dw-album-collectors {
+  margin: 1.5rem 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.design-page .dw-album-collectors-label {
+  font: 500 0.75rem/1 var(--dw-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dw-fg-muted);
+}
+.design-page .dw-album-collectors-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.design-page .dw-album-collectors-count {
+  font: 400 0.9375rem/1.4 var(--dw-font);
+  color: var(--dw-fg-secondary);
+}
+
+/*  External platforms — small chips at the page tail, out of the
+    hero. Space Mono 500 0.8125rem, muted border, tiny external
+    arrow glyph. One home per action — the primary buy is above,
+    these are "listen off-site" courtesy links. */
+.design-page .dw-album-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.design-page .dw-album-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  min-height: 36px;
+  padding: 0 0.875rem;
+  border-radius: var(--dw-radius-full);
+  border: 1px solid var(--dw-separator-strong);
+  background: transparent;
+  color: var(--dw-fg-secondary);
+  font: 500 0.8125rem/1 var(--dw-font-mono);
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: lowercase;
+  transition: color var(--dw-motion-base) var(--dw-ease), border-color var(--dw-motion-base) var(--dw-ease);
+}
+.design-page .dw-album-chip:hover {
+  color: var(--dw-fg);
+  border-color: color-mix(in srgb, var(--dw-fg) 28%, transparent);
+}
+.design-page .dw-album-chip .ph { font-size: 0.875rem; opacity: 0.7; }
+
+/*  Reduced motion — kill the row + button hover-lifts. The hover
+    background wash is informational and stays. */
+@media (prefers-reduced-motion: reduce) {
+  .design-page .dw-album-track:hover,
+  .design-page .dw-album-play:hover,
+  .design-page .dw-album-buy:hover,
+  .design-page .dw-album-write:hover { transform: none; }
+}
+
 /* ─────────── reduced motion — belt + suspenders ─────────── */
 @media (prefers-reduced-motion: reduce) {
   .dw-modal__overlay,

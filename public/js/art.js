@@ -46,6 +46,71 @@ function wireRefButtons(container) {
   })
 }
 
+// --- Phase 13 shared helpers for the 5 per-type renderers.
+// Promoted "write about this" affordance, hero-first (not buried in
+// overflow). Same shape as buy/play so the actions row reads flat.
+function writeAboutAction(item, opts = {}) {
+  if (item == null || item.mediaId == null) return ''
+  const title = escapeHtml(opts.title || item.title || '')
+  const artist = escapeHtml(opts.artist || '')
+  const art = escapeHtml(opts.art || item.art || '')
+  const src = escapeHtml(opts.src || '')
+  const type = opts.type || ''
+  return `<button class="media-ref-btn art-detail-action art-detail-action--write" type="button" data-ref-media="${escapeHtml(String(item.mediaId))}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${escapeHtml(type)}" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i><span>write</span></button>`
+}
+// Share — navigator.share when available, clipboard fallback, with a
+// short "copied" affirmation. Encourages distribution, which the
+// network benefits from compounding over time.
+function shareAction(title) {
+  // draft copy — "share" is lowercase per voice; no new i18n key yet.
+  return `<button class="art-detail-action art-detail-action--share" type="button" data-art-share="1" data-share-title="${escapeHtml(title || '')}" aria-label="share"><i class="ph ph-share-fat" aria-hidden="true"></i><span>share</span></button>`
+}
+function wireShareButtons(container) {
+  const signal = _artAbortController?.signal
+  container.querySelectorAll('[data-art-share]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const url = window.location.href
+      const title = btn.dataset.shareTitle || document.title || ''
+      try {
+        if (navigator.share) {
+          await navigator.share({ title, url })
+          return
+        }
+      } catch {}
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url)
+          const prev = btn.innerHTML
+          btn.innerHTML = '<i class="ph ph-check" aria-hidden="true"></i><span>copied</span>'
+          setTimeout(() => { if (btn.isConnected) btn.innerHTML = prev }, 1800)
+        }
+      } catch {}
+    }, { signal })
+  })
+}
+// Buy action in the hero shape. Keeps the existing `track-buy-btn`
+// class so wireArtDetailBuyButtons picks it up; adds .art-detail-action
+// so it inherits the pill height and typography of its sibling
+// actions (write / share / primary). The free case keeps `collect
+// free` copy from i18n.
+function buyAction(item) {
+  if (item == null || item.mediaId == null) return ''
+  const priceWei = item.mediaPrice || '0'
+  const isFree = Number(priceWei) === 0
+  const label = isFree ? t('art.collectFree') : t('art.buy')
+  const priceSpan = isFree ? '' : ` <span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>`
+  return `<button class="track-buy-btn art-detail-action art-detail-action--buy" type="button" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}" aria-label="${escapeHtml(label)}"><i class="ph ph-plus" aria-hidden="true"></i><span>${escapeHtml(label)}</span>${priceSpan}</button>`
+}
+// Space-Mono metadata row — one <span> per piece so .art-detail-meta-row
+// can insert whitespace between siblings via ::before. No dot
+// separators (phase 10 killed those across the catalog).
+function metaRow(pieces) {
+  const spans = (pieces || []).filter(Boolean).map(p => `<span>${escapeHtml(p)}</span>`).join('')
+  return spans ? `<div class="art-detail-meta-row">${spans}</div>` : ''
+}
+
 function parseVanityPath() {
   const segs = window.location.pathname.split('/').filter(Boolean)
   if (segs.length >= 2 && _VANITY_TYPES.has(segs[0])) {
@@ -309,125 +374,183 @@ async function renderLocalItem(params, loadingEl, contentEl) {
 }
 
 function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
+  // Phase 12 — see public/style.css ".art-album" block for the
+  // editorial rhythm this renders into. Cover + meta grid at the
+  // top, fat tracklist below, collectors strip + external chips at
+  // the tail. The write-about-this affordance was promoted out of
+  // the ··· overflow because writing about work is the whole
+  // platform's fulcrum, not a buried utility.
+
+  const artistLabel = album.artist || alias.name
+  const playableTracks = (album.tracks || []).filter(tr => tr.src)
+  const validTracks = (album.tracks || []).filter(tr => tr.title || tr.src)
+  const firstListedTrack = (album.tracks || []).find(tr => tr.mediaId != null)
+  const buyableTracks = (album.tracks || []).filter(tr => tr.mediaId != null && tr.mediaPrice && Number(tr.mediaPrice) > 0)
+  const albumQueueData = playableTracks.length > 0
+    ? encodeURIComponent(JSON.stringify(playableTracks.map(tr => ({ src: tr.src, title: tr.title, artist: artistLabel, art: album.art || '' }))))
+    : ''
+
   let html = ''
 
-  // Hero: cover art + metadata side-by-side (stacks on mobile).
-  // Layout lives in .art-album-hero (public/style.css) — the inline
-  // <style> block the render function used to emit at the bottom
-  // has been moved to CSS with the rest of the primitives.
-  html += `<div class="art-album-hero">`
+  // ─── Hero: cover + meta column ─────────────────────────────
+  html += `<div class="art-album">`
 
   if (album.art) {
-    const artUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=600`
-    html += `<div class="art-album-hero-cover"><img src="${escapeHtml(artUrl)}" alt="${escapeHtml(album.title)}" loading="lazy"></div>`
+    const artUrl = album.art.includes('/api/') ? album.art : `/api/img?url=${encodeURIComponent(album.art)}&w=640`
+    html += `<div class="art-album-cover"><img src="${escapeHtml(artUrl)}" alt="${escapeHtml(album.title || '')}" loading="lazy"></div>`
+  } else {
+    html += `<div class="art-album-cover" aria-hidden="true"></div>`
   }
 
-  html += `<div class="art-album-hero-meta">`
-  html += `<h1 style="font-size:clamp(1.5em, 4vw, 2.2em);margin:0 0 0.3em;font-weight:700;letter-spacing:-0.02em">${escapeHtml(album.title)}</h1>`
-  html += `<div style="color:var(--muted);margin-bottom:1em;font-size:0.95em">${t('art.by')} ${escapeHtml(album.artist || alias.name)}${album.year ? ` (${album.year})` : ''}</div>`
-  if (album.collab) {
-    // Collab attribution routes through the collection filter so the
-    // "with <artist>" link stays on the current tenant rather than
-    // jumping off to the collaborator's own site — matches the ask
-    // that everything a collection item touches renders locally.
-    const collabDomain = escapeHtml(album.collab.from || '')
-    html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">with <a href="/collection?artist=${encodeURIComponent(album.collab.from || '')}" style="color:var(--accent)">${collabDomain}</a></div>`
+  html += `<div class="art-album-meta">`
+  html += `<h1 class="art-album-title">${escapeHtml(album.title || '')}</h1>`
+
+  // Byline — artist name + tabular year. The year sits in a mono
+  // slot so stacked bylines line up across the collection.
+  html += `<div class="art-album-byline">${t('art.by')} <a class="art-album-byline-artist" href="/collection?artist=${encodeURIComponent(artistLabel)}">${escapeHtml(artistLabel)}</a>`
+  if (album.year) html += `<span class="art-album-byline-year">${escapeHtml(String(album.year))}</span>`
+  html += `</div>`
+
+  // Collab attribution routes through the collection filter so the
+  // "with <artist>" link stays on the current tenant.
+  if (album.collab && album.collab.from) {
+    html += `<div class="art-album-collab">with <a class="art-album-collab-artist" href="/collection?artist=${encodeURIComponent(album.collab.from)}">${escapeHtml(album.collab.from)}</a></div>`
   }
 
-  if (album.genre) html += `<div style="color:var(--dim);font-size:0.85em;margin-bottom:0.5em">${escapeHtml(album.genre)}</div>`
+  // Meta strip — genre · tracks · release. Space-Mono register.
+  const metaBits = []
+  if (album.genre) metaBits.push(`<span>${escapeHtml(album.genre)}</span>`)
+  if (validTracks.length) metaBits.push(`<span>${validTracks.length} tracks</span>`)
+  if (album.releaseDate || album.released) {
+    const rd = album.releaseDate || album.released
+    metaBits.push(`<span>released ${escapeHtml(String(rd))}</span>`)
+  }
+  if (metaBits.length) html += `<div class="art-album-metaline">${metaBits.join('')}</div>`
 
-  if (album.description) {
-    html += `<div style="color:var(--fg);font-size:0.9em;line-height:1.6;margin-bottom:1em;max-height:12em;overflow-y:auto">${escapeHtml(album.description)}</div>`
+  // Description — editorial pull-quote. The fade-out mask + "read
+  // more" expansion live in CSS + a small wire below.
+  if (album.description && String(album.description).trim()) {
+    html += `<div class="art-album-description" data-art-album-desc>${escapeHtml(album.description)}</div>`
+    html += `<button class="art-album-description-more" type="button" aria-expanded="false" hidden data-art-album-desc-more>read more</button>`
   }
 
-  // action buttons
-  html += `<div style="display:flex;gap:1ch;align-items:center;flex-wrap:wrap">`
-  const playableTracks = (album.tracks || []).filter(t => t.src)
+  // ─── Hero CTA row — play, buy, write-about, overflow ───────
+  html += `<div class="art-album-actions">`
+
   if (playableTracks.length > 0) {
-    const queueData = encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' }))))
-    html += `<button class="album-play-btn feed-card-btn" data-queue="${queueData}"><i class="ph ph-play"></i> ${t('art.play')}</button>`
+    html += `<button class="art-album-play album-play-btn" type="button" data-queue="${albumQueueData}" aria-label="${t('art.play')}"><i class="ph ph-play-fill" aria-hidden="true"></i> ${t('art.play')}</button>`
   }
-  // Buy album button — sum all track prices from site.json first.
-  // If site.json has no mediaId/mediaPrice on tracks (older content
-  // that pre-dated on-chain listing), we still render an async
-  // placeholder that hydrates from on-chain listings — the same
-  // source /works reads — so an album that shows a buy button on the
-  // works grid also shows one on its own detail page.
-  const buyableTracks = (album.tracks || []).filter(t => t.mediaId != null && t.mediaPrice && Number(t.mediaPrice) > 0)
+
+  // Buy album — sum all track prices from site.json first; if
+  // site.json has no on-chain mediaId/mediaPrice (older content),
+  // leave an async slot that hydrateAlbumBuyFromChain fills after
+  // first paint, same grouping /works uses.
   if (buyableTracks.length > 0) {
     let totalWei = 0n
-    for (const t of buyableTracks) { try { totalWei += BigInt(Math.round(Number(t.mediaPrice))) } catch {} }
-    const allMediaIds = buyableTracks.map(t => t.mediaId).join(',')
-    html += `<button class="feed-buy-btn feed-card-btn green" data-media-id="${escapeHtml(allMediaIds)}" data-price="${escapeHtml(String(totalWei))}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)">${t('art.buy')} <span data-eth-wei="${escapeHtml(String(totalWei))}" data-fiat-primary="true"></span></button>`
+    for (const tr of buyableTracks) { try { totalWei += BigInt(Math.round(Number(tr.mediaPrice))) } catch {} }
+    const allMediaIds = buyableTracks.map(tr => tr.mediaId).join(',')
+    html += `<button class="art-album-buy feed-buy-btn" type="button" data-media-id="${escapeHtml(allMediaIds)}" data-price="${escapeHtml(String(totalWei))}" data-title="${escapeHtml(album.title || 'album')} (${buyableTracks.length} tracks)" aria-label="${t('art.buy')}"><i class="ph ph-shopping-bag-open" aria-hidden="true"></i> ${t('art.buy')} <span class="art-album-buy-price" data-eth-wei="${escapeHtml(String(totalWei))}" data-fiat-primary="true"></span></button>`
   } else {
-    // Async slot — filled by hydrateAlbumBuyFromChain below with an
-    // on-chain-listing-based buy button when site.json tracks don't
-    // carry mediaId/mediaPrice (older content). Empty otherwise so
-    // albums that were never listed don't ship a phantom button.
     html += `<span data-album-buy-slot></span>`
   }
-  // Overflow menu for queue + reference
-  const firstListedTrack = (album.tracks || []).find(t => t.mediaId != null)
-  if (playableTracks.length > 0 || firstListedTrack) {
-    const queueData = playableTracks.length > 0 ? encodeURIComponent(JSON.stringify(playableTracks.map(t => ({ src: t.src, title: t.title, artist: album.artist || alias.name, art: album.art || '' })))) : ''
+
+  // Write-about — promoted first-class action. When there's a
+  // listed track we hand write.js a mediaId ref so the compose
+  // editor picks up a rich card; otherwise the button opens /write
+  // with a title prefill so writing about an unlisted album still
+  // has a path. Keeps .album-ref-btn hook so wireRefButtons sees it.
+  if (firstListedTrack) {
+    html += `<button class="art-album-write album-ref-btn" type="button" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" data-ref-type="music" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> ${t('music.writeAbout')}</button>`
+  } else {
+    const writeHref = `/write?prefillTitle=${encodeURIComponent('on ' + (album.title || ''))}`
+    html += `<a class="art-album-write" href="${escapeHtml(writeHref)}" aria-label="${t('music.writeAbout')}"><i class="ph ph-note-pencil" aria-hidden="true"></i> ${t('music.writeAbout')}</a>`
+  }
+
+  // Overflow — now carries only "add to queue" (write-about was
+  // promoted out). If there's nothing playable, the overflow is
+  // suppressed entirely so the hero stays clean.
+  if (albumQueueData) {
     html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
-    html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
+    html += `<button class="art-album-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
     html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
-    if (queueData) {
-      html += `<button class="album-queue-btn track-overflow-item" data-queue="${queueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
-    }
-    if (firstListedTrack) {
-      html += `<button class="album-ref-btn track-overflow-item" data-ref-media="${firstListedTrack.mediaId}" data-ref-title="${escapeHtml(album.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(playableTracks[0]?.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
-    }
+    html += `<button class="album-queue-btn track-overflow-item" type="button" data-queue="${albumQueueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
     html += `</div></div>`
   }
-  if (album.links && Object.keys(album.links).length) {
-    for (const [platform, url] of Object.entries(album.links)) {
-      if (url && /^https?:\/\//i.test(url)) html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="art-external">${escapeHtml(platform)}</a>`
-    }
-  }
-  html += `</div>`
-  html += `</div></div>` // close metadata + hero
 
-  // track list (skip empty/deleted tracks)
-  const validTracks = (album.tracks || []).filter(t => t.title || t.src)
+  html += `</div>` // close .art-album-actions
+  html += `</div>` // close .art-album-meta
+  html += `</div>` // close .art-album
+
+  // ─── Tracklist — fat/warm rhythm ───────────────────────────
   if (validTracks.length) {
-    html += `<div class="art-tracklist" style="margin-bottom:1.5em">`
+    html += `<div class="art-album-tracklist">`
     validTracks.forEach((track, i) => {
-      html += `<div class="album-track">`
-      html += `<span class="art-num" style="color:var(--dim);min-width:2ch;text-align:right;font-size:0.9em">${i + 1}.</span>`
+      html += `<div class="art-album-track">`
+      html += `<span class="art-album-track-num">${i + 1}</span>`
+
+      html += `<span class="art-album-track-title-cell">`
       html += track.mediaId != null
-        ? `<a href="/art?media=${track.mediaId}" class="track-title art-detail-link" style="flex:1;font-size:0.95em;color:inherit">${escapeHtml(track.title)}</a>`
-        : `<span class="track-title" style="flex:1;font-size:0.95em">${escapeHtml(track.title)}</span>`
+        ? `<a class="art-album-track-title" href="/art?media=${track.mediaId}">${escapeHtml(track.title || '')}</a>`
+        : `<span class="art-album-track-title">${escapeHtml(track.title || '')}</span>`
+      // Inline features/credits — "ft. <artist>" renders in Switzer
+      // 400 muted when the track carries a features field.
+      const feat = track.features || track.ft || track.feature || ''
+      if (feat) html += `<span class="art-album-track-features">, ft. ${escapeHtml(String(feat))}</span>`
+      html += `</span>`
+
       if (track.duration) {
         const m = Math.floor(track.duration / 60)
         const s = String(track.duration % 60).padStart(2, '0')
-        html += `<span class="art-num" style="color:var(--dim);font-size:0.85em">${m}:${s}</span>`
+        html += `<span class="art-album-track-duration">${m}:${s}</span>`
+      } else {
+        html += `<span class="art-album-track-duration"></span>`
       }
+
       if (track.src) {
-        html += `<button class="track-play-btn" data-track-src="${escapeHtml(track.src)}" data-track-title="${escapeHtml(track.title)}" data-track-artist="${escapeHtml(album.artist || alias.name)}" style="background:none;border:none;color:var(--fg);cursor:pointer;padding:0.2em 0.35ch;font-size:1.1em;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-play"></i></button>`
+        html += `<button class="art-album-track-play track-play-btn" type="button" data-track-src="${escapeHtml(track.src)}" data-track-title="${escapeHtml(track.title || '')}" data-track-artist="${escapeHtml(artistLabel)}" aria-label="${t('art.play')} ${escapeHtml(track.title || '')}"><i class="ph ph-play" aria-hidden="true"></i></button>`
+      } else {
+        html += `<span></span>`
       }
+
       if (track.mediaId !== undefined && track.mediaId !== null) {
         const priceWei = track.mediaPrice || '0'
-        html += `<button class="track-buy-btn feed-card-btn green track-buy-btn-compact" data-media-id="${escapeHtml(String(track.mediaId))}" data-price="${escapeHtml(priceWei)}" data-title="${escapeHtml(track.title || '')}">${t('art.buy')} <span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span></button>`
+        html += `<button class="art-album-track-buy track-buy-btn" type="button" data-media-id="${escapeHtml(String(track.mediaId))}" data-price="${escapeHtml(priceWei)}" data-title="${escapeHtml(track.title || '')}" aria-label="${t('art.buy')} ${escapeHtml(track.title || '')}">${t('art.buy')} <span class="art-album-track-buy-price" data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span></button>`
+      } else {
+        html += `<span></span>`
       }
+
+      // Per-track overflow — stays as the secondary home for
+      // queue + write-about-this-track. Only album-level write-
+      // about was promoted to a first-class action.
       if (track.src || track.mediaId != null) {
         html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
-        html += `<button class="track-overflow-btn" style="background:none;border:none;color:var(--dim);font-size:1.1em;cursor:pointer;padding:0.2em 0.35ch;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-dots-three"></i></button>`
-        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3em 0;z-index:100;min-width:160px;box-shadow:0 -2px 8px rgba(0,0,0,0.3)">`
+        html += `<button class="art-album-track-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
+        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:12px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
         if (track.src) {
-          html += `<button class="track-queue-btn track-overflow-item" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title)}" data-artist="${escapeHtml(album.artist || alias.name)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+          html += `<button class="track-queue-btn track-overflow-item" type="button" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title || '')}" data-artist="${escapeHtml(artistLabel)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
         }
         if (track.mediaId != null) {
-          html += `<button class="track-ref-btn track-overflow-item" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title)}" data-ref-artist="${escapeHtml(album.artist || alias.name)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;text-align:left"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+          html += `<button class="track-ref-btn track-overflow-item" type="button" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" data-ref-type="music" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:8px"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
         }
         html += `</div></div>`
+      } else {
+        html += `<span></span>`
       }
       html += `</div>`
     })
     html += `</div>`
   }
 
+  // ─── External platform chips — out of the hero ────────────
+  if (album.links && Object.keys(album.links).length) {
+    const chips = []
+    for (const [platform, url] of Object.entries(album.links)) {
+      if (url && /^https?:\/\//i.test(url)) {
+        chips.push(`<a class="art-album-chip" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(platform)}</span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>`)
+      }
+    }
+    if (chips.length) html += `<div class="art-album-links">${chips.join('')}</div>`
+  }
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
@@ -448,18 +571,40 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
       // close all other menus
       el.querySelectorAll('.track-overflow-menu').forEach(m => m.style.display = 'none')
       menu.style.display = isOpen ? 'none' : 'block'
+      btn.setAttribute('aria-expanded', String(!isOpen))
     }, { signal })
   })
   // Close overflow menus on outside click
   document.addEventListener('click', () => {
     el.querySelectorAll('.track-overflow-menu').forEach(m => m.style.display = 'none')
+    el.querySelectorAll('.track-overflow-btn').forEach(b => b.setAttribute('aria-expanded', 'false'))
   }, { signal })
   // Close menu after clicking an item
   el.querySelectorAll('.track-overflow-item').forEach(item => {
     item.addEventListener('click', () => {
-      item.closest('.track-overflow-menu').style.display = 'none'
+      const menu = item.closest('.track-overflow-menu')
+      menu.style.display = 'none'
+      menu.previousElementSibling?.setAttribute?.('aria-expanded', 'false')
     }, { signal })
   })
+
+  // "Read more" — only reveal the toggle when the description
+  // actually overflows the 10-line clamp. Measure after paint so
+  // the computed height is stable; toggle expands in place.
+  const descEl = el.querySelector('[data-art-album-desc]')
+  const moreBtn = el.querySelector('[data-art-album-desc-more]')
+  if (descEl && moreBtn) {
+    requestAnimationFrame(() => {
+      if (descEl.scrollHeight > descEl.clientHeight + 2) {
+        moreBtn.hidden = false
+      }
+    })
+    moreBtn.addEventListener('click', () => {
+      const expanded = descEl.classList.toggle('is-expanded')
+      moreBtn.setAttribute('aria-expanded', String(expanded))
+      moreBtn.textContent = expanded ? 'read less' : 'read more'
+    }, { signal })
+  }
 }
 
 // Hydrate a buy-album button on an album detail page whose site.json
@@ -551,193 +696,307 @@ async function _hydrateAlbumBuyFromChain(rootEl, album, alias) {
 }
 
 function renderGalleryImage(el, image, idx) {
+  // EMPHASIZE: visual. The image is the piece — big, uncropped, left.
+  // Title + metadata sit right on desktop, below on mobile. Actions row
+  // promotes write-about-this + share (both network-benefit moves);
+  // buy lands when the piece is priced.
   let html = ''
-
+  const title = image.title || 'untitled'
+  html += `<div class="art-detail-hero">`
   if (image.src) {
     const fullUrl = image.src.includes('/api/') ? image.src : `/api/img?url=${encodeURIComponent(image.src)}&w=1200`
-    // Gallery is the exception to the 400px cover cap — the image IS
-    // the piece, no crop. `.art-cover-full` disables the max-height.
-    html += `<div class="art-cover art-cover-full"><img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(image.title || '')}" loading="lazy"></div>`
+    html += `<div class="art-detail-hero-media art-detail-hero-media--gallery"><img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(title)}" loading="lazy"></div>`
   }
-
-  if (image.title) html += `<h1 class="art-title">${escapeHtml(image.title)}</h1>`
+  html += `<div class="art-detail-hero-meta">`
+  // draft eyebrow — the type label. Reads as THAT type at a glance.
+  const eyebrow = image.medium || 'image'
+  html += `<div class="art-detail-eyebrow"><i class="ph ph-image" aria-hidden="true"></i><span>${escapeHtml(eyebrow)}</span></div>`
+  html += `<h1 class="art-detail-title">${escapeHtml(title)}</h1>`
+  if (image.artist) html += `<div class="art-detail-byline">${t('art.by')} ${escapeHtml(image.artist)}</div>`
   const meta = []
-  if (image.medium) meta.push(image.medium)
   if (image.year) meta.push(String(image.year))
-  if (image.series) meta.push(image.series)
   if (image.dimensions) meta.push(image.dimensions)
+  if (image.series) meta.push(image.series)
   if (image.location) meta.push(image.location)
-  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
+  html += metaRow(meta)
+  // Actions row — write first (network editorial depth), share,
+  // then buy if priced. Share and write are universal; buy is
+  // conditional.
+  html += `<div class="art-detail-actions">`
+  html += writeAboutAction(image, { art: image.src, type: 'gallery' })
+  html += shareAction(title)
+  html += buyAction(image)
+  html += `</div>`
+  html += `</div></div>` // close meta + hero
 
-  if (image.description) html += `<div class="art-description">${escapeHtml(image.description)}</div>`
-  if (image.awards) html += `<div class="art-awards">${escapeHtml(image.awards)}</div>`
-
-  // buy + ref buttons
-  if (image.mediaId !== undefined && image.mediaId !== null) {
-    const priceWei = image.mediaPrice || '0'
-    const isFree = Number(priceWei) === 0
-    html += `<div class="art-action-row"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(image.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(image.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(image, { art: image.src, type: 'gallery' })}</div>`
-  }
-
+  if (image.description) html += `<div class="art-detail-description">${escapeHtml(image.description)}</div>`
+  if (image.awards) html += `<div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>${escapeHtml(image.awards)}</span></div>`
+  // External view-in-person / gallery link — chip row, small, muted.
   if (image.url && /^https?:\/\//i.test(image.url)) {
-    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(image.url)}" target="_blank" rel="noopener noreferrer" class="art-external">view external</a></div>`
+    html += `<div class="art-detail-chip-row"><a class="art-detail-chip" href="${escapeHtml(image.url)}" target="_blank" rel="noopener noreferrer"><i class="ph ph-arrow-up-right" aria-hidden="true"></i><span>view in person</span></a></div>`
   }
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  wireShareButtons(el)
 }
 
 function renderFilmWork(el, work) {
+  // EMPHASIZE: narrative. Poster left (2:3, max-height 480), credits
+  // right. "dir. <director>" reads as a film credit at a glance; the
+  // role (actor/writer/producer) sits as a separate line when the
+  // viewer's relationship to the piece is other than director. Watch
+  // is the primary action when a stream is attached; write + share
+  // cover the network-benefit moves beyond the buy.
   let html = ''
-
+  const title = work.title || 'untitled'
+  html += `<div class="art-detail-hero">`
   if (work.poster) {
     const posterUrl = work.poster.includes('/api/') ? work.poster : `/api/img?url=${encodeURIComponent(work.poster)}&w=800`
-    html += `<div class="art-cover"><img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(work.title || '')}" loading="lazy"></div>`
+    html += `<div class="art-detail-hero-media art-detail-hero-media--poster"><img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(title)}" loading="lazy"></div>`
   }
-
-  html += `<h1 class="art-title">${escapeHtml(work.title)}</h1>`
+  html += `<div class="art-detail-hero-meta">`
+  html += `<div class="art-detail-eyebrow"><i class="ph ph-film-slate" aria-hidden="true"></i><span>film</span></div>`
+  html += `<h1 class="art-detail-title">${escapeHtml(title)}</h1>`
+  // Byline — "dir. <director>" is the canonical film-credit shape.
+  // Year sits on the same line, dot-free, for the Apple-calm cadence.
+  const bylineParts = []
+  if (work.director) bylineParts.push(`dir. ${work.director}`)
+  if (work.year) bylineParts.push(String(work.year))
+  if (bylineParts.length) html += `<div class="art-detail-byline">${escapeHtml(bylineParts.join('  '))}</div>`
+  // Role — Switzer 500 1rem — reads "miles plays X" quickly.
+  if (work.role) html += `<div class="art-detail-role">${escapeHtml(work.role)}</div>`
   const meta = []
-  if (work.role) meta.push(work.role)
-  if (work.director) meta.push(`dir. ${work.director}`)
-  if (work.year) meta.push(String(work.year))
   if (work.runtime) meta.push(work.runtime)
+  if (work.language) meta.push(work.language)
   if (work.venue) meta.push(work.venue)
-  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
-
-  if (work.description) html += `<div class="art-description">${escapeHtml(work.description)}</div>`
-  if (work.awards) html += `<div class="art-awards">${escapeHtml(work.awards)}</div>`
-  if (work.cast) html += `<div class="art-meta-secondary">cast: ${escapeHtml(work.cast)}</div>`
-
-  // action buttons
-  html += `<div style="display:flex;gap:1ch;align-items:center;margin-bottom:1.5em;flex-wrap:wrap">`
-  if (work.mediaId !== undefined && work.mediaId !== null) {
-    const priceWei = work.mediaPrice || '0'
-    const isFree = Number(priceWei) === 0
-    html += `<button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(work.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(work.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>`
+  html += metaRow(meta)
+  // Actions — watch (primary when a URL/video is attached), write,
+  // share, buy. Watch URL opens external (festival page, Vimeo,
+  // YouTube) in a new tab; the inline <video> player still lives
+  // below for embedded streams.
+  html += `<div class="art-detail-actions">`
+  const watchHref = (work.watchUrl && /^https?:\/\//i.test(work.watchUrl)) ? work.watchUrl
+                   : (work.url && /^https?:\/\//i.test(work.url)) ? work.url : ''
+  if (watchHref) {
+    html += `<a class="art-detail-action art-detail-action--primary" href="${escapeHtml(watchHref)}" target="_blank" rel="noopener noreferrer"><i class="ph ph-play-fill" aria-hidden="true"></i><span>watch</span></a>`
   }
-  html += refButtonHtml(work, { src: work.video || '', type: 'film' })
+  html += writeAboutAction(work, { art: work.poster || '', src: work.video || '', type: 'film' })
+  html += shareAction(title)
+  html += buyAction(work)
   html += `</div>`
+  html += `</div></div>` // close meta + hero
 
-  if (work.video) {
-    html += `<div class="art-video-lazy-frame" style="margin-bottom:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" playsinline style="max-width:100%;height:100%"></video></div>`
+  if (work.description) html += `<div class="art-detail-description">${escapeHtml(work.description)}</div>`
+
+  if (work.awards) html += `<div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>${escapeHtml(work.awards)}</span></div>`
+
+  // Cast — editorial section, labeled. Comma-separated the way a
+  // festival program renders it.
+  if (work.cast) {
+    html += `<div class="art-detail-section">`
+    html += `<div class="art-detail-section-label">with</div>`
+    html += `<div class="art-detail-section-body">${escapeHtml(work.cast)}</div>`
+    html += `</div>`
   }
 
-  if (work.url && /^https?:\/\//i.test(work.url)) {
-    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(work.url)}" target="_blank" rel="noopener noreferrer" class="art-external">watch external</a></div>`
+  // Inline video — kept when the piece embeds a stream directly.
+  // playsinline per CLAUDE.md.
+  if (work.video) {
+    html += `<div class="art-video-lazy-frame" style="margin-top:1.5em"><video src="${escapeHtml(work.video)}" controls preload="none" playsinline style="max-width:100%;height:100%"></video></div>`
   }
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  wireShareButtons(el)
 }
 
 function renderVideoItem(el, item) {
+  // EMPHASIZE: motion (short-form). Video LEADS — the piece plays
+  // first. Title, byline, duration, type sit below. Lazy poster
+  // keeps TTI low; swap to real <video> on click is handled by the
+  // mini-player's IntersectionObserver in the existing wire-up.
   let html = ''
-  html += `<h1 class="art-title">${escapeHtml(item.title)}</h1>`
-  const meta = []
-  if (item.year) meta.push(String(item.year))
-  if (item.collaborators) meta.push(item.collaborators)
-  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
-  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
-
-  // buy + ref buttons (before video so it's visible without scrolling)
-  if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceWei = item.mediaPrice || '0'
-    const isFree = Number(priceWei) === 0
-    html += `<div class="art-action-row"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { art: item.poster || item.thumbnail || '', type: 'video' })}</div>`
-  }
-
-  // video player — same lazy pattern as /video page with auto-generated
-  // thumbnail. Reserve 16:9 on the poster wrapper so a non-16:9 poster
-  // doesn't shift the layout when mini-player.js swaps it for the real
-  // <video> element on click (principle 9).
+  const title = item.title || 'untitled'
+  // Video hero — full-width lazy frame that swaps to <video> on click.
   if (item.src) {
     let posterUrl = item.poster || item.thumbnail || ''
     if (!posterUrl) {
       const cidMatch = item.src.match(/\/api\/ipfs-proxy\/([A-Za-z0-9]+)/)
       if (cidMatch) posterUrl = `/api/video-thumb?cid=${cidMatch[1]}&w=960`
     }
-    html += `<div style="margin-bottom:1.5em">
-      <div class="video-lazy art-video-lazy-frame" data-src="${escapeHtml(item.src)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(item.title || '')}">
-        ${posterUrl ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:pointer">` : `<div style="display:flex;align-items:center;justify-content:center;cursor:pointer;width:100%;height:100%"><span style="color:var(--muted)">play</span></div>`}
-      </div>
-    </div>`
+    html += `<div class="art-detail-hero" style="margin-bottom:1.25rem">`
+    html += `<div class="art-detail-hero-media art-detail-hero-media--video">`
+    html += `<div class="video-lazy art-video-lazy-frame" data-src="${escapeHtml(item.src)}" data-poster="${escapeHtml(posterUrl)}" data-title="${escapeHtml(title)}" style="border-radius:16px">`
+    html += posterUrl
+      ? `<img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(title)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:pointer">`
+      : `<div style="display:flex;align-items:center;justify-content:center;cursor:pointer;width:100%;height:100%"><i class="ph ph-play-fill" aria-hidden="true" style="color:var(--muted);font-size:2em"></i></div>`
+    html += `</div></div></div>`
   }
-
-  // Outbound link — external hosting (Vimeo, YouTube, festival page).
+  // Title + metadata + actions — read as a video page at a glance.
+  // Type pulled from `item.type` if present (music video, short film,
+  // documentary); eyebrow falls back to a plain "video" badge.
+  const kind = item.type || item.form || 'video'
+  html += `<div class="art-detail-eyebrow"><i class="ph ph-video" aria-hidden="true"></i><span>${escapeHtml(kind)}</span></div>`
+  html += `<h1 class="art-detail-title">${escapeHtml(title)}</h1>`
+  if (item.artist || item.director || item.collaborators) {
+    const by = item.artist || item.director || ''
+    const withText = item.collaborators && by ? `${by}  with ${item.collaborators}` : (by || `with ${item.collaborators || ''}`)
+    html += `<div class="art-detail-byline">${escapeHtml(withText)}</div>`
+  }
+  const meta = []
+  if (item.duration) {
+    // duration — accept seconds-number or already-formatted "mm:ss"
+    const d = Number(item.duration)
+    if (!isNaN(d) && d > 0) meta.push(`${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`)
+    else meta.push(String(item.duration))
+  }
+  if (item.year) meta.push(String(item.year))
+  if (item.language) meta.push(item.language)
+  html += metaRow(meta)
+  html += `<div class="art-detail-actions">`
+  html += writeAboutAction(item, { art: item.poster || item.thumbnail || '', src: item.src || '', type: 'video' })
+  html += shareAction(title)
+  html += buyAction(item)
+  // External "watch external" — Vimeo / YouTube / festival. Ghost
+  // action so it sits alongside write + share without stealing focus
+  // from the primary buy.
   if (item.url && /^https?:\/\//i.test(item.url)) {
-    html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">watch external</a></div>`
+    html += `<a class="art-detail-action art-detail-action--ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><i class="ph ph-arrow-up-right" aria-hidden="true"></i><span>watch external</span></a>`
   }
+  html += `</div>`
+
+  if (item.description) html += `<div class="art-detail-description">${escapeHtml(item.description)}</div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  wireShareButtons(el)
 }
 
 function renderAudioItem(el, item, idx) {
+  // EMPHASIZE: sonic. Cover-left-at-320px-square if the piece has
+  // cover art, otherwise a full-width type-centered hero. Play is the
+  // primary action (not just a tiny inline pill under the title),
+  // then add-to-queue + write + buy. Uses the track-play-btn pattern
+  // from CLAUDE.md so the persistent player picks up the piece.
   let html = ''
-  html += `<h1 class="art-title">${escapeHtml(item.title || 'untitled')}</h1>`
-  const meta = []
-  if (item.year) meta.push(String(item.year))
-  if (item.artist || item.credit) meta.push(item.artist || item.credit)
-  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
-  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
-  if (item.src) html += `<div style="margin-bottom:1.5em"><button class="track-play-btn" data-track-src="${escapeHtml(item.src)}" data-track-title="${escapeHtml(item.title || '')}" data-track-artist="${escapeHtml(item.artist || item.credit || '')}">play</button></div>`
+  const title = item.title || 'untitled'
+  const artist = item.artist || item.credit || ''
+  const kind = item.form || item.type || 'audio'
+  const cover = item.cover || item.art || ''
+  const hasCover = !!cover
 
-  if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceWei = item.mediaPrice || '0'
-    const isFree = Number(priceWei) === 0
-    html += `<div class="art-action-row"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { src: item.src || '', type: 'audio' })}</div>`
+  html += `<div class="art-detail-hero">`
+  if (hasCover) {
+    const coverUrl = cover.includes('/api/') ? cover : `/api/img?url=${encodeURIComponent(cover)}&w=600`
+    html += `<div class="art-detail-hero-media art-detail-hero-media--cover-sq"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(title)}" loading="lazy"></div>`
   }
+  html += `<div class="art-detail-hero-meta">`
+  html += `<div class="art-detail-eyebrow"><i class="ph ph-waveform" aria-hidden="true"></i><span>${escapeHtml(kind)}</span></div>`
+  html += `<h1 class="art-detail-title">${escapeHtml(title)}</h1>`
+  if (artist) html += `<div class="art-detail-byline">${t('art.by')} ${escapeHtml(artist)}</div>`
+  if (item.series) html += `<div class="art-detail-publisher">${escapeHtml(item.series)}${item.episode ? `  ep. ${escapeHtml(String(item.episode))}` : ''}</div>`
+  const meta = []
+  if (item.duration) {
+    const d = Number(item.duration)
+    if (!isNaN(d) && d > 0) meta.push(`${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`)
+    else meta.push(String(item.duration))
+  }
+  if (item.year) meta.push(String(item.year))
+  if (item.language) meta.push(item.language)
+  html += metaRow(meta)
+  html += `<div class="art-detail-actions">`
+  if (item.src) {
+    // Primary play — uses .track-play-btn so player.js's global
+    // delegation handles it (Media Session API, queue, prev/next).
+    html += `<button class="track-play-btn art-detail-action art-detail-action--primary" data-track-src="${escapeHtml(item.src)}" data-track-title="${escapeHtml(title)}" data-track-artist="${escapeHtml(artist)}" data-track-art="${escapeHtml(cover)}" aria-label="${t('art.play')}"><i class="ph ph-play-fill" aria-hidden="true"></i><span>${t('art.play')}</span></button>`
+    // Add-to-queue — uses .track-queue-btn so the global player
+    // handler picks it up via event delegation.
+    html += `<button class="track-queue-btn art-detail-action" data-src="${escapeHtml(item.src)}" data-title="${escapeHtml(title)}" data-artist="${escapeHtml(artist)}" data-art="${escapeHtml(cover)}" aria-label="${t('music.addToQueue')}"><i class="ph ph-plus" aria-hidden="true"></i><span>queue</span></button>`
+  }
+  html += writeAboutAction(item, { art: cover, src: item.src || '', artist, type: 'audio' })
+  html += shareAction(title)
+  html += buyAction(item)
+  if (item.url && /^https?:\/\//i.test(item.url)) {
+    html += `<a class="art-detail-action art-detail-action--ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><i class="ph ph-arrow-up-right" aria-hidden="true"></i><span>listen external</span></a>`
+  }
+  html += `</div>`
+  html += `</div></div>` // close meta + hero
 
-  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">listen external</a></div>`
+  if (item.description) html += `<div class="art-detail-description">${escapeHtml(item.description)}</div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  wireShareButtons(el)
 }
 
 function renderWritingItem(el, item, idx) {
+  // EMPHASIZE: text, reference weight. Cover LEFT (3:4, book cover
+  // aspect) when present; title block RIGHT. Chillax title, Switzer
+  // byline, Space Mono publisher and ISBN carry the reference
+  // register. Read is the primary action when a URL is attached;
+  // write-about-this is promoted because writing is the type most
+  // likely to be referenced in /write.
   let html = ''
+  const title = item.title || 'untitled'
+  const author = item.author || item.credit || ''
+  const kind = item.form || 'writing'
 
+  html += `<div class="art-detail-hero">`
   if (item.cover) {
     const coverUrl = item.cover.includes('/api/') ? item.cover : `/api/img?url=${encodeURIComponent(item.cover)}&w=600`
-    html += `<div class="art-cover"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title || '')}" loading="lazy"></div>`
+    html += `<div class="art-detail-hero-media art-detail-hero-media--cover-tall"><img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(title)}" loading="lazy"></div>`
   }
-
-  html += `<h1 class="art-title">${escapeHtml(item.title)}</h1>`
+  html += `<div class="art-detail-hero-meta">`
+  html += `<div class="art-detail-eyebrow"><i class="ph ph-book-open" aria-hidden="true"></i><span>${escapeHtml(kind)}</span></div>`
+  html += `<h1 class="art-detail-title">${escapeHtml(title)}</h1>`
+  if (author) html += `<div class="art-detail-byline">${t('art.by')} ${escapeHtml(author)}</div>`
+  // Publisher / publication — Space Mono small. Reads as reference.
+  const pubParts = []
+  if (item.publication) pubParts.push(item.publication)
+  if (item.publisher && item.publisher !== item.publication) pubParts.push(item.publisher)
+  if (pubParts.length) html += `<div class="art-detail-publisher">${escapeHtml(pubParts.join('  '))}</div>`
+  // Meta row — form, language, ISBN, pages. Space Mono tabular.
   const meta = []
-  if (item.publication) meta.push(item.publication)
-  if (item.publisher) meta.push(item.publisher)
   if (item.year) meta.push(String(item.year))
-  if (item.language) meta.push(`[${item.language}]`)
-  if (meta.length) html += `<div class="art-meta">${escapeHtml(meta.join(' -- '))}</div>`
-
-  const meta2 = []
-  if (item.isbn) meta2.push(`ISBN ${item.isbn}`)
-  if (item.pages) meta2.push(`${item.pages} pages`)
-  if (item.form) meta2.push(item.form)
-  if (meta2.length) html += `<div class="art-meta-secondary">${escapeHtml(meta2.join(' -- '))}</div>`
-  if (item.awards) html += `<div class="art-awards">${escapeHtml(item.awards)}</div>`
-
-  if (item.description) html += `<div class="art-description">${escapeHtml(item.description)}</div>`
-
-  // Standardized external link chrome — plain muted text, matches
-  // gallery / film / video / audio. The old "read" pill was a
-  // one-off box that violated principle 3 across the renderer set.
-  if (item.url && /^https?:\/\//i.test(item.url)) html += `<div style="margin-bottom:1.5em"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="art-external">read external</a></div>`
-  if (item.excerpt) html += `<div class="art-excerpt">${escapeHtml(item.excerpt)}</div>`
-
-  if (item.mediaId !== undefined && item.mediaId !== null) {
-    const priceWei = item.mediaPrice || '0'
-    const isFree = Number(priceWei) === 0
-    html += `<div class="art-action-row"><button class="track-buy-btn feed-card-btn green" data-media-id="${escapeHtml(String(item.mediaId))}" data-price="${escapeHtml(priceWei)}" data-eth-wei="${escapeHtml(priceWei)}" data-title="${escapeHtml(item.title || '')}">${isFree ? t('art.collectFree') : t('art.buy')} ${!isFree ? `<span data-eth-wei="${escapeHtml(priceWei)}" data-fiat-primary="true"></span>` : ''}</button>${refButtonHtml(item, { type: 'writing' })}</div>`
+  if (item.language) meta.push(item.language)
+  if (item.isbn) meta.push(`ISBN ${item.isbn}`)
+  if (item.pages) meta.push(`${item.pages} pages`)
+  html += metaRow(meta)
+  html += `<div class="art-detail-actions">`
+  // Read is primary — opens the hosted read URL in a new tab. Falls
+  // back to a scroll-to-excerpt when the piece is embedded. Writing
+  // is the one type where "read" earns the primary slot across the
+  // five renderers.
+  const readHref = (item.readUrl && /^https?:\/\//i.test(item.readUrl)) ? item.readUrl
+                 : (item.url && /^https?:\/\//i.test(item.url)) ? item.url : ''
+  if (readHref) {
+    html += `<a class="art-detail-action art-detail-action--primary" href="${escapeHtml(readHref)}" target="_blank" rel="noopener noreferrer"><i class="ph ph-book-open" aria-hidden="true"></i><span>read</span></a>`
   }
+  // Write-about — the highest-leverage move on writing (editorial
+  // chain, discovery, SEO). Promoted next to read + buy.
+  html += writeAboutAction(item, { art: item.cover || '', artist: author, type: 'writing' })
+  html += shareAction(title)
+  html += buyAction(item)
+  html += `</div>`
+  html += `</div></div>` // close meta + hero
+
+  // Excerpt — pullquote with leading quotation mark. Reads as a
+  // reader's preview, not just inline italics.
+  if (item.excerpt) html += `<div class="art-detail-pullquote art-detail-pullquote--excerpt">${escapeHtml(item.excerpt)}</div>`
+
+  if (item.description) html += `<div class="art-detail-description">${escapeHtml(item.description)}</div>`
+
+  if (item.awards) html += `<div class="art-detail-pullquote art-detail-pullquote--awards"><i class="ph ph-trophy" aria-hidden="true"></i><span>${escapeHtml(item.awards)}</span></div>`
 
   el.innerHTML = html
   wireArtDetailBuyButtons(el)
   wireRefButtons(el)
+  wireShareButtons(el)
 }
 
 // --- On-chain media: /art?media=0 ---
