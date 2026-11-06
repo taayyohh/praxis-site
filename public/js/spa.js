@@ -127,6 +127,11 @@ async function applyHtmlAndModules(main, html, url, pushState) {
   const newTitle = doc.querySelector('title')
   if (newMain) main.innerHTML = newMain.innerHTML
   if (newTitle) document.title = newTitle.textContent
+  // Sync SSR-emitted route hints into <head>. Without this, meta tags from
+  // the previous page leak in (or a fresh hint from the new SSR is
+  // dropped), which breaks client dispatch that reads them — e.g.,
+  // cross-artist album resolution via praxis-cross-album.
+  syncRouteMetaTags(doc)
   if (pushState) history.pushState({}, '', url)
   cleanupPersistentOverlays()
   main.style.opacity = '1'
@@ -151,6 +156,57 @@ async function applyHtmlAndModules(main, html, url, pushState) {
   window.dispatchEvent(new CustomEvent('spa-navigate'))
 }
 
+// SSR emits a small set of route-hint meta tags (praxis-cross-album is
+// the first; add more here as they arrive). Keep them in sync on SPA
+// navigation so client code reading them doesn't see the previous
+// page's hint, and on back-nav the cached page's hint is restored.
+const _ROUTE_META_NAMES = ['praxis-cross-album']
+
+function syncRouteMetaTags(doc) {
+  for (const name of _ROUTE_META_NAMES) {
+    const incoming = doc?.querySelector?.(`meta[name="${name}"]`)
+    const current = document.querySelector(`meta[name="${name}"]`)
+    if (incoming) {
+      if (current) current.setAttribute('content', incoming.getAttribute('content') || '')
+      else {
+        const m = document.createElement('meta')
+        m.setAttribute('name', name)
+        m.setAttribute('content', incoming.getAttribute('content') || '')
+        document.head.appendChild(m)
+      }
+    } else if (current) {
+      current.remove()
+    }
+  }
+}
+
+function snapshotRouteMetaTags() {
+  const out = {}
+  for (const name of _ROUTE_META_NAMES) {
+    const el = document.querySelector(`meta[name="${name}"]`)
+    if (el) out[name] = el.getAttribute('content') || ''
+  }
+  return out
+}
+
+function restoreRouteMetaTags(snapshot) {
+  for (const name of _ROUTE_META_NAMES) {
+    const current = document.querySelector(`meta[name="${name}"]`)
+    const value = snapshot?.[name]
+    if (value != null) {
+      if (current) current.setAttribute('content', value)
+      else {
+        const m = document.createElement('meta')
+        m.setAttribute('name', name)
+        m.setAttribute('content', value)
+        document.head.appendChild(m)
+      }
+    } else if (current) {
+      current.remove()
+    }
+  }
+}
+
 // --- SPA page cache ---
 // Cache the DOM content of recently visited pages so back-navigation
 // restores instantly without re-fetching or destroying/recreating images.
@@ -167,6 +223,7 @@ function cacheCurrentPage() {
     html: main.innerHTML,
     title: document.title,
     scroll: window.scrollY,
+    meta: snapshotRouteMetaTags(),
   })
   if (_pageCache.size > PAGE_CACHE_MAX) {
     const oldest = _pageCache.keys().next().value
@@ -200,6 +257,7 @@ async function navigate(url, pushState = true) {
   if (cached) {
     main.innerHTML = cached.html
     document.title = cached.title
+    restoreRouteMetaTags(cached.meta)
     if (pushState) history.pushState({}, '', url)
     cleanupPersistentOverlays()
     main.style.opacity = '1'
