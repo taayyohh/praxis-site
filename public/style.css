@@ -9912,11 +9912,12 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    overflow-x:hidden, so 100vw + negative margins can't leak a
    horizontal scrollbar. Cover scales fluidly with the viewport
    so the proportion stays felt across widths. */
-/* Full-canvas hero — sits inset from the viewport (not flush to
-   the edge, which read Wix-template). Small 8px radius + a thin
-   hairline border give it a real edge instead of a floating band.
-   Still escapes the body 1200px cage; still responsive via clamp.
-   Body has overflow-x: hidden so the vw math can't leak scroll. */
+/* Wide hero — escapes the body 1200px cage but clears the fixed
+   .owner-dock on the left (fixed at left:0, ~4em wide including
+   padding). Asymmetric inset: ~6em on the left (clears dock + gap),
+   ~4em on the right (comfortable breath). Wide but not flush;
+   anchored into the canvas rather than floating. Body has
+   overflow-x: hidden so vw math can't leak scroll. */
 .art-album {
   position: relative;
   isolation: isolate;
@@ -9924,16 +9925,16 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   grid-template-columns: clamp(220px, 24vw, 380px) 1fr;
   gap: clamp(2rem, 4vw, 4.5rem);
   align-items: center;
-  width: calc(100vw - 2.5rem);
-  margin-left: calc(50% - 50vw + 1.25rem);
-  margin-right: calc(50% - 50vw + 1.25rem);
+  width: calc(100vw - 10em);
+  margin-left: calc(50% - 50vw + 6em);
+  margin-right: calc(50% - 50vw + 4em);
   margin-top: 0.5rem;
   margin-bottom: 2.5rem;
   padding: clamp(2.5rem, 5vw, 4.5rem) clamp(2rem, 5vw, 4.5rem) clamp(3rem, 6vw, 5rem);
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .art-album {
     grid-template-columns: 1fr;
     gap: 1.75rem;
@@ -10209,21 +10210,21 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    12px radius on hover, 3% fg-tint wash. Columns stay single-row
    on narrow widths by collapsing the per-track buy into the ···
    overflow. */
-/* Wide tracklist — same inset escape as the hero so the two bands
-   stack with matching edges, not one flush + one caged. */
+/* Wide tracklist — same asymmetric inset as the hero so the bands
+   stack with matching edges and clear the left dock. */
 .art-album-tracklist {
   display: flex;
   flex-direction: column;
   gap: 0;
-  width: calc(100vw - 2.5rem);
-  margin-left: calc(50% - 50vw + 1.25rem);
-  margin-right: calc(50% - 50vw + 1.25rem);
+  width: calc(100vw - 10em);
+  margin-left: calc(50% - 50vw + 6em);
+  margin-right: calc(50% - 50vw + 4em);
   margin-top: 0.5rem;
   margin-bottom: 2rem;
-  padding: 0 clamp(2rem, 5vw, 4.5rem);
+  padding: 0 clamp(1rem, 2vw, 2rem);
   border-top: none; /* the row hover wash is the rhythm, not a hairline */
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .art-album-tracklist {
     width: calc(100vw - 1.5rem);
     margin-left: calc(50% - 50vw + 0.75rem);
@@ -10392,17 +10393,17 @@ a.art-album-track-title:hover {
 /* Collectors strip — "owned by <avatars> N collectors". Appears
    only when the album has collectors on-chain. */
 .art-album-collectors {
-  width: calc(100vw - 2.5rem);
-  margin-left: calc(50% - 50vw + 1.25rem);
-  margin-right: calc(50% - 50vw + 1.25rem);
+  width: calc(100vw - 10em);
+  margin-left: calc(50% - 50vw + 6em);
+  margin-right: calc(50% - 50vw + 4em);
   margin-top: 2rem;
   margin-bottom: 2rem;
-  padding: 0 clamp(2rem, 5vw, 4.5rem);
+  padding: 0 clamp(1rem, 2vw, 2rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .art-album-collectors {
     width: calc(100vw - 1.5rem);
     margin-left: calc(50% - 50vw + 0.75rem);
@@ -10435,13 +10436,13 @@ a.art-album-track-title:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  width: calc(100vw - 2.5rem);
-  margin-left: calc(50% - 50vw + 1.25rem);
-  margin-right: calc(50% - 50vw + 1.25rem);
+  width: calc(100vw - 10em);
+  margin-left: calc(50% - 50vw + 6em);
+  margin-right: calc(50% - 50vw + 4em);
   margin-top: 1.5rem;
-  padding: 0 clamp(2rem, 5vw, 4.5rem);
+  padding: 0 clamp(1rem, 2vw, 2rem);
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .art-album-links {
     width: calc(100vw - 1.5rem);
     margin-left: calc(50% - 50vw + 0.75rem);
