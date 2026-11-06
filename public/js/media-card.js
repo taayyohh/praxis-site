@@ -563,8 +563,14 @@ function renderArt(item, category, state, context) {
     const coverImg = coverSrc
       ? `<img src="${esc(coverSrc)}" class="media-card-art-cover-centered" alt="${esc(item.title || '')}" loading="lazy" onerror="this.style.display='none'">`
       : ''
+    // Defense-in-depth: CSS doesn't decode HTML entities, so HTML-escape
+    // alone (esc()) still lets `)` or `;` or `"` leak into the CSS layer.
+    // JSON.stringify emits a properly-quoted CSS string literal (escaping
+    // `"` and `\`); esc() then survives the surrounding `style="..."`
+    // attribute. Today coverSrc is a CID-derived path, but this stops a
+    // future refactor that passes a raw URL from becoming a bug.
     const backdrop = coverSrc
-      ? `<div class="media-card-art-backdrop" style="background-image:url('${esc(coverSrc)}')"></div>`
+      ? `<div class="media-card-art-backdrop" style="background-image:url(${esc(JSON.stringify(coverSrc))})"></div>`
       : ''
     return `<a class="media-card-art" href="${esc(link)}"${linkTarget}>${backdrop}${coverImg}${avatarHtml}${playOverlay}${stateOverlay}</a>`
   }

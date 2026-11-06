@@ -11655,6 +11655,11 @@ a.art-album-track-title:hover {
 .media-card--album {
   flex-direction: row;
   align-items: stretch;
+  /* Skip paint entirely for offscreen album cards. The intrinsic size
+   * matches the fixed-art column + a conservative row height so the
+   * scroll geometry doesn't jump when the card materializes. */
+  content-visibility: auto;
+  contain-intrinsic-size: 220px 320px;
 }
 .media-card--album .media-card-art {
   width: 220px; flex-shrink: 0;
@@ -11668,7 +11673,10 @@ a.art-album-track-title:hover {
 .media-card--album .media-card-art-backdrop {
   position: absolute; inset: -30px;
   background-position: center; background-size: cover; background-repeat: no-repeat;
-  filter: blur(40px) brightness(0.45) saturate(1.1);
+  /* 24px blur is visually indistinguishable from 40px but ~3× cheaper
+   * on mobile GPUs — the backdrop is a decorative wash, not a focal
+   * element, so the extra radius burned no eyes and plenty of frames. */
+  filter: blur(24px) brightness(0.45) saturate(1.1);
   transform: scale(1.3);
   z-index: 0;
   pointer-events: none;

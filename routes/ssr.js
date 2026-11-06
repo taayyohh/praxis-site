@@ -29,17 +29,26 @@ const _crossIndex = new Map()
 let _crossIndexTs = 0
 let _crossIndexBuilding = null
 
+// Shape check for admitted domains — see rebuildAliasIndex() in
+// scripts/sync-site-json.js for the matching regex. The real alias
+// ownership rule is on-chain and still TODO; this stops obvious
+// injection and non-hostname garbage from entering the index.
+const _DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i
+
 async function _fullScanAliasIndex() {
   // Fallback: one-time scan used only when the persisted index is missing.
   // Normal operation reads _alias-index.json written by sync-site-json.js.
+  // Handles are sorted so the first-alias-wins admit order is stable
+  // across runs — see TODO in sync-site-json.js rebuildAliasIndex().
   const next = new Map()
   try {
-    const handles = await readdir(_ARTISTS_DIR)
+    const handles = (await readdir(_ARTISTS_DIR)).sort()
     await Promise.all(handles.map(async handle => {
       try {
         const raw = await readFile(join(_ARTISTS_DIR, handle, 'site.json'), 'utf8')
         const site = JSON.parse(raw)
-        if (!site?.domain) return
+        if (!site?.domain || typeof site.domain !== 'string') return
+        if (!_DOMAIN_RE.test(site.domain)) return
         const music = (site.modules || []).find(m => m.type === 'music')
         for (const alias of (music?.data?.aliases || [])) {
           const aliasSlug = slugify(alias.name || '')

@@ -1168,28 +1168,18 @@ window.addEventListener('spa-before-navigate', () => {
   }
 })
 
-// After SPA nav: rescan for new inline videos. The PiP overlay itself
-// persists — its placeholder is detached but sourceUrl remembers where
-// to send the viewer back.
-let _pipRescanQueued = false
-const _queuePipRescan = () => {
-  if (_pipRescanQueued) return
-  _pipRescanQueued = true
-  const runner = () => { _pipRescanQueued = false; _scanPipVideos() }
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(runner, { timeout: 250 })
-  else requestAnimationFrame(runner)
-}
-const _pipBodyObserver = new MutationObserver(mutations => {
-  for (const m of mutations) {
-    for (const node of m.addedNodes) {
-      if (node.nodeName === 'VIDEO' || (node.querySelectorAll && node.querySelectorAll('video[controls]').length)) {
-        _queuePipRescan()
-        return
-      }
-    }
+// Catch newly-added inline videos the moment they matter — when a user
+// actually presses play. A capture-phase play listener costs nothing
+// when nothing's playing; the body-wide MutationObserver this replaces
+// fired on every DOM mutation (nav rerenders, feed cards, notifications).
+// The viewport observer still handles scroll-out for already-tracked
+// videos; SPA navigate still kicks a one-shot rescan below.
+document.addEventListener('play', (e) => {
+  const v = e.target
+  if (v?.tagName === 'VIDEO' && v.controls && !v.closest('#global-player')) {
+    _trackPipVideo(v)
   }
-})
-_pipBodyObserver.observe(document.body, { childList: true, subtree: true })
+}, { capture: true })
 
 window.addEventListener('spa-navigate', () => {
   if (_pip) {
