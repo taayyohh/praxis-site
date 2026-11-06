@@ -3104,7 +3104,7 @@ function renderModulesTab(el) {
   })
 }
 
-// "list for sale" widget — shows on any media item with an IPFS file
+// "publish" widget — shows on any media item with an IPFS file
 function renderSellWidget(item, id) {
   // only show if item has media content (src, art, video, or ipfsCid)
   const hasMedia = item.src || item.art || item.video || item.ipfsCid
@@ -3121,9 +3121,9 @@ function renderSellWidget(item, id) {
     const borderColor = isDelisted ? 'var(--dim)' : 'var(--green)'
     const headerColor = isDelisted ? 'var(--dim)' : 'var(--green)'
     const headerText = isDelisted
-      ? `delisted (id: ${item.mediaId}) — set a new price and relist`
-      : `listed on-chain (id: ${item.mediaId})`
-    const actionLabel = isDelisted ? 'relist' : 'update price'
+      ? `unpublished (id: ${item.mediaId}) — set a new price and republish`
+      : `published on-chain (id: ${item.mediaId})`
+    const actionLabel = isDelisted ? 'republish' : 'update price'
     return `<div style="margin-top:0.5em;padding:0.5em;border:1px solid ${borderColor};font-size:0.8em">
       <span style="color:${headerColor}">${headerText}</span>
       <div style="display:flex;gap:0.5ch;align-items:center;margin-top:0.5em">
@@ -3135,17 +3135,17 @@ function renderSellWidget(item, id) {
       <span class="media-price-status" data-media-id="${item.mediaId}" style="color:var(--muted);font-size:0.85em"></span>
       ${isDelisted
         ? `<div style="margin-top:0.75em;padding-top:0.75em;border-top:1px solid var(--border)">
-            <div style="color:var(--dim);font-size:0.75em;margin-bottom:0.4em">to change collaborators or splits, create a fresh listing — it will auto-supersede this one on /works.</div>
-            <button class="buy-btn media-fresh-listing-btn" data-media-id="${item.mediaId}" style="font-size:0.8em;padding:0.2em 1ch">create fresh listing</button>
+            <div style="color:var(--dim);font-size:0.75em;margin-bottom:0.4em">to change collaborators or splits, republish fresh — it will auto-supersede this one on /works.</div>
+            <button class="buy-btn media-fresh-listing-btn" data-media-id="${item.mediaId}" style="font-size:0.8em;padding:0.2em 1ch">republish fresh</button>
           </div>`
-        : `<button class="buy-btn media-delist-btn" data-media-id="${item.mediaId}" style="font-size:0.8em;padding:0.2em 1ch;margin-top:0.5em;border-color:var(--dim);color:var(--dim)">delist</button>`}
+        : `<button class="buy-btn media-delist-btn" data-media-id="${item.mediaId}" style="font-size:0.8em;padding:0.2em 1ch;margin-top:0.5em;border-color:var(--dim);color:var(--dim)">unpublish</button>`}
     </div>`
   }
 
   return `<div class="sell-widget" id="${id}" style="margin-top:0.75em;padding:0.75em 1em;border:1px solid var(--border);border-radius:8px;font-size:0.85em">
     <label style="display:flex;align-items:center;gap:0.6ch;cursor:pointer;color:var(--fg);font-weight:500">
       <input type="checkbox" class="sell-toggle" data-id="${id}" ${item._forSale ? 'checked' : ''} style="accent-color:var(--accent)">
-      sell this work
+      publish this work
     </label>
     <div class="sell-options" style="display:${item._forSale ? 'block' : 'none'};margin-top:0.75em;padding-top:0.75em;border-top:1px solid var(--border)">
       <div style="display:flex;gap:0.75em;align-items:center;flex-wrap:wrap;margin-bottom:0.75em">
@@ -3167,7 +3167,7 @@ function renderSellWidget(item, id) {
         <div class="sell-split-list" data-id="${id}"></div>
         <div style="color:var(--dim);font-size:0.75em;margin-top:0.3em">leave empty for 100% to you</div>
       </div>
-      <button class="buy-btn sell-list-btn" data-id="${id}" style="font-size:0.85em;padding:0.4em 1.5ch;border-radius:4px">publish listing</button>
+      <button class="buy-btn sell-list-btn" data-id="${id}" style="font-size:0.85em;padding:0.4em 1.5ch;border-radius:4px">publish</button>
       <span class="sell-status" data-id="${id}" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
     </div>
   </div>`
@@ -3265,7 +3265,7 @@ async function _collectBatchSplits(splitList) {
 
 // wire sell widget events after editor renders
 function wireSellWidgets(el, getItemByWidgetId) {
-  // ---- Detect delisted on-chain state for any rows that show "listed on-chain"
+  // ---- Detect delisted on-chain state for any rows that show "published on-chain"
   // but aren't already tagged with _delisted in site.json. Catches items that
   // were delisted via older delistMedia calls predating the _delisted flag.
   // Non-blocking: the row stays interactive while the check runs.
@@ -3476,7 +3476,7 @@ function wireSellWidgets(el, getItemByWidgetId) {
       try {
         const { listMedia } = await import('./media.js')
 
-        // Check if this CID is already listed on-chain (prevent duplicates)
+        // Check if this CID is already published on-chain (prevent duplicates)
         try {
           const { query } = await import('./ponder.js')
           const existing = await query(`query CheckDup($artist: String!, $cid: String!) {
@@ -3488,12 +3488,12 @@ function wireSellWidgets(el, getItemByWidgetId) {
           if (existingId !== undefined) {
             item.mediaId = existingId.toString()
             item.mediaPrice = parseEther(String(priceEth)).toString()
-            statusEl.textContent = `already listed (id: ${existingId}) — linking...`
+            statusEl.textContent = `already published (id: ${existingId}) — linking...`
             btn.style.display = 'none'
             // Auto-save to persist the linked mediaId
             try {
               await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-              statusEl.textContent = `linked to existing listing (id: ${existingId})`
+              statusEl.textContent = `linked to existing publication (id: ${existingId})`
             } catch { statusEl.textContent = `linked (id: ${existingId}) — click save` }
             return
           }
@@ -3508,20 +3508,20 @@ function wireSellWidgets(el, getItemByWidgetId) {
         item.mediaId = mediaId.toString()
         item.mediaPrice = parseEther(String(priceEth)).toString()
         item.mediaMaxSupply = maxSupply
-        statusEl.textContent = `listed (id: ${mediaId}) — saving...`
+        statusEl.textContent = `published (id: ${mediaId}) — saving...`
         btn.style.display = 'none'
         // auto-save so mediaId persists without manual save
         try {
           await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-          statusEl.textContent = `listed (id: ${mediaId}) — saved`
-        } catch { statusEl.textContent = `listed (id: ${mediaId}) — save failed, click save` }
+          statusEl.textContent = `published (id: ${mediaId}) — saved`
+        } catch { statusEl.textContent = `published (id: ${mediaId}) — save failed, click save` }
       } catch (e) {
         statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.shortMessage || e.message || '').slice(0, 80)}`
       }
     })
   })
 
-  // fiat conversion for listed prices
+  // fiat conversion for published prices
   {
     const updateFiat = async (input) => {
       const fiatEl = el.querySelector(`.media-price-fiat[data-media-id="${input.dataset.mediaId}"]`)
@@ -3574,17 +3574,17 @@ function wireSellWidgets(el, getItemByWidgetId) {
     try { await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) }) } catch {}
   }
 
-  // "create fresh listing" — clears the on-chain mediaId from the local item
-  // so the next render shows the unlisted "list for sale" form, where the
+  // "republish fresh" — clears the on-chain mediaId from the local item
+  // so the next render shows the unpublished "publish" form, where the
   // owner can set new collaborators/splits and call listMedia again. This
-  // creates a new on-chain listing with the same ipfsCid; annotateRelistings
+  // creates a new on-chain publication with the same ipfsCid; annotateRelistings
   // automatically supersedes the old one on /works and /art surfaces.
   el.querySelectorAll('.media-fresh-listing-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const mediaId = btn.dataset.mediaId
       const ok = await confirmModal({
-        title: 'create a fresh listing?',
-        body: 'this opens the list-for-sale form again so you can set new collaborators and splits. the existing listing stays on-chain (delisted) — once the new one is published, /works and /art will show the new one and the old becomes a historical record.',
+        title: 'republish fresh?',
+        body: 'this opens the publish form again so you can set new collaborators and splits. the existing publication stays on-chain (unpublished) — once the new one is published, /works and /art will show the new one and the old becomes a historical record.',
         confirmLabel: 'continue',
         danger: false,
       })
@@ -3612,34 +3612,34 @@ function wireSellWidgets(el, getItemByWidgetId) {
     })
   })
 
-  // delist a listed media item
+  // unpublish a published media item
   el.querySelectorAll('.media-delist-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const mediaId = btn.dataset.mediaId
       const statusEl = el.querySelector(`.media-price-status[data-media-id="${mediaId}"]`)
-      // Confirm — delisting is destructive (the item disappears from /works)
+      // Confirm — unpublishing is destructive (the item disappears from /works)
       const ok = await confirmModal({
-        title: 'delist this work?',
-        body: 'it will be removed from your works for sale page. you can relist it later with a new price (collaborators stay the same — to change them, create a new listing).',
-        confirmLabel: 'delist',
+        title: 'unpublish this work?',
+        body: 'it will be removed from your works page. you can republish it later with a new price (collaborators stay the same — to change them, republish fresh).',
+        confirmLabel: 'unpublish',
       })
       if (!ok) return
-      btn.textContent = 'delisting...'
+      btn.textContent = 'unpublishing...'
       try {
         const { delistMedia } = await import('./media.js')
         await delistMedia(parseInt(mediaId))
-        btn.textContent = 'delisted'
-        if (statusEl) statusEl.textContent = 'delisted — no more purchases possible'
-        // mark in site.json so the next render shows the relist UX
+        btn.textContent = 'unpublished'
+        if (statusEl) statusEl.textContent = 'unpublished — no more purchases possible'
+        // mark in site.json so the next render shows the republish UX
         const item = findItemByMediaId(mediaId)
         if (item) { item._delisted = true; await persistSiteData() }
       } catch (e) {
-        btn.textContent = 'delist'
+        btn.textContent = 'unpublish'
         if (statusEl) statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.message || '').slice(0, 30)}`
       }
     })
   })
-  // update price OR relist (when previously delisted)
+  // update price OR republish (when previously unpublished)
   el.querySelectorAll('.media-update-price-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const mediaId = btn.dataset.mediaId
@@ -3648,12 +3648,12 @@ function wireSellWidgets(el, getItemByWidgetId) {
       const statusEl = el.querySelector(`.media-price-status[data-media-id="${mediaId}"]`)
       const newPrice = parseFloat(priceInput?.value || '0')
       if (isNaN(newPrice) || newPrice < 0) { if (statusEl) statusEl.textContent = 'invalid price'; return }
-      btn.textContent = isRelist ? 'relisting...' : 'updating...'
+      btn.textContent = isRelist ? 'republishing...' : 'updating...'
       try {
         const { setMediaPrice } = await import('./media.js')
         await setMediaPrice(parseInt(mediaId), newPrice)
-        btn.textContent = isRelist ? 'relisted' : 'updated'
-        if (statusEl) statusEl.textContent = isRelist ? 'relisted on-chain — visible on /works again' : 'price updated on-chain'
+        btn.textContent = isRelist ? 'republished' : 'updated'
+        if (statusEl) statusEl.textContent = isRelist ? 'republished on-chain — visible on /works again' : 'price updated on-chain'
         // clear delisted state in site.json so the row flips back to normal
         const item = findItemByMediaId(mediaId)
         if (item) {
@@ -3662,7 +3662,7 @@ function wireSellWidgets(el, getItemByWidgetId) {
           await persistSiteData()
         }
       } catch (e) {
-        btn.textContent = isRelist ? 'relist' : 'update price'
+        btn.textContent = isRelist ? 'republish' : 'update price'
         if (statusEl) statusEl.textContent = e.code === 4001 ? 'cancelled' : `error: ${(e.message || '').slice(0, 30)}`
       }
     })
@@ -3963,7 +3963,7 @@ function renderModuleEditor(el, mod) {
             if (tracksWithSrc.length >= 2 && unlistedTracks.length > 0) {
               return `<div style="margin-top:1em;padding:1em 1.25em;border:1px solid var(--accent);font-size:0.9em">
                 <div style="display:flex;gap:0.75em;align-items:center;flex-wrap:wrap">
-                  <span style="color:var(--accent);font-weight:500">batch list ${unlistedTracks.length} unlisted track${unlistedTracks.length === 1 ? '' : 's'}</span>
+                  <span style="color:var(--accent);font-weight:500">batch publish ${unlistedTracks.length} unpublished track${unlistedTracks.length === 1 ? '' : 's'}</span>
                   <input type="text" class="project-input batch-album-price eth-price-input" data-alias="${a}" data-album="${b}" placeholder="0.01" style="width:8ch;font-size:0.9em;padding:0.4em 0.5ch">
                   <span style="color:var(--dim)">ETH per track</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.85em;margin-left:0.5ch"></span>
                   <input type="number" class="project-input batch-album-supply" data-alias="${a}" data-album="${b}" placeholder="unlimited" style="width:10ch;font-size:0.9em;padding:0.4em 0.5ch">
@@ -3977,7 +3977,7 @@ function renderModuleEditor(el, mod) {
                   <div class="batch-album-split-list" data-alias="${a}" data-album="${b}"></div>
                   <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all tracks</div>
                 </div>
-                <button class="buy-btn batch-list-album-btn" data-alias="${a}" data-album="${b}" style="font-size:0.9em;padding:0.5em 1.5ch;margin-top:0.75em">list album for sale</button>
+                <button class="buy-btn batch-list-album-btn" data-alias="${a}" data-album="${b}" style="font-size:0.9em;padding:0.5em 1.5ch;margin-top:0.75em">publish album</button>
                 <span class="batch-album-status" data-alias="${a}" data-album="${b}" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
               </div>`
             }
@@ -4140,7 +4140,7 @@ function renderModuleEditor(el, mod) {
         const albumCount = alias?.albums?.length || 0
         const ok = await confirmModal({
           title: `remove alias "${alias?.name || 'untitled'}"?`,
-          body: albumCount > 0 ? `this will also remove ${albumCount} album${albumCount === 1 ? '' : 's'} listed under this alias. on-chain media listings stay on-chain — only the link from your site is removed.` : 'this can\'t be undone from the editor — you would have to re-add the alias.',
+          body: albumCount > 0 ? `this will also remove ${albumCount} album${albumCount === 1 ? '' : 's'} published under this alias. on-chain publications stay on-chain — only the link from your site is removed.` : 'this can\'t be undone from the editor — you would have to re-add the alias.',
           confirmLabel: 'remove alias',
         })
         if (!ok) return
@@ -4157,7 +4157,7 @@ function renderModuleEditor(el, mod) {
         const trackCount = album?.tracks?.length || 0
         const ok = await confirmModal({
           title: `remove album "${album?.title || 'untitled'}"?`,
-          body: trackCount > 0 ? `this will also remove ${trackCount} track${trackCount === 1 ? '' : 's'} from your site. any on-chain listings for these tracks stay on-chain — only the link from your site is removed.` : 'remove this album from your site?',
+          body: trackCount > 0 ? `this will also remove ${trackCount} track${trackCount === 1 ? '' : 's'} from your site. any on-chain publications for these tracks stay on-chain — only the link from your site is removed.` : 'remove this album from your site?',
           confirmLabel: 'remove album',
         })
         if (!ok) return
@@ -4196,7 +4196,7 @@ function renderModuleEditor(el, mod) {
         const track = aliases[a]?.albums[b]?.tracks?.[ti]
         const ok = await confirmModal({
           title: `remove track "${track?.title || 'untitled'}"?`,
-          body: track?.mediaId ? 'this track is listed on-chain. removing it from your site does not delist it — to delist, click "delist" first.' : '',
+          body: track?.mediaId ? 'this track is published on-chain. removing it from your site does not unpublish it — to unpublish, click "unpublish" first.' : '',
           confirmLabel: 'remove track',
         })
         if (!ok) return
@@ -4222,7 +4222,7 @@ function renderModuleEditor(el, mod) {
             const perItem = m.formatFiat(eth * rate, currency)
             // Find track/item count from the batch label text nearby
             const batchText = e.target.parentElement?.querySelector('[style*="color:var(--accent)"]')?.textContent || ''
-            const countMatch = batchText.match(/(\d+)\s+unlisted/)
+            const countMatch = batchText.match(/(\d+)\s+unpublished/)
             const count = countMatch ? parseInt(countMatch[1]) : 0
             if (count > 1) {
               label.textContent = `(~${perItem} each, ~${m.formatFiat(eth * rate * count, currency)} total)`
@@ -4263,7 +4263,7 @@ function renderModuleEditor(el, mod) {
         const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
         const tracks = (album.tracks || []).filter(t => t.src && (t.mediaId === undefined || t.mediaId === null || t.mediaId === ''))
-        if (!tracks.length) { if (statusEl) statusEl.textContent = 'no unlisted tracks'; return }
+        if (!tracks.length) { if (statusEl) statusEl.textContent = 'no unpublished tracks'; return }
 
         // Build entries from unlisted tracks with IPFS sources
         const entries = []
@@ -4279,7 +4279,7 @@ function renderModuleEditor(el, mod) {
         if (!entries.length) { if (statusEl) statusEl.textContent = 'no tracks on IPFS'; return }
 
         try {
-          if (statusEl) statusEl.textContent = `listing ${entries.length} tracks... confirm in wallet`
+          if (statusEl) statusEl.textContent = `publishing ${entries.length} tracks... confirm in wallet`
           btn.disabled = true
           const { listBatchMedia } = await import('./media.js')
           const ids = await listBatchMedia(entries)
@@ -4298,11 +4298,11 @@ function renderModuleEditor(el, mod) {
               idIdx++
             }
           }
-          if (statusEl) statusEl.textContent = `listed ${ids.length} tracks — saving...`
+          if (statusEl) statusEl.textContent = `published ${ids.length} tracks — saving...`
           try {
             await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-            if (statusEl) statusEl.textContent = `listed ${ids.length} tracks — saved`
-          } catch { if (statusEl) statusEl.textContent = `listed ${ids.length} tracks — save failed, click save` }
+            if (statusEl) statusEl.textContent = `published ${ids.length} tracks — saved`
+          } catch { if (statusEl) statusEl.textContent = `published ${ids.length} tracks — save failed, click save` }
           renderModuleEditor(el, mod)
         } catch (e) {
           btn.disabled = false
@@ -4363,7 +4363,7 @@ function renderModuleEditor(el, mod) {
       if (imgsWithSrc.length >= 2 && unlistedImgs.length > 0) {
         html += `<div style="margin-top:0.75em;padding:0.5em;border:1px solid var(--accent);font-size:0.8em">
           <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
-            <span style="color:var(--accent)">batch list ${unlistedImgs.length} unlisted image${unlistedImgs.length === 1 ? '' : 's'}</span>
+            <span style="color:var(--accent)">batch publish ${unlistedImgs.length} unpublished image${unlistedImgs.length === 1 ? '' : 's'}</span>
             <input type="text" class="project-input batch-gallery-price eth-price-input" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
             <span style="color:var(--dim)">ETH each</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.8em;margin-left:0.5ch"></span>
             <input type="number" class="project-input batch-gallery-supply" placeholder="unlimited" style="width:10ch;font-size:0.85em;padding:0.2em 0.5ch">
@@ -4377,7 +4377,7 @@ function renderModuleEditor(el, mod) {
             <div class="batch-gallery-split-list"></div>
             <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all images</div>
           </div>
-          <button class="buy-btn batch-list-gallery-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list collection on-chain</button>
+          <button class="buy-btn batch-list-gallery-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">publish collection on-chain</button>
           <span class="batch-gallery-status" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
         </div>`
       }
@@ -4454,7 +4454,7 @@ function renderModuleEditor(el, mod) {
         const img = images[i]
         const ok = await confirmModal({
           title: `remove "${img?.title || 'this work'}"?`,
-          body: img?.mediaId ? 'this work is listed on-chain. removing it from your site does not delist it — to delist, click "delist" first, then remove.' : 'remove this work from your gallery?',
+          body: img?.mediaId ? 'this work is published on-chain. removing it from your site does not unpublish it — to unpublish, click "unpublish" first, then remove.' : 'remove this work from your gallery?',
           confirmLabel: 'remove',
         })
         if (!ok) return
@@ -4501,7 +4501,7 @@ function renderModuleEditor(el, mod) {
       const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
       const unlisted = images.filter(img => img.src && (img.mediaId === undefined || img.mediaId === null || img.mediaId === ''))
-      if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unlisted images'; return }
+      if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unpublished images'; return }
 
       const entries = []
       const entryToImg = []
@@ -4515,7 +4515,7 @@ function renderModuleEditor(el, mod) {
       if (!entries.length) { if (statusEl) statusEl.textContent = 'no images on IPFS'; return }
 
       try {
-        if (statusEl) statusEl.textContent = `listing ${entries.length} images... confirm in wallet`
+        if (statusEl) statusEl.textContent = `publishing ${entries.length} images... confirm in wallet`
         if (btn) btn.disabled = true
         const { listBatchMedia } = await import('./media.js')
         const ids = await listBatchMedia(entries)
@@ -4524,11 +4524,11 @@ function renderModuleEditor(el, mod) {
           entryToImg[i].mediaPrice = parseEther(String(priceEth)).toString()
           entryToImg[i].mediaMaxSupply = maxSupply
         }
-        if (statusEl) statusEl.textContent = `listed ${ids.length} images — saving...`
+        if (statusEl) statusEl.textContent = `published ${ids.length} images — saving...`
         try {
           await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-          if (statusEl) statusEl.textContent = `listed ${ids.length} images — saved`
-        } catch { if (statusEl) statusEl.textContent = `listed ${ids.length} images — save failed, click save` }
+          if (statusEl) statusEl.textContent = `published ${ids.length} images — saved`
+        } catch { if (statusEl) statusEl.textContent = `published ${ids.length} images — save failed, click save` }
         renderModuleEditor(el, mod)
       } catch (e) {
         if (btn) btn.disabled = false
@@ -4701,7 +4701,7 @@ function renderModuleEditor(el, mod) {
       const label = type === 'film' ? 'film' : type === 'video' ? 'video' : 'audio'
       return `<div style="margin-top:0.75em;padding:0.5em;border:1px solid var(--accent);font-size:0.8em">
         <div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
-          <span style="color:var(--accent)">batch list ${unlisted.length} unlisted ${label}${unlisted.length === 1 ? '' : 's'}</span>
+          <span style="color:var(--accent)">batch publish ${unlisted.length} unpublished ${label}${unlisted.length === 1 ? '' : 's'}</span>
           <input type="text" class="project-input batch-gen-price eth-price-input" placeholder="0.01" style="width:8ch;font-size:0.85em;padding:0.2em 0.5ch">
           <span style="color:var(--dim)">ETH each</span><span class="eth-fiat-label" style="color:var(--dim);font-size:0.8em;margin-left:0.5ch"></span>
           <input type="number" class="project-input batch-gen-supply" placeholder="unlimited" style="width:10ch;font-size:0.85em;padding:0.2em 0.5ch">
@@ -4715,7 +4715,7 @@ function renderModuleEditor(el, mod) {
           <div class="batch-gen-split-list"></div>
           <div style="color:var(--dim);font-size:0.75em;margin-top:0.25em">you automatically get the remainder (e.g. add a collaborator at 30% and you get 70%) — splits apply to all items</div>
         </div>
-        <button class="buy-btn batch-list-gen-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">list collection on-chain</button>
+        <button class="buy-btn batch-list-gen-btn" style="font-size:0.75em;padding:0.2em 0.8ch;margin-top:0.5em">publish collection on-chain</button>
         <span class="batch-gen-status" style="color:var(--muted);font-size:0.85em;margin-left:0.5ch"></span>
       </div>`
     })()
@@ -4783,7 +4783,7 @@ function renderModuleEditor(el, mod) {
         const item = items[i]
         const ok = await confirmModal({
           title: `remove "${item?.title || 'this entry'}"?`,
-          body: item?.mediaId ? 'this item is listed on-chain. removing it from your site does not delist it — to delist, click "delist" first.' : '',
+          body: item?.mediaId ? 'this item is published on-chain. removing it from your site does not unpublish it — to unpublish, click "unpublish" first.' : '',
           confirmLabel: 'remove',
         })
         if (!ok) return
@@ -4851,7 +4851,7 @@ function renderModuleEditor(el, mod) {
       const { collaborators: batchCollabs, splits: batchSplits } = splitResult
 
       const unlisted = items.filter(it => (it[mediaSrcKey] || it.src) && (it.mediaId === undefined || it.mediaId === null || it.mediaId === ''))
-      if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unlisted items'; return }
+      if (!unlisted.length) { if (statusEl) statusEl.textContent = 'no unpublished items'; return }
 
       const entries = []
       const entryToItem = []
@@ -4869,7 +4869,7 @@ function renderModuleEditor(el, mod) {
       if (!entries.length) { if (statusEl) statusEl.textContent = 'no items on IPFS'; return }
 
       try {
-        if (statusEl) statusEl.textContent = `listing ${entries.length} items... confirm in wallet`
+        if (statusEl) statusEl.textContent = `publishing ${entries.length} items... confirm in wallet`
         if (btn) btn.disabled = true
         const { listBatchMedia } = await import('./media.js')
         const ids = await listBatchMedia(entries)
@@ -4878,11 +4878,11 @@ function renderModuleEditor(el, mod) {
           entryToItem[i].mediaPrice = parseEther(String(priceEth)).toString()
           entryToItem[i].mediaMaxSupply = maxSupply
         }
-        if (statusEl) statusEl.textContent = `listed ${ids.length} items — saving...`
+        if (statusEl) statusEl.textContent = `published ${ids.length} items — saving...`
         try {
           await api('/api/site', { method: 'PUT', body: JSON.stringify(siteData) })
-          if (statusEl) statusEl.textContent = `listed ${ids.length} items — saved`
-        } catch { if (statusEl) statusEl.textContent = `listed ${ids.length} items — save failed, click save` }
+          if (statusEl) statusEl.textContent = `published ${ids.length} items — saved`
+        } catch { if (statusEl) statusEl.textContent = `published ${ids.length} items — save failed, click save` }
         renderModuleEditor(el, mod)
       } catch (e) {
         if (btn) btn.disabled = false

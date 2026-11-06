@@ -174,7 +174,7 @@ function mockResolve(addr) {
 function renderCardSafely(label, fn) {
   let inner = ''
   try {
-    inner = fn() || '<em style="color:var(--muted);font-size:0.85em">render returned empty (delisted or filtered)</em>'
+    inner = fn() || '<em style="color:var(--muted);font-size:0.85em">render returned empty (unpublished or filtered)</em>'
   } catch (e) {
     inner = `<em style="color:#ef4444;font-size:0.85em">render threw: ${escapeHtml(e?.message || String(e))}</em>`
   }
@@ -1091,7 +1091,7 @@ async function initDesign() {
               <article class="dw-card dw-card--media dw-card--delisted">
                 <div class="dw-card__artwork" style="background:linear-gradient(135deg,#333,#111)">
                   <span class="dw-card__state dw-card__state--delisted">
-                    <span class="dw-chip__dot" aria-hidden="true"></span>no longer listed
+                    <span class="dw-chip__dot" aria-hidden="true"></span>no longer published
                   </span>
                 </div>
                 <div class="dw-card__body">
@@ -1509,7 +1509,7 @@ async function initDesign() {
           <!-- ────────── group 3 — media-reference events with thumb ────────── -->
           <h4 style="font:600 1rem/1.3 var(--dw-font-display);letter-spacing:var(--dw-tracking-title);margin:1.75em 0 0.4em">media-reference rows — actor avatar + 56px thumb</h4>
           <p style="color:var(--muted);font-size:0.78em;margin:0 0 0.75em">
-            collected, listed, project-proposed, project-confirmed,
+            collected, published, project-proposed, project-confirmed,
             project-completing, project-completed, revenue-distributed.
             One 40px actor monogram in the left slot, a 56px square
             thumb at 12px radius on the right slot carrying the
@@ -1841,9 +1841,9 @@ async function initDesign() {
             and proposed variants below.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-            ${renderCardSafely('audio for sale', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+            ${renderCardSafely('audio published', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
             ${renderCardSafely('audio owned', () => U.renderMediaCard?.(m.uniAudioOwned, { resolve: mockResolve, owned: true }))}
-            ${renderCardSafely('image for sale', () => U.renderMediaCard?.(m.uniImage, { resolve: mockResolve, header: { kind: 'listed', actor: C_ADDR } }))}
+            ${renderCardSafely('image published', () => U.renderMediaCard?.(m.uniImage, { resolve: mockResolve, header: { kind: 'listed', actor: C_ADDR } }))}
             ${renderCardSafely('document, free', () => U.renderMediaCard?.(m.uniPdf, { resolve: mockResolve }))}
             ${renderCardSafely('ticket, limited', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'limited' }))}
             ${renderCardSafely('credential', () => U.renderMediaCard?.(m.uniCredential, { resolve: mockResolve }))}
@@ -1853,7 +1853,7 @@ async function initDesign() {
         <div class="design-block">
           <h3>media card — side-by-side <code class="proposed-tag">proposed</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
-            Audio listing · retired left, proposed right. Proposed
+            Audio publication · retired left, proposed right. Proposed
             drops the author fallback row, promotes the title to
             title-2, and runs a single-verb <code>collect</code>
             button with the price living in its one home (the meta
@@ -1864,7 +1864,7 @@ async function initDesign() {
             <div>
               <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
               <div class="design-card-frame">
-                ${renderCardSafely('audio listed buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+                ${renderCardSafely('audio published buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
               </div>
             </div>
             <div>
@@ -1875,7 +1875,7 @@ async function initDesign() {
                   <div class="media-card-info">
                     <div class="media-card-header">
                       <span class="media-card-header-actor">nappynina.com</span>
-                      <span class="media-card-header-verb">listed</span>
+                      <span class="media-card-header-verb">published</span>
                     </div>
                     <a class="media-card-title" href="#" onclick="return false">End Credits</a>
                     <div class="media-card-meta"><span>$1.92</span></div>
@@ -1900,7 +1900,7 @@ async function initDesign() {
             side-by-side below shows the intended hierarchy.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
-            ${renderCardSafely('video for sale', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+            ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
           </div>
         </div>
 
@@ -1920,7 +1920,7 @@ async function initDesign() {
             <div>
               <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
               <div class="design-card-frame">
-                ${renderCardSafely('video listed', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+                ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
               </div>
             </div>
             <div>
@@ -1931,7 +1931,7 @@ async function initDesign() {
                   <div class="media-card-info">
                     <div class="media-card-header">
                       <span class="media-card-header-actor">blackmatter.world</span>
-                      <span class="media-card-header-verb">listed</span>
+                      <span class="media-card-header-verb">published</span>
                     </div>
                     <a class="media-card-title" href="#" onclick="return false">Real Tea</a>
                     <div class="media-card-meta"><span>$9.68</span></div>
@@ -1986,7 +1986,7 @@ async function initDesign() {
           <h3>universal MediaCard, state overlays</h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
             Every state renders as an absolute-positioned overlay over
-            the artwork, never pushing layout. Delisted strikes the
+            the artwork, never pushing layout. Unpublished strikes the
             title. Gated shows the lock + a caption in the meta line.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
@@ -1995,7 +1995,7 @@ async function initDesign() {
             ${renderCardSafely('ended', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'ended' }))}
             ${renderCardSafely('sold out', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'sold-out' }))}
             ${renderCardSafely('limited', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'limited' }))}
-            ${renderCardSafely('delisted', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, state: 'delisted' }))}
+            ${renderCardSafely('unpublished', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, state: 'delisted' }))}
             ${renderCardSafely('gated', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, state: 'gated', gated: { unlockBy: 'ticket #12345' } }))}
           </div>
         </div>
@@ -3302,10 +3302,10 @@ async function initDesign() {
                 <span class="vault-lead-row-name">Ethereum <span style="color:var(--dim);font-size:0.9em">· BOLD savings</span></span>
                 <span class="vault-lead-row-bal">1,750.00 <span style="color:var(--dim)">BOLD</span></span>
                 <span class="vault-lead-row-fiat">$1,750.00</span>
-          <h3>sell this work <code>draft</code></h3>
+          <h3>publish this work <code>draft</code></h3>
           <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.5em">
-            per-item sell widget inside a module editor. mock item is
-            unlisted so the "sell this work" shape renders. calls
+            per-item publish widget inside a module editor. mock item is
+            unpublished so the "publish this work" shape renders. calls
             <code>renderSellWidget(item, id)</code> at settings.js:3108.
           </p>
           <div id="design-settings-sell-slot" class="design-settings-slot" style="max-width:560px"></div>

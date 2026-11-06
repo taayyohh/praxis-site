@@ -1,4 +1,4 @@
-// Works for Sale page — shows all PraxisMedia listings by this artist
+// Works page — shows all published PraxisMedia by this artist
 import { F } from './fragments.js'
 import { query } from './ponder.js'
 import { ipfsUrl, escapeHtml, formatEthAmount, registerPage, getWalletProvider, resolveContentTypes, classifyContentType, getAuthToken } from './utils.js'

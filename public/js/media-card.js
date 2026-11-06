@@ -409,7 +409,7 @@ function renderHeader(header, context, item) {
   const avatar = inlineAvatar(actor, avatarPic)
   const verb = {
     collected: 'collected',
-    listed: 'listed',
+    listed: 'published',
     posted: 'posted',
     contributed: 'contributed to library',
     proposed: 'proposed',
@@ -449,7 +449,7 @@ function renderStateOverlay(state, item) {
     return `<span class="media-card-state media-card-state--gated"><i class="ph ph-lock-key"></i></span>`
   }
   if (state === 'superseded') {
-    // Rendered as a secondary meta hint ("see newer listing"); the
+    // Rendered as a secondary meta hint ("see newer publication"); the
     // artwork and title get dimmed via the .media-card--state-superseded
     // modifier instead of an overlay chip.
     return ''
@@ -665,7 +665,7 @@ function renderMeta(item, category, state, context) {
   if (item.superseded || state === 'superseded') {
     const href = item.activeListingId ? `/art?media=${encodeURIComponent(item.activeListingId)}` : null
     parts.push(href
-      ? `<a class="media-card-meta-superseded" href="${esc(href)}">see newer listing</a>`
+      ? `<a class="media-card-meta-superseded" href="${esc(href)}">see newer publication</a>`
       : '<span class="media-card-meta-superseded">superseded</span>')
   }
   return parts.length
