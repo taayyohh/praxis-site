@@ -9951,14 +9951,14 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   margin: 0;
   font-family: inherit;
   font-weight: 700;
-  font-size: 2rem;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  font-size: 2.5rem;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
   color: var(--fg);
   text-wrap: balance;
 }
 @media (max-width: 560px) {
-  .art-album-title { font-size: 1.625rem; }
+  .art-album-title { font-size: 1.875rem; }
 }
 
 /* Byline — artist name + tabular year, 0.75 opacity so the title
@@ -9975,12 +9975,6 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   text-decoration: none;
 }
 .art-album-byline-artist:hover { text-decoration: underline; text-underline-offset: 2px; }
-.art-album-byline-year {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  margin-left: 0.5ch;
-  opacity: 0.85;
-}
 
 /* Collab attribution — routes to /collection?artist=<domain> so
    the click stays on the current tenant. */
@@ -9996,21 +9990,18 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .art-album-collab-artist:hover { text-decoration: underline; text-underline-offset: 2px; }
 
-/* Space-Mono-register meta strip — genre · tracks · release. */
+/* Space-Mono-register meta strip — year · genre · tracks · release.
+   Whitespace between siblings, no dot separators (Phase 9 rule). */
 .art-album-metaline {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.75ch;
+  gap: 0 1.25ch;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.8125rem;
   line-height: 1.4;
   color: var(--dim);
   letter-spacing: 0.015em;
-}
-.art-album-metaline > span + span::before {
-  content: '·';
-  margin-right: 0.75ch;
-  opacity: 0.6;
 }
 
 /* Description — editorial pull-quote. Capped at ~10 lines with a

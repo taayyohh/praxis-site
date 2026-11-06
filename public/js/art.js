@@ -413,11 +413,10 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   html += `<div class="art-album-meta">`
   html += `<h1 class="art-album-title">${escapeHtml(album.title || '')}</h1>`
 
-  // Byline — artist name + tabular year. The year sits in a mono
-  // slot so stacked bylines line up across the collection.
-  html += `<div class="art-album-byline">${t('art.by')} <a class="art-album-byline-artist" href="/collection?artist=${encodeURIComponent(artistLabel)}">${escapeHtml(artistLabel)}</a>`
-  if (album.year) html += `<span class="art-album-byline-year">${escapeHtml(String(album.year))}</span>`
-  html += `</div>`
+  // Byline — artist name only. The year/release metadata moved to
+  // the dense Space-Mono metaline below so the byline stays a single
+  // clean "by <artist>" attribution row.
+  html += `<div class="art-album-byline">${t('art.by')} <a class="art-album-byline-artist" href="/collection?artist=${encodeURIComponent(artistLabel)}">${escapeHtml(artistLabel)}</a></div>`
 
   // Collab attribution routes through the collection filter so the
   // "with <artist>" link stays on the current tenant.
@@ -425,8 +424,11 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
     html += `<div class="art-album-collab">with <a class="art-album-collab-artist" href="/collection?artist=${encodeURIComponent(album.collab.from)}">${escapeHtml(album.collab.from)}</a></div>`
   }
 
-  // Meta strip — genre · tracks · release. Space-Mono register.
+  // Meta strip — year · genre · tracks · release, separated by whitespace,
+  // Space-Mono register. Year leads so the hero reads top-down as
+  // title → by artist → 2026 13 tracks, mirroring an editorial jacket.
   const metaBits = []
+  if (album.year) metaBits.push(`<span>${escapeHtml(String(album.year))}</span>`)
   if (album.genre) metaBits.push(`<span>${escapeHtml(album.genre)}</span>`)
   if (validTracks.length) metaBits.push(`<span>${validTracks.length} tracks</span>`)
   if (album.releaseDate || album.released) {
