@@ -9912,26 +9912,35 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    overflow-x:hidden, so 100vw + negative margins can't leak a
    horizontal scrollbar. Cover scales fluidly with the viewport
    so the proportion stays felt across widths. */
+/* Full-canvas hero — sits inset from the viewport (not flush to
+   the edge, which read Wix-template). Small 8px radius + a thin
+   hairline border give it a real edge instead of a floating band.
+   Still escapes the body 1200px cage; still responsive via clamp.
+   Body has overflow-x: hidden so the vw math can't leak scroll. */
 .art-album {
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: clamp(260px, 28vw, 440px) 1fr;
+  grid-template-columns: clamp(220px, 24vw, 380px) 1fr;
   gap: clamp(2rem, 4vw, 4.5rem);
   align-items: center;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  width: calc(100vw - 2.5rem);
+  margin-left: calc(50% - 50vw + 1.25rem);
+  margin-right: calc(50% - 50vw + 1.25rem);
   margin-top: 0.5rem;
-  margin-bottom: 3rem;
-  padding: clamp(3rem, 6vw, 5.5rem) clamp(1.5rem, 6vw, 6rem) clamp(3.5rem, 7vw, 6rem);
-  border-radius: 0;
+  margin-bottom: 2.5rem;
+  padding: clamp(2.5rem, 5vw, 4.5rem) clamp(2rem, 5vw, 4.5rem) clamp(3rem, 6vw, 5rem);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
 }
 @media (max-width: 720px) {
   .art-album {
     grid-template-columns: 1fr;
     gap: 1.75rem;
-    padding: 2rem 1.25rem 2.5rem;
+    width: calc(100vw - 1.5rem);
+    margin-left: calc(50% - 50vw + 0.75rem);
+    margin-right: calc(50% - 50vw + 0.75rem);
+    padding: 1.75rem 1.25rem 2.25rem;
     align-items: start;
   }
 }
@@ -9947,6 +9956,7 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   position: absolute;
   inset: 0;
   z-index: -2;
+  border-radius: 8px;
   overflow: hidden;
   pointer-events: none;
 }
@@ -10014,15 +10024,15 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .art-album-title {
   margin: 0;
   font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  font-weight: 600;
-  font-size: clamp(2.75rem, 6vw, 6.25rem);
-  line-height: 0.88;
-  letter-spacing: -0.045em;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5.25vw, 5.25rem);
+  line-height: 0.92;
+  letter-spacing: -0.04em;
   color: var(--fg);
   text-wrap: balance;
 }
 @media (max-width: 720px) {
-  .art-album-title { letter-spacing: -0.035em; line-height: 0.92; }
+  .art-album-title { letter-spacing: -0.03em; line-height: 0.95; }
 }
 
 /* Byline — artist name + tabular year, 0.75 opacity so the title
@@ -10199,20 +10209,27 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    12px radius on hover, 3% fg-tint wash. Columns stay single-row
    on narrow widths by collapsing the per-track buy into the ···
    overflow. */
-/* Full-bleed tracklist — same escape as the hero so the two
-   full-width bands stack cleanly without the tracklist shrinking
-   back into the 1200px column underneath. */
+/* Wide tracklist — same inset escape as the hero so the two bands
+   stack with matching edges, not one flush + one caged. */
 .art-album-tracklist {
   display: flex;
   flex-direction: column;
   gap: 0;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  width: calc(100vw - 2.5rem);
+  margin-left: calc(50% - 50vw + 1.25rem);
+  margin-right: calc(50% - 50vw + 1.25rem);
   margin-top: 0.5rem;
   margin-bottom: 2rem;
-  padding: 0 clamp(1.5rem, 6vw, 6rem);
+  padding: 0 clamp(2rem, 5vw, 4.5rem);
   border-top: none; /* the row hover wash is the rhythm, not a hairline */
+}
+@media (max-width: 720px) {
+  .art-album-tracklist {
+    width: calc(100vw - 1.5rem);
+    margin-left: calc(50% - 50vw + 0.75rem);
+    margin-right: calc(50% - 50vw + 0.75rem);
+    padding: 0 1.25rem;
+  }
 }
 .art-album-track {
   position: relative;
@@ -10375,15 +10392,23 @@ a.art-album-track-title:hover {
 /* Collectors strip — "owned by <avatars> N collectors". Appears
    only when the album has collectors on-chain. */
 .art-album-collectors {
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  width: calc(100vw - 2.5rem);
+  margin-left: calc(50% - 50vw + 1.25rem);
+  margin-right: calc(50% - 50vw + 1.25rem);
   margin-top: 2rem;
   margin-bottom: 2rem;
-  padding: 0 clamp(1.5rem, 6vw, 6rem);
+  padding: 0 clamp(2rem, 5vw, 4.5rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+@media (max-width: 720px) {
+  .art-album-collectors {
+    width: calc(100vw - 1.5rem);
+    margin-left: calc(50% - 50vw + 0.75rem);
+    margin-right: calc(50% - 50vw + 0.75rem);
+    padding: 0 1.25rem;
+  }
 }
 .art-album-collectors-label {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -10410,11 +10435,19 @@ a.art-album-track-title:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  width: calc(100vw - 2.5rem);
+  margin-left: calc(50% - 50vw + 1.25rem);
+  margin-right: calc(50% - 50vw + 1.25rem);
   margin-top: 1.5rem;
-  padding: 0 clamp(1.5rem, 6vw, 6rem);
+  padding: 0 clamp(2rem, 5vw, 4.5rem);
+}
+@media (max-width: 720px) {
+  .art-album-links {
+    width: calc(100vw - 1.5rem);
+    margin-left: calc(50% - 50vw + 0.75rem);
+    margin-right: calc(50% - 50vw + 0.75rem);
+    padding: 0 1.25rem;
+  }
 }
 .art-album-chip {
   display: inline-flex;
