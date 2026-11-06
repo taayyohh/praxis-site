@@ -112,6 +112,54 @@ async function _crossLookupAlbum(aliasSlug, albumSlug) {
   return { domain: entry.domain, aliasName: entry.aliasName, ...(album || {}) }
 }
 
+// Fuzzy vanity resolver: handles stale or imprecise URLs where the first
+// segment is a slugified domain (not an alias name) and/or the second
+// segment is a slugified TRACK title inside an album rather than the
+// album slug. Returns { domain, aliasName, albumTitle, albumArt, trackMediaId? }
+// pointing to the canonical album the item lives in. Loads one tenant's
+// site.json on hit (bounded) and reads nothing on miss.
+async function _resolveVanityMusic(firstSlug, secondSlug) {
+  if (Date.now() - _crossIndexTs > _CROSS_TTL_MS) await _buildCrossIndex()
+  // Find tenant: first by alias slug, then by domain slug.
+  let targetDomain = null
+  const byAlias = _crossIndex.get(firstSlug)
+  if (byAlias) targetDomain = byAlias.domain
+  else {
+    for (const entry of _crossIndex.values()) {
+      if (slugify(entry.domain) === firstSlug) { targetDomain = entry.domain; break }
+    }
+  }
+  if (!targetDomain) return null
+  // Load that tenant's site.json. Bounded by tenant count on hits only.
+  try {
+    const handles = await readdir(_ARTISTS_DIR)
+    for (const handle of handles) {
+      try {
+        const raw = await readFile(join(_ARTISTS_DIR, handle, 'site.json'), 'utf8')
+        const site = JSON.parse(raw)
+        if (site?.domain !== targetDomain) continue
+        const music = (site.modules || []).find(m => m.type === 'music')
+        for (const alias of (music?.data?.aliases || [])) {
+          for (const album of (alias.albums || [])) {
+            // Exact album title match
+            if (slugify(album.title || '') === secondSlug) {
+              return { domain: targetDomain, aliasName: alias.name, albumTitle: album.title, albumArt: album.art, albumYear: album.year }
+            }
+            // Track-title match → point at the owning album
+            for (const track of (album.tracks || [])) {
+              if (slugify(track.title || '') === secondSlug) {
+                return { domain: targetDomain, aliasName: alias.name, albumTitle: album.title, albumArt: album.art, albumYear: album.year, trackMediaId: track.mediaId, trackTitle: track.title }
+              }
+            }
+          }
+        }
+        break
+      } catch {}
+    }
+  } catch {}
+  return null
+}
+
 /** @param {object} ctx @returns {Promise<boolean>} */
 export async function handleSsr(ctx) {
   const { req, res, url, path, method,
@@ -425,23 +473,19 @@ export async function handleSsr(ctx) {
             crossHint = { domain: match.domain, aliasName: match.aliasName, albumTitle: match.title }
           }
         }
-        // Dead-alias rescue: stale URLs from before the Phase 15 kind refactor
-        // encoded single-track items as /music/<domain-slug>/<track-slug>.
-        // Those can never resolve to an album. If aliasSlug matches a known
-        // tenant's slugified domain, 301 redirect to that tenant's home so
-        // the viewer lands somewhere useful instead of "album not found".
+        // Fuzzy rescue: aliasSlug might be a slugified domain, albumSlug
+        // might be a track title. Common with stale URLs built by the
+        // pre-Phase-15 MediaCard code for single-track items. Resolve
+        // to the owning album and render inline (track→album lands on
+        // the detail page that lists every track and plays them).
         if (!ogTitle) {
-          try {
-            const idx = await _buildCrossIndex()
-            for (const entry of idx.values()) {
-              const domainSlug = slugify(entry.domain)
-              if (domainSlug === aliasSlug && entry.domain !== site.domain) {
-                res.writeHead(301, { Location: `https://${entry.domain}` })
-                res.end()
-                return true
-              }
-            }
-          } catch {}
+          const fuzzy = await _resolveVanityMusic(aliasSlug, albumSlug)
+          if (fuzzy && fuzzy.domain !== site.domain) {
+            ogTitle = `${fuzzy.albumTitle} — ${fuzzy.aliasName}`
+            ogImage = fuzzy.albumArt ? `/api/img?url=${encodeURIComponent(fuzzy.albumArt)}&w=1200&fmt=jpg` : null
+            ogDescription = `${fuzzy.aliasName} (${fuzzy.albumYear || ''})`
+            crossHint = { domain: fuzzy.domain, aliasName: fuzzy.aliasName, albumTitle: fuzzy.albumTitle }
+          }
         }
       } else if (mod?.data && type === 'gallery') {
         const slug = decodeURIComponent(segs[1])
