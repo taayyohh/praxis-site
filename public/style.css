@@ -11319,20 +11319,28 @@ a.art-album-track-title:hover {
    (--green, --red, --muted). One shared base. No new tokens; borders only
    do work on interactive variants. */
 .event-card {
-  display: block;
+  display: flex;
   text-decoration: none;
   color: inherit;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
   background: transparent;
+  min-height: 96px;
 }
 .event-card[href] { cursor: pointer; }
 .event-card[href]:hover { border-color: color-mix(in srgb, var(--fg) 24%, var(--border)); }
 .event-card--green { border-color: color-mix(in srgb, var(--green) 18%, var(--border)); }
 .event-card--red   { border-color: color-mix(in srgb, var(--red) 20%, var(--border)); }
 .event-card--muted { border-color: var(--border); opacity: 0.9; }
-.event-card-inner { padding: 1em 1.25em; }
+.event-card-inner {
+  padding: 1.25em 1.5em;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
 
 .event-card-headline-row {
   display: flex;
@@ -11356,12 +11364,13 @@ a.art-album-track-title:hover {
 .event-card--red   .event-card-icon { color: var(--red); }
 
 .event-card-headline {
-  font-size: 0.9em;
-  line-height: 1.5;
+  font-size: 1.0625em;
+  line-height: 1.45;
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.005em;
 }
 .event-card-name   { color: var(--accent); font-weight: 600; }
 .event-card-strong { color: var(--fg); font-weight: 700; }
