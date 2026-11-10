@@ -430,6 +430,7 @@ async function initPost() {
             await vault.showSendModal(window.getWalletAddress?.(), {
               prefillTo: authorAddr,
               prefillName: displayName,
+              mode: 'tip',
             })
           } catch (e) { console.warn('tip flow unavailable:', e?.message) }
         })

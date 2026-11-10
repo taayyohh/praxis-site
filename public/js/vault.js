@@ -2402,16 +2402,20 @@ function showSwapModal(addr, ethBalance, ethPrices, currency, yieldData, chainBa
 }
 
 export async function showSendModal(fromAddress, opts = {}) {
-  // `opts` supports { prefillTo, prefillName } so callers like the
-  // post-page tip button can open the sheet with the recipient
-  // already filled in. If prefillTo isn't set the sheet behaves
-  // exactly as before.
+  // `opts` supports { prefillTo, prefillName, mode }. The `mode: 'tip'`
+  // branch (used by the post-page tip button and anywhere else we're
+  // framing a send as artist support) reskins the whole sheet:
+  // recipient is locked as a name chip (no 0x noise), chain picker
+  // demotes to a tiny footer, and presets become fixed fiat amounts.
   const existing = document.getElementById('send-modal-overlay')
   if (existing) { existing.remove(); return }
 
+  const isTip = opts.mode === 'tip' && !!opts.prefillTo
+  const recipientName = (opts.prefillName && String(opts.prefillName).trim()) || ''
+
   const overlay = document.createElement('div')
   overlay.id = 'send-modal-overlay'
-  overlay.className = 'wizard-overlay vault-save-overlay'
+  overlay.className = 'wizard-overlay vault-save-overlay' + (isTip ? ' vault-send-tip' : '')
   overlay.style.zIndex = '10002'
 
   // Multi-chain read + prices in parallel — same pattern the cashout
@@ -2432,9 +2436,41 @@ export async function showSendModal(fromAddress, opts = {}) {
   const initialSource = rows.sort((a, b) => b.fiat - a.fiat)[0] || { chainId: OPTIMISM_CHAIN_ID, name: 'Optimism', balance: 0n, ethNum: 0, fiat: 0 }
   let source = initialSource
 
-  overlay.innerHTML = `
-    <button class="wizard-close vault-save-close" aria-label="close">×</button>
-    <div class="vault-save-doc">
+  // Short 0x for the recipient chip — shown small under their name
+  // so the viewer can still verify who the money's going to, without
+  // the giant address block dominating the sheet.
+  const recipShort = opts.prefillTo && String(opts.prefillTo).length === 42
+    ? `${String(opts.prefillTo).slice(0, 6)}…${String(opts.prefillTo).slice(-4)}`
+    : ''
+
+  // Tip-mode preset ladder — fixed fiat amounts tuned to tipping,
+  // not % of balance. Scales roughly with the currency's unit size
+  // so the ladder reads naturally in JPY/KRW/NGN as well as USD/EUR.
+  function tipPresetLadder(code) {
+    const base = {
+      USD: [1, 5, 10, 25], EUR: [1, 5, 10, 25], GBP: [1, 5, 10, 25],
+      BRL: [5, 10, 25, 50], JPY: [100, 500, 1000, 3000], CNY: [5, 20, 50, 100],
+      KRW: [1000, 5000, 10000, 25000], INR: [100, 500, 1000, 2500],
+      NGN: [500, 2000, 5000, 10000], KES: [100, 500, 1000, 2500],
+    }
+    return base[code] || base.USD
+  }
+  const tipPresets = tipPresetLadder(currency)
+
+  // Header and body swap wholesale for tip mode — same underlying
+  // wiring (toInput, amountInput, source badge/breakdown, status
+  // slot), different presentation layer.
+  const headerHtml = isTip
+    ? `
+      <header class="vault-save-lead vault-send-tip-lead">
+        <div class="vault-save-lead-title"><h1>support ${escapeHtml(recipientName || 'this writer')}</h1></div>
+      </header>
+      <p class="vault-save-lead-sub vault-send-tip-sub">their work is worth paying for. choose what it meant to you.</p>
+      <button type="button" id="send-source-badge" class="send-chain-badge vault-send-tip-source" aria-expanded="false" hidden>
+        <span id="send-source-name">${escapeHtml(source.name)}</span>
+        <span class="send-chain-caret">▾</span>
+      </button>`
+    : `
       <header class="vault-save-lead">
         <div class="vault-save-lead-title"><h1>send</h1></div>
         <button type="button" id="send-source-badge" class="send-chain-badge" aria-expanded="false">
@@ -2442,35 +2478,64 @@ export async function showSendModal(fromAddress, opts = {}) {
           <span class="send-chain-caret">▾</span>
         </button>
       </header>
-      <p class="vault-save-lead-sub">Send ETH to another wallet — by handle, ourpraxis.network domain, or 0x address.</p>
+      <p class="vault-save-lead-sub">Send ETH to another wallet — by handle, ourpraxis.network domain, or 0x address.</p>`
+
+  const toFieldHtml = isTip
+    ? `
+      <div class="vault-send-tip-recipient">
+        <div class="vault-send-tip-recipient-label">sending to</div>
+        <div class="vault-send-tip-recipient-name">${escapeHtml(recipientName || recipShort || 'the writer')}</div>
+        ${recipShort ? `<div class="vault-send-tip-recipient-addr">${escapeHtml(recipShort)}</div>` : ''}
+        <input id="send-to" type="hidden" value="${escapeHtml(opts.prefillTo || '')}">
+        <div id="send-resolved" class="vault-save-rate" hidden></div>
+      </div>`
+    : `
+      <div>
+        <div class="vault-save-field-label">to</div>
+        <input id="send-to" type="text" placeholder="handle, ourpraxis.network domain, or 0x…" class="vault-save-to-input" autocomplete="off" value="${opts.prefillTo ? escapeHtml(opts.prefillTo) : ''}">
+        <div id="send-resolved" class="vault-save-rate">&nbsp;</div>
+      </div>`
+
+  const amountFootHtml = isTip
+    ? `
+      <div class="vault-save-amount-foot vault-send-tip-foot">
+        <span id="send-eth-preview" class="vault-save-fiat vault-send-tip-eth">≈ 0 ETH</span>
+        <button type="button" id="send-tip-chain-link" class="vault-send-tip-chain-link">
+          sending from <span id="send-tip-chain-name">${escapeHtml(source.name)}</span>
+        </button>
+      </div>
+      <div class="vault-presets vault-send-tip-presets" id="send-presets"></div>`
+    : `
+      <div class="vault-save-amount-foot">
+        <span id="send-eth-preview" class="vault-save-fiat">≈ 0 ETH</span>
+        <span style="flex:1"></span>
+        <div class="vault-presets" id="send-presets"></div>
+      </div>`
+
+  overlay.innerHTML = `
+    <button class="wizard-close vault-save-close" aria-label="close">×</button>
+    <div class="vault-save-doc">
+      ${headerHtml}
 
       <div id="send-source-breakdown" class="send-source-breakdown" hidden></div>
 
       <section class="vault-save-doc-body">
-        <div>
-          <div class="vault-save-field-label">to</div>
-          <input id="send-to" type="text" placeholder="handle, ourpraxis.network domain, or 0x…" class="vault-save-to-input" autocomplete="off" value="${opts.prefillTo ? escapeHtml(opts.prefillTo) : ''}">
-          <div id="send-resolved" class="vault-save-rate">&nbsp;</div>
-        </div>
+        ${toFieldHtml}
 
         <div class="vault-save-amount">
           <div class="vault-save-amount-head">
-            <span class="vault-save-field-label">amount</span>
+            <span class="vault-save-field-label">${isTip ? 'how much' : 'amount'}</span>
             <span class="vault-save-bal" id="send-source-bal"></span>
           </div>
           <div class="vault-save-amount-row send-amount-row-fiat">
             <span class="send-amount-currency">${_currencySymbol(currency)}</span>
             <input id="send-amount" type="text" inputmode="decimal" placeholder="0" class="vault-save-amount-input" autocomplete="off">
           </div>
-          <div class="vault-save-amount-foot">
-            <span id="send-eth-preview" class="vault-save-fiat">≈ 0 ETH</span>
-            <span style="flex:1"></span>
-            <div class="vault-presets" id="send-presets"></div>
-          </div>
+          ${amountFootHtml}
         </div>
 
         <div class="vault-save-actions">
-          <button id="send-confirm" class="vault-save-btn">send</button>
+          <button id="send-confirm" class="vault-save-btn">${isTip ? 'send' : 'send'}</button>
           <div id="send-status" class="vault-save-status" role="status"></div>
         </div>
       </section>
@@ -2513,14 +2578,26 @@ export async function showSendModal(fromAddress, opts = {}) {
 
   function renderSourceUi() {
     sourceNameEl.textContent = source.name
-    const balFiat = ethRate ? formatFiat(source.fiat, currency) : ''
-    sourceBalEl.textContent = `${source.ethNum.toFixed(6)} ETH${balFiat ? ' · ' + balFiat : ''}`
-    // Presets are % of source balance's fiat value — one tap = 25%
-    // of what's actually sendable from the selected chain.
-    presetsEl.innerHTML = [25, 50, 75, 100].map(pct => {
-      const fiatAmt = source.fiat * (pct === 100 ? 0.995 : pct / 100)  // 100% keeps a tiny gas cushion
-      return `<button type="button" class="vault-preset" data-fiat="${fiatAmt.toFixed(2)}">${pct === 100 ? 'max' : pct + '%'}</button>`
-    }).join('')
+    const tipChainName = dialog.querySelector('#send-tip-chain-name')
+    if (tipChainName) tipChainName.textContent = source.name
+    if (isTip) {
+      // Tip mode: hide the raw ETH balance (too techy), and offer
+      // a fixed fiat ladder instead of % of balance. The user is
+      // choosing a gift, not drawing down an account.
+      sourceBalEl.textContent = ''
+      presetsEl.innerHTML = tipPresets.map(amt =>
+        `<button type="button" class="vault-preset vault-send-tip-preset" data-fiat="${amt}">${_currencySymbol(currency)}${amt.toLocaleString()}</button>`
+      ).join('')
+    } else {
+      const balFiat = ethRate ? formatFiat(source.fiat, currency) : ''
+      sourceBalEl.textContent = `${source.ethNum.toFixed(6)} ETH${balFiat ? ' · ' + balFiat : ''}`
+      // Presets are % of source balance's fiat value — one tap = 25%
+      // of what's actually sendable from the selected chain.
+      presetsEl.innerHTML = [25, 50, 75, 100].map(pct => {
+        const fiatAmt = source.fiat * (pct === 100 ? 0.995 : pct / 100)  // 100% keeps a tiny gas cushion
+        return `<button type="button" class="vault-preset" data-fiat="${fiatAmt.toFixed(2)}">${pct === 100 ? 'max' : pct + '%'}</button>`
+      }).join('')
+    }
     presetsEl.querySelectorAll('.vault-preset').forEach(btn => {
       btn.addEventListener('click', () => {
         amountInput.value = parseFloat(btn.dataset.fiat || '0').toFixed(2)
@@ -2556,6 +2633,12 @@ export async function showSendModal(fromAddress, opts = {}) {
   }
 
   badge.addEventListener('click', () => {
+    renderBreakdown(badge.getAttribute('aria-expanded') !== 'true')
+  })
+  // In tip mode the chain badge is hidden; the tiny "sending from
+  // {chain}" footer link is the only affordance for switching chains,
+  // and it opens the same breakdown.
+  dialog.querySelector('#send-tip-chain-link')?.addEventListener('click', () => {
     renderBreakdown(badge.getAttribute('aria-expanded') !== 'true')
   })
 

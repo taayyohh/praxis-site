@@ -8627,6 +8627,123 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
   gap: 0.15em;
   margin: 0.4em 0 0.8em;
 }
+
+/* --- Tip mode (support-the-artist flow) -------------------------
+   Reskins the send sheet to lead with the artist, not the plumbing.
+   The recipient becomes a named chip (no 0x noise unless you squint),
+   the chain picker demotes to a tiny footer link, and the preset
+   ladder switches from "% of balance" to fixed gift amounts.
+*/
+.vault-send-tip .vault-save-lead {
+  margin-bottom: 0.3em;
+}
+.vault-send-tip .vault-send-tip-lead h1 {
+  font-family: 'Chillax', 'Satoshi', system-ui, sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--fg);
+  word-break: break-word;
+}
+.vault-send-tip .vault-send-tip-sub {
+  font-size: 1.05em;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 2em;
+  max-width: 36ch;
+}
+.vault-send-tip-recipient {
+  padding: 1em 0;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.vault-send-tip-recipient-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+  margin-bottom: 0.35em;
+}
+.vault-send-tip-recipient-name {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.vault-send-tip-recipient-addr {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 0.72em;
+  color: var(--dim);
+  margin-top: 0.2em;
+  letter-spacing: 0.02em;
+}
+.vault-send-tip .vault-save-amount-head .vault-save-field-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+.vault-send-tip-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  margin-top: 0.5em;
+}
+.vault-send-tip-eth {
+  font-size: 0.72em;
+  color: var(--dim);
+}
+.vault-send-tip-chain-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.72em;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  text-align: right;
+}
+.vault-send-tip-chain-link:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+.vault-send-tip-presets {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 1em;
+  flex-wrap: wrap;
+}
+.vault-send-tip-preset {
+  flex: 1 1 auto;
+  min-width: 4.5em;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  border-radius: 2px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 500;
+  padding: 0.7em 0.5em;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+.vault-send-tip-preset:hover {
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.vault-send-tip .vault-save-amount-input {
+  font-size: clamp(2.5rem, 7vw, 4rem);
+}
+.vault-send-tip .send-amount-currency {
+  font-size: clamp(2.5rem, 7vw, 4rem);
+}
+.vault-send-tip .vault-save-btn {
+  font-size: 1em;
+  letter-spacing: 0.01em;
+}
 .send-source-breakdown[hidden] { display: none; }
 
 /* Fiat-first amount row — the currency symbol sits inline with a

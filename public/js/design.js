@@ -3105,6 +3105,7 @@ async function initDesign() {
           </p>
           <div class="design-btn-row" id="design-vault-openers" style="display:flex;flex-wrap:wrap;gap:0.4em 0.5em">
             <button class="dw-chip-pill" data-open="vault-send"><i class="dw-chip-pill__icon ph ph-paper-plane-tilt" aria-hidden="true"></i>send money</button>
+            <button class="dw-chip-pill" data-open="vault-send-tip"><i class="dw-chip-pill__icon ph ph-heart" aria-hidden="true"></i>tip the writer</button>
             <button class="dw-chip-pill" data-open="vault-receive"><i class="dw-chip-pill__icon ph ph-tray-arrow-down" aria-hidden="true"></i>receive money</button>
             <button class="dw-chip-pill" data-open="vault-swap"><i class="dw-chip-pill__icon ph ph-arrows-left-right" aria-hidden="true"></i>move between chains</button>
             <button class="dw-chip-pill" data-open="vault-purchase-confirm"><i class="dw-chip-pill__icon ph ph-check-circle" aria-hidden="true"></i>confirm a purchase</button>
@@ -6388,6 +6389,13 @@ async function initDesign() {
         const mod = await import('./ramp.js'); mod.showOfframpModal?.(addr)
       } else if (kind === 'vault-send') {
         const mod = await import('./vault.js'); await mod.showSendModal(addr)
+      } else if (kind === 'vault-send-tip') {
+        const mod = await import('./vault.js')
+        await mod.showSendModal(addr, {
+          prefillTo: '0x707e418302890cbc09c1f70d5f69400f7133d166',
+          prefillName: 'nappy nina',
+          mode: 'tip',
+        })
       } else if (kind === 'vault-receive') {
         const mod = await import('./vault.js'); await mod.showReceiveModal(addr)
       } else if (kind === 'vault-swap') {
