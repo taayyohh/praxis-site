@@ -1210,6 +1210,7 @@ const _DOMAIN_CACHE_TTL = 600000 // L16: 10 minute TTL
 
 const _profilePicCache = new Map()
 const _nameCache = new Map()
+const _bioCache = new Map()
 
 export function getProfilePic(addr) {
   if (!addr) return null
@@ -1237,6 +1238,26 @@ export function getArtistName(addr) {
     if (val) {
       if (_nameCache.size >= _DOMAIN_CACHE_MAX) _nameCache.delete(_nameCache.keys().next().value)
       _nameCache.set(key, val)
+      return val
+    }
+  } catch {}
+  return null
+}
+
+// Short bio pulled from the artist's site.json (via /api/artists/resolve).
+// Rendered as a 2-line clamp on the /network card. Cached alongside
+// profilePic + name so the three live together — one batch fetch, one
+// render pass, no second round-trip for the tagline.
+export function getArtistBio(addr) {
+  if (!addr) return null
+  const key = addr.toLowerCase()
+  const cached = _bioCache.get(key)
+  if (cached) return cached
+  try {
+    const val = sessionStorage.getItem(`bio:${key}`)
+    if (val) {
+      if (_bioCache.size >= _DOMAIN_CACHE_MAX) _bioCache.delete(_bioCache.keys().next().value)
+      _bioCache.set(key, val)
       return val
     }
   } catch {}
@@ -1323,6 +1344,12 @@ export async function resolveAddresses(queryFn, addresses) {
             _nameCache.set(nk, name)
             try { sessionStorage.setItem(`name:${nk}`, name) } catch {}
           }
+          for (const [addr, bio] of Object.entries(data.bios || {})) {
+            const bk = addr.toLowerCase()
+            if (_bioCache.size >= _DOMAIN_CACHE_MAX) _bioCache.delete(_bioCache.keys().next().value)
+            _bioCache.set(bk, bio)
+            try { sessionStorage.setItem(`bio:${bk}`, bio) } catch {}
+          }
         }
       } catch {}
     }
@@ -1373,6 +1400,14 @@ export async function resolveAddresses(queryFn, addresses) {
           try { sessionStorage.setItem(`name:${nk}`, name) } catch {}
           if (_nameCache.size > _DOMAIN_CACHE_MAX) {
             _nameCache.delete(_nameCache.keys().next().value)
+          }
+        }
+        for (const [addr, bio] of Object.entries(data.bios || {})) {
+          const bk = addr.toLowerCase()
+          _bioCache.set(bk, bio)
+          try { sessionStorage.setItem(`bio:${bk}`, bio) } catch {}
+          if (_bioCache.size > _DOMAIN_CACHE_MAX) {
+            _bioCache.delete(_bioCache.keys().next().value)
           }
         }
       } catch (e) {

@@ -3,7 +3,7 @@ import { createWalletClient, custom, parseEther } from './vendor.js'
 import { optimism } from './vendor.js'
 import { query } from './ponder.js'
 import { t } from './i18n.js'
-import { getPublicClient, isBlocked, blockUser, unblockUser, registerPage, requireUser, escapeHtml , getWalletProvider } from './utils.js'
+import { getPublicClient, isBlocked, blockUser, unblockUser, registerPage, requireUser, escapeHtml , getWalletProvider, resolveAddresses, getProfilePic, getArtistName, getArtistBio } from './utils.js'
 import { TREASURY_ADMIN_ADDR } from './contracts.js'
 
 import { REGISTRY_ABI, INVITES_ABI, INVITES_ADDR, ARTIST_SPONSOR_ABI, ARTIST_SPONSOR_ADDR } from './contracts.js'
@@ -12,6 +12,100 @@ const PAGE_SIZE = 100
 
 let networkData = null
 let _initGen = 0
+
+// Org-domain set, refreshed per init. An artist whose domain is in
+// here renders with the "organization" eyebrow instead of "artist".
+// Kept module-local so the card renderer stays sync — no per-row
+// awaits in the hot path.
+let _orgDomainSet = new Set()
+
+// Pulled from feed-cards' avatar pattern: profilePic URLs on Praxis
+// land as `/api/ipfs-proxy/<cid>` (see server.js sanitizer at ~6876).
+// Those we route through /api/img for resizing. Older rows may carry
+// an external http(s) URL — pass those through unchanged so twitter
+// avatars still render, just unresized.
+function avatarSrc(pic, w = 192) {
+  if (!pic) return ''
+  if (pic.startsWith('/api/ipfs-proxy/') || pic.startsWith('/ipfs/')) {
+    return `/api/img?url=${encodeURIComponent(pic)}&w=${w}`
+  }
+  return pic
+}
+
+// The one card shape the list view renders — artist, organization,
+// audience. Avatar left, Chillax name + mono domain + 2-line bio
+// middle, hairline chip stack right. Kind decides the eyebrow + the
+// link destination; everything else lines up.
+//
+// `card` shape: { addr, domain, displayName, bio, pic, kind,
+//   isMe, isFollowing, isMutualFollow, registryAddress }
+// kind is one of 'artist' | 'organization' | 'audience'.
+function renderNetworkCard(card) {
+  const addr = card.addr.toLowerCase()
+  const kind = card.kind || 'artist'
+  const name = card.displayName || card.domain || ''
+  // Initial is the first alphanumeric of the name — strip anything else
+  // so an on-chain name starting with "<" or a quote never touches the
+  // onerror attribute. Covers the broken-image fallback safely.
+  const rawInitial = (name || addr).trim().charAt(0).toLowerCase()
+  const initial = /^[a-z0-9]$/.test(rawInitial) ? rawInitial : '•'
+
+  // Always render the typographic initial as the base layer; the <img>,
+  // when present, paints over it. If the image fails to load we just
+  // hide it — the initial shows through. No inline JS string-splicing.
+  const avatar = card.pic
+    ? `<span class="nc-avatar-initial">${initial}</span><img src="${escapeHtml(avatarSrc(card.pic, 192))}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<span class="nc-avatar-initial">${initial}</span>`
+
+  const eyebrowLabel = kind === 'organization' ? 'organization' : kind === 'audience' ? 'audience' : 'artist'
+
+  const showDomain = card.domain && card.domain !== name
+  const domainLine = showDomain
+    ? `<div class="nc-domain">${escapeHtml(card.domain)}</div>`
+    : ''
+
+  const bioLine = card.bio
+    ? `<p class="nc-bio">${escapeHtml(card.bio)}</p>`
+    : ''
+
+  // Follow chip — three states. "following" is a quiet tag when the
+  // viewer already follows; "unfollow" the destructive on-hover is
+  // handled upstream by the existing .follow-btn toggle. New visitors
+  // see the plain "follow" chip.
+  let followChip = ''
+  if (card.registryAddress && !card.isMe) {
+    if (card.isFollowing) {
+      followChip = `<button class="nc-chip nc-chip-filled follow-btn" data-follow-addr="${addr}">${t('network.unfollow')}</button>`
+    } else {
+      followChip = `<button class="nc-chip follow-btn" data-follow-addr="${addr}">${t('network.follow')}</button>`
+    }
+  }
+
+  // Message bubble — only when mutual follow, same gate the old UI
+  // used. Round icon chip, no label, routes to /messages?dm=addr.
+  const dmChip = !card.isMe && card.isMutualFollow
+    ? `<button class="nc-chip nc-chip-icon dm-btn" data-dm-addr="${addr}" data-dm-domain="${escapeHtml(card.domain || '')}" title="message" aria-label="message"><i class="ph ph-chat-circle"></i></button>`
+    : ''
+
+  const href = kind === 'audience'
+    ? `/network?audience=${addr}`
+    : `/network?artist=${addr}`
+
+  const itemClass = kind === 'audience' ? 'nc-item supporter-item' : 'nc-item'
+
+  return `<li class="${itemClass}" data-addr="${addr}">
+    <a href="${href}" class="nc-link">
+      <div class="nc-avatar">${avatar}</div>
+      <div class="nc-body">
+        <span class="nc-eyebrow">${eyebrowLabel}</span>
+        <h3 class="nc-name">${escapeHtml(name)}</h3>
+        ${domainLine}
+        ${bioLine}
+      </div>
+      <div class="nc-actions">${followChip}${dmChip}</div>
+    </a>
+  </li>`
+}
 
 registerPage('network-data', () => {
   // if ?artist= param is present, profile.js handles it — skip network init
@@ -31,6 +125,7 @@ registerPage('network-data', () => {
 
 async function init() {
   const thisGen = ++_initGen
+  _orgDomainSet = new Set()
   const registryAddress = networkData?.dataset?.registry
   const statusEl = document.getElementById('network-status')
   const listEl = document.getElementById('network-list')
@@ -133,6 +228,7 @@ async function init() {
       if (btn) {
         btn.textContent = isFollowing ? t('network.follow') : t('network.unfollow')
         btn.classList.toggle('nc-btn-filled', !isFollowing)
+        btn.classList.toggle('nc-chip-filled', !isFollowing)
       }
     }
 
@@ -167,21 +263,37 @@ async function init() {
       // surface the reason. getOptimismWallet throws typed errors.
       if (msg === 'wrong chain' || msg === 'wallet unauthorized' || msg === 'wallet unavailable') {
         followState[targetAddr.toLowerCase()] = isFollowing
-        if (btn) { btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow'); btn.classList.toggle('nc-btn-filled', isFollowing) }
+        if (btn) {
+          btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow')
+          btn.classList.toggle('nc-btn-filled', isFollowing)
+          btn.classList.toggle('nc-chip-filled', isFollowing)
+        }
         import('./toast.js').then(({ toast }) => toast.error(msg === 'wrong chain' ? 'switch to Optimism' : msg === 'wallet unauthorized' ? 'unlock wallet' : 'connect a wallet')).catch(() => {})
         return
       }
       // if "already following" or "not following" — state was stale, correct it
       if (msg.includes('already following')) {
         followState[targetAddr.toLowerCase()] = true
-        if (btn) { btn.textContent = t('network.unfollow'); btn.classList.add('nc-btn-filled') }
+        if (btn) {
+          btn.textContent = t('network.unfollow')
+          btn.classList.add('nc-btn-filled')
+          btn.classList.add('nc-chip-filled')
+        }
       } else if (msg.includes('not following')) {
         followState[targetAddr.toLowerCase()] = false
-        if (btn) { btn.textContent = t('network.follow'); btn.classList.remove('nc-btn-filled') }
+        if (btn) {
+          btn.textContent = t('network.follow')
+          btn.classList.remove('nc-btn-filled')
+          btn.classList.remove('nc-chip-filled')
+        }
       } else {
         // revert optimistic update on other errors
         followState[targetAddr.toLowerCase()] = isFollowing
-        if (btn) { btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow'); btn.classList.toggle('nc-btn-filled', isFollowing) }
+        if (btn) {
+          btn.textContent = isFollowing ? t('network.unfollow') : t('network.follow')
+          btn.classList.toggle('nc-btn-filled', isFollowing)
+          btn.classList.toggle('nc-chip-filled', isFollowing)
+        }
       }
       if (e.code !== 4001 && !msg.includes('already following') && !msg.includes('not following') && !msg.includes('session expired')) {
         console.error('follow error:', e)
@@ -235,21 +347,38 @@ async function init() {
           visibleIds.add(li.getAttribute('data-addr').toLowerCase())
         })
 
-        // append server results not already in list
+        // append server results not already in list, running the
+        // same card renderer so every row shares one shape.
+        const searchAddrs = data.results.map(r => r.id.toLowerCase()).filter(id => /^0x[0-9a-f]{40}$/.test(id))
+        if (searchAddrs.length > 0) {
+          await resolveAddresses(query, searchAddrs).catch(() => {})
+        }
+        const myAddrNow = window.getWalletAddress?.()?.toLowerCase()
         for (const r of data.results) {
           const id = r.id.toLowerCase()
           if (visibleIds.has(id)) continue
           // M2: reject malformed ids before rendering into href / slice
           if (!/^0x[0-9a-f]{40}$/.test(id)) continue
-          // tag is now rendered inside the card via rTag below
-          const li = document.createElement('li')
-          li.className = r.type === 'audience' ? 'nc-item supporter-item search-result' : 'nc-item search-result'
-          li.setAttribute('data-addr', id)
-          const badgeClass = r.type === 'audience' ? 'nc-badge-audience' : 'nc-badge-artist'
-          const badgeLabel = r.type === 'audience' ? 'audience' : 'artist'
-          const ogImg = r.type !== 'audience' ? `<img src="https://${escapeHtml(r.name)}/og/index.png" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt="">` : ''
-          li.innerHTML = `${ogImg}<div class="nc-body"><a href="/network?${r.type === 'audience' ? 'audience' : 'artist'}=${id}" class="nc-domain">${escapeHtml(r.name)}</a><div class="nc-actions"><span class="nc-btns"></span><span class="nc-badge ${badgeClass}">${badgeLabel}</span></div></div>`
-          listEl.prepend(li)
+          const kind = r.type === 'audience' ? 'audience' : (_orgDomainSet.has(r.name) ? 'organization' : 'artist')
+          const html = renderNetworkCard({
+            addr: id,
+            domain: r.name,
+            displayName: getArtistName(id) || r.name,
+            bio: getArtistBio(id),
+            pic: getProfilePic(id),
+            kind,
+            isMe: myAddrNow && id === myAddrNow,
+            isFollowing: !!followState[id],
+            isMutualFollow: !!followState[id] && !!followersState[id],
+            registryAddress,
+          })
+          const wrap = document.createElement('div')
+          wrap.innerHTML = html
+          const li = wrap.firstElementChild
+          if (li) {
+            li.classList.add('search-result')
+            listEl.prepend(li)
+          }
         }
       } catch (err) {
         console.warn('network search:', err?.message)
@@ -275,19 +404,30 @@ async function init() {
             ${F.pageInfo}
             totalCount
           }
-          organizations(where: { dissolved: false }, limit: 1) { totalCount }
+          organizations(where: { dissolved: false }, limit: 200) { items { id domain } totalCount }
         }
       `, { after: afterCursor })
 
       const { items, totalCount, pageInfo } = data.artists
       _orgCount = data.organizations?.totalCount || 0
+
+      // Build the org-domain set once per page — an artist whose domain
+      // matches an on-chain org renders the "organization" eyebrow.
+      // Dissolved orgs are already filtered server-side.
+      for (const o of (data.organizations?.items || [])) {
+        if (o.domain) _orgDomainSet.add(o.domain)
+      }
       const orgCount = _orgCount
 
-      // batch-load follow state for this page of artists
+      // batch-load follow state for this page of artists. Fire the
+      // profile-metadata prefetch in parallel so the card renderer
+      // below can read profilePic / displayName / bio sync.
       const connectedAddr = window.getWalletAddress?.()
-      if (connectedAddr) {
-        await loadFollowStateForAddresses(connectedAddr, items.map(a => a.id))
-      }
+      const pageAddrs = items.map(a => a.id)
+      await Promise.all([
+        connectedAddr ? loadFollowStateForAddresses(connectedAddr, pageAddrs) : Promise.resolve(),
+        resolveAddresses(query, pageAddrs).catch((e) => { if (e?.message) console.warn('praxis: resolve prefetch:', e.message) }),
+      ])
 
       if (!afterCursor) {
         if (totalCount === 0) {
@@ -311,18 +451,20 @@ async function init() {
       const myAddr = window.getWalletAddress?.()?.toLowerCase()
       listEl.insertAdjacentHTML('beforeend', items
         .map(a => {
-          const addr = a.id
-          const isMe = myAddr && addr.toLowerCase() === myAddr
-          const followBtn = registryAddress && !isMe
-            ? `<button class="buy-btn follow-btn nc-btn${followState[addr.toLowerCase()] ? ' nc-btn-filled' : ''}" data-follow-addr="${addr.toLowerCase()}">${followState[addr.toLowerCase()] ? t('network.unfollow') : t('network.follow')}</button>`
-            : ''
-          const iFollowThem = followState[addr.toLowerCase()]
-          const theyFollowMe = followersState[addr.toLowerCase()]
-          const dmBtn = !isMe && iFollowThem && theyFollowMe
-            ? `<button class="buy-btn dm-btn nc-btn" data-dm-addr="${addr.toLowerCase()}" data-dm-domain="${escapeHtml(a.domain)}"><i class="ph ph-chat-circle"></i></button>`
-            : ''
-          const ogImg = `<img src="https://${escapeHtml(a.domain)}/og/index.png" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt="">`
-          return `<li class="nc-item" data-addr="${addr.toLowerCase()}"><a href="/network?artist=${addr.toLowerCase()}" class="nc-link">${ogImg}<div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(a.domain)}</span>${followBtn}${dmBtn}</div></div></a></li>`
+          const addr = a.id.toLowerCase()
+          const kind = _orgDomainSet.has(a.domain) ? 'organization' : 'artist'
+          return renderNetworkCard({
+            addr,
+            domain: a.domain,
+            displayName: getArtistName(addr) || a.domain,
+            bio: getArtistBio(addr),
+            pic: getProfilePic(addr),
+            kind,
+            isMe: myAddr && addr === myAddr,
+            isFollowing: !!followState[addr],
+            isMutualFollow: !!followState[addr] && !!followersState[addr],
+            registryAddress,
+          })
         })
         .join(''))
 
@@ -383,9 +525,11 @@ async function init() {
 
       if (supItems.length > 0) {
         const connectedAddr = window.getWalletAddress?.()
-        if (connectedAddr) {
-          await loadFollowStateForAddresses(connectedAddr, supItems.map(s => s.id))
-        }
+        const supAddrs = supItems.map(s => s.id)
+        await Promise.all([
+          connectedAddr ? loadFollowStateForAddresses(connectedAddr, supAddrs) : Promise.resolve(),
+          resolveAddresses(query, supAddrs).catch((e) => { if (e?.message) console.warn('praxis: resolve prefetch:', e.message) }),
+        ])
         const artistCount = statusEl.textContent.match(/^(\d+)/)?.[1] || '0'
         let statsText = `${artistCount} artist${artistCount !== '1' ? 's' : ''}`
         if (_orgCount > 0) statsText += ` · ${_orgCount} organization${_orgCount !== 1 ? 's' : ''}`
@@ -397,18 +541,19 @@ async function init() {
 
         const myAddr = window.getWalletAddress?.()?.toLowerCase()
         const supHtml = supItems.map(s => {
-          const addr = s.id
-          const isMe = myAddr && addr.toLowerCase() === myAddr
-          const followBtn = registryAddress && !isMe
-            ? `<button class="buy-btn follow-btn nc-btn${followState[addr.toLowerCase()] ? ' nc-btn-filled' : ''}" data-follow-addr="${addr.toLowerCase()}">${followState[addr.toLowerCase()] ? t('network.unfollow') : t('network.follow')}</button>`
-            : ''
-          const iFollowThem = followState[addr.toLowerCase()]
-          const theyFollowMe = followersState[addr.toLowerCase()]
-          const dmBtn = !isMe && iFollowThem && theyFollowMe
-            ? `<button class="buy-btn dm-btn nc-btn" data-dm-addr="${addr.toLowerCase()}" data-dm-domain="${escapeHtml(s.handle)}"><i class="ph ph-chat-circle"></i></button>`
-            : ''
-          const ogUrl = `https://${escapeHtml(s.handle)}.ourpraxis.network/og/index.png`
-          return `<li class="nc-item supporter-item" data-addr="${addr.toLowerCase()}"><a href="/network?audience=${addr.toLowerCase()}" class="nc-link"><img src="${ogUrl}" class="nc-og" loading="lazy" onerror="this.style.display='none'" alt=""><div class="nc-body"><div class="nc-header"><span class="nc-domain">${escapeHtml(s.handle)}</span>${followBtn}${dmBtn}</div></div></a></li>`
+          const addr = s.id.toLowerCase()
+          return renderNetworkCard({
+            addr,
+            domain: s.handle,
+            displayName: getArtistName(addr) || s.handle,
+            bio: getArtistBio(addr),
+            pic: getProfilePic(addr),
+            kind: 'audience',
+            isMe: myAddr && addr === myAddr,
+            isFollowing: !!followState[addr],
+            isMutualFollow: !!followState[addr] && !!followersState[addr],
+            registryAddress,
+          })
         }).join('')
         listEl.insertAdjacentHTML('beforeend', supHtml)
 

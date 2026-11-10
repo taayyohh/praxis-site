@@ -4572,63 +4572,69 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>list view — artists + audience, in a 2x2 grid <code>draft</code></h3>
+          <h3>list view — artists, orgs, audience, all one shape <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
             live render in <code>network.js</code> is wired to Ponder — infinite scroll,
-            follow state, og thumbnails. snapshot mirrors the <code>.nc-grid</code> /
-            <code>.nc-item</code> shape it writes (network.js:39, :325, :411) with two artists
-            and two audience members. in prod the og thumbnail loads per row; here, a muted block.
+            follow state, bios and profile pics pulled from each tenant's site.json via
+            <code>/api/artists/resolve</code>. snapshot mirrors the live <code>.nc-grid</code> /
+            <code>.nc-item</code> shape (network.js :98 renderNetworkCard) with every
+            variant on one page. follow / message-bubble chips render only for valid
+            registries + mutual follows in prod — shown here for legibility.
           </p>
-          <ul class="nc-grid reading-list" style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:0.75em;max-width:560px">
-            <li class="nc-item" data-addr="${A_ADDR.toLowerCase()}" style="padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-              <a href="#" class="nc-link" style="display:flex;flex-direction:column;text-decoration:none;color:var(--fg)" onclick="return false">
-                <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.7em">og preview</div>
-                <div class="nc-body" style="padding:0.5em 0.75ch">
-                  <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                    <span class="nc-domain" style="font-size:0.9em">nappynina.com</span>
-                    <span style="display:flex;gap:0.3ch;align-items:center">
-                      <button class="buy-btn nc-btn" style="font-size:0.7em;padding:0.15em 0.9ch">follow</button>
-                    </span>
-                  </div>
+          <ul class="nc-grid" style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:1.25em;max-width:820px">
+            <li class="nc-item" data-addr="${A_ADDR.toLowerCase()}">
+              <a href="javascript:void(0)" class="nc-link" onclick="return false">
+                <div class="nc-avatar"><span class="nc-avatar-initial">n</span></div>
+                <div class="nc-body">
+                  <span class="nc-eyebrow">artist</span>
+                  <h3 class="nc-name">nappy nina</h3>
+                  <div class="nc-domain">nappynina.com</div>
+                  <p class="nc-bio">brooklyn rapper and producer. new album end credits out now.</p>
+                </div>
+                <div class="nc-actions">
+                  <button type="button" class="nc-chip nc-chip-filled follow-btn">following</button>
+                  <button type="button" class="nc-chip nc-chip-icon dm-btn" aria-label="message"><i class="ph ph-chat-circle"></i></button>
                 </div>
               </a>
             </li>
-            <li class="nc-item" data-addr="${B_ADDR.toLowerCase()}" style="padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-              <a href="#" class="nc-link" style="display:flex;flex-direction:column;text-decoration:none;color:var(--fg)" onclick="return false">
-                <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.7em">og preview</div>
-                <div class="nc-body" style="padding:0.5em 0.75ch">
-                  <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                    <span class="nc-domain" style="font-size:0.9em">blackmatter.world</span>
-                    <span style="display:flex;gap:0.3ch;align-items:center">
-                      <button class="buy-btn nc-btn nc-btn-filled" style="font-size:0.7em;padding:0.15em 0.9ch">unfollow</button>
-                    </span>
-                  </div>
+            <li class="nc-item" data-addr="${B_ADDR.toLowerCase()}">
+              <a href="javascript:void(0)" class="nc-link" onclick="return false">
+                <div class="nc-avatar"><span class="nc-avatar-initial">b</span></div>
+                <div class="nc-body">
+                  <span class="nc-eyebrow">artist</span>
+                  <h3 class="nc-name">black matter</h3>
+                  <div class="nc-domain">blackmatter.world</div>
+                  <p class="nc-bio">film + sound. an audio-visual essay practice built from the left margin out.</p>
+                </div>
+                <div class="nc-actions">
+                  <button type="button" class="nc-chip follow-btn">follow</button>
                 </div>
               </a>
             </li>
-            <li class="nc-item supporter-item" data-addr="${C_ADDR.toLowerCase()}" style="padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-              <a href="#" class="nc-link" style="display:flex;flex-direction:column;text-decoration:none;color:var(--fg)" onclick="return false">
-                <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.7em">og preview</div>
-                <div class="nc-body" style="padding:0.5em 0.75ch">
-                  <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                    <span class="nc-domain" style="font-size:0.9em">milesxb.bio</span>
-                    <span style="display:flex;gap:0.3ch;align-items:center">
-                      <button class="buy-btn nc-btn" style="font-size:0.7em;padding:0.15em 0.9ch">follow</button>
-                    </span>
-                  </div>
+            <li class="nc-item" data-addr="0x5555555555555555555555555555555555555555">
+              <a href="javascript:void(0)" class="nc-link" onclick="return false">
+                <div class="nc-avatar"><span class="nc-avatar-initial">p</span></div>
+                <div class="nc-body">
+                  <span class="nc-eyebrow">organization</span>
+                  <h3 class="nc-name">practice records</h3>
+                  <div class="nc-domain">practice.records</div>
+                  <p class="nc-bio">a small label for musicians who are also something else.</p>
+                </div>
+                <div class="nc-actions">
+                  <button type="button" class="nc-chip follow-btn">follow</button>
                 </div>
               </a>
             </li>
-            <li class="nc-item supporter-item" data-addr="0x4444444444444444444444444444444444444444" style="padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-              <a href="#" class="nc-link" style="display:flex;flex-direction:column;text-decoration:none;color:var(--fg)" onclick="return false">
-                <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.7em">no site yet</div>
-                <div class="nc-body" style="padding:0.5em 0.75ch">
-                  <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                    <span class="nc-domain" style="font-size:0.9em">nineisgiantess</span>
-                    <span style="display:flex;gap:0.3ch;align-items:center">
-                      <button class="buy-btn nc-btn" style="font-size:0.7em;padding:0.15em 0.9ch">follow</button>
-                    </span>
-                  </div>
+            <li class="nc-item supporter-item" data-addr="0x4444444444444444444444444444444444444444">
+              <a href="javascript:void(0)" class="nc-link" onclick="return false">
+                <div class="nc-avatar"><span class="nc-avatar-initial">g</span></div>
+                <div class="nc-body">
+                  <span class="nc-eyebrow">audience</span>
+                  <h3 class="nc-name">nineisgiantess</h3>
+                  <div class="nc-domain">nineisgiantess</div>
+                </div>
+                <div class="nc-actions">
+                  <button type="button" class="nc-chip follow-btn">follow</button>
                 </div>
               </a>
             </li>
@@ -4636,23 +4642,88 @@ async function initDesign() {
         </div>
 
         <div class="design-block">
-          <h3>artist card — stand-alone <code>draft</code></h3>
+          <h3>artist card — with profile picture <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            one row of the <code>.nc-grid</code> above, pulled out at full width so the
-            artist variant is readable by itself. follow button on the right, domain on
-            the left, their site preview above. network.js:325.
+            the fullest treatment. square 72px avatar with 2px radius, chillax name,
+            mono domain, 2-line bio. follow + message-bubble chips when the viewer
+            already follows. same card <code>renderNetworkCard</code> builds at
+            network.js:98.
           </p>
-          <div class="nc-item" style="max-width:420px;padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-            <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em">nappynina.com — site preview</div>
-            <div class="nc-body" style="padding:0.5em 0.75ch">
-              <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                <span class="nc-domain">nappynina.com</span>
-                <span style="display:flex;gap:0.3ch;align-items:center">
-                  <button class="buy-btn nc-btn" type="button" style="font-size:0.75em;padding:0.2em 1ch">follow</button>
-                  <button class="buy-btn nc-btn" type="button" style="font-size:0.75em;padding:0.2em 1ch">dm</button>
-                </span>
+          <div class="nc-item" style="max-width:520px">
+            <a href="javascript:void(0)" class="nc-link" onclick="return false">
+              <div class="nc-avatar">
+                <!-- inline SVG mock — no network dependency, same shape as a
+                     real profilePic resized through /api/img?w=192. tenant
+                     palette-aware via currentColor. -->
+                <svg width="72" height="72" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;color:var(--fg)">
+                  <defs>
+                    <linearGradient id="pfp-mock-1" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="currentColor" stop-opacity="0.18"/>
+                      <stop offset="1" stop-color="currentColor" stop-opacity="0.04"/>
+                    </linearGradient>
+                  </defs>
+                  <rect width="72" height="72" fill="url(#pfp-mock-1)"/>
+                  <circle cx="36" cy="28" r="12" fill="currentColor" fill-opacity="0.22"/>
+                  <path d="M12 72c0-13 11-22 24-22s24 9 24 22" fill="currentColor" fill-opacity="0.22"/>
+                </svg>
               </div>
-            </div>
+              <div class="nc-body">
+                <span class="nc-eyebrow">artist</span>
+                <h3 class="nc-name">nappy nina</h3>
+                <div class="nc-domain">nappynina.com</div>
+                <p class="nc-bio">brooklyn rapper and producer. new album end credits out now.</p>
+              </div>
+              <div class="nc-actions">
+                <button type="button" class="nc-chip nc-chip-filled follow-btn">following</button>
+                <button type="button" class="nc-chip nc-chip-icon dm-btn" aria-label="message"><i class="ph ph-chat-circle"></i></button>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>artist card — no profile picture <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            fallback when <code>site.json.profilePic</code> is empty — a tinted square
+            with the first letter of the artist's name, same 2px radius, same chillax
+            face. never leaves a blank seat.
+          </p>
+          <div class="nc-item" style="max-width:520px">
+            <a href="javascript:void(0)" class="nc-link" onclick="return false">
+              <div class="nc-avatar"><span class="nc-avatar-initial">b</span></div>
+              <div class="nc-body">
+                <span class="nc-eyebrow">artist</span>
+                <h3 class="nc-name">black matter</h3>
+                <div class="nc-domain">blackmatter.world</div>
+                <p class="nc-bio">film + sound. an audio-visual essay practice built from the left margin out.</p>
+              </div>
+              <div class="nc-actions">
+                <button type="button" class="nc-chip follow-btn">follow</button>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>organization card <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            same row shape, mono eyebrow reads "organization" when the artist's domain
+            matches an on-chain org (PraxisOrganization table, resolved once per page
+            via the orgs-domain set at network.js:300).
+          </p>
+          <div class="nc-item" style="max-width:520px">
+            <a href="javascript:void(0)" class="nc-link" onclick="return false">
+              <div class="nc-avatar"><span class="nc-avatar-initial">p</span></div>
+              <div class="nc-body">
+                <span class="nc-eyebrow">organization</span>
+                <h3 class="nc-name">practice records</h3>
+                <div class="nc-domain">practice.records</div>
+                <p class="nc-bio">a small label for musicians who are also something else.</p>
+              </div>
+              <div class="nc-actions">
+                <button type="button" class="nc-chip follow-btn">follow</button>
+              </div>
+            </a>
           </div>
         </div>
 
@@ -4801,17 +4872,22 @@ async function initDesign() {
         <div class="design-block">
           <h3>audience card — stand-alone <code>draft</code></h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
-            same row shape, audience variant — the handle instead of a domain, no og preview
-            when the person hasn't claimed a site yet. network.js:411.
+            same row shape, audience variant — eyebrow reads "audience", handle in
+            place of the domain, same follow chip and (when mutual) same message
+            bubble. network.js:460.
           </p>
-          <div class="nc-item supporter-item" style="max-width:420px;padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
-            <div style="aspect-ratio:1200/630;background:color-mix(in srgb, var(--fg) 6%, var(--bg));display:grid;place-items:center;color:var(--dim);font-size:0.75em">no site yet</div>
-            <div class="nc-body" style="padding:0.5em 0.75ch">
-              <div class="nc-header" style="display:flex;align-items:center;justify-content:space-between;gap:0.5ch">
-                <span class="nc-domain">nineisgiantess</span>
-                <span class="nc-badge nc-badge-audience" style="font-size:0.65em;border:1px solid var(--border);border-radius:3px;padding:0.1em 0.5ch;color:var(--muted)">audience</span>
+          <div class="nc-item supporter-item" style="max-width:520px">
+            <a href="javascript:void(0)" class="nc-link" onclick="return false">
+              <div class="nc-avatar"><span class="nc-avatar-initial">g</span></div>
+              <div class="nc-body">
+                <span class="nc-eyebrow">audience</span>
+                <h3 class="nc-name">nineisgiantess</h3>
+                <div class="nc-domain">nineisgiantess</div>
               </div>
-            </div>
+              <div class="nc-actions">
+                <button type="button" class="nc-chip follow-btn">follow</button>
+              </div>
+            </a>
           </div>
         </div>
 
