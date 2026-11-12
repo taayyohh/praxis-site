@@ -189,6 +189,7 @@ const EVENT_TYPES_TO_CARD = new Set([
 const EVENT_TYPE_ALIAS = {
   joined: 'joined-audience',
   'project-timedout': 'project-timed-out',
+  referral: 'referral-earned',
 }
 
 function renderItem(item, domainMap, resolve) {
