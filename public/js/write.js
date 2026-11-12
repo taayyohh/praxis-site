@@ -16,6 +16,10 @@ const UPLOAD_POLL_MAX = 300
 
 let composeRef = { type: 0, id: 0 }
 let _amendPostId = null
+// Guards a second submitPost() from firing while the first is still waiting on
+// MetaMask / the receipt. Without it a user who clicks publish twice between
+// confirm and receipt gets two on-chain posts for the same intent.
+let _submitInFlight = false
 // Tracks whether initWrite loaded a draft from localStorage into the inputs.
 // saveDraft uses this to decide whether an empty form on unload means "user
 // intentionally cleared the draft" (remove localStorage) or "form never had
@@ -209,6 +213,7 @@ async function searchRefs(q) {
 // --- Submit post on-chain ---
 
 async function submitPost() {
+  if (_submitInFlight) return
   const blogAddr = document.body.dataset.blog
   if (!blogAddr) {
     const statusEl = document.getElementById('compose-status')
@@ -219,6 +224,7 @@ async function submitPost() {
   const titleInput = document.getElementById('compose-title')
   const bodyInput = document.getElementById('compose-content')
   const statusEl = document.getElementById('compose-status')
+  const publishBtn = document.getElementById('compose-post')
   const title = titleInput.value.trim()
   const content = bodyInput.value.trim()
 
@@ -230,6 +236,13 @@ async function submitPost() {
     if (!window.getWalletAddress?.()) { statusEl.textContent = t('compose.connectWallet'); return }
   }
 
+  _submitInFlight = true
+  if (publishBtn) { publishBtn.disabled = true; publishBtn.style.opacity = '0.6' }
+  // Only reset _submitInFlight / re-enable the button on a non-shipping path
+  // (validation bail, user rejection, RPC failure). On a successful publish we
+  // keep the button disabled while setTimeout navigates home, so a lingering
+  // click can't re-fire the publish.
+  let didShip = false
   statusEl.textContent = t('compose.confirming')
 
   try {
@@ -347,9 +360,15 @@ async function submitPost() {
     try { for (const k of Object.keys(sessionStorage)) { if (k.startsWith('praxis-feed')) sessionStorage.removeItem(k) } } catch {}
 
     // Navigate home after short delay for Ponder indexing
+    didShip = true
     setTimeout(() => { window.location.href = '/' }, PUBLISH_REDIRECT_DELAY)
   } catch (e) {
     statusEl.textContent = formatTxError(e)
+  } finally {
+    if (!didShip) {
+      _submitInFlight = false
+      if (publishBtn) { publishBtn.disabled = false; publishBtn.style.opacity = '' }
+    }
   }
 }
 
@@ -500,8 +519,15 @@ function initWrite() {
     window.history.length > 1 ? window.history.back() : (window.location.href = '/')
   })
 
-  // Publish button
-  publishBtn?.addEventListener('click', () => submitPost())
+  // Publish button — registerPage re-runs initWrite() on every spa-navigate,
+  // so guard against accumulating a second listener each time the user
+  // bounces back to /write. A sentinel data attribute is enough: addEventListener
+  // itself de-duplicates identical function references, but inline arrows are
+  // a fresh reference per call. Check before wiring.
+  if (publishBtn && publishBtn.dataset.submitBound !== '1') {
+    publishBtn.dataset.submitBound = '1'
+    publishBtn.addEventListener('click', () => submitPost())
+  }
 
   // Reference picker
   document.getElementById('compose-ref')?.addEventListener('click', toggleRefPicker)

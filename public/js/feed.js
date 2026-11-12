@@ -1,5 +1,5 @@
 // Social feed — shows blog posts from followed artists on the homepage
-import { renderProjectCard } from './feed-cards.js'
+import { renderProjectCard, renderPostFeedCard, renderLibraryFeedCard, stripMarkdown } from './feed-cards.js'
 import { renderMediaCard } from './media-card.js'
 import { renderEventCard } from './event-card.js'
 // feed-cards.js self-registers the global .feed-buy-btn + .track-play-btn
@@ -8,8 +8,6 @@ import { renderEventCard } from './event-card.js'
 import './feed-cards.js'
 
 // Named constants for magic numbers used across the module
-const PREVIEW_LEN_WITH_MEDIA = 200
-const PREVIEW_LEN_TEXT_ONLY = 300
 const FEED_CACHE_MAX = 50
 const FEED_RENDERED_MAX = 200
 const OWNED_MEDIA_MAX = 2000
@@ -751,48 +749,10 @@ async function _renderFeedPdfThumb(card, url) {
 
 // (compose modal removed — all compose goes through /write page)
 
-function stripMarkdown(text, preserveNewlines = false) {
-  let out = text
-    .replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '$1')  // images
-    .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')    // links
-    .replace(/\*\*(.+?)\*\*/g, '$1')                  // bold
-    .replace(/\*(.+?)\*/g, '$1')                       // italic
-    .replace(/^#{1,6}\s+/gm, '')                       // headings
-    .replace(/^>\s+/gm, '')                            // blockquotes
-    .replace(/^---+$/gm, '')                           // horizontal rules
-  if (preserveNewlines) {
-    out = out.replace(/\n{3,}/g, '\n\n').trim()        // cap at double newline
-  } else {
-    out = out.replace(/\n{2,}/g, ' ').replace(/\n/g, ' ').trim()
-  }
-  return out
-}
-
 function renderPost(p, domainMap) {
   const domain = domainMap[p.author.toLowerCase()] || `${p.author.slice(0, 6)}...${p.author.slice(-4)}`
   const date = new Date(Number(p.timestamp) * 1000)
   const timeStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-
-  const content = p.content || ''
-  const hasMedia = /\[(video|audio):\s/.test(content) || /!\[/.test(content)
-  let mediaHtml = ''
-  let textPreview = ''
-  if (hasMedia) {
-    // Extract first media embed for the card banner
-    const mediaMatch = content.match(/(\[video:\s*[^\]]*\]\s*\([^)]+\)|!\[[^\]]*\]\s*\([^)]+\))/)
-    if (mediaMatch) mediaHtml = renderMarkdown(mediaMatch[0])
-    // Strip media from text preview
-    const textOnly = content.replace(/\[video:\s*[^\]]*\]\s*\([^)]+\)/g, '').replace(/!\[[^\]]*\]\s*\([^)]+\)/g, '').trim()
-    if (textOnly) {
-      const raw = stripMarkdown(textOnly, true)
-      const truncated = raw.length > PREVIEW_LEN_WITH_MEDIA ? raw.slice(0, PREVIEW_LEN_WITH_MEDIA) + '...' : raw
-      textPreview = escapeHtml(truncated).replace(/\n/g, '<br>')
-    }
-  } else {
-    const raw = stripMarkdown(content, true)
-    const truncated = raw.length > PREVIEW_LEN_TEXT_ONLY ? raw.slice(0, PREVIEW_LEN_TEXT_ONLY) + '...' : raw
-    textPreview = escapeHtml(truncated).replace(/\n/g, '<br>')
-  }
 
   // Replies are collected separately and injected under their parent post card
   // by renderCachedFeed (see _replyMap below). We return '' here so they don't
@@ -811,24 +771,11 @@ function renderPost(p, domainMap) {
     return ''
   }
 
-  const displayTitle = p.title || ''
-
-  return `
-    <div class="feed-item feed-article" data-post-id="${escapeHtml(p.id)}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
-      ${mediaHtml ? `<div class="feed-media-wrap">${mediaHtml}</div>` : ''}
-      <div style="padding:0.75em 1em">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
-          <a href="/network?artist=${p.author.toLowerCase()}" class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${(() => { const pic = getProfilePic(p.author); return pic ? `<img src="${escapeHtml(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : '' })()}${escapeHtml(domain)}</a>
-          <time class="feed-time" style="color:var(--dim);font-size:0.85em">${timeStr}</time>
-        </div>
-        <a href="/post?id=${p.id}" style="color:inherit;text-decoration:none;display:block">
-          ${displayTitle ? `<div style="font-weight:700;margin-bottom:0.3em;font-size:1.4em;line-height:1.25;letter-spacing:-0.01em">${escapeHtml(displayTitle)}</div>` : ''}
-          ${textPreview ? `<div style="color:var(--muted);font-size:0.9em;line-height:1.6">${textPreview}</div>` : ''}
-        </a>
-        <a href="/post?id=${p.id}" style="color:var(--accent);font-size:0.85em;margin-top:0.5em;display:inline-block">${t('feed.readMore')} \u2192</a>
-      </div>
-    </div>
-  `
+  return renderPostFeedCard(p, {
+    name: domain, pic: getProfilePic(p.author), timeStr,
+    authorHref: `/network?artist=${p.author.toLowerCase()}`,
+    postHref: `/post?id=${p.id}`,
+  })
 }
 
 
@@ -890,43 +837,10 @@ async function hideOwnedBuyButtons(container, myAddr) {
 // renderProjectCard, renderFundedCard now imported from feed-cards.js
 
 function renderLibraryActivity(item, resolve) {
-  const domain = resolve(item.contributor)
-  const tags = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean).map(tag =>
-    `<a href="/library?tag=${encodeURIComponent(tag)}" style="display:inline-block;border:1px solid var(--border);color:var(--muted);font-size:0.75em;padding:0.1em 0.6ch;margin:0.15em 0.25ch 0 0;text-decoration:none">${escapeHtml(tag)}</a>`
-  ).join('') : ''
-
-  const cid = item.ipfsCid || ''
-  const url = item.url || ''
-  const hasFile = !!cid
-  const mediaLink = cid ? `/api/ipfs-proxy/${cid}` : ''
-
-  // Only show PDF thumb for IPFS-hosted files
-  const pdfThumbAttr = hasFile && mediaLink ? ` data-pdf-thumb="${escapeHtml(mediaLink)}"` : ''
-
-  // URL-only items (no IPFS file) open externally; file items open in our viewer
-  const titleLink = hasFile
-    ? `<a href="#" class="feed-library-open" data-media-url="${escapeHtml(mediaLink)}" data-title="${escapeHtml(item.title)}" data-author="${escapeHtml(item.author || '')}" data-item-id="${item.id || ''}" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:block">${escapeHtml(item.title)}</a>`
-    : `<a href="${escapeHtml(url)}" target="_blank" style="color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none;display:flex;align-items:center;gap:0.5ch">${escapeHtml(item.title)} <i class="ph ph-arrow-square-out" style="font-size:0.8em;color:var(--muted)"></i></a>`
-
-  // URL-only items show a link icon instead of PDF icon
-  const iconSlot = hasFile
-    ? '<div class="feed-pdf-thumb-slot" style="display:none"></div>'
-    : ''
-
-  return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden"${pdfThumbAttr}>
-      ${iconSlot}
-      <div style="padding:0.75em 1em">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
-          <a href="/network?artist=${item.contributor.toLowerCase()}" class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${(() => { const pic = getProfilePic(item.contributor); return pic ? `<img src="${escapeHtml(pic)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : '' })()}${escapeHtml(domain)}</a>
-          <span style="color:var(--dim);font-size:0.8em">${t('feed.addedToLibrary')}</span>
-        </div>
-        ${titleLink}
-        ${item.author ? `<div style="color:var(--muted);font-size:0.85em;margin-top:0.2em">${escapeHtml(item.author)}</div>` : ''}
-        ${tags ? `<div style="margin-top:0.4em;display:flex;flex-wrap:wrap">${tags}</div>` : ''}
-      </div>
-    </div>
-  `
+  return renderLibraryFeedCard(item, {
+    name: resolve(item.contributor), pic: getProfilePic(item.contributor),
+    authorHref: `/network?artist=${item.contributor.toLowerCase()}`,
+  })
 }
 
 // renderSupporterCard, renderPurchaseCard now imported from feed-cards.js

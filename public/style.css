@@ -4142,10 +4142,19 @@ body:has(.owner-dock) .portfolio-nav {
   line-height: 0;
   font-size: 0;
 }
+.feed-media-wrap img,
+.feed-media-wrap video {
+  width: 100%;
+  max-height: 520px;
+  object-fit: cover;
+  display: block;
+}
 .feed-media-wrap .video-lazy > div {
   display: none !important;
 }
 .feed-media-wrap .video-lazy {
+  width: 100% !important;
+  max-height: 520px;
   margin: 0 !important;
   border-radius: 0 !important;
 }

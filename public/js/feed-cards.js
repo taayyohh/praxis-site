@@ -1,5 +1,5 @@
 // Shared feed card renderers — used by both artist feed (feed.js) and landing (landing.js)
-import { escapeHtml as esc, getProfilePic, getArtistName, slugify } from './utils.js'
+import { escapeHtml as esc, getProfilePic, getArtistName, slugify, renderMarkdown as _utilsRenderMarkdown } from './utils.js'
 import { OPTIMISM_CHAIN_ID, USDC_OPTIMISM, rpcUrlFor } from './chains.js'
 const DELIST_PRICE_SENTINEL = 2n ** 128n
 let t = (k) => k // fallback
@@ -346,5 +346,120 @@ export function renderProjectSummary(p, resolve, opts = {}) {
         </div>` : ''}
       </div>
     </a>
+  `
+}
+
+
+// ── Post + library feed cards (shared by feed.js and landing.js) ─────────
+// Callers resolve identity (domain / pic / links) and pass it in, so the same
+// markup serves the artist-site feed (module lookups, relative links) and the
+// landing feed (server-materialized fields, external links).
+const PREVIEW_LEN_WITH_MEDIA = 200
+const PREVIEW_LEN_TEXT_ONLY = 300
+
+export function stripMarkdown(text, preserveNewlines = false) {
+  let out = text
+    .replace(/!\[([^\]]*)\]\s*\(([^)]+)\)/g, '$1')
+    .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s+/gm, '')
+    .replace(/^---+$/gm, '')
+  if (preserveNewlines) out = out.replace(/\n{3,}/g, '\n\n').trim()
+  else out = out.replace(/\n{2,}/g, ' ').replace(/\n/g, ' ').trim()
+  return out
+}
+
+function _tOr(key, fallback) {
+  const v = t(key)
+  return !v || v === key ? fallback : v
+}
+
+function _authorLine(o) {
+  const pic = o.pic ? `<img src="${esc(o.pic)}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''
+  const href = o.authorHref || '#'
+  const ext = o.external ? ' target="_blank" rel="noopener"' : ''
+  return `<a href="${esc(href)}"${ext} class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${pic}${esc(o.name || '')}</a>`
+}
+
+// p: { id, title, content }. o: { name, pic, authorHref, postHref, timeStr,
+// external, renderMarkdown, postId }
+export function renderPostFeedCard(p, o = {}) {
+  const md = o.renderMarkdown || _utilsRenderMarkdown
+  const content = p.content || ''
+  const hasMedia = /\[(video|audio):\s/.test(content) || /!\[/.test(content)
+  let mediaHtml = ''
+  let textPreview = ''
+  if (hasMedia) {
+    const m = content.match(/(\[video:\s*[^\]]*\]\s*\([^)]+\)|!\[[^\]]*\]\s*\([^)]+\))/)
+    if (m) mediaHtml = md(m[0])
+    const textOnly = content.replace(/\[video:\s*[^\]]*\]\s*\([^)]+\)/g, '').replace(/!\[[^\]]*\]\s*\([^)]+\)/g, '').trim()
+    if (textOnly) {
+      const raw = stripMarkdown(textOnly, true)
+      textPreview = esc(raw.length > PREVIEW_LEN_WITH_MEDIA ? raw.slice(0, PREVIEW_LEN_WITH_MEDIA) + '...' : raw).replace(/\n/g, '<br>')
+    }
+  } else {
+    const raw = stripMarkdown(content, true)
+    textPreview = esc(raw.length > PREVIEW_LEN_TEXT_ONLY ? raw.slice(0, PREVIEW_LEN_TEXT_ONLY) + '...' : raw).replace(/\n/g, '<br>')
+  }
+  const href = esc(o.postHref || '#')
+  const ext = o.external ? ' target="_blank" rel="noopener"' : ''
+  const title = p.title || ''
+  return `
+    <div class="feed-item feed-article" data-post-id="${esc(String(o.postId ?? p.id))}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
+      ${mediaHtml ? `<div class="feed-media-wrap">${mediaHtml}</div>` : ''}
+      <div style="padding:0.75em 1em">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
+          ${_authorLine(o)}
+          <time class="feed-time" style="color:var(--dim);font-size:0.85em">${esc(o.timeStr || '')}</time>
+        </div>
+        <a href="${href}"${ext} style="color:inherit;text-decoration:none;display:block">
+          ${title ? `<div style="font-weight:700;margin-bottom:0.3em;font-size:1.4em;line-height:1.25;letter-spacing:-0.01em">${esc(title)}</div>` : ''}
+          ${textPreview ? `<div style="color:var(--muted);font-size:0.9em;line-height:1.6">${textPreview}</div>` : ''}
+        </a>
+        <a href="${href}"${ext} style="color:var(--accent);font-size:0.85em;margin-top:0.5em;display:inline-block">${_tOr('feed.readMore', 'read more')} →</a>
+      </div>
+    </div>
+  `
+}
+
+// item: { id, title, author, tags, ipfsCid, url }. o: { name, pic, authorHref,
+// external, libraryBase (landing: https://domain), libraryHref (landing title link) }
+// The thumb slot stays display:none until _observePdfThumbs finds a real thumbnail.
+export function renderLibraryFeedCard(item, o = {}) {
+  const base = o.libraryBase || ''
+  const tags = item.tags ? item.tags.split(',').map(x => x.trim()).filter(Boolean).map(tag =>
+    `<a href="${esc(base)}/library?tag=${encodeURIComponent(tag)}"${o.external ? ' target="_blank" rel="noopener"' : ''} style="display:inline-block;border:1px solid var(--border);color:var(--muted);font-size:0.75em;padding:0.1em 0.6ch;margin:0.15em 0.25ch 0 0;text-decoration:none">${esc(tag)}</a>`
+  ).join('') : ''
+  const cid = item.ipfsCid || ''
+  const url = item.url || ''
+  const hasFile = !!cid
+  const mediaLink = cid ? `/api/ipfs-proxy/${cid}` : ''
+  const pdfThumbAttr = hasFile ? ` data-pdf-thumb="${esc(mediaLink)}"` : ''
+  const title = item.title || 'untitled'
+  const linkStyle = 'color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none'
+  let titleLink
+  if (o.libraryHref) {
+    titleLink = `<a href="${esc(o.libraryHref)}" target="_blank" rel="noopener" style="${linkStyle};display:block">${esc(title)}</a>`
+  } else if (hasFile) {
+    titleLink = `<a href="#" class="feed-library-open" data-media-url="${esc(mediaLink)}" data-title="${esc(title)}" data-author="${esc(item.author || '')}" data-item-id="${item.id || ''}" style="${linkStyle};display:block">${esc(title)}</a>`
+  } else {
+    titleLink = `<a href="${esc(url)}" target="_blank" style="${linkStyle};display:flex;align-items:center;gap:0.5ch">${esc(title)} <i class="ph ph-arrow-square-out" style="font-size:0.8em;color:var(--muted)"></i></a>`
+  }
+  const iconSlot = hasFile ? '<div class="feed-pdf-thumb-slot" style="display:none"></div>' : ''
+  return `
+    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden"${pdfThumbAttr}>
+      ${iconSlot}
+      <div style="padding:0.75em 1em">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
+          ${_authorLine(o)}
+          <span style="color:var(--dim);font-size:0.8em">${_tOr('feed.addedToLibrary', 'added to library')}</span>
+        </div>
+        ${titleLink}
+        ${item.author ? `<div style="color:var(--muted);font-size:0.85em;margin-top:0.2em">${esc(item.author)}</div>` : ''}
+        ${tags ? `<div style="margin-top:0.4em;display:flex;flex-wrap:wrap">${tags}</div>` : ''}
+      </div>
+    </div>
   `
 }
