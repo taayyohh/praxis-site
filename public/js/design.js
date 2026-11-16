@@ -519,9 +519,7 @@ async function initDesign() {
   }
 
   el.innerHTML = `
-    <div class="design-catalog dw-catalog-layout">
-      ${renderCatalogNav(CATALOG_CATEGORIES)}
-      <div class="dw-catalog-main">
+    <div class="design-catalog">
       <header class="design-lead">
         <div class="design-eyebrow">praxis · living UI catalog</div>
         <h1>every component, on one page</h1>
@@ -2761,6 +2759,8 @@ async function initDesign() {
             signer. Use <code>?sandbox=1</code> + "compose blog post" in §3 to
             drive it end-to-end against the anvil fork.
           </p>
+        </div>
+      </section>
 
       <!-- ─────────── 11 · modules ─────────── -->
       <!--
@@ -3087,6 +3087,10 @@ async function initDesign() {
             <label style="display:block;font-size:0.8em;color:var(--muted);margin-bottom:0.3em">passphrase</label>
             <input type="password" class="project-input is-error" aria-invalid="true" value="●●●●●●●●" readonly style="width:100%;font-family:'SF Mono',monospace">
             <p style="color:var(--dim);font-size:0.75em;margin:0.5em 0 0">wrong password</p>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 15 · vault & money ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">15 · vault & money</h2>
@@ -3112,6 +3116,10 @@ async function initDesign() {
             <button class="dw-chip-pill" data-open="vault-funding"><i class="dw-chip-pill__icon ph ph-receipt" aria-hidden="true"></i>funding sheet</button>
             <button class="dw-chip-pill" data-open="vault-onramp"><i class="dw-chip-pill__icon ph ph-credit-card" aria-hidden="true"></i>add funds from a card</button>
             <button class="dw-chip-pill" data-open="vault-offramp"><i class="dw-chip-pill__icon ph ph-bank" aria-hidden="true"></i>cash out to a bank</button>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 16 · settings & CMS ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">16 · settings & CMS</h2>
@@ -3194,6 +3202,10 @@ async function initDesign() {
               <button style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.8em">remove</button>
             </div>
             <button class="buy-btn" style="margin-top:0.75em;font-size:0.8em;padding:0.3em 1ch">add a highlight</button>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 17 · messages ─────────── -->
       <!--
         Every messaging + DM surface, in one place. Most of these render
@@ -3719,6 +3731,8 @@ async function initDesign() {
             <span style="color:var(--dim);font-size:0.85em">messages icon with an unread flag</span>
           </div>
         </div>
+      </section>
+
       <!-- ─────────── 18 · primitives & chrome ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">18 · primitives & chrome</h2>
@@ -4060,6 +4074,12 @@ async function initDesign() {
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75em">
                 <span style="color:var(--muted);font-size:0.85em"></span>
                 <button class="buy-btn" style="font-size:0.85em;padding:0.4em 2ch;border-radius:8px">comment</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 21 · project lifecycle ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">21 · project lifecycle</h2>
@@ -4396,6 +4416,11 @@ async function initDesign() {
                 <time style="color:var(--dim);font-size:0.8em">nov 4</time>
               </div>
               <div style="color:var(--fg);font-size:0.95em;line-height:1.7">draft reply — a reader's reply lands here, trimmed by the live markdown-strip.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 20 · money in & out ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">20 · money in & out</h2>
@@ -4534,6 +4559,12 @@ async function initDesign() {
                 </div>
                 <h3 style="margin-bottom:0.5em">draft title</h3>
                 <div class="post-page-body" style="font-size:0.95em">draft body — the version readers land on today.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 22 · network & profile ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">22 · network & profile</h2>
@@ -5255,6 +5286,169 @@ async function initDesign() {
         </div>
       </section>
 
+      <!-- ─────────── 22b · card family v2 (workshop) ─────────── -->
+      <section class="design-section cv2-scope" id="sec-card-v2">
+        <h2 class="design-section-title">22b · card family v2 — album-detail polish <code>workshop</code></h2>
+        <p style="color:var(--dim);font-size:0.9em;margin:0 0 1em;max-width:60ch">
+          scoped prototype. the album detail at
+          <code>milesxb.bio/music/babyfang/olive-juice</code> is the bar — chillax
+          display face, opacity-for-hierarchy, mono tabular meta, solid chip, no
+          decorative borders. every selector below is <code>.cv2-*</code> —
+          nothing live changes until miles greenlights a promotion pass.
+        </p>
+
+        <div class="design-block">
+          <h3>network tile v2 — artist <code>draft</code></h3>
+          <div style="max-width:560px">
+            <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+              <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                <span class="cv2-tile-mono">n</span>
+              </div>
+              <div class="cv2-tile-body">
+                <span class="cv2-tile-eyebrow">artist</span>
+                <h3 class="cv2-tile-name">nappy nina</h3>
+                <div class="cv2-tile-domain">nappynina.com</div>
+                <p class="cv2-tile-bio">brooklyn poet and rapper. runs jarring effects. new record out this fall.</p>
+                <div class="cv2-tile-actions">
+                  <button class="cv2-chip cv2-chip-solid">follow</button>
+                  <button class="cv2-chip cv2-chip-ghost" aria-label="message"><i class="ph ph-chat-circle"></i></button>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>network tile v2 — artist, plain fallback <code>draft</code></h3>
+          <div style="max-width:560px">
+            <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+              <div class="cv2-tile-cover">
+                <span class="cv2-tile-mono">b</span>
+              </div>
+              <div class="cv2-tile-body">
+                <span class="cv2-tile-eyebrow">artist</span>
+                <h3 class="cv2-tile-name">blackmatter</h3>
+                <div class="cv2-tile-domain">blackmatter.world</div>
+                <p class="cv2-tile-bio">afrofuturist dance music. berlin / lagos.</p>
+                <div class="cv2-tile-actions">
+                  <button class="cv2-chip cv2-chip-solid">follow</button>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>network tile v2 — organization with logo <code>draft</code></h3>
+          <div style="max-width:560px">
+            <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+              <div class="cv2-tile-cover">
+                <span class="cv2-tile-mono">l</span>
+              </div>
+              <div class="cv2-tile-body">
+                <span class="cv2-tile-eyebrow">organization</span>
+                <h3 class="cv2-tile-name">lucid haus</h3>
+                <div class="cv2-tile-domain">lucid.haus</div>
+                <p class="cv2-tile-bio">artist-run label and studio. new york.</p>
+                <div class="cv2-tile-actions">
+                  <button class="cv2-chip cv2-chip-solid">follow</button>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>network tile v2 — audience (no pic) <code>draft</code></h3>
+          <div style="max-width:560px">
+            <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+              <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                <span class="cv2-tile-mono">s</span>
+              </div>
+              <div class="cv2-tile-body">
+                <span class="cv2-tile-eyebrow">audience</span>
+                <h3 class="cv2-tile-name">sasha</h3>
+                <div class="cv2-tile-domain">0xA1b2…cD3e</div>
+                <div class="cv2-tile-actions">
+                  <button class="cv2-chip cv2-chip-solid">follow</button>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>event row v2 — compact line <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            social dust — follows, library-adds, blog posts. one phrase, mono
+            timestamp. no card, no border.
+          </p>
+          <div style="max-width:720px;display:flex;flex-direction:column">
+            <a href="javascript:void(0)" class="cv2-row" onclick="return false">
+              <i class="ph ph-user-plus cv2-row-glyph" aria-hidden="true"></i>
+              <span class="cv2-row-phrase"><strong>nappy nina</strong> followed <strong>blackmatter</strong></span>
+              <time class="cv2-row-time">12m</time>
+            </a>
+            <a href="javascript:void(0)" class="cv2-row" onclick="return false">
+              <i class="ph ph-bookmarks-simple cv2-row-glyph" aria-hidden="true"></i>
+              <span class="cv2-row-phrase"><strong>sasha</strong> added <strong>olive juice</strong> to their library</span>
+              <time class="cv2-row-time">1h</time>
+            </a>
+            <a href="javascript:void(0)" class="cv2-row" onclick="return false">
+              <i class="ph ph-note-pencil cv2-row-glyph" aria-hidden="true"></i>
+              <span class="cv2-row-phrase"><strong>lucid haus</strong> published <em>a season ends</em></span>
+              <time class="cv2-row-time">3h</time>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>event row v2 — fat row with image <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            when the event carries a poster, the row grows a 56px thumb on the
+            right. actor avatar on the left, phrase in the middle, timestamp
+            below the phrase. no border.
+          </p>
+          <div style="max-width:720px;display:flex;flex-direction:column">
+            <a href="javascript:void(0)" class="cv2-row cv2-row--fat" onclick="return false">
+              <span class="cv2-row-avatar">n</span>
+              <div class="cv2-row-body">
+                <span class="cv2-row-phrase"><strong>nappy nina</strong> published <em>olive juice</em></span>
+                <time class="cv2-row-time">2h</time>
+              </div>
+              <div class="cv2-row-thumb" aria-hidden="true"></div>
+            </a>
+            <a href="javascript:void(0)" class="cv2-row cv2-row--fat" onclick="return false">
+              <span class="cv2-row-avatar">s</span>
+              <div class="cv2-row-body">
+                <span class="cv2-row-phrase"><strong>sasha</strong> joined the network</span>
+                <time class="cv2-row-time">5h</time>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>event banner v2 — org-created hero <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            the one shape that gets to breathe wide. chillax phrase at display
+            scale, domain in mono underneath (plain text, never a nested anchor),
+            accent-tinted canvas, mono timestamp bottom-right.
+          </p>
+          <div style="max-width:720px">
+            <a href="javascript:void(0)" class="cv2-banner" onclick="return false">
+              <i class="ph ph-users-three cv2-banner-glyph" aria-hidden="true"></i>
+              <div class="cv2-banner-body">
+                <span class="cv2-banner-eyebrow">organization launched</span>
+                <h3 class="cv2-banner-phrase">lucid haus is on praxis</h3>
+                <div class="cv2-banner-domain">lucid.haus</div>
+              </div>
+              <time class="cv2-banner-time">just now</time>
+            </a>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 23 · art & post detail ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">23 · art & post detail</h2>
@@ -5871,6 +6065,12 @@ async function initDesign() {
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75em">
                 <span style="color:var(--muted);font-size:0.85em"></span>
                 <button class="buy-btn" style="font-size:0.85em;padding:0.4em 2ch;border-radius:8px">comment</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────── 24 · templates & player ─────────── -->
       <section class="design-section">
         <h2 class="design-section-title">24 · templates & player</h2>
@@ -6431,12 +6631,24 @@ async function initDesign() {
           CLAUDE.md → "Design Catalog — /design (MUST UPDATE)".
         </p>
       </footer>
-      </div>
     </div>
   `
 
-  // Wire the sidebar: jumps, URL hash sync, arrow-key nav, mobile drawer.
-  try { initCatalogNav(el) } catch (e) { console.warn('[catalog nav] init failed', e) }
+  // Demote any <code>draft</code> markers inline so the quiet accent bar
+  // shows up without the shouting uppercase chip.
+  try {
+    const blocks = el.querySelectorAll('.design-block, .dw-block')
+    blocks.forEach(block => {
+      const h3 = block.querySelector(':scope > h3')
+      if (!h3) return
+      for (const c of h3.querySelectorAll('code')) {
+        if ((c.textContent || '').trim().toLowerCase() === 'draft') {
+          block.classList.add('is-draft')
+          break
+        }
+      }
+    })
+  } catch {}
 
   // Live QR in the ticket pass mini so it isn't just a hollow box.
   try {

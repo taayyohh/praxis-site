@@ -12311,3 +12311,286 @@ a.media-card-meta-superseded:hover { color: var(--fg); text-decoration: underlin
 .design-cards-grid .media-card-art { max-height: 240px; }
 .design-cards-grid .media-card--wide .media-card-art { max-height: 180px; }
 .design-cards-grid .media-card--portrait .media-card-art { max-height: 300px; }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Card family v2 — /design workshop. Scoped under .cv2-scope so no
+ * live selector is touched. Goal: match the album detail polish bar
+ * (public/style.css .art-album-*) for two families still lagging it:
+ * the network tile (live .nc-*) and the event card (live .event-card*).
+ * Promotion is a separate pass by rename, not redesign.
+ * ──────────────────────────────────────────────────────────────── */
+
+.cv2-scope { color: var(--fg); }
+
+/* ---- network tile ------------------------------------------------- */
+.cv2-tile {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 1.1rem;
+  align-items: start;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--fg) 2.5%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: background 120ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.cv2-tile:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--fg) 8%, transparent);
+  transform: translateY(-1px);
+}
+
+.cv2-tile-cover {
+  width: 128px;
+  height: 128px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 5%, var(--bg));
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.cv2-tile-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv2-tile-cover--monogram {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 14%, transparent),
+    color-mix(in srgb, var(--fg) 6%, transparent));
+}
+.cv2-tile-mono {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 700;
+  font-size: 3.25rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  text-transform: lowercase;
+}
+
+.cv2-tile-body { min-width: 0; display: flex; flex-direction: column; }
+.cv2-tile-body > * + * { margin-top: 0.35rem; }
+.cv2-tile-body > .cv2-tile-bio { margin-top: 0.65rem; }
+.cv2-tile-body > .cv2-tile-actions { margin-top: 0.85rem; }
+
+.cv2-tile-eyebrow {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cv2-tile-name {
+  margin: 0;
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+.cv2-tile-domain {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  letter-spacing: 0.015em;
+}
+.cv2-tile-bio {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv2-tile-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+/* ---- chips (shared with rows) ------------------------------------ */
+.cv2-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  transition: background 120ms ease, color 120ms ease;
+}
+.cv2-chip-solid {
+  background: var(--fg);
+  color: var(--bg);
+}
+.cv2-chip-solid:hover { background: color-mix(in srgb, var(--fg) 85%, var(--accent)); }
+.cv2-chip-ghost {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.cv2-chip-ghost:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+
+/* ---- event rows: compact line ------------------------------------ */
+.cv2-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.25rem;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.cv2-row:last-child { border-bottom: 0; }
+.cv2-row:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+
+.cv2-row-glyph {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-size: 1.1rem;
+  display: grid;
+  place-items: center;
+}
+.cv2-row-phrase {
+  font-size: 0.98rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--fg) 85%, transparent);
+  min-width: 0;
+}
+.cv2-row-phrase strong { color: var(--fg); font-weight: 600; }
+.cv2-row-phrase em { font-style: italic; color: var(--fg); }
+.cv2-row-time {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ---- event rows: fat row with avatar + optional thumb ------------- */
+.cv2-row--fat {
+  grid-template-columns: 40px 1fr auto;
+  gap: 0.9rem;
+  padding: 0.85rem 0.25rem;
+  align-items: center;
+}
+.cv2-row-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    color-mix(in srgb, var(--fg) 8%, transparent));
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  text-transform: lowercase;
+}
+.cv2-row--fat .cv2-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.cv2-row--fat .cv2-row-body .cv2-row-time {
+  font-size: 0.75rem;
+  align-self: flex-start;
+}
+.cv2-row-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 20%, transparent),
+    color-mix(in srgb, var(--fg) 10%, transparent));
+}
+
+/* ---- event hero banner ------------------------------------------- */
+.cv2-banner {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 1.1rem;
+  align-items: center;
+  padding: 1.5rem 1.6rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 10%, transparent) 0%,
+    color-mix(in srgb, var(--fg) 3%, transparent) 100%);
+  color: inherit;
+  text-decoration: none;
+  transition: background 120ms ease, transform 160ms ease;
+}
+.cv2-banner:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+    color-mix(in srgb, var(--fg) 5%, transparent) 100%);
+  transform: translateY(-1px);
+}
+
+.cv2-banner-glyph {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-size: 1.65rem;
+}
+.cv2-banner-body { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.cv2-banner-eyebrow {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cv2-banner-phrase {
+  margin: 0;
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+.cv2-banner-domain {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  letter-spacing: 0.015em;
+}
+.cv2-banner-time {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+  align-self: start;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .cv2-tile { grid-template-columns: 1fr; }
+  .cv2-tile-cover { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+  .cv2-banner { grid-template-columns: 1fr; gap: 0.7rem; padding: 1.25rem; }
+  .cv2-banner-time { align-self: start; }
+}
