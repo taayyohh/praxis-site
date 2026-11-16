@@ -92,15 +92,15 @@ function buildPortfolioNav() {
     const i18nAttr = m.customLabel ? '' : ` data-i18n="module.${m.type}"`
     return `<a href="${mod.route}"${i18nAttr}>${label}</a>`
   }).join(' ')
-  // Blog only appears in the nav when there's something to show. Empty
-  // blog links used to render as dead-end nav items on every fresh site.
-  // We check both blog-collections and any published posts on this
-  // tenant — either is enough to warrant surfacing the link.
-  const hasBlogCollections = Array.isArray(site.blogCollections) && site.blogCollections.length > 0
-  const hasPublishedPosts = _tenantHasBlogPosts()
-  const blogLink = (hasBlogCollections || hasPublishedPosts)
-    ? ' <a href="/blog" data-i18n="nav.blog">blog</a>'
-    : ''
+  // Blog is a baked-in feature of every artist site — always surface
+  // the nav link. The prior "hide when empty" gate only checked for
+  // local .md files in content/blog/, which misses every post
+  // published through the compose UI (those go straight to
+  // BlogRegistry on-chain, no local file). Result was that artists
+  // with real on-chain posts had the blog link hidden and no way to
+  // reach /blog. If the blog page is empty, it already renders a
+  // friendly "no posts yet" state.
+  const blogLink = ' <a href="/blog" data-i18n="nav.blog">blog</a>'
   return moduleLinks + blogLink
 }
 
