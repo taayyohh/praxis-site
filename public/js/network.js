@@ -18,6 +18,14 @@ let _initGen = 0
 // Kept module-local so the card renderer stays sync — no per-row
 // awaits in the hot path.
 let _orgDomainSet = new Set()
+// Map of org admin addresses (lowercased) → { name, domain }. Orgs
+// registered via the Safe-first flow deploy a Safe that becomes both
+// org admin AND a registered supporter — so the supporter list
+// surfaces the Safe address with a 'whatifwe-pictures-1'-style
+// handle. Without this map we'd classify those Safes as 'audience'
+// when they're actually the org's shared account, and show the Safe's
+// supporter-registration handle instead of the org's real name/domain.
+let _orgByAdmin = new Map()
 
 // Pulled from feed-cards' avatar pattern: profilePic URLs on Praxis
 // land as `/api/ipfs-proxy/<cid>` (see server.js sanitizer at ~6876).
@@ -126,6 +134,7 @@ registerPage('network-data', () => {
 async function init() {
   const thisGen = ++_initGen
   _orgDomainSet = new Set()
+  _orgByAdmin = new Map()
   const registryAddress = networkData?.dataset?.registry
   const statusEl = document.getElementById('network-status')
   const listEl = document.getElementById('network-list')
@@ -404,7 +413,7 @@ async function init() {
             ${F.pageInfo}
             totalCount
           }
-          organizations(where: { dissolved: false }, limit: 200) { items { id domain } totalCount }
+          organizations(where: { dissolved: false }, limit: 200) { items { id name domain admin } totalCount }
         }
       `, { after: afterCursor })
 
@@ -413,9 +422,13 @@ async function init() {
 
       // Build the org-domain set once per page — an artist whose domain
       // matches an on-chain org renders the "organization" eyebrow.
-      // Dissolved orgs are already filtered server-side.
+      // Dissolved orgs are already filtered server-side. Also map admin
+      // address → {name, domain} so the supporter list below can
+      // render an org's Safe with its actual org name/domain (not the
+      // 'whatifwe-pictures-1' supporter-registration handle).
       for (const o of (data.organizations?.items || [])) {
         if (o.domain) _orgDomainSet.add(o.domain)
+        if (o.admin) _orgByAdmin.set(o.admin.toLowerCase(), { name: o.name || '', domain: o.domain || '' })
       }
       const orgCount = _orgCount
 
@@ -542,13 +555,23 @@ async function init() {
         const myAddr = window.getWalletAddress?.()?.toLowerCase()
         const supHtml = supItems.map(s => {
           const addr = s.id.toLowerCase()
+          // Safe-first org creation registers the Safe as a supporter
+          // during bootstrap. Surface those entries as 'organization'
+          // (not 'audience') so the shared account doesn't read as a
+          // random fan — see _orgByAdmin comment at top of file. When
+          // we have the org record, prefer its real name/domain over
+          // the supporter-registration handle.
+          const org = _orgByAdmin.get(addr)
+          const kind = org ? 'organization' : 'audience'
+          const domain = org?.domain || s.handle
+          const displayName = org?.name || getArtistName(addr) || s.handle
           return renderNetworkCard({
             addr,
-            domain: s.handle,
-            displayName: getArtistName(addr) || s.handle,
+            domain,
+            displayName,
             bio: getArtistBio(addr),
             pic: getProfilePic(addr),
-            kind: 'audience',
+            kind,
             isMe: myAddr && addr === myAddr,
             isFollowing: !!followState[addr],
             isMutualFollow: !!followState[addr] && !!followersState[addr],
