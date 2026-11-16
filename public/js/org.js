@@ -52,7 +52,21 @@ async function renderOrg(container, org, orgId) {
   const memberCount = org.members?.length || 0
   const dissolved = org.dissolved
   const myAddr = (window.getWalletAddress?.() || '').toLowerCase()
-  const isAdmin = myAddr && myAddr === adminAddr
+  // The on-chain admin is often a Safe (that's the Safe-first org flow —
+  // Safe becomes admin via msg.sender of createOrg). Recognize Safe
+  // signers as effectively-admin so the invite/remove/dissolve UI shows
+  // for everyone who can co-sign an admin tx, not just the EOA that
+  // happens to equal the admin field.
+  let adminIsSafe = false
+  let amSafeSigner = false
+  if (adminAddr && myAddr && adminAddr !== myAddr) {
+    try {
+      const { isSafeAddress, isSafeSigner } = await import('./safe-org.js')
+      adminIsSafe = await isSafeAddress(adminAddr)
+      if (adminIsSafe) amSafeSigner = await isSafeSigner(adminAddr, myAddr)
+    } catch {}
+  }
+  const isAdmin = myAddr && (myAddr === adminAddr || amSafeSigner)
   const isMember = myAddr && org.members?.some(m => (m.wallet || m).toLowerCase() === myAddr)
   const orgType = document.body?.dataset?.orgType || meta.orgType || window._siteData?.orgType || 'collective'
   const cfg = ORG_TYPE_CONFIG[orgType] || ORG_TYPE_CONFIG.collective
@@ -262,9 +276,13 @@ async function renderOrg(container, org, orgId) {
     </style>
   `
 
-  wireInvite(container, orgId, myAddr)
-  wireRemoveButtons(container, orgId, myAddr, memberDomains, org.name)
-  wireDissolve(container, orgId, myAddr)
+  // Pass the Safe admin's address (when the on-chain admin is a Safe) so
+  // the write-side handlers know to route the tx through Safe.execTx
+  // instead of calling the org contract from the signer's EOA.
+  const adminSafe = adminIsSafe ? adminAddr : null
+  wireInvite(container, orgId, myAddr, adminSafe)
+  wireRemoveButtons(container, orgId, myAddr, memberDomains, org.name, adminSafe)
+  wireDissolve(container, orgId, myAddr, adminSafe)
   wireLeave(container, orgId, myAddr, org.name)
   loadCatalog(orgId, orgType)
 }
@@ -421,7 +439,7 @@ function renderRoster(members, domainMap, isAdmin, orgId, orgType, pics = {}, na
 
 // --- Admin wiring ---
 
-function wireInvite(container, orgId, myAddr) {
+function wireInvite(container, orgId, myAddr, safeAdmin) {
   const inviteBtn = container.querySelector('#org-invite-btn')
   const inviteInput = container.querySelector('#org-invite-input')
   const inviteStatus = container.querySelector('#org-invite-status')
@@ -498,14 +516,24 @@ function wireInvite(container, orgId, myAddr) {
     try {
       inviteStatus.textContent = 'confirm in wallet...'
       if (!await window.ensureOptimism?.()) { inviteStatus.textContent = 'wallet not connected'; return }
-      const { createWalletClient, custom, optimism } = await import('./vendor.js')
-      const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
-      const hash = await wc.writeContract({
-        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
-        args: [BigInt(orgId), targetWallet], account: myAddr,
-      })
-      inviteStatus.textContent = 'waiting for confirmation...'
       const pc = await getPublicClient()
+      let hash
+      if (safeAdmin) {
+        // Admin is a Safe — route inviteMember through Safe.execTx so the
+        // Safe (which actually holds the admin role) is msg.sender.
+        const { encodeFunctionData } = await import('./vendor.js')
+        const { execSafeTx } = await import('./safe-org.js')
+        const callData = encodeFunctionData({ abi: ORG_ABI, functionName: 'inviteMember', args: [BigInt(orgId), targetWallet] })
+        hash = await execSafeTx({ safeAddress: safeAdmin, target: ORG_ADDRESS, callData })
+      } else {
+        const { createWalletClient, custom, optimism } = await import('./vendor.js')
+        const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+        hash = await wc.writeContract({
+          address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'inviteMember',
+          args: [BigInt(orgId), targetWallet], account: myAddr,
+        })
+      }
+      inviteStatus.textContent = 'waiting for confirmation...'
       await pc.waitForTransactionReceipt({ hash })
       inviteStatus.style.color = 'var(--green,#4a4)'
       inviteStatus.textContent = 'invite sent!'
@@ -520,7 +548,7 @@ function wireInvite(container, orgId, myAddr) {
   inviteInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') inviteBtn.click() })
 }
 
-function wireRemoveButtons(container, orgId, myAddr, memberDomains, orgName) {
+function wireRemoveButtons(container, orgId, myAddr, memberDomains, orgName, safeAdmin) {
   container.querySelectorAll('.org-remove-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const wallet = btn.dataset.wallet
@@ -530,13 +558,21 @@ function wireRemoveButtons(container, orgId, myAddr, memberDomains, orgName) {
       try {
         btn.textContent = '...'
         if (!await window.ensureOptimism?.()) return
-        const { createWalletClient, custom, optimism } = await import('./vendor.js')
-        const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
-        const hash = await wc.writeContract({
-          address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'removeMember',
-          args: [BigInt(orgId), wallet], account: myAddr,
-        })
         const pc = await getPublicClient()
+        let hash
+        if (safeAdmin) {
+          const { encodeFunctionData } = await import('./vendor.js')
+          const { execSafeTx } = await import('./safe-org.js')
+          const callData = encodeFunctionData({ abi: ORG_ABI, functionName: 'removeMember', args: [BigInt(orgId), wallet] })
+          hash = await execSafeTx({ safeAddress: safeAdmin, target: ORG_ADDRESS, callData })
+        } else {
+          const { createWalletClient, custom, optimism } = await import('./vendor.js')
+          const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+          hash = await wc.writeContract({
+            address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'removeMember',
+            args: [BigInt(orgId), wallet], account: myAddr,
+          })
+        }
         await pc.waitForTransactionReceipt({ hash })
         btn.closest('.org-member-card, .org-pub-member')?.remove()
       } catch (e) {
@@ -547,20 +583,28 @@ function wireRemoveButtons(container, orgId, myAddr, memberDomains, orgName) {
   })
 }
 
-function wireDissolve(container, orgId, myAddr) {
+function wireDissolve(container, orgId, myAddr, safeAdmin) {
   container.querySelector('#org-dissolve-btn')?.addEventListener('click', async () => {
     if (!confirm('permanently dissolve this organization? this cannot be undone.')) return
     const btn = container.querySelector('#org-dissolve-btn')
     try {
       btn.textContent = 'confirm in wallet...'
       if (!await window.ensureOptimism?.()) { btn.textContent = 'dissolve organization'; return }
-      const { createWalletClient, custom, optimism } = await import('./vendor.js')
-      const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
-      const hash = await wc.writeContract({
-        address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'dissolveOrg',
-        args: [BigInt(orgId)], account: myAddr,
-      })
       const pc = await getPublicClient()
+      let hash
+      if (safeAdmin) {
+        const { encodeFunctionData } = await import('./vendor.js')
+        const { execSafeTx } = await import('./safe-org.js')
+        const callData = encodeFunctionData({ abi: ORG_ABI, functionName: 'dissolveOrg', args: [BigInt(orgId)] })
+        hash = await execSafeTx({ safeAddress: safeAdmin, target: ORG_ADDRESS, callData })
+      } else {
+        const { createWalletClient, custom, optimism } = await import('./vendor.js')
+        const wc = createWalletClient({ chain: optimism, transport: custom(window.getWalletProvider()) })
+        hash = await wc.writeContract({
+          address: ORG_ADDRESS, abi: ORG_ABI, functionName: 'dissolveOrg',
+          args: [BigInt(orgId)], account: myAddr,
+        })
+      }
       await pc.waitForTransactionReceipt({ hash })
       location.reload()
     } catch (e) {

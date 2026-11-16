@@ -385,16 +385,16 @@ async function initPost() {
       try {
         const authorAddr = post.author.toLowerCase()
         // Pull the author's site.json for name / bio / profilePic. The
-        // /api/artist-site endpoint already exists (server.js:3705).
+        // /api/artist-site endpoint returns the author's public profile
+        // keyed by the author's own domain — crucial when this post is
+        // being read on a *different* tenant (milesxb.bio showing a
+        // post authored by blackmatter.world). An /api/site fallback
+        // would wrongly return the current tenant's profile and label
+        // the current site owner as the author.
         const authorSite = await fetch(`/api/artist-site?domain=${encodeURIComponent(domain)}`).then(r => r.ok ? r.json() : null).catch(() => null)
-        // The endpoint returns { modules }, not the top-level fields
-        // we need — fall back to /api/site if we're on the author's
-        // own tenant, otherwise render a minimal card.
-        const authorProfile = await fetch(`/api/site`).then(r => r.ok ? r.json() : null).catch(() => null)
-        // Prefer whichever source has the fuller profile fields.
-        const bio = authorProfile?.bio || authorProfile?.description || ''
-        const displayName = authorProfile?.name || domain
-        const avatar = authorProfile?.profilePic || ''
+        const bio = authorSite?.bio || authorSite?.description || ''
+        const displayName = authorSite?.name || domain
+        const avatar = authorSite?.profilePic || ''
         const card = document.getElementById('post-author-card')
         if (!card) return
         const isSelf = window.getWalletAddress?.()?.toLowerCase?.() === authorAddr
