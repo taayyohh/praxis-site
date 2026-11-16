@@ -62,6 +62,7 @@ const CATALOG_SECTION_IDS = {
   '20': 'sec-money-inout',
   '21': 'sec-projects',
   '22': 'sec-network',
+  '22b': 'sec-card-v2',
   '23': 'sec-art-post',
   '24': 'sec-templates-player',
 }
@@ -111,6 +112,7 @@ const CATALOG_CATEGORIES = [
       { id: 'sec-making-writing', label: 'making + writing' },
       { id: 'sec-projects', label: 'project lifecycle' },
       { id: 'sec-network', label: 'network + profile' },
+      { id: 'sec-card-v2', label: 'card family v2 (workshop)' },
       { id: 'sec-templates-player', label: 'templates + player' },
     ],
   },
@@ -5252,6 +5254,292 @@ async function initDesign() {
             <code>profile.js:457</code>; snapshot stands in if the probe misses.
           </p>
           <div id="design-net-postcard-slot" style="max-width:560px"></div>
+        </div>
+      </section>
+
+      <!-- ─────────── 22b · card family v2 (workshop) ─────────── -->
+      <section class="design-section cv2-scope" id="sec-card-v2">
+        <h2 class="design-section-title">22b · card family v2 — album-detail polish <code>workshop</code></h2>
+        <p style="color:var(--dim);font-size:0.9em;margin:0 0 1em;max-width:60ch">
+          scoped prototype. the album detail at
+          <code>milesxb.bio/music/babyfang/olive-juice</code> is the bar we're
+          trying to meet — chillax display face at huge size, opacity-for-hierarchy
+          (0.75 byline), mono tabular-num meta strips, solid chip primary, no
+          decorative borders where the typography already carries the hierarchy,
+          image-forward where chain data allows. every selector below is
+          prefixed <code>.cv2-*</code> — nothing live changes until miles greenlights
+          a promotion pass. live network + event cards still render on sections
+          22 and 4.
+        </p>
+
+        <div class="design-block">
+          <h3>network tile v2 — artist with profile pic <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            big square cover, chillax name, mono domain under it, bio capped at
+            two lines, solid follow chip + ghost message icon. no border — hover
+            lifts a quiet shadow + background tint. same voice as the album hero,
+            scaled for a grid cell.
+          </p>
+          <ul class="cv2-tile-grid">
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover">
+                  <svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:var(--fg)">
+                    <defs>
+                      <linearGradient id="cv2-pfp-nina" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="currentColor" stop-opacity="0.26"/>
+                        <stop offset="1" stop-color="currentColor" stop-opacity="0.06"/>
+                      </linearGradient>
+                    </defs>
+                    <rect width="128" height="128" fill="url(#cv2-pfp-nina)"/>
+                    <circle cx="64" cy="48" r="20" fill="currentColor" fill-opacity="0.28"/>
+                    <path d="M18 128c0-23 20-40 46-40s46 17 46 40" fill="currentColor" fill-opacity="0.28"/>
+                  </svg>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">artist</span>
+                  <h3 class="cv2-tile-name">nappy nina</h3>
+                  <div class="cv2-tile-domain">nappynina.com</div>
+                  <p class="cv2-tile-bio">brooklyn rapper and producer. new album end credits out now.</p>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip cv2-chip--following">following</button>
+                    <button type="button" class="cv2-chip-icon" aria-label="message"><i class="ph ph-chat-circle"></i></button>
+                  </div>
+                </div>
+              </a>
+            </li>
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                  <span class="cv2-tile-cover--monogram-letter">b</span>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">artist</span>
+                  <h3 class="cv2-tile-name">black matter</h3>
+                  <div class="cv2-tile-domain">blackmatter.world</div>
+                  <p class="cv2-tile-bio">film + sound. an audio-visual essay practice built from the left margin out.</p>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip">follow</button>
+                  </div>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="design-block">
+          <h3>network tile v2 — organization with logo <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            same shape, mono eyebrow reads "organization" when the address
+            matches a PraxisOrganization admin. logo sits where the profile pic
+            would. follow chip reads as the org's shared account (plural voice
+            is the org's job, not the card's).
+          </p>
+          <ul class="cv2-tile-grid">
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover" style="background:#64E097">
+                  <svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M30 42c4-14 20-22 34-18s24 18 22 32c-2 12-12 22-22 24-6 1-12 0-18-4-7-5-10-14-12-22-2-4-4-8-4-12z" fill="#0f0f0f"/>
+                    <path d="M58 60c2-6 10-10 16-6s8 14 4 20-14 6-18 0" stroke="#64E097" stroke-width="2" fill="none"/>
+                  </svg>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">organization</span>
+                  <h3 class="cv2-tile-name">lucidhaus</h3>
+                  <div class="cv2-tile-domain">lucid.haus</div>
+                  <p class="cv2-tile-bio">the home of timeless post-genre Black music.</p>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip cv2-chip--following">following</button>
+                    <button type="button" class="cv2-chip-icon" aria-label="message"><i class="ph ph-chat-circle"></i></button>
+                  </div>
+                </div>
+              </a>
+            </li>
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                  <span class="cv2-tile-cover--monogram-letter">w</span>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">organization</span>
+                  <h3 class="cv2-tile-name">whatifwe pictures</h3>
+                  <div class="cv2-tile-domain">whatifwe.nyc</div>
+                  <p class="cv2-tile-bio">a film collective.</p>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip">follow</button>
+                  </div>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="design-block">
+          <h3>network tile v2 — audience <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            same shape again — a supporter is still a person on the network.
+            eyebrow is the only tell. no follow chip when the viewer already
+            follows; the message icon stays.
+          </p>
+          <ul class="cv2-tile-grid">
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                  <span class="cv2-tile-cover--monogram-letter">n</span>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">audience</span>
+                  <h3 class="cv2-tile-name">nineisgiantess</h3>
+                  <div class="cv2-tile-domain">nineisgiantess</div>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip">follow</button>
+                  </div>
+                </div>
+              </a>
+            </li>
+            <li>
+              <a href="javascript:void(0)" class="cv2-tile" onclick="return false">
+                <div class="cv2-tile-cover cv2-tile-cover--monogram">
+                  <span class="cv2-tile-cover--monogram-letter">t</span>
+                </div>
+                <div class="cv2-tile-body">
+                  <span class="cv2-tile-eyebrow">audience</span>
+                  <h3 class="cv2-tile-name">tobiaslawrence</h3>
+                  <div class="cv2-tile-domain">tobiaslawrence</div>
+                  <div class="cv2-tile-actions">
+                    <button type="button" class="cv2-chip cv2-chip--following">following</button>
+                    <button type="button" class="cv2-chip-icon" aria-label="message"><i class="ph ph-chat-circle"></i></button>
+                  </div>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="design-block">
+          <h3>event row v2 · compact line <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            no border, no background — rhythm + typography. a hairline between
+            rows is the only separator. names in body opacity, actors in strong,
+            verbs in muted, timestamps mono tabular-num at the right.
+          </p>
+          <div style="max-width:720px">
+            <a href="javascript:void(0)" class="cv2-event" onclick="return false">
+              <i class="ph ph-user-plus cv2-event-icon" aria-hidden="true"></i>
+              <span class="cv2-event-phrase"><span class="cv2-event-strong">miles alexander bridges</span><span class="cv2-event-muted">followed</span><span class="cv2-event-accent">nelsonbandela</span></span>
+              <span class="cv2-event-time">17d</span>
+            </a>
+            <a href="javascript:void(0)" class="cv2-event" onclick="return false">
+              <i class="ph ph-books cv2-event-icon" aria-hidden="true"></i>
+              <span class="cv2-event-phrase"><span class="cv2-event-accent">blackmatter.world</span><span class="cv2-event-muted">added</span><span class="cv2-event-strong">Play and Labor</span><span class="cv2-event-muted">to the library</span></span>
+              <span class="cv2-event-time">45d</span>
+            </a>
+            <a href="javascript:void(0)" class="cv2-event" onclick="return false">
+              <i class="ph ph-article cv2-event-icon" aria-hidden="true"></i>
+              <span class="cv2-event-phrase"><span class="cv2-event-accent">canteenkilla</span><span class="cv2-event-muted">published</span><span class="cv2-event-strong">gettin' settled</span></span>
+              <span class="cv2-event-time">45d</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>event row v2 · fat line <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            round 44px avatar left, display-face phrase middle, optional 56px
+            poster thumb right when the event carries one. identity-registry
+            moments (joined, referral) get the fat shape because they're the
+            real "something happened" rows in a quiet feed.
+          </p>
+          <div style="max-width:720px">
+            <a href="javascript:void(0)" class="cv2-event cv2-event--fat" onclick="return false">
+              <div class="cv2-event-avatar">
+                <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:var(--fg)">
+                  <rect width="44" height="44" fill="currentColor" fill-opacity="0.14"/>
+                  <circle cx="22" cy="17" r="7" fill="currentColor" fill-opacity="0.35"/>
+                  <path d="M6 44c0-8 7-14 16-14s16 6 16 14" fill="currentColor" fill-opacity="0.35"/>
+                </svg>
+              </div>
+              <span class="cv2-event-phrase"><span class="cv2-event-accent">nelsonbandela.world</span> <span class="cv2-event-muted">joined the network</span></span>
+              <span class="cv2-event-time">17d</span>
+            </a>
+            <a href="javascript:void(0)" class="cv2-event cv2-event--fat" onclick="return false">
+              <div class="cv2-event-avatar">
+                <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:var(--accent)">
+                  <rect width="44" height="44" fill="currentColor" fill-opacity="0.14"/>
+                  <path d="M22 10l3.6 7.3 8.1 1.2-5.9 5.7 1.4 8-7.2-3.8-7.2 3.8 1.4-8-5.9-5.7 8.1-1.2z" fill="currentColor" fill-opacity="0.9"/>
+                </svg>
+              </div>
+              <span class="cv2-event-phrase"><span class="cv2-event-accent">nelsonbandela</span> <span class="cv2-event-muted">was invited by</span> <span class="cv2-event-strong">miles alexander bridges</span></span>
+              <span class="cv2-event-time">17d</span>
+            </a>
+            <a href="javascript:void(0)" class="cv2-event cv2-event--fat" onclick="return false">
+              <div class="cv2-event-avatar">
+                <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:var(--fg)">
+                  <rect width="44" height="44" fill="currentColor" fill-opacity="0.14"/>
+                  <circle cx="22" cy="17" r="7" fill="currentColor" fill-opacity="0.35"/>
+                  <path d="M6 44c0-8 7-14 16-14s16 6 16 14" fill="currentColor" fill-opacity="0.35"/>
+                </svg>
+              </div>
+              <span class="cv2-event-phrase"><span class="cv2-event-accent">canteenkilla</span> <span class="cv2-event-muted">published</span> <span class="cv2-event-strong">insta ain't it</span></span>
+              <div class="cv2-event-thumb">
+                <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:var(--fg)">
+                  <rect width="56" height="56" fill="currentColor" fill-opacity="0.08"/>
+                  <rect x="12" y="14" width="32" height="4" fill="currentColor" fill-opacity="0.3"/>
+                  <rect x="12" y="22" width="22" height="3" fill="currentColor" fill-opacity="0.22"/>
+                  <rect x="12" y="29" width="32" height="3" fill="currentColor" fill-opacity="0.22"/>
+                  <rect x="12" y="36" width="28" height="3" fill="currentColor" fill-opacity="0.22"/>
+                </svg>
+              </div>
+              <span class="cv2-event-time">45d</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="design-block">
+          <h3>event hero v2 · banner <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.5em">
+            ambient hero for identity-registry moments that deserve real
+            air — org-created, revenue-distributed, project-completed. radial
+            accent tint pools around the headline; no border. the card itself
+            is the <code>&lt;a&gt;</code>, so the body domain renders as plain
+            text, never a nested anchor (that was the bug we shipped earlier
+            today — see <code>public/js/event-card.js:156</code>).
+          </p>
+          <div style="max-width:720px">
+            <a href="javascript:void(0)" class="cv2-event-hero" onclick="return false">
+              <div class="cv2-event-hero-head">
+                <div class="cv2-event-avatar" style="width:52px;height:52px">
+                  <svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="52" height="52" fill="#64E097"/>
+                    <path d="M13 18c2-7 9-11 16-9s11 9 10 15c-1 5-6 10-11 10-2 0-6 0-9-2-3-2-5-6-6-10" fill="#0f0f0f"/>
+                  </svg>
+                </div>
+                <h3 class="cv2-event-hero-phrase"><span class="cv2-event-accent">lucidhaus</span> <span class="cv2-event-muted">started a new organization</span></h3>
+              </div>
+              <p class="cv2-event-hero-body">lucid.haus</p>
+              <p class="cv2-event-hero-meta">45d</p>
+            </a>
+          </div>
+          <p style="color:var(--muted);font-size:0.78em;margin:0.75em 0 0">
+            promotion plan — rename <code>.cv2-event-hero*</code> →
+            <code>.event-card--banner</code> in <code>event-card.js</code>,
+            delete the current <code>.event-card-inner</code> grid, drop the
+            poster slot for org-created (text-only is enough), keep the ambient
+            tint. live feed sites pick up the change on first deploy. no on-chain
+            emit changes.
+          </p>
+        </div>
+
+        <div class="design-block">
+          <h3>why this reads richer <code>draft</code></h3>
+          <p style="color:var(--dim);font-size:0.9em;margin:0;max-width:60ch">
+            the current cards (see sections 22 + 4) carry their hierarchy with
+            borders + letter-tiles. the v2 versions carry it with typography
+            and opacity, the same way the album detail does. that's the whole
+            move — nothing novel, just the album hero's rules extended to the
+            two families that were still on last year's shape.
+          </p>
         </div>
       </section>
 
