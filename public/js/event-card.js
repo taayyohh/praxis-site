@@ -153,11 +153,14 @@ const DESCRIPTORS = {
       ]
     },
     // When the emit carries an org domain, surface it as an understated
-    // second line linking straight to the org. Falls back to description
-    // if no domain is present. Not a hero — a quiet pointer.
+    // second line under the phrase. The whole card is already an <a> to
+    // that domain, so this must NOT be a nested <a> — HTML closes the
+    // outer <a> on parse when it encounters a nested one, popping this
+    // line (and everything after it) out of the card and leaving an
+    // empty shell above. Plain text keeps the structure intact.
     body: (d) => {
       if (isValidHost(d.domain)) {
-        return `<p class="event-card-body"><a href="https://${esc(d.domain)}">${esc(d.domain)}</a></p>`
+        return `<p class="event-card-body">${esc(d.domain)}</p>`
       }
       return d.description ? `<p class="event-card-body">${esc(d.description).slice(0, 200)}</p>` : ''
     },
