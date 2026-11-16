@@ -1241,7 +1241,7 @@ async function initDesign() {
         <div class="design-block">
           <h3>filter pills — /collection style</h3>
           <div class="design-btn-row">
-            <button class="collection-filter collection-filter-active" data-filter="all">all</button>
+            <button class="collection-filter active" data-filter="all">all</button>
             <button class="collection-filter" data-filter="saved-posts">saved posts</button>
             <button class="collection-filter" data-filter="audio">audio</button>
             <button class="collection-filter" data-filter="video">video</button>
@@ -2000,21 +2000,14 @@ async function initDesign() {
 
         <div class="design-block">
           <h3>collection album card (owned)</h3>
+          <p style="color:var(--muted);font-size:0.8em;margin:0 0 0.75em">
+            calls the real MediaCard renderer in owned mode — same shape /collection
+            paints. a card without a cover gets the quiet dark fallback canvas,
+            not a huge centered icon chip.
+          </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
-            <div class="collection-card collection-album-card collection-item" data-media-id="1" data-media-type="audio">
-              <div style="background:color-mix(in srgb,var(--fg) 4%,transparent);height:150px;display:flex;align-items:center;justify-content:center"><i class="ph ph-music-notes" style="font-size:2.5em;color:var(--muted)"></i></div>
-              <div style="padding:0.6em 0.8em">
-                <div style="color:var(--fg);font-weight:600;font-size:0.95em">End Credits</div>
-                <div style="color:var(--dim);font-size:0.8em">nappynina.com · album (5)</div>
-              </div>
-            </div>
-            <div class="collection-card collection-item" data-media-id="2" data-media-type="video">
-              <div style="background:color-mix(in srgb,var(--fg) 4%,transparent);height:150px;display:flex;align-items:center;justify-content:center"><i class="ph ph-film-strip" style="font-size:2.5em;color:var(--muted)"></i></div>
-              <div style="padding:0.6em 0.8em">
-                <div style="color:var(--fg);font-weight:600;font-size:0.95em">Backlot</div>
-                <div style="color:var(--dim);font-size:0.8em">blackmatter.world · video</div>
-              </div>
-            </div>
+            ${renderCardSafely('audio album (owned)', () => U.renderMediaCard?.(m.uniAlbum, { resolve: mockResolve, owned: true }))}
+            ${renderCardSafely('video (owned)', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, owned: true }))}
           </div>
         </div>
 
@@ -2230,15 +2223,27 @@ async function initDesign() {
             <div class="publish-to-org-title">publish to</div>
             <div class="publish-to-org-hint">show this work in an organization's catalog. only the on-chain owner (you) can publish.</div>
             <div class="publish-to-org-list">
-              <label class="publish-to-org-row">
-                <input type="checkbox" class="publish-to-org-toggle" checked>
-                <span class="publish-to-org-name">whatifwe pictures</span>
-                <a href="#" class="publish-to-org-domain">whatifwe.nyc</a>
+              <label class="publish-toggle-row publish-toggle-row--stacked">
+                <span class="publish-toggle-main">
+                  <span class="publish-toggle-name">whatifwe pictures</span>
+                  <a href="#" class="publish-toggle-sub">whatifwe.nyc</a>
+                </span>
+                <span class="publish-toggle-state">published</span>
+                <span class="publish-toggle-switch">
+                  <input type="checkbox" class="publish-to-org-toggle" checked>
+                  <span class="publish-toggle-track"></span>
+                </span>
               </label>
-              <label class="publish-to-org-row">
-                <input type="checkbox" class="publish-to-org-toggle">
-                <span class="publish-to-org-name">lucidhaus</span>
-                <a href="#" class="publish-to-org-domain">lucid.haus</a>
+              <label class="publish-toggle-row publish-toggle-row--stacked">
+                <span class="publish-toggle-main">
+                  <span class="publish-toggle-name">lucidhaus</span>
+                  <a href="#" class="publish-toggle-sub">lucid.haus</a>
+                </span>
+                <span class="publish-toggle-state">not published</span>
+                <span class="publish-toggle-switch">
+                  <input type="checkbox" class="publish-to-org-toggle">
+                  <span class="publish-toggle-track"></span>
+                </span>
               </label>
             </div>
             <p class="publish-to-org-status" style="color:var(--accent)">published ✓</p>

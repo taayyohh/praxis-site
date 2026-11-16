@@ -639,7 +639,7 @@ function renderGallery(item) {
   const shown = items.slice(0, 12)
   const extra = items.length - shown.length
   const cells = shown.map(it => {
-    const src = it.ipfsCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(it.ipfsCid)}&w=160` : ''
+    const src = it.ipfsCid ? `/api/img?url=/api/ipfs-proxy/${encodeURIComponent(it.ipfsCid)}&w=320` : ''
     return src
       ? `<a class="media-card-gallery-cell" href="/art?media=${encodeURIComponent(it.mediaId)}"><img src="${esc(src)}" loading="lazy" alt="${esc(it.title || '')}"></a>`
       : `<a class="media-card-gallery-cell media-card-gallery-cell--empty" href="/art?media=${encodeURIComponent(it.mediaId)}"><i class="ph ph-image"></i></a>`
