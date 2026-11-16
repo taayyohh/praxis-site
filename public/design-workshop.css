@@ -297,10 +297,10 @@
 }
 .dw-section-header .dw-lead-sub { margin-top: var(--dw-space-2); }
 
-/* jump nav — sticky top strip. */
+/* jump nav — sticky under the fixed site top-bar (#top-bar is 3em). */
 .dw-jump {
   position: sticky;
-  top: 0;
+  top: 3em;
   z-index: 20;
   background: color-mix(in srgb, var(--dw-bg) 86%, transparent);
   backdrop-filter: saturate(180%) blur(20px);

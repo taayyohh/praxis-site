@@ -6650,6 +6650,29 @@ async function initDesign() {
     })
   } catch {}
 
+  // Wire hash-only links inside the catalog (workshop jump nav etc.) to
+  // explicit scrollIntoView. Default browser hash-anchor scrolling doesn't
+  // work here because body has overflow-x: hidden, which per CSS spec
+  // auto-upgrades overflow-y to auto — the browser then tries to scroll
+  // body (which isn't the actual scroll container, html is) and nothing
+  // visible happens.
+  try {
+    el.addEventListener('click', (ev) => {
+      const a = ev.target.closest('a[href^="#"]')
+      if (!a || !el.contains(a)) return
+      const id = a.getAttribute('href').slice(1)
+      if (!id) return
+      const target = document.getElementById(id)
+      if (!target) return
+      ev.preventDefault()
+      const behavior = (typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        ? 'auto' : 'smooth'
+      target.scrollIntoView({ behavior, block: 'start' })
+      try { history.replaceState(null, '', '#' + id) } catch {}
+    })
+  } catch {}
+
   // Live QR in the ticket pass mini so it isn't just a hollow box.
   try {
     const { generateQR } = await import('./qr.js')
