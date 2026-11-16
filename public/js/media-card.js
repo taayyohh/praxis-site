@@ -355,7 +355,9 @@ function inferActions(item, category, state, context) {
     return owned ? ['view'] : []
   }
   if (owned) {
-    if (category === 'audio') return ['play']
+    // Audio's cover overlay already carries the play affordance (big glass
+    // circle), so we don't duplicate it as a tiny row chip below the title.
+    if (category === 'audio') return []
     if (category === 'video') return []
     if (category === 'document' || category === 'image' || category === '3d' || category === 'code' || category === 'other') return ['download']
     if (category === 'ticket') return ['view']
@@ -363,7 +365,10 @@ function inferActions(item, category, state, context) {
     return ['view']
   }
   const defaults = {
-    audio: item.items && item.items.length > 1 ? ['play-all', 'buy-album'] : (free ? ['play', 'collect-free'] : ['play', 'buy']),
+    // Single-track audio: cover overlay plays it. Full-album cards keep
+    // the explicit 'play-all' since that primes the whole queue — a
+    // distinct action from "play this one cover".
+    audio: item.items && item.items.length > 1 ? ['play-all', 'buy-album'] : (free ? ['collect-free'] : ['buy']),
     video: free ? ['collect-free'] : ['buy'],
     image: item.items && item.items.length > 1 ? ['buy-album'] : (free ? ['collect-free'] : ['buy']),
     document: free ? ['collect-free'] : ['buy'],
@@ -407,10 +412,13 @@ function renderHeader(header, context, item) {
   const name = header.actorName || displayName(actor, context)
   const avatarPic = getProfilePic(actor)
   const avatar = inlineAvatar(actor, avatarPic)
+  // Only the verbs that actually appear in live feeds. 'listed' /
+  // 'posted' were catalog-only shapes that read as noisy marketing copy
+  // on a card above its title — the artist's identity is already the
+  // page context when a card appears outside a feed. See feed.js:234
+  // and landing.js:746/757 for the live call sites (all 'collected').
   const verb = {
     collected: 'collected',
-    listed: 'published',
-    posted: 'posted',
     contributed: 'contributed to library',
     proposed: 'proposed',
   }[header.kind] || header.kind

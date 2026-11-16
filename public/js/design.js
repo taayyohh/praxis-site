@@ -1278,7 +1278,7 @@ async function initDesign() {
           <h3 style="margin:0 0 0.3em">sandbox flows</h3>
           <p style="color:var(--dim);font-size:0.85em;margin:0 0 0.75em">
             click any flow — it opens the production modal, pointed at the local anvil fork.
-            no real value changes hands. a burner wallet is minted per session and funded
+            no real value changes hands. a burner wallet is created per session and funded
             automatically. seed shown below is from <code>/api/sandbox-seed</code>.
           </p>
           <div class="design-btn-row">
@@ -1839,9 +1839,9 @@ async function initDesign() {
             and proposed variants below.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-            ${renderCardSafely('audio published', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+            ${renderCardSafely('audio published', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve }))}
             ${renderCardSafely('audio owned', () => U.renderMediaCard?.(m.uniAudioOwned, { resolve: mockResolve, owned: true }))}
-            ${renderCardSafely('image published', () => U.renderMediaCard?.(m.uniImage, { resolve: mockResolve, header: { kind: 'listed', actor: C_ADDR } }))}
+            ${renderCardSafely('image published', () => U.renderMediaCard?.(m.uniImage, { resolve: mockResolve }))}
             ${renderCardSafely('document, free', () => U.renderMediaCard?.(m.uniPdf, { resolve: mockResolve }))}
             ${renderCardSafely('ticket, limited', () => U.renderMediaCard?.(m.uniTicket, { resolve: mockResolve, state: 'limited' }))}
             ${renderCardSafely('credential', () => U.renderMediaCard?.(m.uniCredential, { resolve: mockResolve }))}
@@ -1862,7 +1862,7 @@ async function initDesign() {
             <div>
               <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
               <div class="design-card-frame">
-                ${renderCardSafely('audio published buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
+                ${renderCardSafely('audio published buy', () => U.renderMediaCard?.(m.uniAudioListed, { resolve: mockResolve }))}
               </div>
             </div>
             <div>
@@ -1898,7 +1898,7 @@ async function initDesign() {
             side-by-side below shows the intended hierarchy.
           </p>
           <div class="design-cards-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
-            ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+            ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve }))}
           </div>
         </div>
 
@@ -1918,7 +1918,7 @@ async function initDesign() {
             <div>
               <div style="color:var(--muted);font-size:0.72em;text-transform:lowercase;letter-spacing:0.08em;margin-bottom:0.5em;font-family:var(--dw-font-mono)"><code class="retired-tag">retired</code> live renderer</div>
               <div class="design-card-frame">
-                ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve, header: { kind: 'listed', actor: B_ADDR } }))}
+                ${renderCardSafely('video published', () => U.renderMediaCard?.(m.uniVideo, { resolve: mockResolve }))}
               </div>
             </div>
             <div>
@@ -1959,8 +1959,8 @@ async function initDesign() {
             replaced by a 12-cell gallery grid.
           </p>
           <div style="display:flex;flex-direction:column;gap:1em;max-width:720px">
-            ${renderCardSafely('audio album', () => U.renderMediaCard?.(m.uniAlbum, { resolve: mockResolve, header: { kind: 'listed', actor: A_ADDR } }))}
-            ${renderCardSafely('image gallery', () => U.renderMediaCard?.(m.uniImageAlbum, { resolve: mockResolve, header: { kind: 'posted', actor: C_ADDR } }))}
+            ${renderCardSafely('audio album', () => U.renderMediaCard?.(m.uniAlbum, { resolve: mockResolve }))}
+            ${renderCardSafely('image gallery', () => U.renderMediaCard?.(m.uniImageAlbum, { resolve: mockResolve }))}
             ${renderCardSafely('bundle', () => U.renderMediaCard?.(m.uniBundle, { resolve: mockResolve, category: 'bundle', layout: 'album' }))}
           </div>
         </div>
@@ -2315,7 +2315,7 @@ async function initDesign() {
               <div style="width:96px;height:96px;background:var(--surface);border:1px solid var(--border);flex-shrink:0"></div>
               <div style="flex:1">
                 <div style="color:var(--fg);font-weight:600;margin-bottom:0.3em">Tunnel Vision</div>
-                <div style="color:var(--muted);font-size:0.85em;margin-bottom:0.6em">$1.35 · 3 minted</div>
+                <div style="color:var(--muted);font-size:0.85em;margin-bottom:0.6em">$1.35 · 3 collected</div>
                 <div style="display:flex;gap:0.4em;align-items:center;position:relative">
                   <button class="feed-card-btn green" style="font-size:0.8em;padding:0.3em 1ch">buy</button>
                   <button style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">in 1 org</button>

@@ -1,4 +1,14 @@
 @font-face {
+  font-family: "Phosphor-Bold";
+  src:
+    url("/fonts/Phosphor-Bold.woff2") format("woff2"),
+    url("/fonts/Phosphor-Bold.woff") format("woff"),
+    url("/fonts/Phosphor-Bold.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: "Phosphor";
   src:
     url("/fonts/Phosphor.woff2") format("woff2"),
@@ -6,12 +16,12 @@
     url("/fonts/Phosphor.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 .ph {
   /* use !important to prevent issues with browser extensions that change fonts */
-  font-family: "Phosphor" !important;
+  font-family: "Phosphor-Bold", "Phosphor" !important;
   speak: never;
   font-style: normal;
   font-weight: normal;
@@ -4624,3 +4634,5 @@
 .ph.ph-youtube-logo:before {
   content: "\e4fc";
 }
+
+.ph-regular { font-family: "Phosphor" !important; }
