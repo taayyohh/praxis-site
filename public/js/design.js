@@ -2322,7 +2322,7 @@ async function initDesign() {
                 <div style="color:var(--fg);font-weight:600;margin-bottom:0.3em">Tunnel Vision</div>
                 <div style="color:var(--muted);font-size:0.85em;margin-bottom:0.6em">$1.35 · 3 collected</div>
                 <div style="display:flex;gap:0.4em;align-items:center;position:relative">
-                  <button class="feed-card-btn green" style="font-size:0.8em;padding:0.3em 1ch">buy</button>
+                  <button class="feed-card-btn green">buy</button>
                   <button style="background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">in 1 org</button>
                 </div>
               </div>

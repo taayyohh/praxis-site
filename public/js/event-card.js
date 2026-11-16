@@ -569,15 +569,22 @@ export function renderEventCard(event, context = {}) {
     const poster = (desc.poster && desc.poster(event)) ? posterImg(desc.poster(event)) : (event.type === 'joined-audience' || event.type === 'follow' ? ogImg(event.domain || event.title || (resolve && resolve(event.followed || event.target))) : '')
     const bodyHtml = desc.body ? desc.body(event) : ''
     const avatar = actor ? avatarImg(actor, event.profilePic, 32) : ''
+    // When there's no body, keep phrase + time on the same baseline so
+    // the card reads as a single centered line, not a top phrase with a
+    // lonely timestamp floating at the bottom-right corner. When a body
+    // IS present, time stays in its own meta row below (it would fight
+    // the body for horizontal space otherwise).
+    const inlineTime = !bodyHtml && timeHtml
     const inner = `
       ${poster}
       <div class="event-card-inner">
         <div class="event-card-headline-row">
           ${avatar || iconHtml}
           <div class="event-card-headline">${phraseHtml}</div>
+          ${inlineTime ? timeHtml : ''}
         </div>
         ${bodyHtml}
-        ${timeHtml ? `<div class="event-card-meta">${timeHtml}</div>` : ''}
+        ${bodyHtml && timeHtml ? `<div class="event-card-meta">${timeHtml}</div>` : ''}
       </div>
     `
     return wrap(href, external, inner, 'event-card--banner', desc.tone)

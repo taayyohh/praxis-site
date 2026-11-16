@@ -3571,17 +3571,23 @@ body:has(.collection-container) {
   }
 }
 
-/* Collection grid/list views */
-.collection-grid-view { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em; }
+/* Collection grid — iTunes-library direction (Miles): every tile the
+ * same size, always square cover, adaptive column count that grows with
+ * viewport width. No per-type aspect-ratio overrides, no album
+ * grid-column span. The reader scans one uniform grid and dives in. */
+.collection-grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1em;
+}
 .collection-list-view { display: flex; flex-direction: column; gap: 0.5em; }
 
-/* Album cards use a horizontal art+tracklist layout (220px art + info
- * stack). In a 3-column grid, a single cell is too narrow for the art
- * to sit next to a readable info column — the title clips and the row
- * play buttons overflow. Spanning 2 columns gives the horizontal layout
- * enough room; the mobile breakpoint below flips the inner layout to
- * stacked, so span-2 just means full width there. */
-.collection-grid-view .media-card--album { grid-column: span 2; }
+/* Album inside /collection uses the same square tile as every other
+ * media type — the full horizontal art+tracklist layout belongs on the
+ * album detail page, not the library grid. */
+.collection-grid-view .media-card--album { grid-column: span 1; }
+.collection-grid-view .media-card--album { flex-direction: column; }
+.collection-grid-view .media-card--album .media-card-art { aspect-ratio: 1; width: 100%; max-height: none; }
 
 .collection-card { border: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); overflow: hidden; border-radius: 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .collection-card .card-art { aspect-ratio: 1; overflow: hidden; background: var(--surface); position: relative; display: flex; align-items: center; justify-content: center; }
@@ -3593,12 +3599,14 @@ body:has(.collection-container) {
 
 .card-type-badge { position: absolute; top: 0.4em; right: 0.4em; background: rgba(0,0,0,0.7); color: #c0c0c0; font-size: 0.65em; padding: 0.15em 0.5ch; text-transform: uppercase; letter-spacing: 0.05em; }
 
-/* Collection card span-2 for video and album types */
-/* All cards same size in 2-column grid — no spanning */
+/* Every collection card: 1:1 square art regardless of media type or
+ * data-span hint. The iTunes-library rule overrides any legacy per-type
+ * aspect ratio (videos used to be 2:1 wide, albums used to span two
+ * columns — both read as noise in a uniform grid). */
 .collection-card[data-span="2"] { grid-column: span 1; }
 .collection-card[data-span="2"] .card-art { aspect-ratio: 1; }
 .collection-card[data-media-type="video"] { grid-column: span 1; }
-.collection-card[data-media-type="video"] .card-art { aspect-ratio: 2/1; }
+.collection-card[data-media-type="video"] .card-art { aspect-ratio: 1; }
 
 .collection-row { display: flex; gap: 1ch; padding: 0.6em 0.75em; border: 1px solid var(--border); align-items: center; }
 .collection-row .row-art { width: 48px; height: 48px; flex-shrink: 0; overflow: hidden; background: var(--surface); display: flex; align-items: center; justify-content: center; }
@@ -4051,18 +4059,23 @@ body:has(.owner-dock) .portfolio-nav {
 }
 .md-fmt:hover { border-color: var(--accent); }
 
-/* Universal card action button */
+/* Universal card action button — the primary CTA that sits beneath a
+ * Chillax title. Needs to carry the same weight the title does; a thin
+ * 0.9em chip reads as a secondary afterthought. 44px min-height covers
+ * the touch target and gives it the fat pill shape Miles wants. */
 .feed-card-btn {
   background: var(--fg, #222);
   color: var(--bg, #fff);
   border: none;
   font-family: inherit;
-  font-size: 0.9em;
-  font-weight: 600;
-  padding: 0.6em 2.5ch;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  padding: 0.75em 1.75ch;
+  min-height: 44px;
   cursor: pointer;
-  border-radius: 4px;
-  transition: opacity 0.15s;
+  border-radius: 12px;
+  transition: opacity 0.15s, transform 0.15s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4071,7 +4084,8 @@ body:has(.owner-dock) .portfolio-nav {
   white-space: nowrap;
   line-height: 1;
 }
-.feed-card-btn:hover { opacity: 0.75; }
+.feed-card-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.feed-card-btn:active { transform: translateY(0); }
 .feed-card-btn.green { background: var(--accent, #a78bfa); color: var(--bg, #fff); }
 .feed-price-label { color: var(--dim); font-size: 0.8em; }
 .feed-buy-btn { /* inherits from .feed-card-btn.green */ }
