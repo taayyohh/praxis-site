@@ -384,6 +384,8 @@ async function initPost() {
     ;(async () => {
       try {
         const authorAddr = post.author.toLowerCase()
+        const myAddr = window.getWalletAddress?.()?.toLowerCase?.() || ''
+        const isSelf = myAddr === authorAddr
         // Pull the author's site.json for name / bio / profilePic. The
         // /api/artist-site endpoint returns the author's public profile
         // keyed by the author's own domain — crucial when this post is
@@ -391,13 +393,25 @@ async function initPost() {
         // post authored by blackmatter.world). An /api/site fallback
         // would wrongly return the current tenant's profile and label
         // the current site owner as the author.
-        const authorSite = await fetch(`/api/artist-site?domain=${encodeURIComponent(domain)}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        // In parallel: check whether the viewer already follows the
+        // author so the button can render in its correct resting state
+        // (following vs follow) instead of always saying 'follow'.
+        const [authorSite, followCheck] = await Promise.all([
+          fetch(`/api/artist-site?domain=${encodeURIComponent(domain)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+          (myAddr && !isSelf)
+            ? query(`query FollowCheck($me: String!, $them: String!) {
+                follows(where: { follower: $me, followed: $them }, limit: 1) {
+                  items { follower }
+                }
+              }`, { me: myAddr, them: authorAddr }).catch(() => ({ follows: { items: [] } }))
+            : Promise.resolve(null),
+        ])
         const bio = authorSite?.bio || authorSite?.description || ''
         const displayName = authorSite?.name || domain
         const avatar = authorSite?.profilePic || ''
+        const isFollowing = (followCheck?.follows?.items?.length || 0) > 0
         const card = document.getElementById('post-author-card')
         if (!card) return
-        const isSelf = window.getWalletAddress?.()?.toLowerCase?.() === authorAddr
         const avatarHtml = avatar
           ? `<img src="/api/img?url=${encodeURIComponent(avatar)}&w=128" alt="" class="post-author-avatar" loading="lazy">`
           : `<div class="post-author-avatar post-author-avatar-placeholder"><i class="ph ph-user"></i></div>`
@@ -409,7 +423,7 @@ async function initPost() {
             ${bio ? `<p class="post-author-bio">${escapeHtml(bio)}</p>` : ''}
             <div class="post-author-subscribe-hint">follow to get every new post in your praxis messages</div>
             <div class="post-author-actions">
-              ${!isSelf ? `<button type="button" class="post-author-follow-btn" data-author="${encodeURIComponent(authorAddr)}">follow</button>` : ''}
+              ${!isSelf ? `<button type="button" class="post-author-follow-btn${isFollowing ? ' is-following' : ''}" data-author="${encodeURIComponent(authorAddr)}">${isFollowing ? 'following' : 'follow'}</button>` : ''}
               ${!isSelf ? `<button type="button" class="post-author-tip-btn" data-author="${encodeURIComponent(authorAddr)}" data-name="${escapeHtml(displayName)}">tip the writer</button>` : ''}
             </div>
           </div>
@@ -434,13 +448,36 @@ async function initPost() {
             })
           } catch (e) { console.warn('tip flow unavailable:', e?.message) }
         })
-        // Follow button — routes to the profile page where the follow
-        // control is wired. Inlining the on-chain follow tx here would
-        // duplicate wallet-unlock + gas-sponsor plumbing that already
-        // lives on the profile; the extra click is cheaper than a
-        // second code path we'd have to keep in sync.
-        card.querySelector('.post-author-follow-btn')?.addEventListener('click', () => {
-          window.location.href = `/network?artist=${encodeURIComponent(authorAddr)}`
+        // Follow button — toggles follow/unfollow on-chain. Mirrors the
+        // profile.js follow-btn pattern (wallet unlock → simulate →
+        // write) so both surfaces share the same direct tx path.
+        card.querySelector('.post-author-follow-btn')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget
+          const currentlyFollowing = btn.classList.contains('is-following')
+          try {
+            if (!await window.ensureOptimism?.()) return
+            btn.disabled = true
+            btn.textContent = currentlyFollowing ? 'unfollowing...' : 'following...'
+            const { createWalletClient, custom, optimism } = await import('./vendor.js')
+            const { getRegistryAddress } = await import('./contracts.js')
+            const wc = createWalletClient({ chain: optimism, transport: custom(getWalletProvider()) })
+            const pc = await getPublicClient()
+            const fn = currentlyFollowing ? 'unfollow' : 'follow'
+            const { request } = await pc.simulateContract({
+              address: getRegistryAddress(),
+              abi: [{ name: fn, type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'target', type: 'address' }], outputs: [] }],
+              functionName: fn, args: [authorAddr], account: window.getWalletAddress(),
+            })
+            const hash = await wc.writeContract(request)
+            await pc.waitForTransactionReceipt({ hash })
+            btn.disabled = false
+            btn.textContent = currentlyFollowing ? 'follow' : 'following'
+            btn.classList.toggle('is-following', !currentlyFollowing)
+          } catch (err) {
+            btn.disabled = false
+            btn.textContent = currentlyFollowing ? 'following' : 'follow'
+            if (err?.code !== 4001) console.warn('follow failed:', err?.shortMessage || err?.message)
+          }
         })
       } catch (e) { console.warn('author card render failed:', e?.message) }
     })()
