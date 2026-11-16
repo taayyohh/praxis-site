@@ -1170,23 +1170,32 @@ section img {
   margin: 0.25em 0;
 }
 
+/* Secondary primary button — used anywhere an action chip needs to
+ * stand on its own (modals, pages, inline affordances). Same fat
+ * shape as .feed-card-btn so the system feels of one piece. */
 .buy-btn {
   background: var(--fg);
   border: none;
   color: var(--bg);
   font-family: inherit;
-  font-size: 0.9em;
-  padding: 0.5em 2ch;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  padding: 0.75em 1.75ch;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4ch;
   cursor: pointer;
   margin-top: 0.5em;
-  border-radius: 6px;
-  font-weight: 500;
-  transition: opacity 0.15s;
+  border-radius: 12px;
+  line-height: 1;
+  transition: opacity 0.15s, transform 0.15s;
 }
 
-.buy-btn:hover {
-  opacity: 0.85;
-}
+.buy-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.buy-btn:active { transform: translateY(0); }
 
 .buy-btn:disabled, .buy-btn.btn-disabled {
   opacity: 0.4;
@@ -3432,11 +3441,15 @@ details[open] .propose-settings-chevron {
   margin-left: 1ch;
 }
 
-/* Collection two-column layout */
+/* Collection two-column layout — /collection is a showcase surface
+ * (per feedback_full_width_responsive memory), so it uses the whole
+ * viewport, not the 1200px reading cage. Without this escape the
+ * sidebar eats most of the main column on wide displays and the grid
+ * feels squished. */
 body:has(.collection-container) {
-  max-width: 1200px;
-  padding-left: 1em;
-  padding-right: 1em;
+  max-width: none;
+  padding-left: 1.5em;
+  padding-right: 1.5em;
 }
 .collection-container {
   display: flex;
@@ -3584,10 +3597,15 @@ body:has(.collection-container) {
 
 /* Album inside /collection uses the same square tile as every other
  * media type — the full horizontal art+tracklist layout belongs on the
- * album detail page, not the library grid. */
+ * album detail page, not the library grid. Also suppress the tracklist
+ * and play-all chip inside the tile: iTunes doesn't show individual
+ * tracks on a library cover; the user clicks the tile to go deeper. */
 .collection-grid-view .media-card--album { grid-column: span 1; }
 .collection-grid-view .media-card--album { flex-direction: column; }
 .collection-grid-view .media-card--album .media-card-art { aspect-ratio: 1; width: 100%; max-height: none; }
+.collection-grid-view .media-card-tracklist,
+.collection-grid-view .media-card .album-play-btn,
+.collection-grid-view .media-card .media-card-actions { display: none; }
 
 .collection-card { border: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); overflow: hidden; border-radius: 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .collection-card .card-art { aspect-ratio: 1; overflow: hidden; background: var(--surface); position: relative; display: flex; align-items: center; justify-content: center; }
@@ -3676,9 +3694,28 @@ body:has(.collection-container) {
 .works-card-play.media-play-overlay:hover { transform: scale(1.15); }
 
 .collection-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; flex-wrap: wrap; gap: 0.5em; }
-.collection-view-toggle { display: flex; gap: 0.25ch; }
-.view-toggle-btn { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 1em; padding: 0.3em 0.5em; cursor: pointer; display: flex; align-items: center; }
-.view-toggle-btn.active { border-color: var(--accent); color: var(--accent); }
+.collection-view-toggle { display: flex; gap: 0.3ch; }
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--muted);
+  font-size: 1.15em;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.view-toggle-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.view-toggle-btn.active {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
 
 /* Passport stamps — circular wax-seal style */
 .stamps-section { border: 1px solid var(--border); padding: 0.75em 1em; margin-bottom: 1.5em; }
@@ -5086,56 +5123,56 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
   flex-shrink: 0;
 }
 
-/* Hairline chip — the one affordance shape used everywhere on
-   the card. 2px radius, 1px hairline, no filled bg. Message
-   bubble reuses it. Follow chip gains a subtle fill when the
-   viewer already follows. */
+/* Network-card chip — primary 'follow' affordance on every tile in
+   /network. Fat pill like the rest of the system: solid fg on
+   unfollowed, muted outline on 'following'. Icon chips (dm bubble)
+   are 40px squares. */
 .nc-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 0.95rem;
   font-family: inherit;
-  font-size: 0.78em;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  padding: 0.35em 0.9ch;
-  border-radius: 2px;
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--border);
+  font-size: 0.88em;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  border-radius: 999px;
+  background: var(--fg);
+  color: var(--bg);
+  border: 0;
   cursor: pointer;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
   white-space: nowrap;
   text-transform: lowercase;
 }
 
-.nc-chip:hover {
-  border-color: color-mix(in srgb, var(--fg) 25%, transparent);
-  color: var(--fg);
-}
+.nc-chip:hover { transform: translateY(-1px); }
 
 .nc-chip-following {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
   color: var(--muted);
   cursor: default;
   pointer-events: none;
 }
 
 .nc-chip-filled {
-  color: var(--muted);
-  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
-  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
 }
 
 .nc-chip-icon {
-  width: 32px;
-  height: 32px;
+  min-width: 36px;
+  min-height: 36px;
   padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
   font-size: 1em;
-  color: var(--muted);
 }
 
 .nc-chip-icon:hover {
   color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 
 /* Backwards-compat aliases for legacy call sites (search results,

@@ -295,14 +295,18 @@ async function loadCollection(addr, statusEl, contentEl) {
     const hasCreds = allCreds.length > 0 || _credsHasMore
     const hasSaved = savedItems.length > 0
     if (hasMedia || hasCreds || hasSaved) {
+      // Inline styles removed — the shared .collection-filter class in
+      // style.css now owns the look (fat pill, 32px min, solid-on-active).
+      // Was a 0.8em thin outlined chip; now matches the rest of the chip
+      // palette across the site.
       mainHtml += `<div class="collection-filters" style="display:flex;gap:0.5ch;margin-bottom:1.5em;flex-wrap:wrap">`
-      mainHtml += `<button class="collection-filter active" data-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">all</button>`
-      if (hasMedia) mainHtml += `<button class="collection-filter" data-filter="media" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">media (${mediaPurchases.length}${_mediaHasMore ? '+' : ''})</button>`
-      if (hasCreds) mainHtml += `<button class="collection-filter" data-filter="credentials" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">credentials (${allCreds.length}${_credsHasMore ? '+' : ''})</button>`
+      mainHtml += `<button class="collection-filter active" data-filter="all">all</button>`
+      if (hasMedia) mainHtml += `<button class="collection-filter" data-filter="media">media (${mediaPurchases.length}${_mediaHasMore ? '+' : ''})</button>`
+      if (hasCreds) mainHtml += `<button class="collection-filter" data-filter="credentials">credentials (${allCreds.length}${_credsHasMore ? '+' : ''})</button>`
       const savedPosts = savedItems.filter(i => i.type === 'post')
       const savedLibrary = savedItems.filter(i => i.type !== 'post')
-      if (savedLibrary.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-library" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">saved (${savedLibrary.length})</button>`
-      if (savedPosts.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-posts" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">posts (${savedPosts.length})</button>`
+      if (savedLibrary.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-library">saved (${savedLibrary.length})</button>`
+      if (savedPosts.length > 0) mainHtml += `<button class="collection-filter" data-filter="saved-posts">posts (${savedPosts.length})</button>`
       mainHtml += `</div>`
     }
 
@@ -317,11 +321,11 @@ async function loadCollection(addr, statusEl, contentEl) {
         <h3>${t('collection.media')}</h3>
         <div class="collection-toolbar">
           <div class="media-sub-filters" style="display:flex;gap:0.5ch;flex-wrap:wrap">
-            <button class="media-sub-filter active" data-media-filter="all" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">all</button>
-            <button class="media-sub-filter" data-media-filter="audio" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">audio <span class="media-type-count" data-type-count="audio">(...)</span></button>
-            <button class="media-sub-filter" data-media-filter="video" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">video <span class="media-type-count" data-type-count="video">(...)</span></button>
-            <button class="media-sub-filter" data-media-filter="image" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">image <span class="media-type-count" data-type-count="image">(...)</span></button>
-            <button class="media-sub-filter" data-media-filter="other" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.75em;padding:0.2em 0.8ch;cursor:pointer;border-radius:2px">other <span class="media-type-count" data-type-count="other">(...)</span></button>
+            <button class="collection-filter media-sub-filter active" data-media-filter="all">all</button>
+            <button class="collection-filter media-sub-filter" data-media-filter="audio">audio <span class="media-type-count" data-type-count="audio">(...)</span></button>
+            <button class="collection-filter media-sub-filter" data-media-filter="video">video <span class="media-type-count" data-type-count="video">(...)</span></button>
+            <button class="collection-filter media-sub-filter" data-media-filter="image">image <span class="media-type-count" data-type-count="image">(...)</span></button>
+            <button class="collection-filter media-sub-filter" data-media-filter="other">other <span class="media-type-count" data-type-count="other">(...)</span></button>
           </div>
           <div class="collection-view-toggle">
             <button class="view-toggle-btn ${_viewMode === 'grid' ? 'active' : ''}" data-view="grid"><i class="ph ph-grid-four"></i></button>
