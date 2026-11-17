@@ -436,7 +436,7 @@ export function renderPostFeedCard(p, o = {}) {
 export function renderLibraryFeedCard(item, o = {}) {
   const base = o.libraryBase || ''
   const tags = item.tags ? item.tags.split(',').map(x => x.trim()).filter(Boolean).map(tag =>
-    `<a href="${esc(base)}/library?tag=${encodeURIComponent(tag)}"${o.external ? ' target="_blank" rel="noopener"' : ''} style="display:inline-block;border:1px solid var(--border);color:var(--muted);font-size:0.75em;padding:0.1em 0.6ch;margin:0.15em 0.25ch 0 0;text-decoration:none">${esc(tag)}</a>`
+    `<a href="${esc(base)}/library?tag=${encodeURIComponent(tag)}"${o.external ? ' target="_blank" rel="noopener"' : ''} class="status-chip library-tag">${esc(tag)}</a>`
   ).join('') : ''
   const cid = item.ipfsCid || ''
   const url = item.url || ''
@@ -444,27 +444,26 @@ export function renderLibraryFeedCard(item, o = {}) {
   const mediaLink = cid ? `/api/ipfs-proxy/${cid}` : ''
   const pdfThumbAttr = hasFile ? ` data-pdf-thumb="${esc(mediaLink)}"` : ''
   const title = item.title || 'untitled'
-  const linkStyle = 'color:var(--fg);font-weight:700;font-size:1.1em;text-decoration:none'
   let titleLink
   if (o.libraryHref) {
-    titleLink = `<a href="${esc(o.libraryHref)}" target="_blank" rel="noopener" style="${linkStyle};display:block">${esc(title)}</a>`
+    titleLink = `<a href="${esc(o.libraryHref)}" target="_blank" rel="noopener" class="feed-article-title">${esc(title)}</a>`
   } else if (hasFile) {
-    titleLink = `<a href="#" class="feed-library-open" data-media-url="${esc(mediaLink)}" data-title="${esc(title)}" data-author="${esc(item.author || '')}" data-item-id="${item.id || ''}" style="${linkStyle};display:block">${esc(title)}</a>`
+    titleLink = `<a href="#" class="feed-library-open feed-article-title" data-media-url="${esc(mediaLink)}" data-title="${esc(title)}" data-author="${esc(item.author || '')}" data-item-id="${item.id || ''}">${esc(title)}</a>`
   } else {
-    titleLink = `<a href="${esc(url)}" target="_blank" style="${linkStyle};display:flex;align-items:center;gap:0.5ch">${esc(title)} <i class="ph ph-arrow-square-out" style="font-size:0.8em;color:var(--muted)"></i></a>`
+    titleLink = `<a href="${esc(url)}" target="_blank" class="feed-article-title" style="display:flex;align-items:center;gap:0.5ch">${esc(title)} <i class="ph ph-arrow-square-out" style="font-size:0.6em;color:var(--muted)"></i></a>`
   }
   const iconSlot = hasFile ? '<div class="feed-pdf-thumb-slot" style="display:none"></div>' : ''
   return `
-    <div class="feed-item" style="border:1px solid var(--border);border-radius:6px;overflow:hidden"${pdfThumbAttr}>
+    <div class="feed-item feed-article"${pdfThumbAttr}>
       ${iconSlot}
-      <div style="padding:0.75em 1em">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3em">
+      <div class="feed-article-body">
+        <div class="feed-article-head">
           ${_authorLine(o)}
-          <span style="color:var(--dim);font-size:0.8em">${_tOr('feed.addedToLibrary', 'added to library')}</span>
+          <time class="feed-time">${_tOr('feed.addedToLibrary', 'added to library')}</time>
         </div>
         ${titleLink}
-        ${item.author ? `<div style="color:var(--muted);font-size:0.85em;margin-top:0.2em">${esc(item.author)}</div>` : ''}
-        ${tags ? `<div style="margin-top:0.4em;display:flex;flex-wrap:wrap">${tags}</div>` : ''}
+        ${item.author ? `<div class="feed-article-preview" style="margin-top:0.25em">${esc(item.author)}</div>` : ''}
+        ${tags ? `<div style="margin-top:0.9em;display:flex;flex-wrap:wrap;gap:0.4ch">${tags}</div>` : ''}
       </div>
     </div>
   `

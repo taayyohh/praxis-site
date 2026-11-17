@@ -12158,17 +12158,21 @@ a.art-album-track-title:hover {
   display: flex;
   text-decoration: none;
   color: inherit;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 12px;
   overflow: hidden;
-  background: transparent;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
   min-height: 96px;
+  transition: border-color 0.15s, background 0.15s;
 }
 .event-card[href] { cursor: pointer; }
-.event-card[href]:hover { border-color: color-mix(in srgb, var(--fg) 24%, var(--border)); }
-.event-card--green { border-color: color-mix(in srgb, var(--green) 18%, var(--border)); }
-.event-card--red   { border-color: color-mix(in srgb, var(--red) 20%, var(--border)); }
-.event-card--muted { border-color: var(--border); opacity: 0.9; }
+.event-card[href]:hover {
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.event-card--green { border-color: color-mix(in srgb, var(--green) 20%, transparent); }
+.event-card--red   { border-color: color-mix(in srgb, var(--red) 22%, transparent); }
+.event-card--muted { opacity: 0.9; }
 .event-card-inner {
   padding: 1.25em 1.5em;
   flex: 1;

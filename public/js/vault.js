@@ -2581,10 +2581,15 @@ export async function showSendModal(fromAddress, opts = {}) {
     const tipChainName = dialog.querySelector('#send-tip-chain-name')
     if (tipChainName) tipChainName.textContent = source.name
     if (isTip) {
-      // Tip mode: hide the raw ETH balance (too techy), and offer
-      // a fixed fiat ladder instead of % of balance. The user is
-      // choosing a gift, not drawing down an account.
-      sourceBalEl.textContent = ''
+      // Tip mode: show the total available across all chains in plain
+      // fiat (no ETH noise) so the sender knows what's in the tank
+      // before picking a preset. The per-chain breakdown is still
+      // one tap away via the "sending from" chevron. Preset ladder
+      // stays fixed-fiat since this is a gift, not a drawdown.
+      const totalFiat = rows.reduce((s, r) => s + (r.fiat || 0), 0)
+      sourceBalEl.textContent = ethRate && totalFiat > 0
+        ? `you have ${formatFiat(totalFiat, currency)}`
+        : ''
       presetsEl.innerHTML = tipPresets.map(amt =>
         `<button type="button" class="vault-preset vault-send-tip-preset" data-fiat="${amt}">${_currencySymbol(currency)}${amt.toLocaleString()}</button>`
       ).join('')
