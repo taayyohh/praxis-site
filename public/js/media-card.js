@@ -606,18 +606,27 @@ function renderTracklist(item, context) {
   const renderOne = (it, i) => {
     const cid = it.ipfsCid || ''
     const pw = parsePrice(it.price)
-    const playBtn = cid
-      ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" aria-label="play"><i class="ph ph-play"></i></button>`
-      : ''
+    // Owned albums: no per-track play chip — the cover play overlay
+    // primes the whole queue, and a solid checkmark on the right makes
+    // the "mine" state obvious at a glance. Not-owned rows still carry
+    // the inline track play so the audience can preview individually.
+    const playBtn = owned
+      ? ''
+      : (cid
+        ? `<button class="track-play-btn" data-track-src="/api/ipfs-proxy/${encodeURIComponent(cid)}" data-track-title="${esc(it.title || '')}" data-track-artist="${esc(artist)}" aria-label="play"><i class="ph ph-play"></i></button>`
+        : '')
     // Collection cards don't carry a buy affordance on tracks the viewer
     // already owns — this is the "permanent collection" reading: once
-    // collected, the price goes quiet. The buy button only appears on
-    // marketplace/feed renders of the same card.
-    const buyBtn = !owned && pw > 0n
-      ? `<button class="feed-buy-btn feed-card-btn green media-card-track-buy" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>`
-      : ''
+    // collected, the price goes quiet. A checkmark indicator sits where
+    // the buy chip would, so the row still balances and the owned state
+    // reads at a glance without a loud pill.
+    const rightSlot = owned
+      ? `<span class="media-card-track-owned" aria-label="owned"><i class="ph ph-check"></i></span>`
+      : (pw > 0n
+        ? `<button class="feed-buy-btn feed-card-btn green media-card-track-buy" data-media-id="${esc(String(it.mediaId))}" data-price="${esc(it.price)}" data-title="${esc(it.title || '')}"><span data-eth-wei="${esc(it.price)}" data-fiat-primary="true"></span></button>`
+        : '')
     const trackLink = trackLinks || `/art?media=${encodeURIComponent(it.mediaId)}`
-    return `<div class="media-card-track"><span class="media-card-track-num">${i + 1}</span>${playBtn}<a class="media-card-track-title" href="${esc(trackLink)}">${esc(it.title || 'untitled')}</a>${buyBtn}</div>`
+    return `<div class="media-card-track"><span class="media-card-track-num">${i + 1}</span>${playBtn}<a class="media-card-track-title" href="${esc(trackLink)}">${esc(it.title || 'untitled')}</a>${rightSlot}</div>`
   }
   // Short albums render fully; long albums fold the tail behind a toggle.
   if (items.length <= TRACKLIST_PREVIEW_LIMIT + 2) {

@@ -24,7 +24,7 @@ function refButtonHtml(item, opts = {}) {
   const art = escapeHtml(opts.art || item.art || '')
   const src = escapeHtml(opts.src || '')
   const type = opts.type || ''
-  return `<button class="media-ref-btn" data-ref-media="${escapeHtml(String(item.mediaId))}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${escapeHtml(type)}" title="${t('music.writeAbout')}" style="background:none;border:1px solid var(--border);color:var(--fg);font-size:0.85em;cursor:pointer;padding:0.25em 0.8ch;border-radius:3px;display:inline-flex;align-items:center;gap:0.3ch"><i class="ph ph-note-pencil"></i></button>`
+  return `<button class="media-ref-btn" data-ref-media="${escapeHtml(String(item.mediaId))}" data-ref-title="${title}" data-ref-artist="${artist}" data-ref-art="${art}" data-ref-src="${src}" data-ref-type="${escapeHtml(type)}" title="${t('music.writeAbout')}"><i class="ph ph-note-pencil"></i></button>`
 }
 
 // Wire all reference buttons in a container
@@ -488,8 +488,8 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
   if (albumQueueData) {
     html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
     html += `<button class="art-album-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
-    html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:2px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
-    html += `<button class="album-queue-btn track-overflow-item" type="button" data-queue="${albumQueueData}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.95em;padding:0.7em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+    html += `<div class="track-overflow-menu" style="display:none">`
+    html += `<button class="album-queue-btn track-overflow-item" type="button" data-queue="${albumQueueData}"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
     html += `</div></div>`
   }
 
@@ -541,12 +541,12 @@ function renderMusicAlbum(el, alias, album, aliasIdx, albumIdx) {
       if (track.src || track.mediaId != null) {
         html += `<div class="track-overflow-wrap" style="position:relative;display:inline-flex">`
         html += `<button class="art-album-track-more track-overflow-btn" type="button" aria-label="more actions" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>`
-        html += `<div class="track-overflow-menu" style="display:none;position:absolute;right:0;bottom:100%;background:color-mix(in srgb, var(--fg) 6%, var(--bg));backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:2px;padding:0.4em 0;z-index:100;min-width:200px;box-shadow:0 -4px 16px rgba(0,0,0,0.2)">`
+        html += `<div class="track-overflow-menu" style="display:none">`
         if (track.src) {
-          html += `<button class="track-queue-btn track-overflow-item" type="button" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title || '')}" data-artist="${escapeHtml(artistLabel)}" data-art="${escapeHtml(album.art || '')}" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
+          html += `<button class="track-queue-btn track-overflow-item" type="button" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title || '')}" data-artist="${escapeHtml(artistLabel)}" data-art="${escapeHtml(album.art || '')}"><i class="ph ph-plus"></i> ${t('music.addToQueue')}</button>`
         }
         if (track.mediaId != null) {
-          html += `<button class="track-ref-btn track-overflow-item" type="button" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" data-ref-type="music" style="display:flex;align-items:center;gap:0.75ch;width:100%;background:none;border:none;color:var(--fg);font-family:inherit;font-size:0.9em;padding:0.6em 1.2em;cursor:pointer;text-align:left;border-radius:0"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
+          html += `<button class="track-ref-btn track-overflow-item" type="button" data-ref-media="${track.mediaId}" data-ref-title="${escapeHtml(track.title || '')}" data-ref-artist="${escapeHtml(artistLabel)}" data-ref-art="${escapeHtml(album.art || '')}" data-ref-src="${escapeHtml(track.src || '')}" data-ref-type="music"><i class="ph ph-note-pencil"></i> ${t('music.writeAbout')}</button>`
         }
         html += `</div></div>`
       } else {

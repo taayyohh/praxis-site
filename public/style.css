@@ -1475,9 +1475,9 @@ section img {
 .dm-bubble {
   background: var(--surface);
   border: 1px solid var(--border-hover);
-  padding: 0.6em 1.2em;
+  padding: 0.75em 1.1em;
   font-size: 0.95em;
-  line-height: 1.5;
+  line-height: 1.55;
   word-break: break-word;
   width: fit-content;
   min-width: 3em;
@@ -1733,18 +1733,21 @@ section img {
 
 #dm-input {
   flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--border-hover);
+  min-height: 44px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   color: var(--fg);
   font-family: inherit;
-  font-size: 0.9em;
-  padding: 0.7em 1.5ch;
+  font-size: 0.95em;
+  padding: 0 1.2em;
   border-radius: 999px;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 #dm-input:focus {
   outline: none;
-  border-color: var(--muted);
+  border-color: color-mix(in srgb, var(--fg) 25%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 /* --- Pay bar (Apple Cash style) — shared between dm + messages --- */
@@ -2364,20 +2367,30 @@ section img {
 
 .project-input {
   width: 100%;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
-  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  min-height: 44px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   color: var(--fg);
   font-family: inherit;
-  font-size: 1em;
-  padding: 0.85em 1.2ch;
-  border-radius: 6px;
+  font-size: 0.95em;
+  padding: 0 1.1em;
+  border-radius: 12px;
   transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+
+textarea.project-input {
+  min-height: 120px;
+  padding: 0.9em 1.1em;
+  resize: vertical;
+  line-height: 1.55;
 }
 
 .project-input:focus {
   outline: none;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 25%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .project-input::placeholder {
@@ -2783,8 +2796,11 @@ details[open] .propose-settings-chevron {
   margin-top: 0.5em;
 }
 .project-card-row .project-input {
-  width: 6ch;
+  width: 7ch;
+  min-height: 36px;
+  padding: 0 0.5em;
   text-align: center;
+  font-size: 0.9em;
 }
 
 /* settings: card-style status row (security, biometric, wallet links, etc.) */
@@ -3208,44 +3224,122 @@ details[open] .propose-settings-chevron {
 }
 
 .library-tag {
-  color: var(--dim);
-  font-size: 0.75em;
-  padding: 0.2em 0.6em;
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  height: 26px;
+  padding: 0 0.9ch;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
 .library-tag:hover {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
   color: var(--fg);
-  border-color: var(--border-hover);
+}
+
+.library-tag.active {
+  background: var(--fg);
+  color: var(--bg);
 }
 
 .library-item {
-  padding: 1em 0;
-  border-bottom: 1px solid var(--border);
+  padding: 1.25em 1.5em;
+  margin-bottom: 0.75em;
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border-radius: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.library-item:hover {
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .library-item-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 0.25em;
+  margin-bottom: 0.4em;
+  gap: 1ch;
 }
 
 .library-item-title {
-  color: var(--accent);
-  font-size: 1em;
+  color: var(--fg);
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1.1em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 .library-item-date {
   color: var(--dim);
-  font-size: 0.8em;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
 }
 
 .library-item-meta {
   font-size: 0.85em;
   color: var(--muted);
   margin-bottom: 0.5em;
+}
+
+/* Saved blog posts + library bookmarks in /collection. Inherits the
+ * fat card chrome so these rows feel of one piece with the MediaCard
+ * grid above them. */
+.collection-saved-item {
+  padding: 1em 1.25em;
+  margin-bottom: 0.6em;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.collection-saved-item:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.collection-saved-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1ch;
+}
+.collection-saved-title {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--fg);
+  font-size: 1.05em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.collection-saved-date {
+  color: var(--dim);
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+.collection-saved-author {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-top: 0.3em;
 }
 
 .library-item-author {
@@ -3605,7 +3699,9 @@ body:has(.collection-container) {
 .collection-grid-view .media-card--album .media-card-art { aspect-ratio: 1; width: 100%; max-height: none; }
 .collection-grid-view .media-card-tracklist,
 .collection-grid-view .media-card .album-play-btn,
-.collection-grid-view .media-card .media-card-actions { display: none; }
+.collection-grid-view .media-card .media-card-actions,
+.collection-grid-view .media-card-art-avatar,
+.collection-grid-view .media-card-header { display: none; }
 
 .collection-card { border: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); overflow: hidden; border-radius: 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .collection-card .card-art { aspect-ratio: 1; overflow: hidden; background: var(--surface); position: relative; display: flex; align-items: center; justify-content: center; }
@@ -4096,6 +4192,29 @@ body:has(.owner-dock) .portfolio-nav {
 }
 .md-fmt:hover { border-color: var(--accent); }
 
+/* Scoped markdown-editor sibling of .md-fmt — used by the preview
+ * toggle and the link-insert inline row. Smaller than the fat family
+ * on purpose: these are editor tools, not primary CTAs. */
+.markdown-editor-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 0.9ch;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  font-family: inherit;
+  font-size: 0.8em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.markdown-editor-tool:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-color: color-mix(in srgb, var(--fg) 20%, transparent); color: var(--fg); }
+.markdown-editor-tool.primary { background: var(--fg); color: var(--bg); border-color: transparent; font-weight: 600; }
+.markdown-editor-tool.primary:hover { background: var(--fg); color: var(--bg); opacity: 0.9; }
+
 /* Universal card action button — the primary CTA that sits beneath a
  * Chillax title. Needs to carry the same weight the title does; a thin
  * 0.9em chip reads as a secondary afterthought. 44px min-height covers
@@ -4124,6 +4243,118 @@ body:has(.owner-dock) .portfolio-nav {
 .feed-card-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 .feed-card-btn:active { transform: translateY(0); }
 .feed-card-btn.green { background: var(--accent, #a78bfa); color: var(--bg, #fff); }
+
+/* ─── Fat family primitives ──────────────────────────────────────────
+ * Shared across sheets, cards and lists. Build in these three before
+ * reaching for inline chrome: it's the only way the whole UI stays
+ * one piece.
+ */
+
+/* Small meta pill for state labels — project status, admin/dissolved
+ * badges, "collected" flags, library tags. Height is tight so it sits
+ * next to a Chillax headline without stealing air; weight + letter-
+ * spacing make it read as a label, not a button. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  height: 26px;
+  padding: 0 0.9ch;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1;
+}
+.status-chip i.ph { font-size: 1.05em; line-height: 1; }
+.status-chip.ok { background: color-mix(in srgb, var(--green, #4ade80) 20%, transparent); color: var(--green, #4ade80); }
+.status-chip.warn { background: color-mix(in srgb, #fbbf24 20%, transparent); color: #fbbf24; }
+.status-chip.danger { background: color-mix(in srgb, #ef4444 20%, transparent); color: #ef4444; }
+.status-chip.accent { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+
+/* Primary form-control shape. Height matches .feed-card-btn so a form
+ * row (input + submit) lines up cleanly; 12px radius matches the card
+ * family so inputs don't look like orphaned HTML defaults. */
+.fat-input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 1.1em;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.95em;
+  line-height: 1.4;
+  transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+}
+.fat-input::placeholder { color: var(--dim); }
+.fat-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--fg) 25%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+textarea.fat-input {
+  min-height: 120px;
+  padding: 0.9em 1.1em;
+  resize: vertical;
+  line-height: 1.55;
+}
+select.fat-input { padding-right: 2.4em; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 1.1em) 1.05em, calc(100% - 0.75em) 1.05em; background-size: 6px 6px; background-repeat: no-repeat; }
+
+/* Modal / sheet confirm-cancel pair. Reuses the .feed-card-btn fat
+ * sizing so a sheet's buttons feel of one piece with card CTAs, but
+ * exposes primary/ghost variants for the two-button rhythm that
+ * sheets want. */
+.fat-sheet-btn {
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  padding: 0.75em 1.75ch;
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4ch;
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+.fat-sheet-btn.primary { background: var(--fg); color: var(--bg); }
+.fat-sheet-btn.primary.green { background: var(--accent); color: var(--bg); }
+.fat-sheet-btn.ghost { background: transparent; color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); }
+.fat-sheet-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.fat-sheet-btn:active { transform: translateY(0); }
+.fat-sheet-btn.ghost:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-color: color-mix(in srgb, var(--fg) 25%, transparent); opacity: 1; }
+.fat-sheet-btn-row { display: flex; gap: 0.75ch; margin-top: 1em; flex-wrap: wrap; }
+.fat-sheet-btn-row .fat-sheet-btn { flex: 1 1 auto; }
+
+/* Chillax-faced sheet / panel header. Pairs with .fat-sheet-btn-row. */
+.fat-sheet-title {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1.4em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  margin: 0 0 0.75em;
+  line-height: 1.2;
+}
+
 .feed-price-label { color: var(--dim); font-size: 0.8em; }
 .feed-buy-btn { /* inherits from .feed-card-btn.green */ }
 .feed-buy-btn:disabled { opacity: 0.5; cursor: default; }
@@ -4142,12 +4373,81 @@ body:has(.owner-dock) .portfolio-nav {
   .feed-batch-card .feed-media-card-art { width: 100% !important; min-height: 0; }
 }
 
+/* Fat feed card chrome — matches the v2 card family (Chillax title,
+   generous padding, 12px radius, soft fill instead of hard border).
+   Used by blog/post feed cards on artist sites + landing. */
 .feed-article {
-  border: 1px solid var(--border);
   padding: 0;
   margin-bottom: 0;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.feed-article-body {
+  padding: 1.5em 1.75em 1.6em;
+}
+
+.feed-article-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1ch;
+  margin-bottom: 0.9em;
+}
+
+.feed-article-head .feed-author {
+  font-size: 0.85em;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6ch;
+  text-decoration: none;
+}
+
+.feed-article-head .feed-time {
+  color: var(--dim);
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.feed-article-title {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 1.75em;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.45em;
+  display: block;
+  text-decoration: none;
+}
+
+.feed-article-preview {
+  color: var(--muted);
+  font-size: 0.95em;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.feed-article-readmore {
+  display: inline-block;
+  margin-top: 1em;
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  letter-spacing: 0.005em;
+}
+
+.feed-article-readmore:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .feed-article-body { padding: 1.25em 1.25em 1.35em; }
+  .feed-article-title { font-size: 1.45em; }
 }
 
 .feed-item {
@@ -4211,7 +4511,8 @@ body:has(.owner-dock) .portfolio-nav {
 }
 
 .feed-article:hover {
-  border-color: var(--border-hover, var(--dim));
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 /* Reply cards in feed — visually subordinate to original posts */
@@ -5290,6 +5591,17 @@ body:has(#write-page) { padding-left: 0 !important; padding-right: 0 !important;
   transform: translateY(0);
 }
 
+/* Section headers inside settings — Chillax display face so the CMS
+ * panels feel of a piece with the rest of the fat family. Doesn't
+ * touch the tab labels, which are quieter. */
+.settings-panel h2 {
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1.3em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
 .settings-inner {
   max-width: 800px;
   margin: 0 auto;
@@ -6146,55 +6458,70 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
   left: 3em;
   top: -2em;
   background: var(--bg);
-  border: 1px solid var(--border);
-  width: 28ch;
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 14px;
+  width: 32ch;
   max-height: 60vh;
   overflow-y: auto;
   z-index: 300;
-  font-size: 0.85em;
+  font-size: 0.9em;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
 }
 
 .notif-header {
-  padding: 0.5em 1ch;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.9em;
+  padding: 1em 1.1em 0.75em;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .notif-empty {
-  padding: 1.5em 1ch;
+  padding: 2em 1ch;
   color: var(--dim);
   text-align: center;
+  font-size: 0.9em;
 }
 
+/* Fat notif row — 12px radius, soft fg fill, generous padding. Unread
+ * uses a slightly brighter fill instead of the old 2px accent rail;
+ * the brightness alone reads as "look here, this is new". */
 .notif-item {
   display: block;
-  padding: 0.5em 1ch;
-  border-bottom: 1px solid var(--border);
+  padding: 0.85em 1em;
+  margin: 0.4em 0.5em;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 7%, transparent);
+  border-radius: 12px;
   color: var(--fg);
   text-decoration: none;
-  transition: background 0.1s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .notif-item:hover {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
   text-decoration: none;
 }
 
 .notif-item.notif-unread {
-  border-left: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .notif-item:not(.notif-unread) {
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .notif-page-row:not(.notif-unread) {
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .notif-text {
-  line-height: 1.4;
+  line-height: 1.5;
+  font-size: 0.92em;
 }
 
 @media (max-width: 768px) {
@@ -6210,8 +6537,6 @@ main.spa-loading { opacity: 0.5; transition: opacity 0.15s; }
 }
 
 [dir="rtl"] .notif-panel { left: auto; right: 3em; }
-[dir="rtl"] .notif-item.notif-unread { border-left: none; border-right: 2px solid var(--accent); }
-[dir="rtl"] .notif-page-row.notif-unread { border-left: none; border-right: 2px solid var(--accent); }
 
 /* projects view toggle */
 .projects-toggle {
@@ -7619,14 +7944,38 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .ramp-step-line.done { background: var(--accent); }
 
 /* Buy form */
-.ramp-input-card { border: 1px solid var(--border, #333); padding: 0.9em 1em; margin-bottom: 0.6em; background: var(--bg, #050505); }
+.ramp-input-card {
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border-radius: 12px;
+  padding: 1em 1.1em;
+  margin-bottom: 0.75em;
+}
 .ramp-input-label { font-size: 0.7em; color: var(--dim, #666); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4em; }
 .ramp-input-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8em; }
 .ramp-amount-input { background: none; border: none; color: var(--fg, #c0c0c0); font-family: inherit; font-size: 1.6em; font-weight: 500; width: 100%; padding: 0; outline: none; -moz-appearance: textfield; }
 .ramp-amount-input::-webkit-outer-spin-button, .ramp-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .ramp-currency-pill { display: inline-flex; align-items: center; gap: 0.4ch; padding: 0.35em 0.8ch; border: 1px solid var(--border, #333); color: var(--fg); font-size: 0.85em; flex-shrink: 0; }
-.ramp-method-pill { display: inline-flex; align-items: center; gap: 0.4ch; padding: 0.4em 0.9ch; border: 1px solid var(--border, #333); background: none; color: var(--fg); font-family: inherit; font-size: 0.85em; cursor: pointer; }
-.ramp-method-pill:hover { border-color: var(--accent); }
+.ramp-method-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4ch;
+  min-height: 32px;
+  padding: 0 0.95ch;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ramp-method-pill:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: color-mix(in srgb, var(--fg) 25%, transparent); }
+.ramp-method-pill.active { background: var(--fg); color: var(--bg); border-color: transparent; }
 .ramp-method-pill .ph { font-size: 1em; }
 .ramp-receive-meta { display: flex; justify-content: space-between; margin-top: 0.4em; font-size: 0.75em; color: var(--dim, #666); }
 
@@ -7634,15 +7983,61 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .ramp-rate-row:hover { border-color: var(--dim, #666); }
 .ramp-rate-info { flex: 1; display: flex; align-items: center; gap: 0.6em; }
 .ramp-rate-text { font-size: 0.9em; color: var(--fg); }
-.ramp-rate-best { font-size: 0.7em; color: var(--accent); border: 1px solid var(--accent); padding: 0.1em 0.5ch; text-transform: uppercase; letter-spacing: 0.04em; }
+.ramp-rate-best {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 0.7ch;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--green, #4ade80) 20%, transparent);
+  color: var(--green, #4ade80);
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .ramp-rate-arrow { color: var(--dim, #666); font-size: 0.85em; }
 .ramp-rate-meta { display: flex; align-items: center; gap: 0.6em; font-size: 0.75em; color: var(--dim, #666); margin-top: 0.3em; }
 
-.ramp-primary-btn { display: block; width: 100%; padding: 0.85em; border: none; background: var(--accent); color: #000; font-family: inherit; font-size: 0.9em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; margin-top: 0.8em; }
-.ramp-primary-btn:hover { opacity: 0.9; }
-.ramp-primary-btn:disabled { background: var(--border, #333); color: var(--dim, #666); cursor: not-allowed; }
-.ramp-secondary-btn { display: block; width: 100%; padding: 0.7em; border: 1px solid var(--border, #333); background: none; color: var(--dim, #666); font-family: inherit; font-size: 0.85em; cursor: pointer; margin-top: 0.5em; }
-.ramp-secondary-btn:hover { border-color: var(--dim, #666); color: var(--fg); }
+.ramp-primary-btn {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.75em 1.75ch;
+  border: none;
+  background: var(--fg);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  margin-top: 0.8em;
+  border-radius: 12px;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.ramp-primary-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.ramp-primary-btn:active { transform: translateY(0); }
+.ramp-primary-btn:disabled { background: color-mix(in srgb, var(--fg) 15%, transparent); color: var(--dim); cursor: not-allowed; transform: none; }
+.ramp-secondary-btn {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.75em 1.75ch;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  margin-top: 0.5em;
+  border-radius: 12px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ramp-secondary-btn:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-color: color-mix(in srgb, var(--fg) 25%, transparent); }
 
 /* Quote selector modal */
 .ramp-quote-list { display: flex; flex-direction: column; gap: 0.4em; max-height: 60vh; overflow-y: auto; }
@@ -7657,9 +8052,25 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .ramp-quote-discount { font-size: 0.7em; color: var(--dim, #666); }
 .ramp-quote-discount.negative { color: var(--red, #a44); }
 .ramp-method-filters { display: flex; gap: 0.3em; flex-wrap: wrap; padding-bottom: 0.8em; margin-bottom: 0.8em; border-bottom: 1px solid var(--border, #222); }
-.ramp-method-filter { padding: 0.3em 0.7ch; border: 1px solid var(--border, #333); background: none; color: var(--dim, #666); font-family: inherit; font-size: 0.75em; cursor: pointer; }
-.ramp-method-filter:hover { color: var(--fg); }
-.ramp-method-filter.active { border-color: var(--accent); color: var(--accent); }
+.ramp-method-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 0.95ch;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ramp-method-filter:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+.ramp-method-filter.active { background: var(--fg); color: var(--bg); border-color: transparent; }
 
 /* Complete payment screen */
 .ramp-timer { display: flex; align-items: center; gap: 0.5ch; padding: 0.7em 0.9em; border: 1px solid var(--border, #333); font-size: 0.85em; color: var(--muted, #888); margin-bottom: 1em; }
@@ -8415,9 +8826,27 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5em; }
 @media (max-width: 720px) { .vault-actions { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 460px) { .vault-actions { grid-template-columns: repeat(2, 1fr); } }
-.vault-action-btn { flex: 1; background: none; border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 0.8em; padding: 0.65em 0; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 0.4ch; transition: border-color 0.15s, color 0.15s; }
-.vault-action-btn:hover { border-color: var(--accent); color: var(--accent); }
-.vault-action-btn i { font-size: 1.1em; }
+.vault-action-btn {
+  flex: 1;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  padding: 0.75em 1ch;
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5ch;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.vault-action-btn:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: color-mix(in srgb, var(--fg) 25%, transparent); transform: translateY(-1px); }
+.vault-action-btn i { font-size: 1.2em; }
 .vault-savings { border: 1px solid color-mix(in srgb, var(--green) 20%, var(--border)); border-radius: 10px; padding: 1em; margin-bottom: 1.5em; background: color-mix(in srgb, var(--green) 3%, transparent); }
 .vault-savings-header { display: flex; align-items: center; gap: 0.65em; margin-bottom: 0.65em; }
 .vault-savings-icon { width: 32px; height: 32px; flex-shrink: 0; }
@@ -8452,8 +8881,24 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-unclaimed { border: 1px solid color-mix(in srgb, var(--green) 30%, var(--border)); border-radius: 8px; padding: 1em; margin-bottom: 1.5em; background: color-mix(in srgb, var(--green) 3%, transparent); }
 .vault-unclaimed-header { font-size: 0.75em; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.6em; display: flex; align-items: center; gap: 0.5ch; }
 .vault-unclaimed-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35em 0; font-size: 0.85em; }
-.vault-claim-btn { background: none; border: 1px solid var(--green); color: var(--green); font-family: inherit; font-size: 0.8em; padding: 0.2em 1ch; cursor: pointer; border-radius: 4px; transition: background 0.15s; }
-.vault-claim-btn:hover { background: color-mix(in srgb, var(--green) 10%, transparent); }
+.vault-claim-btn {
+  background: var(--accent);
+  border: none;
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  padding: 0.5em 1.2ch;
+  min-height: 34px;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: opacity 0.15s, transform 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3ch;
+}
+.vault-claim-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 .vault-section { margin-bottom: 1.5em; }
 .vault-section-title { font-size: 0.7em; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.6em; }
 .vault-stats { display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; }
@@ -8477,18 +8922,50 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 .vault-modal-title { font-size: 1em; font-weight: 600; margin: 0 0 0.25em; }
 .vault-modal-sub { font-size: 0.8em; color: var(--dim); margin: 0 0 1em; }
 .vault-addr-box { font-family: monospace; font-size: 0.75em; word-break: break-all; padding: 0.75em; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.75em; color: var(--muted); background: color-mix(in srgb, var(--fg) 3%, transparent); }
-.vault-modal-btn { width: 100%; background: none; border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 0.85em; padding: 0.6em 0; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 0.4ch; transition: border-color 0.15s; }
-.vault-modal-btn:hover { border-color: var(--accent); color: var(--accent); }
-.vault-modal-btn-primary { border-color: var(--accent); color: var(--accent); }
-.vault-modal-btn-primary:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.vault-modal-btn:disabled { opacity: 0.4; cursor: default; }
+.vault-modal-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  padding: 0.75em 1.75ch;
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5ch;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.15s;
+}
+.vault-modal-btn:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-color: color-mix(in srgb, var(--fg) 25%, transparent); transform: translateY(-1px); }
+.vault-modal-btn-primary { background: var(--fg); color: var(--bg); border-color: transparent; }
+.vault-modal-btn-primary:hover { background: var(--fg); color: var(--bg); opacity: 0.9; }
+.vault-modal-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
 .vault-swap-fields { display: flex; flex-direction: column; gap: 0.75em; }
 .vault-field-label { font-size: 0.7em; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25em; display: block; }
 .vault-field-row { display: flex; align-items: center; gap: 0.5em; }
 .vault-field-token { display: flex; align-items: center; gap: 0.35ch; font-size: 0.85em; font-weight: 600; flex-shrink: 0; }
 .vault-field-token svg { width: 20px; height: 20px; }
-.vault-field-input { flex: 1; background: none; border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 1em; padding: 0.5em 0.6ch; border-radius: 6px; text-align: right; min-width: 0; }
-.vault-field-input:focus { outline: none; border-color: var(--accent); }
+.vault-field-input {
+  flex: 1;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 1em;
+  padding: 0 1em;
+  min-height: 44px;
+  border-radius: 12px;
+  text-align: right;
+  min-width: 0;
+  transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+}
+.vault-field-input:focus { outline: none; border-color: color-mix(in srgb, var(--fg) 25%, transparent); background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .vault-field-input-full { text-align: left; width: 100%; }
 .vault-field-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.2em; }
 .vault-field-fiat { font-size: 0.75em; color: var(--dim); }
@@ -9099,10 +9576,11 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
 }
 .ticket-pass-title {
   margin: 0;
-  font-size: 1.6em;
-  line-height: 1.15;
+  font-family: 'Chillax', 'Cabinet Grotesk', 'Switzer', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1.8em;
+  line-height: 1.1;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--fg);
 }
 .ticket-pass-fields {
@@ -10198,8 +10676,41 @@ body.zen-mode .zen-exit:hover { opacity: 1; }
    inline onmouseover handlers each row used to carry (self-XSS-
    adjacent pattern, and it violated principle 3's "hierarchy
    through typography, not boxes"). */
-.track-overflow-item { transition: background 0.1s; }
-.track-overflow-item:hover { background: var(--border); }
+/* Album-row + track-row overflow popover — floats above the
+ * tracklist with the same fat 10px radius + soft fill as other
+ * floating menus so it stops reading as a browser tooltip. */
+.track-overflow-menu {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 0.3em;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 10px;
+  padding: 0.35em;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.track-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75ch;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 0.65em 1em;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 7px;
+  transition: background 0.1s;
+}
+.track-overflow-item:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* On-chain media title + external artist attribution — same voice
    as the vanity renderers so hopping between them is seamless. */
 .art-onchain-title { font-size: clamp(1.4em, 3.5vw, 1.8em); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.35em; }
@@ -12210,10 +12721,62 @@ input[type="checkbox"]:disabled {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .media-card-track-title:hover { text-decoration: underline; }
-.media-card-track-buy { font-size: 0.75em; padding: 0.2em 0.6ch; }
+/* Inline-row buy pill lives in a tracklist — it can't inherit the
+ * 44px fat .feed-card-btn or every row doubles its height. Scoped
+ * reset back to a compact chip that reads as price-with-affordance. */
+.media-card-track-buy {
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 0.35em 0.9ch;
+  min-height: 28px;
+  border-radius: 999px;
+  letter-spacing: 0.005em;
+}
+.media-card-track-buy:hover { transform: none; }
+
+/* Owned indicator — sits where the buy pill would. Quiet solid chip,
+ * checkmark glyph, reads as "mine" at a glance without shouting. */
+.media-card-track-owned {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 0.6ch;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 0.95em;
+}
 .media-card-tracklist-rest {
   display: flex; flex-direction: column; gap: 0.25em;
 }
+
+/* Write-about chip — sits in tracklist/media rows. Quiet matte pill,
+ * compact 28px to stay subordinate to the buy chip next to it. */
+.media-ref-btn, .track-ref-btn, .album-ref-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3ch;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 0.7ch;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  border: none;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.78em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.media-ref-btn:hover, .track-ref-btn:hover, .album-ref-btn:hover {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  color: var(--fg);
+}
+.media-ref-btn i.ph, .track-ref-btn i.ph, .album-ref-btn i.ph { font-size: 1em; }
 .media-card-tracklist-rest[hidden] { display: none; }
 .media-card-tracklist-toggle {
   background: none; border: none;

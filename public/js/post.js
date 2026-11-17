@@ -685,8 +685,7 @@ function addEditButton(postId, displayPost) {
   const editBtn = document.createElement('button')
   editBtn.id = 'post-edit-btn'
   editBtn.textContent = t('compose.edit')
-  editBtn.className = 'buy-btn'
-  editBtn.style.cssText = 'font-size:0.75em;padding:0.2em 0.7ch;border-radius:6px;font-weight:normal'
+  editBtn.className = 'feed-card-btn media-card-track-buy'
   editBtn.addEventListener('click', () => {
     const params = new URLSearchParams()
     params.set('amend', postId)
@@ -977,14 +976,14 @@ async function initOnchainPosts() {
       mediaTopHtml = `<img src="${src}" loading="lazy" style="width:100%;display:block;max-height:250px;object-fit:cover" alt="">`
     }
 
-    return `<li style="list-style:none;margin-bottom:0.75em">
-      <a href="/post/${slugify(p.title)}" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--muted)'" onmouseout="this.style.borderColor='var(--border)'">
+    return `<li style="list-style:none;margin-bottom:1em">
+      <a href="/post/${slugify(p.title)}" class="feed-item feed-article" style="display:block;text-decoration:none;color:inherit">
         ${mediaTopHtml}
-        <div style="padding:0.75em 1em">
-          <div style="font-weight:700;font-size:1.4em;line-height:1.25;letter-spacing:-0.01em;color:var(--fg)">${escapeHtml(p.title)}</div>
+        <div class="feed-article-body">
+          <div class="feed-article-title">${escapeHtml(p.title)}</div>
           ${previewHtml}
-          <div style="margin-top:0.5em;display:flex;gap:1.5ch;align-items:center">
-            <time style="color:var(--dim);font-size:0.8em">${dateStr}</time>
+          <div style="margin-top:0.75em;display:flex;gap:1.5ch;align-items:center">
+            <time style="color:var(--dim);font-size:0.78em;font-variant-numeric:tabular-nums">${dateStr}</time>
             ${replyLabel}
           </div>
         </div>

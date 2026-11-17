@@ -363,12 +363,12 @@ async function loadCollection(addr, statusEl, contentEl) {
       const author = item.author ? escapeHtml(item.author) : ''
       const savedDate = item.savedAt ? new Date(item.savedAt).toLocaleDateString() : ''
       const href = escapeHtml(item.url || '#')
-      return `<div class="collection-item collection-saved-item" data-url="${href}" data-title="${title}" data-author="${author}" data-item-id="${item.id || ''}" style="padding:0.75em;border:1px solid var(--border);border-radius:6px;margin-bottom:0.5em;cursor:pointer">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="color:var(--accent)">${title}</span>
-          <span style="color:var(--dim);font-size:0.75em">${savedDate}</span>
+      return `<div class="collection-item collection-saved-item" data-url="${href}" data-title="${title}" data-author="${author}" data-item-id="${item.id || ''}">
+        <div class="collection-saved-head">
+          <span class="collection-saved-title">${title}</span>
+          <span class="collection-saved-date">${savedDate}</span>
         </div>
-        ${author ? `<div style="color:var(--muted);font-size:0.85em;margin-top:0.2em">${author}</div>` : ''}
+        ${author ? `<div class="collection-saved-author">${author}</div>` : ''}
       </div>`
     }
 

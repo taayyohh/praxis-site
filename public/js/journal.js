@@ -512,9 +512,9 @@ async function initJournal() {
             ${previewTitle ? `<h1 style="font-size:1.6em;font-weight:700;margin:0 0 1em;color:var(--fg)">${escapeHtml(previewTitle)}</h1>` : ''}
             <div class="post-page-body" style="font-family:Georgia,'Times New Roman',serif;font-size:1.1em;line-height:1.9;max-width:none">${previewHtml}</div>
           </div>
-          <div style="display:flex;gap:1ch;justify-content:flex-end">
-            <button id="pub-cancel" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.85em;padding:0.4em 1.5ch;cursor:pointer;border-radius:6px">cancel</button>
-            <button id="pub-confirm" style="background:var(--fg);color:var(--bg);border:none;font-family:inherit;font-size:0.85em;padding:0.5em 2ch;cursor:pointer;border-radius:6px;font-weight:600">confirm &amp; publish</button>
+          <div class="fat-sheet-btn-row" style="justify-content:flex-end;flex-wrap:nowrap">
+            <button id="pub-cancel" class="fat-sheet-btn ghost" style="flex:0 1 auto">cancel</button>
+            <button id="pub-confirm" class="fat-sheet-btn primary" style="flex:0 1 auto">confirm &amp; publish</button>
           </div>
         `
         overlay.appendChild(dialog)

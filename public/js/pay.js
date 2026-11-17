@@ -180,15 +180,15 @@ export async function showPurchaseConfirmation(mediaId, priceWei, title, opts = 
         <button class="purchase-amount-btn" data-amount="25">$25</button>
         <button class="purchase-amount-btn" data-amount="50">$50</button>
       </div>
-      <button class="purchase-continue-btn" data-amount="${shortfallUsd}" style="width:100%;margin-top:1em;background:var(--accent);color:var(--bg);border:none;font-family:inherit;font-size:1em;padding:0.75em 1em;cursor:pointer;font-weight:600;border-radius:6px">add funds + buy</button>
+      <button class="purchase-continue-btn fat-sheet-btn primary green" data-amount="${shortfallUsd}" style="width:100%;margin-top:1em">add funds + buy</button>
       <p style="color:var(--dim);font-size:0.7em;text-align:center;margin-top:0.75em;line-height:1.5">${t('pay.balanceDesc')}</p>
     </div>
     ` : `
-    <div style="display:flex;gap:0.75em;margin-top:1.25em">
-      <button id="purchase-confirm-btn" style="flex:1;background:var(--accent);color:var(--bg);border:none;font-family:inherit;font-size:0.95em;padding:0.7em 1em;cursor:pointer;font-weight:600">${t('pay.buy')}</button>
-      <button id="purchase-cancel-btn" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.9em;padding:0.7em 1em;cursor:pointer">${t('pay.cancel')}</button>
+    <div class="fat-sheet-btn-row" style="margin-top:1.25em">
+      <button id="purchase-confirm-btn" class="fat-sheet-btn primary green">${t('pay.buy')}</button>
+      <button id="purchase-cancel-btn" class="fat-sheet-btn ghost">${t('pay.cancel')}</button>
     </div>`}
-    ${needsFunding ? `<button id="purchase-cancel-btn" style="width:100%;background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.85em;padding:0.5em 1em;cursor:pointer;margin-top:0.75em">${t('pay.cancel')}</button>` : ''}
+    ${needsFunding ? `<button id="purchase-cancel-btn" class="fat-sheet-btn ghost" style="width:100%;margin-top:0.75em">${t('pay.cancel')}</button>` : ''}
     <p id="purchase-status" style="color:var(--muted);font-size:0.85em;margin-top:0.75em;min-height:1.2em"></p>
   `
   wrapper.appendChild(dialog)

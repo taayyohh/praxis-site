@@ -24,7 +24,7 @@ export function createMarkdownEditor(container, opts = {}) {
       <button type="button" class="md-fmt md-img-btn" title="image"><i class="ph ph-image"></i></button>
       <input type="file" class="md-img-input" accept="image/*" style="display:none">
     </div>
-    <button type="button" class="md-preview-toggle" style="font-size:0.75em;color:var(--muted);background:none;border:1px solid var(--border);padding:0.2em 0.8ch;cursor:pointer;border-radius:3px;font-family:inherit">preview</button>
+    <button type="button" class="md-preview-toggle markdown-editor-tool">preview</button>
   `
 
   // Textarea
@@ -65,11 +65,11 @@ export function createMarkdownEditor(container, opts = {}) {
       } else if (btn.dataset.link) {
         const linkInput = document.createElement('div')
         linkInput.style.cssText = 'display:flex;gap:0.4ch;align-items:center;margin-top:0.3em'
-        linkInput.innerHTML = `<input type="url" placeholder="https://..." style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--fg);font-family:inherit;font-size:0.85em;padding:0.3em 0.5ch;border-radius:3px"><button class="feed-card-btn" style="font-size:0.75em;padding:0.3em 0.8ch">insert</button><button style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.8em">cancel</button>`
+        linkInput.innerHTML = `<input type="url" placeholder="https://..." class="fat-input" style="flex:1;min-height:36px;padding:0 0.8em;font-size:0.9em"><button class="feed-card-btn markdown-editor-tool primary">insert</button><button class="markdown-editor-tool">cancel</button>`
         toolbar.after(linkInput)
         const urlInput = linkInput.querySelector('input')
         urlInput.focus()
-        linkInput.querySelector('.feed-card-btn').addEventListener('click', () => {
+        linkInput.querySelector('.feed-card-btn.markdown-editor-tool').addEventListener('click', () => {
           const url = urlInput.value.trim()
           if (url) {
             const linkText = selected || 'link'

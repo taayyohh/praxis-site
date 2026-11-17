@@ -1004,8 +1004,8 @@ async function renderOrgCatalog(rosterEl, orgId, orgType) {
     toggle.style.cssText = 'display:flex;gap:0.5ch;margin-bottom:1em;align-items:center'
     toggle.innerHTML = `
       <span style="color:var(--dim);font-size:0.75em;margin-right:0.5ch">view:</span>
-      <button class="org-cat-view-btn active" data-mode="grouped" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">releases</button>
-      <button class="org-cat-view-btn" data-mode="individual" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.8em;padding:0.3em 1ch;cursor:pointer;border-radius:2px">items</button>
+      <button class="org-cat-view-btn collection-filter active" data-mode="grouped">releases</button>
+      <button class="org-cat-view-btn collection-filter" data-mode="individual">items</button>
     `
     catalogEl = document.createElement('div')
     catalogEl.id = 'org-home-catalog'

@@ -109,7 +109,7 @@ async function renderOrg(container, org, orgId) {
     <div class="org-page-root" style="max-width:${cfg.maxWidth};margin:0 auto">
       <div class="org-header" style="margin-bottom:2.5em;${orgType === 'gallery' ? 'text-align:center;' : ''}">
         <h1 style="${headerStyle[orgType] || headerStyle.collective}">${name}</h1>
-        ${dissolved ? '<span style="color:var(--red,#a44);font-size:0.85em;border:1px solid var(--red,#a44);padding:0.1em 0.5ch;border-radius:3px;margin-top:0.5em;display:inline-block">dissolved</span>' : ''}
+        ${dissolved ? '<span class="status-chip danger" style="margin-top:0.5em">dissolved</span>' : ''}
         ${bio ? `<p style="color:var(--muted);line-height:1.7;margin:0.8em 0 0;${orgType === 'publisher' ? 'font-family:Georgia,serif;font-size:1.05em;max-width:55ch;' : 'font-size:0.9em;max-width:65ch;'}${orgType === 'gallery' ? 'margin-left:auto;margin-right:auto;' : ''}">${bio}</p>` : ''}
         <div style="font-size:0.75em;color:var(--dim);margin-top:0.6em;display:flex;gap:2ch;${orgType === 'gallery' ? 'justify-content:center;' : ''}flex-wrap:wrap">
           <span>${memberCount} ${escapeHtml(cfg.rosterTitle)}</span>

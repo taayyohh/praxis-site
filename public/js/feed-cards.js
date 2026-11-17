@@ -82,9 +82,9 @@ if (typeof document !== 'undefined') {
       overlay.style.cssText = 'z-index:10001;align-items:center;justify-content:center'
       overlay.innerHTML = `
         <div style="max-width:400px;width:100%;padding:2em;text-align:center">
-          <div id="autobridge-status" style="color:var(--fg);font-size:1.1em;margin-bottom:1em">${t('pay.bridging')}</div>
-          <div id="autobridge-sub" style="color:var(--muted);font-size:0.8em">${t('pay.bridgingTime')}</div>
-          <button id="autobridge-dismiss" style="margin-top:1.5em;background:none;border:1px solid var(--border);color:var(--muted);padding:0.4em 1.2em;border-radius:4px;cursor:pointer;display:none">dismiss</button>
+          <div id="autobridge-status" class="fat-sheet-title" style="margin-bottom:0.6em">${t('pay.bridging')}</div>
+          <div id="autobridge-sub" style="color:var(--muted);font-size:0.85em;line-height:1.55">${t('pay.bridgingTime')}</div>
+          <button id="autobridge-dismiss" class="fat-sheet-btn ghost" style="margin-top:1.5em;display:none">dismiss</button>
         </div>`
       document.body.appendChild(overlay)
       const statusEl = overlay.querySelector('#autobridge-status')
@@ -221,12 +221,15 @@ if (typeof document !== 'undefined') {
 // media + event renderers) now routes through media-card.js and
 // event-card.js — see feed.js dispatch.
 
+// status index → .status-chip variant class. Same list is reused by
+// renderProjectSummary below; keep them in sync.
+const STATUS_CHIP_VARIANTS = ['', 'ok', 'accent', 'warn', 'ok', '', 'danger']
+const STATUS_ICONS = ['ph-clock', 'ph-check-circle', 'ph-handshake', 'ph-spinner', 'ph-star', 'ph-x-circle', 'ph-warning']
+const STATUS_LABELS = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
+
 export function renderProjectCard(p, resolve, opts = {}) {
   const domain = resolve(p.proposer)
   const typeName = p.projectType || 'other'
-  const statusLabels = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
-  const statusColors = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
-  const statusIcons = ['ph-clock', 'ph-check-circle', 'ph-handshake', 'ph-spinner', 'ph-star', 'ph-x-circle', 'ph-warning']
   const pct = Number(p.fundingGoal) > 0 ? Math.round(Number(p.totalFunded) * 100 / Number(p.fundingGoal)) : 0
   let deadlineStr = ''
   if (p.deadline > 0) {
@@ -237,23 +240,26 @@ export function renderProjectCard(p, resolve, opts = {}) {
   const linkTarget = opts.external ? ' target="_blank"' : ''
 
   const posterCid = p.posterCid || p.imageCid || ''
-  const posterImg = posterCid ? `<img src="/api/img?url=/api/ipfs-proxy/${encodeURIComponent(posterCid)}&w=680" alt="" style="width:100%;max-height:280px;object-fit:cover;display:block;border-radius:6px 6px 0 0" loading="lazy" onerror="this.style.display='none'">` : ''
+  const posterImg = posterCid ? `<img src="/api/img?url=/api/ipfs-proxy/${encodeURIComponent(posterCid)}&w=680" alt="" style="width:100%;max-height:280px;object-fit:cover;display:block" loading="lazy" onerror="this.style.display='none'">` : ''
+
+  const variant = STATUS_CHIP_VARIANTS[p.status] || ''
+  const chipClass = variant ? `status-chip ${variant}` : 'status-chip'
 
   return `
-    <a href="/project?id=${p.id}"${linkTarget} class="feed-item" style="display:block;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;padding:0;overflow:hidden">
+    <a href="/project?id=${p.id}"${linkTarget} class="feed-item feed-article" style="display:block;text-decoration:none;color:inherit">
       ${posterImg}
-      <div style="padding:1.5em 1.75em">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5em">
-          <span style="color:var(--accent);font-weight:700;font-size:1.3em;line-height:1.3">${esc(p.title)}</span>
-          <span style="font-size:0.75em;color:${statusColors[p.status]};flex-shrink:0;margin-left:1ch;display:flex;align-items:center;gap:0.3ch"><i class="ph ${statusIcons[p.status]}" style="font-size:1.1em"></i>${statusLabels[p.status]}</span>
+      <div class="feed-article-body">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1ch;margin-bottom:0.55em">
+          <span class="feed-article-title" style="margin:0">${esc(p.title)}</span>
+          <span class="${chipClass}" style="flex-shrink:0;margin-top:0.35em"><i class="ph ${STATUS_ICONS[p.status]}"></i>${STATUS_LABELS[p.status]}</span>
         </div>
-        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
+        <div style="font-size:0.82em;color:var(--muted);line-height:1.5;display:flex;align-items:center;gap:0.5ch">
           ${inlineAvatar(p.proposer)}<span style="color:var(--fg)">${esc(domain)}</span>${deadlineStr ? ` · ${deadlineStr}` : ''}${typeName !== 'other' ? ` · ${esc(typeName)}` : ''}
         </div>
-        ${p.description ? `<p style="color:var(--dim);font-size:0.8em;margin:1em 0 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description).slice(0, 200)}</p>` : ''}
+        ${p.description ? `<p style="color:var(--dim);font-size:0.9em;margin:0.9em 0 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description).slice(0, 200)}</p>` : ''}
         <div style="margin-top:1.25em">
           <div style="background:color-mix(in srgb, var(--fg) 8%, transparent);height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--green);height:100%;border-radius:3px;width:${Math.min(pct, 100)}%"></div></div>
-          <div style="font-size:0.75em;color:var(--dim);margin-top:0.5em">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</div>
+          <div style="font-size:0.78em;color:var(--dim);margin-top:0.5em;font-variant-numeric:tabular-nums">${pct}% funded · <span data-eth-wei="${esc(p.fundingGoal || '0')}" data-fiat-primary="true"></span> goal</div>
         </div>
       </div>
     </a>
@@ -274,9 +280,6 @@ export function renderProjectCard(p, resolve, opts = {}) {
 export function renderProjectSummary(p, resolve, opts = {}) {
   const proposerLower = String(p.proposer).toLowerCase()
   const domain = resolve ? resolve(p.proposer) : (p.domainMap?.[proposerLower] || proposerLower.slice(0, 8) + '…')
-  const statusLabels = ['proposed', 'funded', 'confirmed', 'completing', 'completed', 'cancelled', 'disputed']
-  const statusColors = ['#c0c0c0', '#4ade80', '#60a5fa', '#fbbf24', '#a78bfa', '#666', '#ef4444']
-  const statusIcons = ['ph-clock', 'ph-check-circle', 'ph-handshake', 'ph-spinner', 'ph-star', 'ph-x-circle', 'ph-warning']
   const goal = BigInt(p.fundingGoal || 0)
   const funded = BigInt(p.totalFunded || 0)
   const pct = goal > 0n ? Number((funded * 10000n) / goal) / 100 : 0
@@ -327,15 +330,18 @@ export function renderProjectSummary(p, resolve, opts = {}) {
 
   const blurb = p.offchainMetadata?.blurb || p.description || ''
 
+  const variant = STATUS_CHIP_VARIANTS[status] || ''
+  const chipClass = variant ? `status-chip ${variant}` : 'status-chip'
+
   return `
-    <a href="${href}"${linkTarget} class="project-summary-card" data-project-id="${esc(p.id)}" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 2%, transparent);transition:border-color 0.15s, transform 0.15s">
+    <a href="${href}"${linkTarget} class="project-summary-card" data-project-id="${esc(p.id)}" style="display:flex;flex-direction:column;border:1px solid color-mix(in srgb, var(--fg) 8%, transparent);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;background:color-mix(in srgb, var(--fg) 3%, transparent);transition:border-color 0.15s, transform 0.15s">
       <div class="project-summary-poster" style="aspect-ratio:16 / 9;background:color-mix(in srgb, var(--fg) 4%, var(--bg));position:relative;overflow:hidden">
         ${posterImg}
-        <span style="position:absolute;top:0.75em;left:0.75em;display:inline-flex;align-items:center;gap:0.4ch;background:rgba(0,0,0,0.55);color:#fff;font-size:0.7em;padding:0.25em 0.75ch;border-radius:99px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><i class="ph ${statusIcons[status] || statusIcons[0]}" style="font-size:1em;color:${statusColors[status] || statusColors[0]}"></i>${statusLabels[status] || 'proposed'}</span>
+        <span class="${chipClass}" style="position:absolute;top:0.75em;left:0.75em;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><i class="ph ${STATUS_ICONS[status] || STATUS_ICONS[0]}"></i>${STATUS_LABELS[status] || 'proposed'}</span>
         <button type="button" class="project-summary-hide-btn" data-project-id="${esc(p.id)}" aria-label="hide from my portfolio" title="hide from my portfolio"><i class="ph ph-eye-slash"></i></button>
       </div>
       <div style="padding:1.25em 1.5em 1.5em;display:flex;flex-direction:column;gap:0.6em">
-        <h3 style="margin:0;font-size:1.15em;line-height:1.3;color:var(--fg);font-weight:600">${esc(p.title || 'untitled project')}</h3>
+        <h3 class="fat-sheet-title" style="margin:0;font-size:1.15em">${esc(p.title || 'untitled project')}</h3>
         <div style="font-size:0.8em;color:var(--muted);display:flex;align-items:center;gap:0.4ch;flex-wrap:wrap">
           <span>by <span style="color:var(--accent)">${esc(domain)}</span></span>${collabStrip}${deadlineStr ? `<span style="color:var(--dim);margin-left:0.75ch">· ${esc(deadlineStr)}</span>` : ''}
         </div>
@@ -377,10 +383,10 @@ function _tOr(key, fallback) {
 }
 
 function _authorLine(o) {
-  const pic = o.pic ? `<img src="${esc(o.pic)}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''
+  const pic = o.pic ? `<img src="${esc(o.pic)}" alt="" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">` : ''
   const href = o.authorHref || '#'
   const ext = o.external ? ' target="_blank" rel="noopener"' : ''
-  return `<a href="${esc(href)}"${ext} class="feed-author" style="display:flex;align-items:center;gap:0.5ch">${pic}${esc(o.name || '')}</a>`
+  return `<a href="${esc(href)}"${ext} class="feed-author">${pic}${esc(o.name || '')}</a>`
 }
 
 // p: { id, title, content }. o: { name, pic, authorHref, postHref, timeStr,
@@ -407,18 +413,18 @@ export function renderPostFeedCard(p, o = {}) {
   const ext = o.external ? ' target="_blank" rel="noopener"' : ''
   const title = p.title || ''
   return `
-    <div class="feed-item feed-article" data-post-id="${esc(String(o.postId ?? p.id))}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;padding:0">
+    <div class="feed-item feed-article" data-post-id="${esc(String(o.postId ?? p.id))}">
       ${mediaHtml ? `<div class="feed-media-wrap">${mediaHtml}</div>` : ''}
-      <div style="padding:0.75em 1em">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4em">
+      <div class="feed-article-body">
+        <div class="feed-article-head">
           ${_authorLine(o)}
-          <time class="feed-time" style="color:var(--dim);font-size:0.85em">${esc(o.timeStr || '')}</time>
+          <time class="feed-time">${esc(o.timeStr || '')}</time>
         </div>
         <a href="${href}"${ext} style="color:inherit;text-decoration:none;display:block">
-          ${title ? `<div style="font-weight:700;margin-bottom:0.3em;font-size:1.4em;line-height:1.25;letter-spacing:-0.01em">${esc(title)}</div>` : ''}
-          ${textPreview ? `<div style="color:var(--muted);font-size:0.9em;line-height:1.6">${textPreview}</div>` : ''}
+          ${title ? `<div class="feed-article-title">${esc(title)}</div>` : ''}
+          ${textPreview ? `<div class="feed-article-preview">${textPreview}</div>` : ''}
         </a>
-        <a href="${href}"${ext} style="color:var(--accent);font-size:0.85em;margin-top:0.5em;display:inline-block">${_tOr('feed.readMore', 'read more')} →</a>
+        <a href="${href}"${ext} class="feed-article-readmore">${_tOr('feed.readMore', 'read more')} →</a>
       </div>
     </div>
   `

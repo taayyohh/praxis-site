@@ -1140,14 +1140,14 @@ async function loadOrgSection() {
         ${otherOrgs.map(o => {
           const isAdminHere = o.admin?.toLowerCase() === addr.toLowerCase()
           const roleTag = isAdminHere
-            ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
-            : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
+            ? '<span class="status-chip accent">admin</span>'
+            : '<span class="status-chip">member</span>'
           // When admin + on-chain org has no domain yet → surface the
           // "attach a site" affordance right here. Skips createOrg
           // entirely — one row on the ledger, one site to sign in to.
           const hasSite = !!(o.domain && o.domain.trim())
           const attachBtn = (isAdminHere && !hasSite)
-            ? `<button class="buy-btn org-attach-site" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}" style="font-size:0.75em;padding:0.2em 1ch">attach a site</button>`
+            ? `<button class="feed-card-btn media-card-track-buy org-attach-site" data-org-id="${esc(String(o.id))}" data-org-name="${esc(o.name)}">attach a site</button>`
             : ''
           // "upgrade to shared org (Safe)" — offered when the wallet is
           // admin AND the org is still owned by an EOA (not yet a Safe).
@@ -1272,8 +1272,8 @@ async function _renderInlineOrgAdmin(siteOrg, isAdmin, esc) {
   const otherMembers = members.filter(m => String(m.wallet || m).toLowerCase() !== adminAddr)
   const memberCount = otherMembers.length
   const roleTag = isAdmin
-    ? '<span style="font-size:0.7em;color:var(--dim);border:1px solid var(--border);padding:0.1em 0.5ch;border-radius:3px">admin</span>'
-    : '<span style="font-size:0.7em;color:var(--dim)">member</span>'
+    ? '<span class="status-chip accent">admin</span>'
+    : '<span class="status-chip">member</span>'
 
   // The invite input has a relative wrapper so the absolute suggestion
   // dropdown anchors to it (matches the /org page's invite affordance).
