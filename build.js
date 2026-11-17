@@ -962,8 +962,12 @@ function fingerprintAssets() {
 
 fingerprintAssets()
 
-// 8b. pre-compress static files for serving
-
+// 8b. pre-compress definition — invocation moved to the end of the build
+// so the sweep sees every file that lands in dist (robots, sitemap,
+// manifest, sw.js, and the BUILD_TEMPLATES_ONLY shells all write AFTER
+// this point). Previously this ran mid-build and sw.js — the one
+// non-fingerprinted file whose version string IS the cache-bust — got
+// stuck on stale .br/.gz sidecars across deploys. 2026-11-17 debug.
 function preCompressFiles() {
   const compressible = ['.js', '.css', '.html', '.json', '.svg']
   let count = 0
@@ -973,6 +977,10 @@ function preCompressFiles() {
       if (entry.isDirectory()) { walk(full); continue }
       const ext = extname(entry.name)
       if (!compressible.includes(ext)) continue
+      // Skip the sidecars themselves so re-runs don't try to recompress
+      // a .br/.gz as if it were source — defensive since the walker
+      // already ignores non-compressible extensions.
+      if (entry.name.endsWith('.br') || entry.name.endsWith('.gz')) continue
       const content = readFileSync(full)
       if (content.length < 1024) continue // skip tiny files
       writeFileSync(full + '.br', brotliCompressSync(content, {
@@ -985,8 +993,6 @@ function preCompressFiles() {
   walk(distDir)
   console.log(`pre-compressed ${count} files (.br + .gz)`)
 }
-
-preCompressFiles()
 
 // 9. generate robots.txt
 
@@ -1102,4 +1108,11 @@ if (process.env.BUILD_TEMPLATES_ONLY === '1') {
 
   console.log(`built ${TEMPLATE_TYPES.length} template shells for dynamic serving`)
 }
+
+// Final step: pre-compress everything that landed in dist. Must come last
+// so sidecars match the current contents, not whatever was there before
+// the later steps overwrote files in-place. See the comment on the
+// preCompressFiles definition.
+preCompressFiles()
+
 console.log(`done → ${distDir}/`)
